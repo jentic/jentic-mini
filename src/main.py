@@ -1,0 +1,400 @@
+"""
+Jentic Mini — main.py
+"""
+import logging
+import os
+from contextlib import asynccontextmanager
+from pathlib import Path
+
+from fastapi import FastAPI
+from fastapi.openapi.docs import get_redoc_html
+from fastapi.openapi.utils import get_openapi
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse, HTMLResponse
+
+from src.auth import APIKeyMiddleware
+from src.db import init_db, setup_state
+from src.routers import apis as apis_router
+from src.routers import search as search_router
+from src.routers import credentials as creds_router
+from src.routers import debug as debug_router
+from src.routers import toolkits as toolkits_router
+from src.routers.toolkits import policy_router as toolkits_policy_router
+from src.routers import access_requests as access_requests_router
+from src.routers import notes as notes_router
+from src.routers import capability as capability_router
+from src.routers import workflows as workflows_router
+from src.routers import import_ as import_router
+from src.routers import traces as traces_router
+from src.routers import broker as broker_router
+from src.routers import overlays as overlays_router
+from src.routers import jobs as jobs_router
+from src.routers import user as user_router
+from src.routers import default_key as default_key_router
+from src.routers.apis import rebuild_index_on_startup
+from src.startup import self_register
+
+logging.basicConfig(level=(os.getenv("LOG_LEVEL") or "info").upper())
+log = logging.getLogger("jentic")
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    log.info("Jentic starting — initialising DB")
+    await init_db()
+    log.info("Jentic building BM25 index")
+    await rebuild_index_on_startup()
+    log.info("Jentic self-registering")
+    await self_register(app)
+    log.info("Jentic ready")
+    yield
+    log.info("Jentic shutting down")
+
+
+# Tag order controls Swagger UI section order.
+# Within each section, operations appear in router-registration order.
+_TAGS_METADATA = [
+    {
+        "name": "search",
+        "description": "**Start here.** Full-text and semantic search across all registered APIs and operations.",
+    },
+    {
+        "name": "inspect",
+        "description": "Inspect capability details, list APIs and operations.",
+    },
+    {
+        "name": "execute",
+        "description": (
+            "Transparent request broker — runs API operations and Arazzo workflows. "
+            "Prefix any registered host to route through the broker: "
+            "`POST /api.stripe.com/v1/payment_intents`. "
+            "Credential injection, policy enforcement, and simulate mode built-in."
+        ),
+    },
+    {
+        "name": "observe",
+        "description": "Read async job handles and execution traces.",
+    },
+    {
+        "name": "toolkits",
+        "description": "Manage toolkits: scoped credential bundles with access keys, permissions, and access requests.",
+    },
+    {
+        "name": "credentials",
+        "description": "Manage upstream API credentials in the vault (humans/admin only). Values are write-only — never returned after creation.",
+    },
+    {
+        "name": "user",
+        "description": "Human account management: create account, login, logout, and agent key generation.",
+    },
+    {
+        "name": "catalog",
+        "description": "Register APIs, upload specs, manage overlays and notes.",
+    },
+]
+
+app = FastAPI(
+    title="Jentic Mini",
+    openapi_tags=_TAGS_METADATA,
+    description=(
+        "**Jentic Mini** is the open-source, self-hosted implementation of the Jentic API — "
+        "fully API-compatible with the [Jentic hosted and VPC editions](https://jentic.com).\n\n"
+        "## What is Jentic Mini?\n"
+        "Jentic Mini gives any agent a local execution layer: search a catalog of registered APIs, "
+        "broker authenticated requests without exposing credentials to the agent, enforce access "
+        "policies, and observe every execution. It is designed to be dropped in as a self-hosted "
+        "alternative to the Jentic cloud service.\n\n"
+        "## Hosted vs Self-hosted\n"
+        "The **Jentic hosted and VPC editions** offer deeper implementations across three areas:\n\n"
+        "| Capability | Jentic Mini (this) | Jentic hosted / VPC |\n"
+        "|------------|-------------------|---------------------|\n"
+        "| **Search** | BM25 full-text search | Advanced semantic search (~64% accuracy improvement over BM25) |\n"
+        "| **Request brokering** | In-process credential injection | Scalable AWS Lambda-based broker with encryption at rest and in-transit, SOC 2-grade security, and 3rd-party credential vault integrations (HashiCorp Vault, AWS Secrets Manager, etc.) |\n"
+        "| **Simulation** | Basic simulate mode | Full sandbox for simulating API calls and toolkit behaviour (enterprise-only) |\n"
+        "| **Catalog** | Local registry only | Central catalog — aggregates the collective know-how of agents across API definitions and Arazzo workflows |\n\n"
+        "## Authentication\n"
+        "**Agents** — provide `X-Jentic-API-Key: tk_xxx` header.\n"
+        "**Humans** — [log in here](/login) for a session cookie (required for admin operations).\n"
+        "First time? Call `POST /default-api-key/generate` from a trusted subnet to get your agent key.\n\n"
+        "## Tag groups\n"
+        "| Tag | Who uses it | Purpose |\n"
+        "|-----|-------------|----------|\n"
+        "| **search** | Agents | Full-text search — the main entrypoint |\n"
+        "| **inspect** | Agents | Inspect capabilities, list APIs and operations |\n"
+        "| **execute** | Agents | Transparent request broker — runs API operations and Arazzo workflows. "
+        "Credential injection, policy enforcement, and simulate mode built-in. |\n"
+        "| **toolkits** | Agents/Humans | Toolkits, access keys, permissions, access requests |\n"
+        "| **observe** | Agents | Read execution traces |\n"
+        "| **catalog** | Humans/admin | Register APIs, upload specs, overlays, notes |\n"
+        "| **credentials** | Humans only | Manage the credentials vault |\n\n"
+        "Agents with a toolkit key need: **search**, **inspect**, **execute**, **toolkits** (read), **observe**."
+    ),    version="0.2.0",
+    lifespan=lifespan,
+    docs_url=None,
+    redoc_url=None,
+    openapi_url="/openapi.json",
+    debug=False,
+)
+
+app.add_middleware(APIKeyMiddleware)
+
+# ── Static dir — defined early so route handlers can reference it ──────────────
+STATIC_DIR = Path(__file__).parent / "static"
+
+app.include_router(capability_router.router, tags=["inspect"])
+app.include_router(workflows_router.router)
+app.include_router(import_router.router, tags=["catalog"])
+app.include_router(jobs_router.router)
+app.include_router(traces_router.router, tags=["observe"])
+app.include_router(overlays_router.router, tags=["catalog"])  # must be before apis (path converter conflict)
+app.include_router(apis_router.router, tags=["catalog"])
+app.include_router(search_router.router, tags=["search"])
+app.include_router(creds_router.router, tags=["credentials"])
+app.include_router(toolkits_router.router, tags=["toolkits"])
+app.include_router(toolkits_policy_router, prefix="/toolkits", tags=["toolkits"])
+app.include_router(access_requests_router.router, prefix="/toolkits", tags=["toolkits"])
+app.include_router(notes_router.router, tags=["catalog"])
+app.include_router(debug_router.router, include_in_schema=False)
+app.include_router(user_router.router)
+app.include_router(default_key_router.router)
+
+# ── Meta routes: health + root — MUST be before broker catch-all ─────────────
+@app.get("/health", tags=["meta"])
+async def health():
+    """Returns current setup state with explicit instructions for agents."""
+    import os
+    state = await setup_state()
+
+    hostname = os.environ.get("JENTIC_PUBLIC_HOSTNAME", "jentic-mini.home.seanblanchfield.com")
+
+    if not state["default_key_claimed"]:
+        return {
+            "status": "setup_required",
+            "message": "No default API key has been issued yet.",
+            "next_step": "Call POST /default-api-key/generate from a trusted subnet to obtain your agent key.",
+            "generate_url": "/default-api-key/generate",
+            "version": "0.2.0",
+        }
+
+    if not state["account_created"]:
+        return {
+            "status": "account_required",
+            "message": "Agent key is active. No admin account has been created yet.",
+            "next_step": "Tell your user to visit setup_url to create their admin account. "
+                         "Your agent key works immediately — you do not need to wait.",
+            "setup_url": f"https://{hostname}/user/create",
+            "version": "0.2.0",
+        }
+
+    # Fully set up
+    async with __import__("aiosqlite").connect(__import__("src.db", fromlist=["DB_PATH"]).DB_PATH) as db:
+        async with db.execute("SELECT COUNT(*) FROM apis") as cur:
+            (api_count,) = await cur.fetchone()
+
+    return {
+        "status": "ok",
+        "version": "0.2.0",
+        "apis_registered": api_count,
+    }
+
+
+@app.get("/favicon.ico", include_in_schema=False)
+@app.get("/favicon.png", include_in_schema=False)
+async def favicon():
+    return FileResponse(STATIC_DIR / "favicon.png", media_type="image/png")
+
+
+@app.get("/login", include_in_schema=False)
+async def login_page(error: str | None = None):
+    """Human-friendly login form — POSTs to /user/login?redirect_to=/docs."""
+    from fastapi.responses import HTMLResponse
+    err_html = f'<p class="error">{error}</p>' if error else ""
+    html = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Jentic Mini — Log In</title>
+  <style>
+    * {{ box-sizing: border-box; margin: 0; padding: 0; }}
+    body {{ background: #1a1a2e; color: #e0e0e0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+           display: flex; align-items: center; justify-content: center; min-height: 100vh; }}
+    .card {{ background: #16213e; border: 1px solid #0f3460; border-radius: 12px; padding: 2.5rem; width: 100%; max-width: 380px; }}
+    h1 {{ font-size: 1.4rem; color: #a5b4fc; margin-bottom: 0.25rem; }}
+    .sub {{ font-size: 0.85rem; color: #888; margin-bottom: 1.75rem; }}
+    label {{ display: block; font-size: 0.8rem; color: #aaa; margin-bottom: 0.35rem; margin-top: 1rem; }}
+    input {{ width: 100%; padding: 0.6rem 0.8rem; background: #0f3460; border: 1px solid #334; border-radius: 6px;
+             color: #e0e0e0; font-size: 0.95rem; outline: none; }}
+    input:focus {{ border-color: #a5b4fc; }}
+    button {{ margin-top: 1.5rem; width: 100%; padding: 0.7rem; background: #6366f1; border: none; border-radius: 6px;
+              color: #fff; font-size: 1rem; cursor: pointer; font-weight: 600; }}
+    button:hover {{ background: #818cf8; }}
+    .error {{ color: #f87171; font-size: 0.85rem; margin-top: 1rem; text-align: center; }}
+    .back {{ text-align: center; margin-top: 1rem; font-size: 0.8rem; }}
+    .back a {{ color: #a5b4fc; text-decoration: none; }}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Jentic Mini</h1>
+    <p class="sub">Admin login</p>
+    <form method="POST" action="/user/login?redirect_to=/docs">
+      <label for="username">Username</label>
+      <input id="username" name="username" type="text" autocomplete="username" required autofocus>
+      <label for="password">Password</label>
+      <input id="password" name="password" type="password" autocomplete="current-password" required>
+      {err_html}
+      <button type="submit">Log in →</button>
+    </form>
+    <p class="back"><a href="/docs">← Back to API docs</a></p>
+  </div>
+</body>
+</html>"""
+    return HTMLResponse(html)
+
+
+@app.get("/", tags=["meta"], include_in_schema=False)
+async def root():
+    index_path = STATIC_DIR / "index.html"
+    if index_path.exists():
+        return FileResponse(index_path)
+    return {"message": "Jentic API is running. See /docs for API documentation."}
+
+
+# ── Docs served locally (no CDN, works offline / on patchy connections) ───────
+@app.get("/docs", include_in_schema=False)
+async def swagger_ui():
+    # Custom Swagger UI with persistAuthorization + auth banner
+    html = """<!DOCTYPE html>
+<html>
+<head>
+  <title>Jentic — Swagger UI</title>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" type="text/css" href="/static/swagger-ui.css" >
+  <style>
+    .auth-banner {
+      background: #1a1a2e; border-left: 4px solid #667eea;
+      color: #e0e0e0; padding: 12px 20px; font-family: monospace;
+      font-size: 14px; margin: 0;
+    }
+    .auth-banner strong { color: #667eea; }
+    .auth-banner code { background: #2d2d2d; padding: 2px 6px; border-radius: 3px; }
+  </style>
+</head>
+<body>
+<div class="auth-banner">
+  🔑 <strong>Authentication.</strong>
+  <strong>Agents:</strong> Click <strong>Authorize 🔓</strong> and enter your <code>tk_xxx</code> key in the <em>JenticApiKey</em> field.
+  <strong>Humans:</strong> Click <strong>Authorize 🔓</strong> and use the <em>HumanLogin</em> username + password form — or <a href="/login" style="color:#a5b4fc">log in here</a> for a persistent browser session.
+  First time? Call <code>POST /default-api-key/generate</code> from a local subnet.
+</div>
+<div id="swagger-ui"></div>
+<script src="/static/swagger-ui-bundle.js"> </script>
+<script>
+  window.onload = function() {
+    SwaggerUIBundle({
+      url: "/openapi.json",
+      dom_id: '#swagger-ui',
+      presets: [ SwaggerUIBundle.presets.apis, SwaggerUIBundle.SwaggerUIStandalonePreset ],
+      layout: "BaseLayout",
+      persistAuthorization: true,
+      tryItOutEnabled: true,
+      requestInterceptor: function(req) { return req; },
+    })
+  }
+</script>
+</body>
+</html>"""
+    return HTMLResponse(html)
+
+
+@app.get("/redoc", include_in_schema=False)
+async def redoc():
+    return get_redoc_html(
+        openapi_url="/openapi.json",
+        title="Jentic — Redoc",
+        redoc_js_url="/static/redoc.standalone.js",
+    )
+
+
+# ── Broker catch-all — MUST be registered last ────────────────────────────────
+# Paths whose first segment contains "." route to the broker.
+# All Jentic-internal routes above take priority by registration order.
+# ── Static files — MUST be before broker catch-all ────────────────────────────
+if STATIC_DIR.exists():
+    app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+
+# ── Broker catch-all — MUST be registered last ────────────────────────────────
+app.include_router(broker_router.router)
+
+
+# ── Custom OpenAPI schema with API key security scheme ────────────────────────
+
+# Paths that are open (no tk_xxx key required) — shown as unlocked in Swagger UI.
+# Broker paths (/{host}/...) are open passthrough but handled dynamically by the
+# broker router and don't appear as static paths in the schema.
+_OPEN_OPERATIONS: set[tuple[str, str]] = {
+    # path, method
+    ("/health", "get"),
+    ("/user/create", "post"),
+    ("/user/login", "post"),
+    ("/user/token", "post"),
+    ("/default-api-key/generate", "post"),
+    # Search + inspect: public read-only discovery
+    ("/search", "get"),
+    ("/apis", "get"),
+    ("/apis/{api_id}", "get"),
+    ("/apis/{api_id}/overlays", "get"),
+    ("/apis/{api_id}/overlays/{overlay_id}", "get"),
+    # Workflow execution is open passthrough (upstream auth is upstream's problem)
+    ("/workflows", "get"),
+    ("/workflows/{slug}", "get"),
+    ("/workflows/{slug}", "post"),
+}
+
+def custom_openapi():
+    if app.openapi_schema:
+        return app.openapi_schema
+    schema = get_openapi(
+        title=app.title,
+        version=app.version,
+        description=app.description,
+        routes=app.routes,
+        tags=app.openapi_tags,  # controls section order in Swagger UI
+    )
+    schema.setdefault("components", {})
+    schema["components"]["securitySchemes"] = {
+        "JenticApiKey": {
+            "type": "apiKey",
+            "in": "header",
+            "name": "X-Jentic-API-Key",
+            "description": "Agent toolkit key (`tk_xxx`). Issue via `POST /default-api-key/generate`.",
+        },
+        "HumanLogin": {
+            "type": "oauth2",
+            "description": "Human admin session. Fill in username + password to get a Bearer JWT.",
+            "flows": {
+                "password": {
+                    "tokenUrl": "/user/token",
+                    "scopes": {},
+                }
+            },
+        },
+    }
+    # Global default: endpoints require JenticApiKey OR HumanLogin
+    schema["security"] = [{"JenticApiKey": []}, {"HumanLogin": []}]
+
+    # Override: mark open/public operations as unlocked (security: [])
+    for path, path_item in schema.get("paths", {}).items():
+        for method, operation in path_item.items():
+            if not isinstance(operation, dict):
+                continue
+            if (path, method.lower()) in _OPEN_OPERATIONS:
+                operation["security"] = []
+
+    app.openapi_schema = schema
+    return app.openapi_schema
+
+
+app.openapi = custom_openapi

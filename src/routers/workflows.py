@@ -1,0 +1,751 @@
+"""
+Workflow routes.
+
+Workflow URIs are functioning URLs — consistent with how operation identities work.
+The identity of a workflow is: POST/{jentic_hostname}/workflows/{slug}
+
+  GET  /workflows/{slug}   → return workflow definition (Arazzo JSON / YAML / HTML)
+  POST /workflows/{slug}   → execute the workflow
+  GET  /workflows          → list all workflows
+
+Workflow capability IDs in search/inspect use the same METHOD/host/path format
+as operation IDs. The backend detects them by matching the Jentic hostname.
+"""
+import copy
+import json
+import os
+import tempfile
+import uuid
+import yaml
+from pathlib import Path
+from typing import Any
+
+from fastapi import APIRouter, HTTPException, Request
+from fastapi.responses import HTMLResponse, Response
+
+from src.db import get_db
+from src.utils import workflow_has_async_steps
+from src.models import WorkflowOut
+
+router = APIRouter()
+
+# Jentic public hostname — used to build canonical capability IDs for workflows
+JENTIC_HOSTNAME = os.environ.get("JENTIC_PUBLIC_HOSTNAME", "jentic-mini.home.seanblanchfield.com")
+
+
+def workflow_capability_id(slug: str) -> str:
+    """Return the canonical capability ID for a workflow.
+
+    Format: POST/{jentic_hostname}/workflows/{slug}
+    e.g.:   POST/{JENTIC_HOSTNAME}/workflows/discourse-openai-summarise
+    """
+    return f"POST/{JENTIC_HOSTNAME}/workflows/{slug}"
+
+
+def workflow_url(slug: str) -> str:
+    """Return the functioning HTTPS URL for a workflow."""
+    return f"https://{JENTIC_HOSTNAME}/workflows/{slug}"
+
+
+def _parse_arazzo(arazzo_path: str) -> dict:
+    p = Path(arazzo_path)
+    if not p.exists():
+        return {}
+    raw = p.read_text()
+    if str(p).endswith((".yaml", ".yml")):
+        return yaml.safe_load(raw) or {}
+    return json.loads(raw)
+
+
+def _preprocess_arazzo_for_broker(arazzo_path: str, broker_base_url: str) -> tuple[str, list[str]]:
+    """Rewrite sourceDescription spec servers to route through the broker.
+
+    For each sourceDescription that points to a local spec file, creates a
+    temporary copy with servers[0].url rewritten from e.g.
+        https://api.openai.com  →  http://localhost:8900/api.openai.com
+
+    Returns (temp_arazzo_path, [temp_spec_paths]) — caller must delete these
+    after the subprocess completes.
+    """
+    doc = _parse_arazzo(arazzo_path)
+    temp_files: list[str] = []
+    new_sources = []
+
+    for src in doc.get("sourceDescriptions", []):
+        spec_url = src.get("url", "")
+        # Only process local file paths we can open
+        if spec_url.startswith("/"):
+            try:
+                with open(spec_url) as f:
+                    spec = json.load(f)
+                servers = spec.get("servers", [])
+                if servers:
+                    original_url = servers[0].get("url", "")
+                    host = (
+                        original_url
+                        .replace("https://", "")
+                        .replace("http://", "")
+                        .rstrip("/")
+                    )
+                    # Skip template-variable hosts like {subdomain}.example.com
+                    if host and "{" not in host:
+                        spec_copy = copy.deepcopy(spec)
+                        spec_copy["servers"][0]["url"] = f"{broker_base_url}/{host}"
+                        with tempfile.NamedTemporaryFile(
+                            mode="w", suffix=".json", delete=False
+                        ) as tf:
+                            json.dump(spec_copy, tf)
+                            temp_spec = tf.name
+                        temp_files.append(temp_spec)
+                        new_src = dict(src)
+                        new_src["url"] = temp_spec
+                        new_sources.append(new_src)
+                        continue
+            except Exception:
+                pass  # fall through to append original src unchanged
+        new_sources.append(src)
+
+    doc["sourceDescriptions"] = new_sources
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as tf:
+        json.dump(doc, tf)
+        temp_arazzo = tf.name
+
+    return temp_arazzo, temp_files
+
+
+def _extract_workflow_meta(doc: dict, workflow_id: str | None = None) -> dict:
+    """Extract metadata from an Arazzo document for a specific workflowId."""
+    workflows_list = doc.get("workflows", [])
+    if not workflows_list:
+        return {}
+    # Pick requested workflow or first one
+    wf = next((w for w in workflows_list if w.get("workflowId") == workflow_id), None)
+    if wf is None:
+        wf = workflows_list[0]
+    steps = wf.get("steps", [])
+    return {
+        "workflow_id": wf.get("workflowId"),
+        "name": wf.get("summary") or doc.get("info", {}).get("title"),
+        "description": wf.get("description") or doc.get("info", {}).get("description"),
+        "input_schema": wf.get("inputs"),
+        "steps": [
+            {
+                "id": s.get("stepId"),
+                "operation": s.get("operationId") or s.get("operationPath"),
+                "description": s.get("description"),
+            }
+            for s in steps
+        ],
+        "steps_count": len(steps),
+    }
+
+
+# ── Routes ────────────────────────────────────────────────────────────────────
+
+@router.get("/workflows", summary="List workflows — browse available multi-step Arazzo workflows", tags=["catalog"], response_model=list[WorkflowOut])
+async def list_workflows():
+    """Returns all registered workflows with slug, name, description, step count, and involved APIs. Use GET /inspect/{id} or GET /workflows/{slug} for full detail."""
+    async with get_db() as db:
+        async with db.execute(
+            """SELECT slug, name, description, steps_count, involved_apis, created_at
+               FROM workflows ORDER BY created_at DESC"""
+        ) as cur:
+            rows = await cur.fetchall()
+    return [
+        {
+            "id": workflow_capability_id(r[0]),
+            "url": workflow_url(r[0]),
+            "slug": r[0],
+            "name": r[1],
+            "description": r[2],
+            "steps_count": r[3],
+            "involved_apis": json.loads(r[4]) if r[4] else [],
+            "created_at": r[5],
+            "_links": {
+                "self": f"/workflows/{r[0]}",
+                "execute": f"/workflows/{r[0]}",
+            },
+        }
+        for r in rows
+    ]
+
+
+_WORKFLOW_CONTENT_TYPES = {
+    "application/json": {"schema": {"type": "object", "description": "Arazzo document as JSON"}},
+    "application/yaml": {"schema": {"type": "string", "description": "Arazzo document as YAML"}},
+    "text/markdown":    {"schema": {"type": "string", "description": "LLM-friendly prose summary"}},
+    "text/html":        {"schema": {"type": "string", "description": "Human-readable HTML visualiser"}},
+}
+
+@router.get(
+    "/workflows/{slug}",
+    summary="Get workflow definition — Arazzo spec and input schema",
+    tags=["catalog"],
+    responses={
+        200: {
+            "description": "Workflow definition — format controlled by Accept header.",
+            "content": _WORKFLOW_CONTENT_TYPES,
+        }
+    },
+)
+async def get_workflow(slug: str, request: Request):
+    """Returns the workflow definition with content negotiation:
+    - application/json (default): Arazzo document
+    - text/markdown: compact LLM-friendly summary with input schema and steps
+    - text/html: human-readable summary
+    - application/arazzo+json: same as application/json
+    Execute via broker: POST /{jentic_host}/workflows/{slug}
+    """
+    accept = request.headers.get("accept", "application/json")
+
+    async with get_db() as db:
+        async with db.execute(
+            "SELECT slug, name, description, arazzo_path, input_schema, steps_count, involved_apis, created_at FROM workflows WHERE slug=?",
+            (slug,),
+        ) as cur:
+            row = await cur.fetchone()
+
+    if not row:
+        raise HTTPException(404, f"Workflow '{slug}' not found")
+
+    (db_slug, name, description, arazzo_path, input_schema_str, steps_count, involved_apis_str, created_at) = row
+    doc = _parse_arazzo(arazzo_path)
+    meta = _extract_workflow_meta(doc)
+    involved_apis = json.loads(involved_apis_str) if involved_apis_str else []
+    capability_id = workflow_capability_id(slug)
+
+    if "text/html" in accept:
+        steps_html = ""
+        for s in meta.get("steps", []):
+            steps_html += f"<li><code>{s['id']}</code> — {s.get('operation','?')}"
+            if s.get('description'):
+                steps_html += f"<br><small>{s['description']}</small>"
+            steps_html += "</li>"
+        apis_html = ", ".join(f"<code>{a}</code>" for a in involved_apis) or "—"
+        html = f"""<!DOCTYPE html>
+<html>
+<head><title>{name} — Jentic Workflow</title>
+<style>body{{font-family:sans-serif;max-width:800px;margin:40px auto;padding:0 20px}}
+code{{background:#f4f4f4;padding:2px 6px;border-radius:3px}}
+pre{{background:#f4f4f4;padding:16px;border-radius:6px;overflow:auto}}
+.meta{{color:#666;font-size:.9em}}
+h1 span{{color:#888;font-weight:normal;font-size:.6em;margin-left:12px}}</style>
+</head>
+<body>
+<h1>{name} <span>workflow</span></h1>
+<p class="meta">Capability ID: <code>{capability_id}</code></p>
+<p>{description or ''}</p>
+<h2>Steps ({steps_count})</h2>
+<ol>{steps_html}</ol>
+<h2>APIs used</h2>
+<p>{apis_html}</p>
+<h2>Execute</h2>
+<p>POST to <code>https://{JENTIC_HOSTNAME}/workflows/{slug}</code> with your inputs and <code>X-Jentic-API-Key</code> header.</p>
+<h2>Arazzo source</h2>
+<pre>{doc and json.dumps(doc, indent=2)[:4000]}</pre>
+</body></html>"""
+        return HTMLResponse(html)
+
+    if "yaml" in accept:
+        return Response(
+            content=yaml.dump(doc, default_flow_style=False, allow_unicode=True),
+            media_type="application/yaml",
+        )
+
+    if "text/markdown" in accept:
+        steps_md = "\n".join(
+            f"{i+1}. **{s['id']}** — `{s.get('operation','?')}`{': ' + s['description'] if s.get('description') else ''}"
+            for i, s in enumerate(meta.get("steps", []))
+        )
+        md = f"## {name}\n\n{description or ''}\n\n**Capability ID:** `{capability_id}`\n\n**Steps:**\n{steps_md}\n\n**APIs:** {', '.join(f'`{a}`' for a in involved_apis) or '—'}\n\n**Execute:** POST `{workflow_url(slug)}`"
+        return Response(content=md, media_type="text/markdown")
+
+    # Default: JSON — return structured detail
+    return {
+        "id": capability_id,
+        "url": workflow_url(slug),
+        "slug": slug,
+        "name": name,
+        "description": description,
+        "steps": meta.get("steps", []),
+        "steps_count": steps_count,
+        "input_schema": json.loads(input_schema_str) if input_schema_str else meta.get("input_schema"),
+        "involved_apis": involved_apis,
+        "arazzo_path": arazzo_path,
+        "created_at": created_at,
+        "_links": {
+            "self": f"/workflows/{slug}",
+            "execute": f"/workflows/{slug}",
+            "capability": f"/inspect/{capability_id}",
+        },
+    }
+
+
+async def dispatch_workflow(
+    slug: str,
+    body_bytes: bytes,
+    caller_api_key: str,
+    toolkit_id: str | None,
+    simulate: bool = False,
+    prefer_wait: float | None = None,
+    callback_url: str | None = None,
+):
+    """
+    Core workflow execution logic — called by both the /workflows/{slug} route
+    and the broker when it detects a request targeting the Jentic hostname.
+
+    Parameters
+    ----------
+    slug          : workflow slug (from URL)
+    body_bytes    : raw request body (parsed as JSON inputs dict)
+    caller_api_key: the API key the caller used (forwarded to broker sub-requests)
+    toolkit_id : resolved toolkit (or None for admin)
+    simulate      : simulate mode — return would_send without executing
+    prefer_wait   : RFC 7240 Prefer: wait=N — seconds to block before returning 202
+                    0.0 = return 202 immediately; None = block indefinitely
+    callback_url  : X-Jentic-Callback URL to POST result when async job completes
+    """
+    import asyncio
+    async with get_db() as db:
+        async with db.execute(
+            "SELECT arazzo_path, name FROM workflows WHERE slug=?", (slug,)
+        ) as cur:
+            row = await cur.fetchone()
+    if not row:
+        raise HTTPException(404, f"Workflow '{slug}' not found")
+
+    arazzo_path, name = row
+    doc = _parse_arazzo(arazzo_path)
+    workflows_list = doc.get("workflows", [])
+    if not workflows_list:
+        raise HTTPException(500, f"Arazzo file for '{slug}' contains no workflows")
+    workflow_id = workflows_list[0].get("workflowId", slug)
+
+    # Parse request body as inputs
+    try:
+        inputs = json.loads(body_bytes) if body_bytes else {}
+        if not isinstance(inputs, dict):
+            inputs = {}
+    except Exception:
+        inputs = {}
+
+    # Apply JSON Schema defaults from the workflow's input schema.
+    # arazzo-runner does not resolve $schema defaults — we must do it here.
+    wf_schema = workflows_list[0].get("inputs", {}) if workflows_list else {}
+    for prop, defn in wf_schema.get("properties", {}).items():
+        if prop not in inputs and "default" in defn:
+            inputs[prop] = defn["default"]
+
+    is_simulate = simulate
+
+    # ── Async dispatch decision ───────────────────────────────────────────────
+    # Trigger async (return 202 + job handle) if:
+    #   1. prefer_wait == 0 (client said "don't block")
+    #   2. Any step in this workflow is tagged x-async: true
+    # For prefer_wait > 0: we attempt sync execution with a timeout; if it
+    #   doesn't complete in time we promote to async and return 202.
+    should_async = (
+        prefer_wait is not None and prefer_wait == 0.0
+    ) or workflow_has_async_steps(doc)
+
+    if should_async or (prefer_wait is not None and prefer_wait > 0):
+        # Import here to avoid circular import
+        from src.routers.jobs import create_job, update_job, _running_tasks
+        from fastapi.responses import JSONResponse as _JSONResponse
+
+        # Create the job record
+        job_id = await create_job(
+            kind="workflow",
+            slug_or_id=slug,
+            toolkit_id=toolkit_id,
+            inputs=inputs,
+        )
+        # Store callback URL if provided
+        if callback_url:
+            async with get_db() as db:
+                await db.execute(
+                    "UPDATE jobs SET callback_url=? WHERE id=?",
+                    (callback_url, job_id),
+                )
+                await db.commit()
+
+        # The actual execution coroutine — runs in background
+        async def _run_in_background():
+            try:
+                await update_job(job_id, status="running")
+                result_response = await _execute_workflow_core(
+                    slug=slug, name=name, doc=doc, workflow_id=workflow_id,
+                    inputs=inputs, arazzo_path=arazzo_path,
+                    caller_api_key=caller_api_key, toolkit_id=toolkit_id,
+                    is_simulate=is_simulate, trace_id=None,
+                )
+                # Parse the JSONResponse to extract result
+                body = json.loads(result_response.body)
+                http_status = result_response.status_code
+                trace_id = body.get("trace_id")
+
+                if http_status == 200:
+                    await update_job(
+                        job_id, status="complete",
+                        result=body, http_status=200, trace_id=trace_id,
+                    )
+                elif http_status == 202:
+                    # Upstream itself returned 202 — double async case
+                    upstream_loc = None
+                    if isinstance(body.get("outputs"), dict):
+                        upstream_loc = (
+                            body["outputs"].get("location")
+                            or body["outputs"].get("Location")
+                        )
+                    await update_job(
+                        job_id, status="upstream_async",
+                        result=body, http_status=202,
+                        upstream_async=True,
+                        upstream_job_url=upstream_loc,
+                        trace_id=trace_id,
+                    )
+                else:
+                    await update_job(
+                        job_id, status="failed",
+                        error=body.get("message") or body.get("error") or "Workflow failed",
+                        http_status=http_status,
+                        trace_id=trace_id,
+                    )
+            except Exception as exc:
+                import traceback as _tb
+                await update_job(job_id, status="failed", error=_tb.format_exc()[-800:])
+            finally:
+                _running_tasks.pop(job_id, None)
+
+        if should_async:
+            # Fire and forget immediately — return 202 now
+            task = asyncio.create_task(_run_in_background())
+            _running_tasks[job_id] = task
+            return _JSONResponse(
+                status_code=202,
+                headers={"Location": f"/jobs/{job_id}", "X-Jentic-Job-Id": job_id},
+                content={
+                    "status": "running",
+                    "job_id": job_id,
+                    "_links": {"poll": f"/jobs/{job_id}"},
+                    "message": "Workflow dispatched asynchronously. Poll _links.poll for completion.",
+                },
+            )
+        else:
+            # prefer_wait > 0: attempt sync with timeout, promote to async if it expires
+            try:
+                coro = _run_in_background()
+                task = asyncio.create_task(coro)
+                _running_tasks[job_id] = task
+                # Block for up to prefer_wait seconds
+                await asyncio.wait_for(asyncio.shield(task), timeout=prefer_wait)
+                # Completed within timeout — fetch result and return synchronously
+                job = await get_job(job_id)
+                if job and job["status"] == "complete":
+                    return _JSONResponse(
+                        status_code=200,
+                        content=job.get("result") or {},
+                    )
+                elif job and job["status"] == "failed":
+                    return _JSONResponse(
+                        status_code=job.get("http_status") or 502,
+                        content={"error": job.get("error")},
+                    )
+                # If still somehow running, fall through to 202
+            except asyncio.TimeoutError:
+                pass  # Promote to async below
+            return _JSONResponse(
+                status_code=202,
+                headers={"Location": f"/jobs/{job_id}", "X-Jentic-Job-Id": job_id},
+                content={
+                    "status": "running",
+                    "job_id": job_id,
+                    "_links": {"poll": f"/jobs/{job_id}"},
+                    "message": f"Workflow did not complete within {prefer_wait}s. Poll _links.poll for completion.",
+                },
+            )
+
+    # ── Synchronous execution path (no Prefer: wait header) ──────────────────
+    from fastapi.responses import JSONResponse
+    return await _execute_workflow_core(
+        slug=slug, name=name, doc=doc, workflow_id=workflow_id,
+        inputs=inputs, arazzo_path=arazzo_path,
+        caller_api_key=caller_api_key, toolkit_id=toolkit_id,
+        is_simulate=is_simulate, trace_id=None,
+    )
+
+
+async def _execute_workflow_core(
+    *,
+    slug: str,
+    name: str,
+    doc: dict,
+    workflow_id: str,
+    inputs: dict,
+    arazzo_path: str,
+    caller_api_key: str,
+    toolkit_id: str | None,
+    is_simulate: bool,
+    trace_id: str | None,
+):
+    import asyncio
+    import sys
+    import time
+    from fastapi.responses import JSONResponse
+    from src.routers.traces import write_trace, new_trace_id
+
+    if not trace_id:
+        trace_id = new_trace_id()
+
+    # Rewrite all sourceDescription spec servers to go through the local broker
+    # (http://localhost:8900/{host}). The arazzo-runner calls the broker instead
+    # of upstream directly; the broker injects credentials from the toolkit.
+    # No credential env vars needed in the subprocess — broker handles it all.
+    _BROKER_BASE = "http://localhost:8900"
+    temp_arazzo, temp_specs = _preprocess_arazzo_for_broker(arazzo_path, _BROKER_BASE)
+
+    # Extract the API key the caller used — pass it to every broker request so
+    # the broker can look up the right toolkit's credentials.
+    # caller_api_key passed in as parameter
+
+    _VENDOR_PATH = "/app/vendor/arazzo-engine/runner"
+    script = f"""
+import sys
+sys.path.insert(0, {repr(_VENDOR_PATH)})
+from arazzo_runner import ArazzoRunner
+from arazzo_runner.models import RuntimeParams
+import json
+
+runner = ArazzoRunner.from_arazzo_path({repr(temp_arazzo)})
+# auth_headers injects X-Jentic-API-Key on every HTTP call the runner makes,
+# so the broker can authenticate and look up the correct toolkit credentials.
+rp = RuntimeParams(auth_headers={{"X-Jentic-API-Key": {repr(caller_api_key)}}})
+result = runner.execute_workflow({repr(workflow_id)}, {repr(inputs)}, runtime_params=rp)
+if hasattr(result, '__dataclass_fields__') or hasattr(result, '__dict__'):
+    out = {{
+        'status': str(result.status),
+        'workflow_id': result.workflow_id,
+        'outputs': result.outputs,
+        'step_outputs': result.step_outputs,
+        'inputs': result.inputs,
+        'error': result.error,
+    }}
+else:
+    out = result
+print(json.dumps(out, default=str))
+"""
+    trace_id = new_trace_id()
+    # No vault env vars — broker handles credential injection
+    env = dict(os.environ)
+    t0 = time.monotonic()
+    proc = await asyncio.create_subprocess_exec(
+        sys.executable, "-c", script,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+        env=env,
+    )
+    stdout, stderr = await proc.communicate()
+
+    # Clean up temp files
+    for p in [temp_arazzo, *temp_specs]:
+        try:
+            os.unlink(p)
+        except Exception:
+            pass
+    duration_ms = int((time.monotonic() - t0) * 1000)
+
+    try:
+        result_data = json.loads(stdout.decode())
+    except Exception:
+        result_data = {"status": "error", "error": stdout.decode() or "No output from runner"}
+
+    wf_status = result_data.get("status", "error") if isinstance(result_data, dict) else "error"
+    is_success = wf_status in ("workflow_complete", "completed", "success")
+
+    # ── Extract failure detail from step_outputs ──────────────────────────────
+    failed_step: dict | None = None
+    inferred_http_status: int | None = None
+    step_outputs = result_data.get("step_outputs") if isinstance(result_data, dict) else None
+
+    # Build a step_id → Arazzo step definition map for enrichment
+    wf_doc = doc.get("workflows", [{}])[0]
+    arazzo_steps: dict[str, dict] = {
+        s.get("stepId", ""): s
+        for s in wf_doc.get("steps", [])
+    }
+
+    # Build operationId → API host map from sourceDescriptions + spec files
+    # Arazzo operationIds may be bare (resolved via single source) or prefixed (source.operationId)
+    _op_to_api: dict[str, str] = {}
+    for src in doc.get("sourceDescriptions", []):
+        src_url = src.get("url", "")
+        # Only resolve local file paths we can read
+        if src_url.startswith("/"):
+            try:
+                with open(src_url) as _f:
+                    _spec = json.load(_f)
+                _servers = _spec.get("servers", [])
+                _host = _servers[0]["url"] if _servers else ""
+                # Strip scheme for display
+                _host_display = _host.replace("https://", "").replace("http://", "").rstrip("/")
+                # Index all operationIds from this spec
+                for _path, _path_item in _spec.get("paths", {}).items():
+                    for _method, _op in _path_item.items():
+                        if _method in ("get","post","put","patch","delete","head","options") and isinstance(_op, dict):
+                            _op_id = _op.get("operationId")
+                            if _op_id:
+                                _op_to_api[_op_id] = _host_display
+                                # Also index with source prefix (source.operationId)
+                                _op_to_api[f"{src['name']}.{_op_id}"] = _host_display
+            except Exception:
+                pass
+
+    if not is_success and step_outputs:
+        for step_id, step_data in step_outputs.items():
+            if isinstance(step_data, dict):
+                err_ctx = step_data.get("runner_error_context")
+                if isinstance(err_ctx, dict) and err_ctx.get("http_code"):
+                    inferred_http_status = err_ctx["http_code"]
+
+                    # Enrich with what the step was calling
+                    arazzo_step = arazzo_steps.get(step_id, {})
+                    operation = (
+                        arazzo_step.get("operationId")
+                        or arazzo_step.get("operationPath")
+                        or arazzo_step.get("workflowId")
+                        or "unknown operation"
+                    )
+                    api_host = _op_to_api.get(operation, "")
+                    step_description = arazzo_step.get("description", "")
+                    upstream_error = err_ctx.get("http_response", {})
+                    upstream_msg = (
+                        upstream_error.get("message")
+                        or (upstream_error.get("errors") or [""])[0]
+                        if isinstance(upstream_error, dict)
+                        else str(upstream_error)
+                    )
+
+                    # Synthesise the top-level message (not repeated inside failed_step)
+                    _step_summary = (
+                        f"Step '{step_id}' failed calling {operation}"
+                        + (f" on {api_host}" if api_host else "")
+                        + (f" — {step_description}" if step_description else "")
+                        + f" (HTTP {inferred_http_status}"
+                        + (f": {upstream_msg}" if upstream_msg else "")
+                        + ")"
+                    )
+                    failed_step = {
+                        "step_id": step_id,
+                        "operation": operation,
+                        "api": api_host or None,
+                        "http_status": inferred_http_status,
+                        # summary intentionally omitted — duplicated in top-level message
+                        "detail": err_ctx.get("http_response"),
+                    }
+                    # Stash the summary for top-level message assembly
+                    failed_step["_summary"] = _step_summary
+                    break
+
+    # ── Write trace ───────────────────────────────────────────────────────────
+    await write_trace(
+        trace_id=trace_id,
+        toolkit_id=toolkit_id,
+        operation_id=None,
+        workflow_id=workflow_id,
+        spec_path=arazzo_path,
+        status=wf_status,
+        http_status=inferred_http_status or (200 if is_success else 502),
+        duration_ms=duration_ms,
+        error=result_data.get("error") if isinstance(result_data, dict) else str(result_data),
+        step_outputs=step_outputs,
+    )
+
+    response_headers = {"X-Jentic-Trace-Id": trace_id}
+
+    # ── Success ───────────────────────────────────────────────────────────────
+    if is_success:
+        return JSONResponse(
+            status_code=200,
+            headers=response_headers,
+            content={
+                "workflow": name,
+                "slug": slug,
+                "status": wf_status,
+                "outputs": result_data.get("outputs") if isinstance(result_data, dict) else result_data,
+                "simulate": is_simulate,
+                "trace_id": trace_id,
+                "_links": {"trace": f"/traces/{trace_id}"},
+            },
+        )
+
+    # ── Failure — propagate HTTP status, return parseable detail ─────────────
+    # Use the upstream HTTP status if we got one; otherwise 502 Bad Gateway.
+    http_code = inferred_http_status or 502
+    wf_error = result_data.get("error") if isinstance(result_data, dict) else str(result_data)
+
+    # Pull the step summary out of the private stash, strip it from the public failed_step
+    step_summary: str | None = None
+    if failed_step:
+        step_summary = failed_step.pop("_summary", None)
+
+    detail: dict = {
+        "error": "workflow_execution_failed",
+        "workflow": name,
+        "slug": slug,
+        "workflow_status": wf_status,
+        "message": step_summary or wf_error or "Workflow execution failed",
+        "trace_id": trace_id,
+        "_links": {"trace": f"/traces/{trace_id}"},
+    }
+    if failed_step:
+        detail["failed_step"] = failed_step
+
+    # ── Remediation hint — only for logic/drift failures, not simple auth errors ──
+    # 401/403 = missing or wrong credentials (client already has the api + error_type)
+    # 429 = rate limit (client knows to back off)
+    # Anything else (400, 422, 5xx, unknown) may be workflow logic errors or API drift —
+    # advise the client to read the workflow, execute manually, and submit a repair.
+    _auth_codes = {401, 403, 429}
+    if http_code not in _auth_codes:
+        detail["remediation"] = {
+            "message": (
+                "This failure may be caused by a workflow logic error or API drift. "
+                "Read the workflow definition, execute it step-by-step manually, "
+                "then POST a repaired workflow as a note to help improve the catalog."
+            ),
+            "_links": {
+                "workflow_definition": f"/workflows/{slug}",
+                "post_note": f"/workflows/{slug}/notes",
+            },
+        }
+
+    return JSONResponse(
+        status_code=http_code,
+        headers=response_headers,
+        content=detail,
+    )
+
+
+@router.post("/workflows/{slug}", summary="Execute workflow", tags=["execute"], include_in_schema=False)
+async def execute_workflow_by_slug(slug: str, request: Request):
+    """Execute a workflow by its slug.
+
+    Thin wrapper around dispatch_workflow() — the same core logic is called
+    by the broker when a POST targets /{jentic_hostname}/workflows/{slug}.
+    Body is the workflow inputs dict (JSON).
+    Supports Prefer: wait=N (RFC 7240) and X-Jentic-Callback.
+    """
+    from src.utils import parse_prefer_wait
+    body_bytes = await request.body()
+    caller_api_key = (
+        request.headers.get("x-jentic-api-key")
+        or ""
+    )
+    toolkit_id = getattr(request.state, "toolkit_id", None)
+    simulate = getattr(request.state, "simulate", False)
+    prefer_wait = parse_prefer_wait(request.headers.get("prefer"))
+    callback_url = request.headers.get("x-jentic-callback")
+    return await dispatch_workflow(
+        slug, body_bytes, caller_api_key, toolkit_id, simulate,
+        prefer_wait=prefer_wait, callback_url=callback_url,
+    )

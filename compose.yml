@@ -1,0 +1,21 @@
+services:
+  jentic-mini:
+    build:
+      context: ${JENTIC_HOST_PATH}/src
+      dockerfile: Dockerfile
+    image: jentic-mini:latest
+    container_name: jentic-mini
+    restart: unless-stopped
+    ports:
+      - "8900:8900"
+    volumes:
+      - ${JENTIC_HOST_PATH}/src:/app
+      - ${JENTIC_HOST_PATH}/data:/app/data
+    environment:
+      JENTIC_PUBLIC_HOSTNAME: ${JENTIC_PUBLIC_HOSTNAME}
+      # Extra subnets to trust, IN ADDITION TO built-in RFC-1918 + loopback defaults.
+      # Comma-separated CIDRs. Add your Tailscale range, VPN, or office subnet here.
+      # Example: 100.64.0.0/10,203.0.113.0/24
+      # The built-in defaults (10/8, 172.16/12, 192.168/16, 127/8, ::1) always apply.
+      JENTIC_TRUSTED_SUBNETS: ${JENTIC_TRUSTED_SUBNETS:-}
+      LOG_LEVEL: ${LOG_LEVEL:-info}

@@ -1,0 +1,41 @@
+{
+  "arazzo": "1.0.0",
+  "info": {"title": "Anthropic Arazzo", "version": "0.1.0"},
+  "sourceDescriptions": [
+    {"name": "anthropic", "type": "openapi", "url": "/app/src/specs/anthropic_com_messages.json"}
+  ],
+  "workflows": [
+    {
+      "workflowId": "create-message",
+      "summary": "Create an Anthropic message",
+      "inputs": {
+        "type": "object",
+        "properties": {
+          "model": {"type": "string", "default": "claude-3-haiku-20240307"},
+          "user_message": {"type": "string"}
+        },
+        "required": ["user_message"]
+      },
+      "steps": [
+        {
+          "stepId": "message",
+          "operationId": "createMessage",
+          "requestBody": {
+            "contentType": "application/json",
+            "payload": {
+              "model": "$inputs.model",
+              "max_tokens": 256,
+              "messages": [{"role": "user", "content": "$inputs.user_message"}]
+            }
+          },
+          "outputs": {
+            "response": "$response.body"
+          }
+        }
+      ],
+      "outputs": {
+        "response": "$steps.message.outputs.response"
+      }
+    }
+  ]
+}

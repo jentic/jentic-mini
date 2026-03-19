@@ -1,0 +1,14 @@
+__pycache__/
+*.pyc
+*.pyo
+.env
+data/*.db
+data/vault.key
+data/specs/
+# Keep specs tracked
+!data/specs/.gitkeep
+vendor/arazzo-engine/
+.DS_Store
+*.tmp
+/tmp/
+vendor/arazzo-engine
