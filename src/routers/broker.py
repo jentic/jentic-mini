@@ -175,6 +175,44 @@ async def _find_credential_for_host(
     return headers, api_id, first_credential_id
 
 
+async def _find_pipedream_credential_for_host(
+    host: str,
+    toolkit_id: str | None,
+) -> tuple[str | None, str | None]:
+    """Return (account_id, credential_id) for a Pipedream-managed credential in this toolkit.
+
+    Pipedream credentials have scheme_name='pipedream_oauth' and their encrypted value
+    IS the Pipedream account_id (apn_xxx). This bypasses the apis table lookup —
+    Pipedream-connected APIs may not have a spec in the local catalog.
+
+    Returns (None, None) if no Pipedream credential is provisioned for this host+toolkit.
+    """
+    if not toolkit_id:
+        return None, None
+    from src.db import DEFAULT_TOOLKIT_ID
+    async with get_db() as db:
+        if toolkit_id == DEFAULT_TOOLKIT_ID:
+            async with db.execute(
+                "SELECT id, encrypted_value FROM credentials "
+                "WHERE api_id=? AND scheme_name='pipedream_oauth' LIMIT 1",
+                (host,),
+            ) as cur:
+                row = await cur.fetchone()
+        else:
+            async with db.execute(
+                """SELECT c.id, c.encrypted_value FROM credentials c
+                   JOIN toolkit_credentials tc ON tc.credential_id = c.id
+                   WHERE tc.toolkit_id=? AND c.api_id=? AND c.scheme_name='pipedream_oauth'
+                   LIMIT 1""",
+                (toolkit_id, host),
+            ) as cur:
+                row = await cur.fetchone()
+    if not row:
+        return None, None
+    return vault.decrypt(row[1]), row[0]
+
+
+
 def _is_broker_path(path: str) -> bool:
     """True if the path looks like an upstream host prefix (contains a dot)."""
     if not path or path == "/":
@@ -357,6 +395,10 @@ async def broker(request: Request, target: str):
         except Exception:
             pass  # policy check failure is non-fatal
 
+    # body_bytes initialised here so the OAuthBroker fallback can read it
+    # without a double-read; the main forward path reads it again below if empty.
+    body_bytes: bytes = b""
+
     # ── Full credential lookup (with decryption) ──────────────────────────────
     try:
         inject_headers, api_id, credential_id = await _find_credential_for_host(
@@ -373,6 +415,86 @@ async def broker(request: Request, target: str):
             media_type="application/json",
             headers={"X-Jentic-Error": "true", "X-Jentic-Execution-Id": execution_id},
         )
+
+    # ── Pipedream credential path ─────────────────────────────────────────────
+    # If the vault lookup yielded no headers, check for an explicitly-provisioned
+    # Pipedream credential (scheme_name='pipedream_oauth'). This path requires:
+    #   1. POST /oauth-brokers/{id}/sync  — creates the credential in the vault
+    #   2. POST /toolkits/{id}/credentials — explicitly provisions it to this toolkit
+    # No implicit fallback. If no credential is provisioned, we fall through to
+    # unauthenticated forwarding (or the request will fail upstream with 401).
+    if not inject_headers:
+        pd_account_id, pd_cred_id = await _find_pipedream_credential_for_host(
+            upstream_host, toolkit_id
+        )
+        if pd_account_id and pd_cred_id:
+            # Policy check for this Pipedream credential (same gate as vault path)
+            if toolkit_id:
+                try:
+                    from src.routers.toolkits import check_credential_policy
+                    allowed, reason = await check_credential_policy(
+                        credential_id=pd_cred_id,
+                        operation_id=f"{request.method}/{upstream_host}{upstream_path}",
+                        method=request.method,
+                        path=upstream_path,
+                    )
+                    if not allowed:
+                        error_body = {
+                            "error": "policy_denied",
+                            "message": f"{request.method} {upstream_host}{upstream_path} denied. {reason}",
+                            "credential_id": pd_cred_id,
+                            "toolkit_id": toolkit_id,
+                            "remediation": f"POST /toolkits/{toolkit_id}/access-requests",
+                        }
+                        return Response(
+                            content=json.dumps(error_body),
+                            status_code=403,
+                            media_type="application/json",
+                            headers={"X-Jentic-Error": "true", "X-Jentic-Execution-Id": execution_id},
+                        )
+                except Exception:
+                    pass  # policy check failure is non-fatal
+
+            # Find the Pipedream broker instance and proxy using the credential's account_id
+            from src.oauth_broker import registry as _oauth_registry
+            _ext_user = request.headers.get("x-jentic-external-user-id", "default")
+            _pd_broker = None
+            for _b in _oauth_registry.brokers:
+                if hasattr(_b, "proxy_request_with_account"):
+                    _pd_broker = _b
+                    break
+
+            if _pd_broker is not None:
+                if not body_bytes:
+                    body_bytes = await request.body()
+                _fwd_hdrs = {
+                    k: v for k, v in request.headers.items()
+                    if k.lower() not in _HOP_BY_HOP
+                }
+                _pd_resp = await _pd_broker.proxy_request_with_account(
+                    account_id=pd_account_id,
+                    api_host=upstream_host,
+                    upstream_path=upstream_path,
+                    method=request.method,
+                    headers=_fwd_hdrs,
+                    body=body_bytes,
+                    query_string=request.url.query,
+                    external_user_id=_ext_user,
+                )
+                if _pd_resp is not None:
+                    _pd_resp_headers = {
+                        k: v for k, v in _pd_resp.headers.items()
+                        if k.lower() not in _HOP_BY_HOP
+                    }
+                    _pd_resp_headers["X-Jentic-Execution-Id"] = execution_id
+                    _pd_resp_headers["X-Jentic-OAuth-Broker"] = "pipedream"
+                    _pd_resp_headers["X-Jentic-Credential-Id"] = pd_cred_id
+                    return Response(
+                        content=_pd_resp.content,
+                        status_code=_pd_resp.status_code,
+                        headers=_pd_resp_headers,
+                        media_type=_pd_resp.headers.get("content-type"),
+                    )
 
     # ── Build upstream URL ────────────────────────────────────────────────────
     # If the target host is ourselves, route to localhost to avoid an external

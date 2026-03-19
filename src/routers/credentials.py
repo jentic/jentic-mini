@@ -88,6 +88,20 @@ async def create(body: CredentialCreate, request: Request):
     scheme_name = getattr(body, "scheme_name", None)
 
     if api_id:
+        # ── Lazy import: if api_id is a catalog API not yet locally registered, import it now ──
+        from src.routers.catalog import ensure_catalog_api_imported, lazy_import_catalog_workflows
+        resolved_id = await ensure_catalog_api_imported(api_id)
+        if resolved_id and resolved_id != api_id:
+            # Import changed the api_id (e.g. 'discord.com' → 'discord.com/api')
+            api_id = resolved_id
+            body = body.model_copy(update={"api_id": api_id})
+
+        # Also import associated catalog workflows (fire-and-forget on error)
+        try:
+            await lazy_import_catalog_workflows(api_id)
+        except Exception as _wf_err:
+            log.warning("Workflow auto-import failed for '%s' (non-fatal): %s", api_id, _wf_err)
+
         # Check native spec first
         has_native = await _api_has_native_scheme(api_id)
         if not has_native:

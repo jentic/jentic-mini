@@ -11,6 +11,7 @@ Jentic Mini gives any AI agent a local execution layer:
 - **Observe** — inspect execution traces, async job handles, and audit logs
 - **Toolkits** — define scoped access policies and credential bundles for agents (one toolkit key per agent, individually revocable)
 - **Credentials vault** — store API keys, OAuth tokens, and secrets in an encrypted local vault; they're injected at execution time and never returned via the API
+- **Public catalog** — browse and import from 1,044 OpenAPI specs and 380 Arazzo workflow sources in the [Jentic public catalog](https://github.com/jentic/jentic-public-apis); specs and workflows are imported automatically when you add credentials
 
 ## Hosted vs Self-hosted
 
@@ -21,7 +22,7 @@ The **Jentic hosted and VPC editions** offer deeper implementations across four 
 | **Search** | BM25 full-text search | Advanced semantic search (~64% accuracy improvement over BM25) |
 | **Request brokering** | In-process credential injection | Scalable AWS Lambda-based broker with encryption at rest and in-transit, SOC 2-grade security, and 3rd-party credential vault integrations (HashiCorp Vault, AWS Secrets Manager, etc.) |
 | **Simulation** | Basic simulate mode | Full sandbox for simulating API calls and toolkit behaviour (enterprise-only) |
-| **Catalog** | Local registry only | Central catalog — aggregates the collective know-how of agents across API definitions and Arazzo workflows |
+| **Catalog** | ~1,044 APIs + ~380 workflow sources from [jentic-public-apis](https://github.com/jentic/jentic-public-apis); auto-imported on credential add | Central catalog — aggregates the collective know-how of agents across API definitions and Arazzo workflows |
 
 Jentic Mini is designed to be a fully compatible entrypoint: build your agent integrations against Jentic Mini locally, then point at the hosted API for production.
 
@@ -82,8 +83,25 @@ Typical agent setup:
 | **execute** | Agents | Transparent request broker — runs API operations and Arazzo workflows |
 | **toolkits** | Agents/Humans | Toolkits, access keys, policies, permission requests |
 | **observe** | Agents | Read execution traces |
-| **catalog** | Humans/admin | Register APIs, upload specs, overlays, notes |
-| **credentials** | Humans only | Manage the credentials vault |
+| **catalog** | Humans/admin | Register APIs, browse public catalog, upload specs, overlays, notes |
+| **credentials** | Humans only | Manage the credentials vault; adding credentials auto-imports catalog specs and workflows |
+
+## Public Catalog
+
+Jentic Mini is connected to the [Jentic public API catalog](https://github.com/jentic/jentic-public-apis) — ~1,044 API specs and ~380 Arazzo workflow sources.
+
+The catalog manifest is fetched lazily at startup (two GitHub API calls) and cached locally for 24 hours. Specs and workflows are imported **automatically** the first time you add credentials for a catalog API.
+
+```http
+# Just add credentials — Jentic Mini handles the rest
+POST /credentials
+{ "api_id": "slack.com", "scheme_name": "BearerAuth", "values": { "token": "xoxb-..." } }
+
+# Slack's 17 workflows and its full API spec are now in your local registry
+GET /workflows?source=local&q=slack
+```
+
+See [docs/CATALOG.md](docs/CATALOG.md) for full details.
 
 ## Architecture
 

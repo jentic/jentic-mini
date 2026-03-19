@@ -245,10 +245,11 @@ class AccessRequestOut(BaseModel):
     """
     id: str = Field(description="Unique request ID (areq_xxxxxxxx)")
     toolkit_id: str = Field(description="The toolkit this request belongs to")
-    type: Literal["grant", "modify_permissions"] = Field(
+    type: Literal["grant", "modify_permissions", "add_scope"] = Field(
         description=(
             "`grant` — bind a new upstream API credential to this toolkit (and optionally set permission rules). "
-            "`modify_permissions` — update the permission rules on a credential already bound to this toolkit."
+            "`modify_permissions` — update the permission rules on a credential already bound to this toolkit. "
+            "`add_scope` — legacy alias for `grant` (deprecated)."
         )
     )
     payload: dict = Field(

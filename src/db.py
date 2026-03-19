@@ -265,6 +265,61 @@ _CREATE = [
         created_at      REAL DEFAULT (unixepoch())
     )
     """,
+
+    # API ↔ OAuth broker mapping: for a given API, which broker handles auth and
+    # what does that broker call the app?
+    """
+    CREATE TABLE IF NOT EXISTS api_broker_apps (
+        api_id          TEXT NOT NULL REFERENCES apis(id) ON DELETE CASCADE,
+        broker_id       TEXT NOT NULL REFERENCES oauth_brokers(id) ON DELETE CASCADE,
+        broker_app_id   TEXT NOT NULL,
+        PRIMARY KEY (api_id, broker_id)
+    )
+    """,
+
+    # OAuthBroker: platform-level OAuth provider configs (e.g. Pipedream Connect)
+    """
+    CREATE TABLE IF NOT EXISTS oauth_brokers (
+        id                      TEXT PRIMARY KEY,
+        type                    TEXT NOT NULL,
+        client_id               TEXT NOT NULL,
+        client_secret_enc       TEXT NOT NULL,
+        project_id              TEXT,
+        environment             TEXT DEFAULT 'production',
+        default_external_user_id TEXT DEFAULT 'default',
+        created_at              REAL DEFAULT (unixepoch())
+    )
+    """,
+
+    # OAuthBroker accounts: per-user, per-host connected account mappings
+    """
+    CREATE TABLE IF NOT EXISTS oauth_broker_accounts (
+        id               TEXT PRIMARY KEY,
+        broker_id        TEXT NOT NULL REFERENCES oauth_brokers(id) ON DELETE CASCADE,
+        external_user_id TEXT NOT NULL,
+        api_host         TEXT NOT NULL,
+        app_slug         TEXT NOT NULL,
+        account_id       TEXT NOT NULL,
+        label            TEXT,
+        healthy          INTEGER DEFAULT 1,
+        synced_at        REAL DEFAULT (unixepoch()),
+        UNIQUE(broker_id, external_user_id, api_host)
+    )
+    """,
+
+    # Pending labels for connect-link flows: stored at connect-link time,
+    # consumed by sync to name the resulting credential.
+    """
+    CREATE TABLE IF NOT EXISTS oauth_broker_connect_labels (
+        id               TEXT PRIMARY KEY,
+        broker_id        TEXT NOT NULL REFERENCES oauth_brokers(id) ON DELETE CASCADE,
+        external_user_id TEXT NOT NULL,
+        app_slug         TEXT NOT NULL,
+        label            TEXT NOT NULL,
+        created_at       REAL DEFAULT (unixepoch()),
+        UNIQUE(broker_id, external_user_id, app_slug)
+    )
+    """,
 ]
 
 # Fixed ID for the default toolkit — maps to admin key access
@@ -300,6 +355,13 @@ async def init_db() -> None:
             "ALTER TABLE permission_requests RENAME COLUMN collection_id TO toolkit_id",
             "ALTER TABLE executions RENAME COLUMN collection_id TO toolkit_id",
             "ALTER TABLE jobs RENAME COLUMN collection_id TO toolkit_id",
+            # Update timestamp on credentials
+            "ALTER TABLE credentials ADD COLUMN updated_at REAL",
+            # workspace_id was a brief rename — ensure column is called project_id
+            "ALTER TABLE oauth_brokers RENAME COLUMN workspace_id TO project_id",
+            # Pipedream: label column for connected accounts (display name per account)
+            "ALTER TABLE oauth_broker_accounts ADD COLUMN label TEXT",
+            # api_broker_apps: handled by CREATE TABLE IF NOT EXISTS above (no ALTER needed)
         ]
         for m in migrations:
             try:

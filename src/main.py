@@ -25,14 +25,17 @@ from src.routers import notes as notes_router
 from src.routers import capability as capability_router
 from src.routers import workflows as workflows_router
 from src.routers import import_ as import_router
+from src.routers import catalog as catalog_router
 from src.routers import traces as traces_router
 from src.routers import broker as broker_router
 from src.routers import overlays as overlays_router
 from src.routers import jobs as jobs_router
 from src.routers import user as user_router
 from src.routers import default_key as default_key_router
+from src.routers import oauth_brokers as oauth_brokers_router
 from src.routers.apis import rebuild_index_on_startup
-from src.startup import self_register
+from src.routers.catalog import refresh_catalog_if_stale
+from src.startup import self_register, seed_broker_apps
 
 logging.basicConfig(level=(os.getenv("LOG_LEVEL") or "info").upper())
 log = logging.getLogger("jentic")
@@ -46,6 +49,17 @@ async def lifespan(app: FastAPI):
     await rebuild_index_on_startup()
     log.info("Jentic self-registering")
     await self_register(app)
+    log.info("Jentic refreshing catalog manifest")
+    await refresh_catalog_if_stale()
+    log.info("Jentic seeding broker app mappings")
+    await seed_broker_apps()
+    log.info("Jentic loading OAuth brokers")
+    from src.brokers.pipedream import PipedreamOAuthBroker
+    from src.oauth_broker import registry as oauth_broker_registry
+    _pd_brokers = await PipedreamOAuthBroker.from_db()
+    for _b in _pd_brokers:
+        oauth_broker_registry.register(_b)
+    log.info("Jentic loaded %d OAuth broker(s)", len(_pd_brokers))
     log.info("Jentic ready")
     yield
     log.info("Jentic shutting down")
@@ -144,6 +158,7 @@ STATIC_DIR = Path(__file__).parent / "static"
 app.include_router(capability_router.router, tags=["inspect"])
 app.include_router(workflows_router.router)
 app.include_router(import_router.router, tags=["catalog"])
+app.include_router(catalog_router.router, tags=["catalog"])
 app.include_router(jobs_router.router)
 app.include_router(traces_router.router, tags=["observe"])
 app.include_router(overlays_router.router, tags=["catalog"])  # must be before apis (path converter conflict)
@@ -157,6 +172,7 @@ app.include_router(notes_router.router, tags=["catalog"])
 app.include_router(debug_router.router, include_in_schema=False)
 app.include_router(user_router.router)
 app.include_router(default_key_router.router)
+app.include_router(oauth_brokers_router.router, tags=["credentials"])
 
 # ── Meta routes: health + root — MUST be before broker catch-all ─────────────
 @app.get("/health", tags=["meta"])
@@ -201,7 +217,10 @@ async def health():
 @app.get("/favicon.ico", include_in_schema=False)
 @app.get("/favicon.png", include_in_schema=False)
 async def favicon():
-    return FileResponse(STATIC_DIR / "favicon.png", media_type="image/png")
+    path = STATIC_DIR / "favicon.png"
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="Favicon not found")
+    return FileResponse(path, media_type="image/png")
 
 
 @app.get("/login", include_in_schema=False)
@@ -324,6 +343,43 @@ async def redoc():
 # ── Static files — MUST be before broker catch-all ────────────────────────────
 if STATIC_DIR.exists():
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+    # Also serve Vite build assets at /assets (Vite default output path)
+    assets_dir = STATIC_DIR / "assets"
+    if assets_dir.exists():
+        app.mount("/assets", StaticFiles(directory=str(assets_dir)), name="assets")
+
+# ── SPA catch-all — serve index.html for React Router paths ──────────────────
+# This must be BEFORE the broker catch-all.
+# The broker only activates when the first path segment contains "." (e.g. api.stripe.com).
+# Any other unknown path (e.g. /approve/x/y, /toolkits, /search) is a React Router
+# route — return index.html and let the client handle it.
+# We avoid a greedy /{path:path} here to prevent intercepting broker GET requests.
+# Instead, explicit prefixes for known SPA entry points that may be deep-linked.
+def _spa():
+    index_path = STATIC_DIR / "index.html"
+    if index_path.exists():
+        return FileResponse(index_path)
+    from fastapi import HTTPException
+    raise HTTPException(status_code=404, detail="UI not built")
+
+for _spa_path in [
+    "/approve/{toolkit_id}/{req_id}",
+    "/search",
+    "/catalog",
+    "/workflows",
+    "/workflows/{slug}",
+    "/toolkits",
+    "/toolkits/{id}",
+    "/credentials",
+    "/credentials/new",
+    "/credentials/{id}/edit",
+    "/traces",
+    "/traces/{id}",
+    "/jobs",
+    "/jobs/{id}",
+]:
+    app.add_api_route(_spa_path, lambda: _spa(), methods=["GET"], include_in_schema=False)
+
 
 # ── Broker catch-all — MUST be registered last ────────────────────────────────
 app.include_router(broker_router.router)

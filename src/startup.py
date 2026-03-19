@@ -152,3 +152,94 @@ async def _ensure_internal_credential() -> None:
         )
     except Exception as exc:
         log.warning("self-registration: credential creation failed — %s", exc)
+
+
+# ── Broker app seed ───────────────────────────────────────────────────────────
+
+# Maps our api_id (hostname-derived) → Pipedream app slug.
+_PIPEDREAM_APP_SEEDS: dict[str, str] = {
+    "gmail.googleapis.com":        "gmail",
+    "www.googleapis.com":          "gmail",
+    "calendar.googleapis.com":     "google_calendar",
+    "people.googleapis.com":       "google_people",
+    "sheets.googleapis.com":       "google_sheets",
+    "docs.googleapis.com":         "google_docs",
+    "drive.googleapis.com":        "google_drive",
+    "slides.googleapis.com":       "google_slides",
+    "oauth2.googleapis.com":       "google",
+    "admin.googleapis.com":        "google_admin",
+    "api.github.com":              "github",
+    "slack.com":                   "slack",
+    "api.slack.com":               "slack",
+    "api.stripe.com":              "stripe",
+    "api.twilio.com":              "twilio",
+    "api.hubapi.com":              "hubspot",
+    "salesforce.com":              "salesforce_rest_api",
+    "api.intercom.io":             "intercom",
+    "api.notion.com":              "notion",
+    "api.airtable.com":            "airtable",
+    "api.atlassian.com":           "jira",
+    "atlassian.net":               "jira",
+    "api.linear.app":              "linear_app",
+    "discord.com":                 "discord",
+    "api.zoom.us":                 "zoom",
+    "myshopify.com":               "shopify",
+    "api.xero.com":                "xero",
+    "api.dropboxapi.com":          "dropbox",
+    "api.box.com":                 "box",
+    "api.twitter.com":             "twitter",
+    "api.x.com":                   "twitter",
+    "api.linkedin.com":            "linkedin",
+    "app.asana.com/api":           "asana",
+    "api.trello.com":              "trello",
+    "api.monday.com":              "monday",
+    "api.pipedrive.com":           "pipedrive",
+    "zendesk.com":                 "zendesk",
+    "freshdesk.com":               "freshdesk",
+    "api.sendgrid.com":            "sendgrid",
+    "api.mailchimp.com":           "mailchimp",
+    "api.spotify.com":             "spotify",
+    "api.typeform.com":            "typeform",
+    "api.openai.com":              "openai",
+}
+
+
+async def seed_broker_apps(broker_id: str = "pipedream") -> None:
+    """Upsert api_broker_apps for all known API→Pipedream slug mappings.
+
+    Called automatically at startup (after init_db). Idempotent — safe to run
+    on every boot. Skips silently if no broker with the given id is configured.
+    """
+    async with get_db() as db:
+        # Only seed if a matching broker row exists
+        async with db.execute(
+            "SELECT id FROM oauth_brokers WHERE id=?", (broker_id,)
+        ) as cur:
+            if not await cur.fetchone():
+                log.debug("seed_broker_apps: broker '%s' not configured — skipping", broker_id)
+                return
+
+        async with db.execute("SELECT id FROM apis") as cur:
+            local_api_ids = {r[0] for r in await cur.fetchall()}
+
+        inserted = updated = 0
+        for api_id, broker_app_id in _PIPEDREAM_APP_SEEDS.items():
+            if api_id not in local_api_ids:
+                continue
+            await db.execute(
+                """INSERT INTO api_broker_apps (api_id, broker_id, broker_app_id)
+                   VALUES (?, ?, ?)
+                   ON CONFLICT(api_id, broker_id)
+                   DO UPDATE SET broker_app_id=excluded.broker_app_id
+                   WHERE broker_app_id != excluded.broker_app_id""",
+                (api_id, broker_id, broker_app_id),
+            )
+            # Track whether this was an insert or a no-op update
+            if db.total_changes > (inserted + updated):
+                inserted += 1
+
+        await db.commit()
+    if inserted or updated:
+        log.info("seed_broker_apps: %d inserted, %d updated for broker '%s'", inserted, updated, broker_id)
+    else:
+        log.debug("seed_broker_apps: all mappings already up-to-date for broker '%s'", broker_id)

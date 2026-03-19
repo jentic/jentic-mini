@@ -15,6 +15,11 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 RUN mkdir -p /app/data
 
+COPY docker-entrypoint.sh /app/docker-entrypoint.sh
+RUN chmod +x /app/docker-entrypoint.sh
+
 EXPOSE 8900
 
-CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8900", "--reload", "--reload-dir", "/app/src", "--reload-include", "*.py"]
+# Entrypoint runs DB init + broker app seed before starting the server.
+# Both steps are idempotent — safe on every container start.
+CMD ["/app/docker-entrypoint.sh"]

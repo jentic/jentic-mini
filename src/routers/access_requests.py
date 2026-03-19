@@ -23,7 +23,7 @@ import uuid
 from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Depends, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from src.auth import require_human_session
 from pydantic import BaseModel, Field
 
@@ -146,7 +146,7 @@ async def create_access_request(toolkit_id: str, request: Request, body: AccessR
     req_id = "areq_" + str(uuid.uuid4())[:8]
 
     from src.routers.capability import JENTIC_HOSTNAME
-    approve_url = f"https://{JENTIC_HOSTNAME}/toolkits/{toolkit_id}/access-requests/approve/{req_id}"
+    approve_url = f"https://{JENTIC_HOSTNAME}/approve/{toolkit_id}/{req_id}"
 
     # Store payload as the flat fields relevant to this request type
     payload_dict = {
@@ -195,7 +195,12 @@ async def create_access_request(toolkit_id: str, request: Request, body: AccessR
 
 @router.get("/{toolkit_id}/access-requests/approve/{req_id}", include_in_schema=False)
 async def approval_ui(toolkit_id: str, req_id: str):
-    """Human-facing approval page. Must be declared before /{req_id} to avoid path conflict."""
+    """Redirect to the React SPA approval page. Kept for backward compat with old approve_urls."""
+    return RedirectResponse(url=f"/approve/{toolkit_id}/{req_id}", status_code=302)
+
+@router.get("/{toolkit_id}/access-requests/approve/{req_id}/legacy", include_in_schema=False)
+async def approval_ui_legacy(toolkit_id: str, req_id: str):
+    """Legacy server-rendered approval page (kept for reference)."""
     async with get_db() as db:
         async with db.execute(
             "SELECT id, type, toolkit_id, reason, payload, status FROM permission_requests WHERE id=? AND toolkit_id=?",

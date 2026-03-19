@@ -20,7 +20,7 @@ import yaml
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, Response
 
 from src.db import get_db
@@ -142,32 +142,122 @@ def _extract_workflow_meta(doc: dict, workflow_id: str | None = None) -> dict:
 
 # ── Routes ────────────────────────────────────────────────────────────────────
 
-@router.get("/workflows", summary="List workflows — browse available multi-step Arazzo workflows", tags=["catalog"], response_model=list[WorkflowOut])
-async def list_workflows():
-    """Returns all registered workflows with slug, name, description, step count, and involved APIs. Use GET /inspect/{id} or GET /workflows/{slug} for full detail."""
-    async with get_db() as db:
-        async with db.execute(
-            """SELECT slug, name, description, steps_count, involved_apis, created_at
-               FROM workflows ORDER BY created_at DESC"""
-        ) as cur:
-            rows = await cur.fetchall()
-    return [
-        {
-            "id": workflow_capability_id(r[0]),
-            "url": workflow_url(r[0]),
-            "slug": r[0],
-            "name": r[1],
-            "description": r[2],
-            "steps_count": r[3],
-            "involved_apis": json.loads(r[4]) if r[4] else [],
-            "created_at": r[5],
-            "_links": {
-                "self": f"/workflows/{r[0]}",
-                "execute": f"/workflows/{r[0]}",
-            },
-        }
-        for r in rows
-    ]
+@router.get("/workflows", summary="List workflows — browse available multi-step Arazzo workflows", tags=["catalog"])
+async def list_workflows(
+    q: str | None = Query(None, description='Filter by name or API, e.g. "stripe" or "oauth"'),
+    source: str | None = Query(None, description='Filter by source: "local" or "catalog"'),
+):
+    """Returns registered workflows (source: local) plus available catalog workflow sources
+    (source: catalog) — APIs in the Jentic public catalog that have associated workflows.
+
+    Catalog entries show the API they belong to; add credentials to auto-import their workflows.
+    Use ?source=local or ?source=catalog to filter. Default returns all.
+    """
+    from src.routers.catalog import _load_workflow_manifest, GITHUB_REPO
+
+    # ── Local workflows ──────────────────────────────────────────────────────
+    results = []
+    if source != "catalog":
+        async with get_db() as db:
+            async with db.execute(
+                """SELECT slug, name, description, steps_count, involved_apis, created_at
+                   FROM workflows ORDER BY created_at DESC"""
+            ) as cur:
+                rows = await cur.fetchall()
+        for r in rows:
+            entry = {
+                "id": workflow_capability_id(r[0]),
+                "url": workflow_url(r[0]),
+                "slug": r[0],
+                "name": r[1],
+                "description": r[2],
+                "steps_count": r[3],
+                "involved_apis": json.loads(r[4]) if r[4] else [],
+                "created_at": r[5],
+                "source": "local",
+                "_links": {
+                    "self": f"/workflows/{r[0]}",
+                    "execute": f"/workflows/{r[0]}",
+                },
+            }
+            if q:
+                qlow = q.lower()
+                match = (
+                    (r[1] and qlow in r[1].lower())
+                    or (r[2] and qlow in r[2].lower())
+                    or qlow in r[0].lower()
+                    or any(qlow in a.lower() for a in (json.loads(r[4]) if r[4] else []))
+                )
+                if not match:
+                    continue
+            results.append(entry)
+
+    # ── Catalog workflow sources (unimported) ────────────────────────────────
+    if source != "local":
+        wf_manifest = _load_workflow_manifest()
+        if wf_manifest:
+            async with get_db() as db:
+                async with db.execute("SELECT id FROM apis") as cur:
+                    local_api_ids: set[str] = {r[0] for r in await cur.fetchall()}
+
+            # Build vendor coverage sets (same logic as GET /apis)
+            _GENERIC_SUBS = {"api", "www", "app", "web", "portal", "v1", "v2", "v3"}
+            covered_sub_apis: set[str] = set()
+            covered_leaf_vendors: set[str] = set()
+            for local_id in local_api_ids:
+                hostname = local_id.split("/")[0]
+                parts = hostname.split(".")
+                if len(parts) < 2:
+                    continue
+                vendor = ".".join(parts[-2:])
+                sub = ".".join(parts[:-2]) if len(parts) > 2 else ""
+                if sub and sub not in _GENERIC_SUBS:
+                    covered_sub_apis.add(f"{vendor}/{sub}")
+                covered_leaf_vendors.add(vendor)
+
+            for entry in wf_manifest:
+                src_id = entry["source_id"]
+                api_id = entry["api_id"]
+
+                # Skip if already covered locally (same dedup logic as GET /apis)
+                if api_id in local_api_ids:
+                    continue
+                if "/" in api_id:
+                    if api_id in covered_sub_apis:
+                        continue
+                else:
+                    hostname = api_id.split("/")[0]
+                    parts = hostname.split(".")
+                    vendor = ".".join(parts[-2:]) if len(parts) >= 2 else hostname
+                    if vendor in covered_leaf_vendors:
+                        continue
+
+                if q:
+                    if q.lower() not in src_id.lower() and q.lower() not in api_id.lower():
+                        continue
+
+                results.append({
+                    "id": f"catalog:workflows:{src_id}",
+                    "url": None,
+                    "slug": src_id,
+                    "name": f"{api_id} (catalog)",
+                    "description": (
+                        f"Workflows available from the Jentic public catalog for {api_id}. "
+                        f"Add credentials for this API to import them automatically."
+                    ),
+                    "steps_count": 0,
+                    "involved_apis": [api_id],
+                    "created_at": None,
+                    "source": "catalog",
+                    "source_id": src_id,
+                    "_links": {
+                        "catalog_api": f"/catalog/{api_id}",
+                        "add_credentials": "/credentials",
+                        "github": f"https://github.com/{GITHUB_REPO}/tree/main/{entry['path']}",
+                    },
+                })
+
+    return results
 
 
 _WORKFLOW_CONTENT_TYPES = {

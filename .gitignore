@@ -11,4 +11,5 @@ vendor/arazzo-engine/
 .DS_Store
 *.tmp
 /tmp/
+node_modules
 vendor/arazzo-engine

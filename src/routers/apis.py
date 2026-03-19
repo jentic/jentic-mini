@@ -233,6 +233,22 @@ async def _rebuild_index():
 
 
 
+async def _fetch_oauth_brokers(db, api_ids: list[str]) -> dict[str, list[dict]]:
+    """Return {api_id: [{"broker_id": ..., "broker_app_id": ...}, ...]} for the given api_ids."""
+    if not api_ids:
+        return {}
+    placeholders = ",".join("?" * len(api_ids))
+    async with db.execute(
+        f"SELECT api_id, broker_id, broker_app_id FROM api_broker_apps WHERE api_id IN ({placeholders})",
+        tuple(api_ids),
+    ) as cur:
+        rows = await cur.fetchall()
+    result: dict[str, list[dict]] = {}
+    for api_id, broker_id, broker_app_id in rows:
+        result.setdefault(api_id, []).append({"broker_id": broker_id, "broker_app_id": broker_app_id})
+    return result
+
+
 def _row_to_op(r) -> dict:
     """Map a DB row to the public OperationOut shape.
 
@@ -289,37 +305,139 @@ async def add_api(body: ApiRegister):
             "description": row[2], "spec_path": row[3], "base_url": row[4], "created_at": row[5]}
 
 
-@router.get("/apis", summary="List registered APIs — browse available API providers", response_model=ApiListPage)
+@router.get("/apis", summary="List APIs — browse all available API providers (local and catalog)", response_model=ApiListPage)
 async def list_apis(
     page: int = Query(1, ge=1, description="Page number (1-indexed)"),
     limit: int = Query(20, ge=1, le=100, description="Results per page"),
+    source: str | None = Query(
+        None,
+        description="Filter by source: `local` (locally registered) or `catalog` (public catalog, not yet configured). Default: all.",
+    ),
+    q: str | None = Query(None, description="Substring filter on API id/name"),
 ):
-    """Returns paginated list of registered API providers with id, name, vendor, and operation count."""
-    offset = (page - 1) * limit
-    async with get_db() as db:
-        async with db.execute("SELECT COUNT(*) FROM apis") as cur:
-            total = (await cur.fetchone())[0]
-        async with db.execute(
-            "SELECT id, name, description, spec_path, base_url, created_at FROM apis ORDER BY id LIMIT ? OFFSET ?",
-            (limit, offset),
-        ) as cur:
-            rows = await cur.fetchall()
+    """Returns paginated list of API providers — both locally registered and from the Jentic public catalog.
 
+    Every entry has:
+    - `source: "local"` — spec is indexed locally, operations are searchable and executable
+    - `source: "catalog"` — available from the Jentic public catalog; add credentials to use
+    - `has_credentials: bool` — whether credentials have been configured for this API
+
+    Use `?source=local` or `?source=catalog` to filter. Default returns all.
+    To use a catalog API: call `POST /credentials` with `api_id` set — the spec is imported automatically.
+    """
+    from src.routers.catalog import _load_manifest, _catalog_vendor_set, GITHUB_REPO
+
+    # ── Load local APIs ────────────────────────────────────────────────────────
+    async with get_db() as db:
+        async with db.execute("SELECT id, name, description, spec_path, base_url, created_at FROM apis ORDER BY id") as cur:
+            local_rows = await cur.fetchall()
+        # Which local API ids have credentials?
+        async with db.execute("SELECT DISTINCT api_id FROM credentials WHERE api_id IS NOT NULL") as cur:
+            cred_api_ids: set[str] = {r[0] for r in await cur.fetchall()}
+        # Fetch oauth broker mappings for all local APIs
+        local_api_ids = [r[0] for r in local_rows]
+        broker_map = await _fetch_oauth_brokers(db, local_api_ids)
+
+    local_entries = [
+        {
+            "id": r[0],
+            "name": r[1],
+            "vendor": _extract_vendor(r[0]),
+            "source": "local",
+            "has_credentials": r[0] in cred_api_ids,
+            "description": r[2],
+            "base_url": r[4],
+            "created_at": r[5],
+            **({"oauth_brokers": broker_map[r[0]]} if r[0] in broker_map else {}),
+        }
+        for r in local_rows
+        if not q or q.lower() in r[0].lower() or (r[1] and q.lower() in r[1].lower())
+    ]
+    local_vendor_set = _catalog_vendor_set({e["id"] for e in local_entries})
+
+    # ── Build precise coverage sets for catalog dedup ──────────────────────────
+    # For LOCAL api ids, compute:
+    #   covered_sub_apis: exact catalog sub-api ids that are locally covered
+    #     e.g. language.googleapis.com → "googleapis.com/language"
+    #   covered_leaf_vendors: vendor base domains where we have a leaf-level local API
+    #     e.g. api.stripe.com → "stripe.com"
+    # Rule: hide a catalog entry if:
+    #   - it's a sub-api (contains "/") AND exact sub-api is in covered_sub_apis, OR
+    #   - it's a leaf (no "/") AND its vendor is in covered_leaf_vendors
+    # This prevents language.googleapis.com hiding googleapis.com/gmail (a different API).
+    _GENERIC_SUBS = {"api", "www", "app", "web", "portal", "v1", "v2", "v3"}
+    covered_sub_apis: set[str] = set()
+    covered_leaf_vendors: set[str] = set()
+    for local_id in {r[0] for r in local_rows}:
+        hostname = local_id.split("/")[0]
+        parts = hostname.split(".")
+        if len(parts) < 2:
+            continue
+        vendor = ".".join(parts[-2:])
+        sub = ".".join(parts[:-2]) if len(parts) > 2 else ""
+        if sub and sub not in _GENERIC_SUBS:
+            covered_sub_apis.add(f"{vendor}/{sub}")
+        covered_leaf_vendors.add(vendor)
+
+    # ── Load catalog entries (deduped against local by precise coverage) ──────
+    catalog_entries: list[dict] = []
+    if source != "local":
+        manifest = _load_manifest()
+        for e in manifest:
+            api_id = e["api_id"]
+            if q and q.lower() not in api_id.lower():
+                continue
+            # Precise dedup: sub-apis by exact coverage, leaves by vendor
+            if "/" in api_id:
+                if api_id in covered_sub_apis:
+                    continue
+            else:
+                vendor = _extract_vendor(api_id)
+                if vendor and vendor in covered_leaf_vendors:
+                    continue
+            if api_id in {r[0] for r in local_rows}:
+                continue  # exact local match
+            catalog_entries.append({
+                "id": api_id,
+                "name": api_id,
+                "vendor": _extract_vendor(api_id),
+                "source": "catalog",
+                "has_credentials": False,
+                "description": None,
+                "_links": {
+                    "catalog": f"/catalog/{api_id}",
+                    "github": f"https://github.com/{GITHUB_REPO}/tree/main/{e['path']}",
+                },
+            })
+
+    # ── Merge, filter, paginate ────────────────────────────────────────────────
+    if source == "local":
+        combined = local_entries
+    elif source == "catalog":
+        combined = catalog_entries
+    else:
+        combined = local_entries + catalog_entries
+
+    total = len(combined)
+    offset = (page - 1) * limit
+    data = combined[offset: offset + limit]
     total_pages = max(1, (total + limit - 1) // limit)
     has_more = page < total_pages
+
+    qs = f"&source={source}" if source else ""
+    qs += f"&q={q}" if q else ""
+    base_url_str = f"/apis?limit={limit}{qs}"
     return {
-        "data": [{"id": r[0], "name": r[1], "vendor": _extract_vendor(r[0]),
-                  "description": r[2], "spec_path": r[3], "base_url": r[4], "created_at": r[5]}
-                 for r in rows],
+        "data": data,
         "page": page,
         "limit": limit,
         "total": total,
         "total_pages": total_pages,
         "has_more": has_more,
         "_links": {
-            "self": f"/apis?page={page}&limit={limit}",
-            **({"next": f"/apis?page={page + 1}&limit={limit}"} if has_more else {}),
-            **({"prev": f"/apis?page={page - 1}&limit={limit}"} if page > 1 else {}),
+            "self": f"{base_url_str}&page={page}",
+            **({"next": f"{base_url_str}&page={page + 1}"} if has_more else {}),
+            **({"prev": f"{base_url_str}&page={page - 1}"} if page > 1 else {}),
         },
     }
 
@@ -375,8 +493,9 @@ async def get_api(api_id: str):
             (api_id,),
         ) as cur:
             row = await cur.fetchone()
-    if not row:
-        raise HTTPException(404, f"API '{api_id}' not found")
+        if not row:
+            raise HTTPException(404, f"API '{api_id}' not found")
+        broker_map = await _fetch_oauth_brokers(db, [api_id])
 
     spec_description = row[2]
     spec_path = row[3]
@@ -399,6 +518,7 @@ async def get_api(api_id: str):
         "description": spec_description,
         "base_url": row[4],
         "created_at": row[5],
+        **({"oauth_brokers": broker_map[api_id]} if api_id in broker_map else {}),
     }
 
 
