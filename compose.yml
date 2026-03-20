@@ -1,7 +1,7 @@
 services:
   jentic-mini:
     build:
-      context: ${JENTIC_HOST_PATH}/src
+      context: ${JENTIC_HOST_PATH}
       dockerfile: Dockerfile
     image: jentic-mini:latest
     container_name: jentic-mini

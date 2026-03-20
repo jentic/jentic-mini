@@ -13,9 +13,12 @@ RUN git clone --depth 1 https://github.com/jentic/arazzo-engine.git /opt/arazzo-
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-RUN mkdir -p /app/data
+RUN mkdir -p /app/data /app/src
 
-COPY docker-entrypoint.sh /app/docker-entrypoint.sh
+# Copy source into /app/src so that `from src.xxx` imports work from WORKDIR /app
+COPY src/ /app/src/
+
+COPY src/docker-entrypoint.sh /app/docker-entrypoint.sh
 RUN chmod +x /app/docker-entrypoint.sh
 
 EXPOSE 8900
