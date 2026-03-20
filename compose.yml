@@ -9,9 +9,10 @@ services:
     ports:
       - "8900:8900"
     volumes:
-      - ${JENTIC_HOST_PATH}/src:/app
+      - ${JENTIC_HOST_PATH}/src:/app/src
       - ${JENTIC_HOST_PATH}/data:/app/data
     environment:
+      PYTHONPATH: /app
       JENTIC_PUBLIC_HOSTNAME: ${JENTIC_PUBLIC_HOSTNAME}
       # Extra subnets to trust, IN ADDITION TO built-in RFC-1918 + loopback defaults.
       # Comma-separated CIDRs. Add your Tailscale range, VPN, or office subnet here.
