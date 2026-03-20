@@ -3,6 +3,8 @@
 # Runs at container start (before the server). All steps are idempotent.
 set -e
 
+export PYTHONPATH=/app
+
 echo "[entrypoint] Initialising database schema..."
 python3 -c "import asyncio; from src.db import init_db; asyncio.run(init_db())"
 
