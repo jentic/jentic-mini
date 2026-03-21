@@ -505,6 +505,18 @@ async def list_apis(
     }
 
 
+_API_CONTENT_TYPES = {
+    "application/json": {"schema": {"type": "object"}},
+    "application/yaml": {"schema": {"type": "string", "description": "API detail as YAML"}},
+    "text/markdown":    {"schema": {"type": "string", "description": "LLM-friendly API summary"}},
+}
+
+_OP_LIST_CONTENT_TYPES = {
+    "application/json": {"schema": {"type": "object"}},
+    "application/yaml": {"schema": {"type": "string", "description": "Operation list as YAML"}},
+    "text/markdown":    {"schema": {"type": "string", "description": "Operation list as Markdown table"}},
+}
+
 _VALID_SECTIONS = {"info", "servers", "security", "tags", "paths", "components", "webhooks"}
 _DEFAULT_SECTIONS = {"info", "servers", "security"}
 
@@ -543,7 +555,10 @@ async def get_api_openapi(api_id: str):
     )
 
 
-@router.get("/apis/{api_id:path}/operations", summary="List operations for an API — enumerate all available actions", response_model=OperationListPage)
+@router.get("/apis/{api_id:path}/operations",
+            summary="List operations for an API — enumerate all available actions",
+            response_model=OperationListPage,
+            responses={200: {"description": "Operation list — format controlled by Accept header.", "content": _OP_LIST_CONTENT_TYPES}})
 async def list_api_operations(
     api_id: str,
     page: int = Query(1, ge=1, description="Page number (1-indexed)"),
@@ -585,7 +600,10 @@ async def list_api_operations(
 # NOTE: This catch-all route ({api_id:path} matches slashes) MUST be registered
 # last among /apis/{api_id:path}/* routes. FastAPI/Starlette match in registration
 # order — if this route appears first, it swallows /operations, /openapi.json, etc.
-@router.get("/apis/{api_id:path}", summary="Get API details — metadata, auth schemes, servers, and optional spec sections", response_model=ApiOut)
+@router.get("/apis/{api_id:path}",
+            summary="Get API details — metadata, auth schemes, servers, and optional spec sections",
+            response_model=ApiOut,
+            responses={200: {"description": "API detail — format controlled by Accept header.", "content": _API_CONTENT_TYPES}})
 async def get_api(
     api_id: str,
     sections: str | None = Query(
