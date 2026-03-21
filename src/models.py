@@ -22,9 +22,19 @@ class CredentialCreate(NormModel):
     Leave null for Bearer tokens, single-value API keys, and GitHub PAT-style BasicAuth."""
     api_id: str | None = None
     """API this credential belongs to (e.g. 'techpreneurs.ie'). Required for broker injection."""
-    auth_type: Literal["bearer", "basic", "apiKey"] | None = None
-    """Auth type: 'bearer', 'basic', or 'apiKey'. Broker uses this to find the matching
-    security scheme in the spec/overlay rather than coupling to overlay scheme names."""
+    auth_type: Literal["bearer", "basic", "apiKey"] | None = Field(
+        default=None,
+        description=(
+            "How this credential maps to the upstream API's authentication scheme. "
+            "The broker uses this to find the right security scheme in the spec — "
+            "it resolves by type, not by the bespoke scheme name in the overlay.\n\n"
+            "| Value | Injects as | When to use |\n"
+            "|---|---|---|\n"
+            "| `bearer` | `Authorization: Bearer {value}` | REST APIs, OAuth access tokens, JWTs. GitHub REST API, Deepgram, Slack, etc. |\n"
+            "| `basic` | `Authorization: Basic base64({identity??'token'}:{value})` | HTTP Basic auth, git-over-HTTPS. Set `identity` to the username; omit for GitHub PATs (any username accepted). |\n"
+            "| `apiKey` | Custom header or query param `= {value}` | API key in a named header (X-API-Key, Api-Key, X-Auth-Key, etc.). For **compound** schemes (e.g. Discourse Api-Key + Api-Username) where the overlay uses canonical `Secret`/`Identity` scheme names, set `identity` to the username/account — a single credential covers both headers. |"
+        ),
+    )
 
 
 class CredentialPatch(NormModel):
@@ -33,7 +43,10 @@ class CredentialPatch(NormModel):
     identity: str | None = None
     """Update the identity (username / client ID) for this credential."""
     api_id: str | None = None
-    auth_type: Literal["bearer", "basic", "apiKey"] | None = None
+    auth_type: Literal["bearer", "basic", "apiKey"] | None = Field(
+        default=None,
+        description="Update the auth type for this credential. See `POST /credentials` for valid values and semantics.",
+    )
 
 
 # ── APIs (input) ──────────────────────────────────────────────────────────────
@@ -123,7 +136,7 @@ class CredentialOut(BaseModel):
     identity: str | None = None
     """Identity field (username, client ID, etc.) — returned so clients can confirm what was stored."""
     api_id: str | None = None
-    auth_type: str | None = None
+    auth_type: Literal["bearer", "basic", "apiKey", "pipedream_oauth"] | None = None
     created_at: float | None = None
     updated_at: float | None = None
 
