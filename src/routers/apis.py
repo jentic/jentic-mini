@@ -607,8 +607,20 @@ async def get_api(
     - `info` — title, version, contact, license, terms of service
     - `servers` — base URLs and variables (merged from spec + confirmed overlays)
     - `security_schemes` — security scheme definitions (merged from spec + confirmed overlays),
-      plus `security_required` (global security requirements). Use this to determine what
-      credentials to configure for an API.
+      plus `security_required` (global security requirements)
+    - `credentials_configured` — list of scheme_names that already have a credential bound.
+      Use this to build a credential-setup UI: iterate `security_schemes`, check each key
+      against `credentials_configured` to determine which are missing, then prompt the user
+      to fill in the required fields and POST to `/credentials`.
+
+    **Credential setup flow:**
+    1. Call `GET /apis/{api_id}` — inspect `security_schemes` and `credentials_configured`
+    2. For each unconfigured scheme, determine required fields from the scheme type:
+       - `http bearer` → `secret` (token)
+       - `http basic` → `secret` (password) + optional `identity` (username)
+       - `apiKey` → `secret` (key value); if compound, check scheme names for Secret/Identity
+    3. Prompt user for values, then `POST /credentials` with `api_id`, `scheme_name`, `secret`, `identity`
+    4. Verify with `GET /credentials?api_id={api_id}`
 
     **Optional sections** (add via `?sections=`):
     - `tags` — tag objects with names and descriptions
@@ -642,6 +654,15 @@ async def get_api(
 
         broker_map = await _fetch_oauth_brokers(db, [api_id])
 
+        # Which security schemes already have at least one credential bound?
+        # Used by client UIs to show "configured" vs "missing" per scheme.
+        async with db.execute(
+            "SELECT DISTINCT scheme_name FROM credentials WHERE api_id=? AND scheme_name IS NOT NULL",
+            (api_id,),
+        ) as cur:
+            cred_rows = await cur.fetchall()
+        credentials_configured = [r[0] for r in cred_rows]
+
     # Parse requested sections
     requested: set[str]
     if sections is None:
@@ -673,6 +694,7 @@ async def get_api(
         "operation_count": op_count,
         "overlay_count": overlay_count,
         "confirmed_overlay_count": confirmed_overlay_count,
+        "credentials_configured": credentials_configured,
     }
 
     if api_id in broker_map:

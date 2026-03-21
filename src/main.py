@@ -455,6 +455,27 @@ def custom_openapi():
             if (path, method.lower()) in _OPEN_OPERATIONS:
                 operation["security"] = []
 
+    # Reorder paths so catch-all routes appear before their suffix variants in the docs.
+    # Routing requires suffix routes registered first (to avoid being swallowed by {path}
+    # params), but docs should read: GET /apis/{id} → /openapi.json → /operations.
+    def _path_sort_key(p: str) -> tuple:
+        """
+        Sort key that places:
+          /apis/{api_id}           rank 0 (base resource)
+          /apis/{api_id}/openapi.json  rank 1
+          /apis/{api_id}/operations    rank 2
+          everything else          rank 3 (preserve original order)
+        """
+        suffixes = ["/openapi.json", "/operations", "/overlays", "/scheme"]
+        for i, suffix in enumerate(suffixes):
+            if p.endswith(suffix):
+                return (1, i, p)
+        return (0, 0, p)
+
+    schema["paths"] = dict(
+        sorted(schema.get("paths", {}).items(), key=lambda kv: _path_sort_key(kv[0]))
+    )
+
     app.openapi_schema = schema
     return app.openapi_schema
 
