@@ -605,7 +605,7 @@ async def refresh_catalog():
 
 
 @router.get(
-    "/catalog/{api_id}",
+    "/catalog/{api_id:path}",
     summary="Inspect a catalog entry",
     tags=["catalog"],
 )
