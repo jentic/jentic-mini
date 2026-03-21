@@ -16,7 +16,8 @@ import uuid
 
 from fastapi import APIRouter, Form, HTTPException, Request, Response
 from fastapi.responses import HTMLResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
+from src.validators import NormModel
 
 from src.auth import _make_jwt, JWT_TTL_SECONDS
 from src.db import get_db, get_setting, set_setting, setup_state
@@ -33,10 +34,20 @@ class UserCreate(BaseModel):
     username: str
     password: str
 
+    @field_validator("username", mode="before")
+    @classmethod
+    def strip_username(cls, v):
+        return v.strip() if isinstance(v, str) else v
+
 
 class UserLogin(BaseModel):
     username: str
     password: str
+
+    @field_validator("username", mode="before")
+    @classmethod
+    def strip_username(cls, v):
+        return v.strip() if isinstance(v, str) else v
 
 
 # ── Routes ────────────────────────────────────────────────────────────────────

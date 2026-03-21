@@ -26,6 +26,7 @@ from fastapi import APIRouter, HTTPException, Depends, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from src.auth import require_human_session
 from pydantic import BaseModel, Field
+from src.validators import NormModel
 
 from src.db import get_db
 from src.models import AccessRequestOut, PermissionRule
@@ -35,7 +36,7 @@ router = APIRouter()
 
 # ── Request body ──────────────────────────────────────────────────────────────
 
-class AccessRequestBody(BaseModel):
+class AccessRequestBody(NormModel):
     """Body for POST /toolkits/{id}/access-requests.
 
     **`type=grant`** — bind an upstream API credential to this toolkit:

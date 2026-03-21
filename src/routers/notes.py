@@ -14,13 +14,14 @@ import uuid
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
+from src.validators import NormModel, NormStr
 
 from src.db import get_db
 
 router = APIRouter(prefix="/notes")
 
 
-class NoteCreate(BaseModel):
+class NoteCreate(NormModel):
     """
     Create a note on any Jentic resource.
 
@@ -32,10 +33,10 @@ class NoteCreate(BaseModel):
     source: where did you observe this?
     """
     resource: str
-    type: str | None = None   # 'auth_quirk' | 'usage_hint' | 'execution_feedback' | 'correction'
+    type: NormStr | None = None   # 'auth_quirk' | 'usage_hint' | 'execution_feedback' | 'correction'
     note: str
     execution_id: str | None = None
-    confidence: str | None = None   # 'observed' | 'suspected' | 'verified'
+    confidence: NormStr | None = None   # 'observed' | 'suspected' | 'verified'
     source: str | None = None       # e.g. 'test run', 'production', 'documentation'
 
 

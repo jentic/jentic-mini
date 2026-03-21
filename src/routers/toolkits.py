@@ -13,8 +13,11 @@ import secrets
 import time
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+import yaml
+
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, Field
+from src.validators import NormModel
 from typing import Any
 
 from src.auth import default_allowed_ips
@@ -31,7 +34,7 @@ policy_router = APIRouter()  # mounted separately with tags=["permissions"], pre
 
 # ── Models ────────────────────────────────────────────────────────────────────
 
-class ToolkitCreate(BaseModel):
+class ToolkitCreate(NormModel):
     name: str
     description: str | None = None
     simulate: bool = False
@@ -39,13 +42,13 @@ class ToolkitCreate(BaseModel):
     initial_key_allowed_ips: list[str] | None = Field(None, description="IP allowlist for the first key. NULL = unrestricted.")
 
 
-class ToolkitPatch(BaseModel):
+class ToolkitPatch(NormModel):
     name: str | None = None
     description: str | None = None
     simulate: bool | None = None
 
 
-class KeyCreate(BaseModel):
+class KeyCreate(NormModel):
     label: str | None = Field(None, description="Human-readable label, e.g. 'Agent A', 'Staging bot'")
     allowed_ips: list[str] | None = Field(None, description="IP allowlist for this key only. NULL = unrestricted.")
 
@@ -59,7 +62,7 @@ class KeyOut(BaseModel):
     # api_key only returned on create (shown once, never again)
 
 
-class ToolkitCredentialAdd(BaseModel):
+class ToolkitCredentialAdd(NormModel):
     credential_id: str
 
 
@@ -275,8 +278,64 @@ async def list_toolkits(request: Request):
     ]
 
 
-@router.get("/{toolkit_id}", summary="Get toolkit — metadata, bound upstream API credentials, client API keys, and policy summary", response_model=ToolkitOut)
-async def get_toolkit(toolkit_id: str):
+def _toolkit_to_markdown(data: dict) -> str:
+    """Render toolkit detail as a human-readable Markdown document."""
+    lines = [
+        f"# Toolkit: {data.get('name') or data['id']}",
+        "",
+    ]
+    if data.get("description"):
+        lines += [data["description"], ""]
+    lines += [
+        f"**ID:** `{data['id']}`  ",
+        f"**Simulate mode:** {'yes' if data.get('simulate') else 'no'}  ",
+        "",
+    ]
+
+    credentials = data.get("credentials", [])
+    if credentials:
+        lines += ["## Bound Credentials", ""]
+        for cred in credentials:
+            lines.append(f"### `{cred['credential_id']}`")
+            if cred.get("label"):
+                lines.append(f"- **Label:** {cred['label']}")
+            if cred.get("api_id"):
+                lines.append(f"- **API:** `{cred['api_id']}`")
+            user_rules = [r for r in cred.get("permissions", []) if not r.get("_system")]
+            if user_rules:
+                lines.append("- **Custom permissions:**")
+                for rule in user_rules:
+                    effect = rule.get("effect", "allow").upper()
+                    methods = ", ".join(rule.get("methods", ["*"]))
+                    path = rule.get("path", "*")
+                    lines.append(f"  - `{effect}` `{methods}` `{path}`")
+            lines.append("")
+    else:
+        lines += ["## Bound Credentials", "", "_No credentials bound._", ""]
+
+    bound_apis = data.get("bound_apis", [])
+    if bound_apis:
+        lines += ["## Accessible APIs", ""]
+        for api in bound_apis:
+            lines.append(f"- `{api}`")
+        lines.append("")
+
+    return "\n".join(lines)
+
+
+_TOOLKIT_CONTENT_TYPES = {
+    "application/json": {"schema": {"type": "object"}},
+    "application/yaml": {"schema": {"type": "string", "description": "Toolkit detail as YAML"}},
+    "text/markdown":    {"schema": {"type": "string", "description": "LLM-friendly toolkit summary"}},
+}
+
+
+@router.get(
+    "/{toolkit_id}",
+    summary="Get toolkit — metadata, bound upstream API credentials, client API keys, and policy summary",
+    responses={200: {"description": "Toolkit detail — format controlled by Accept header.", "content": _TOOLKIT_CONTENT_TYPES}},
+)
+async def get_toolkit(toolkit_id: str, request: Request):
     """Get toolkit with all inline context: metadata, bound upstream API credentials, client API key count, and policy summary.
     The default toolkit implicitly contains ALL upstream API credentials — no explicit binding needed.
     """
@@ -333,7 +392,7 @@ async def get_toolkit(toolkit_id: str):
         for r in cred_rows
     ]
 
-    return {
+    data = {
         "id": row[0],
         "name": row[1],
         "description": row[2],
@@ -343,6 +402,19 @@ async def get_toolkit(toolkit_id: str):
         "credentials": credentials,
         "_links": _toolkit_links(toolkit_id),
     }
+
+    accept = request.headers.get("accept", "application/json")
+    if "application/yaml" in accept:
+        return Response(
+            content=yaml.dump(data, allow_unicode=True, sort_keys=False),
+            media_type="application/yaml",
+        )
+    if "text/markdown" in accept:
+        return Response(
+            content=_toolkit_to_markdown(data),
+            media_type="text/markdown; charset=utf-8",
+        )
+    return data
 
 
 @router.patch("/{toolkit_id}", summary="Update toolkit — rename or update description", response_model=ToolkitOut)
@@ -417,7 +489,7 @@ async def create_toolkit_key(toolkit_id: str, body: KeyCreate):
     }
 
 
-@router.get("/{toolkit_id}/keys", summary="List client API keys for this toolkit — metadata only, no secret values", response_model=list[ToolkitKeyOut])
+@router.get("/{toolkit_id}/keys", summary="List client API keys for this toolkit — metadata only, no secret values")
 async def list_toolkit_keys(toolkit_id: str):
     """
     List all access keys for this toolkit.
@@ -559,9 +631,17 @@ async def add_credential_to_toolkit(toolkit_id: str, body: ToolkitCredentialAdd,
 
 @router.get("/{toolkit_id}/credentials", summary="List upstream API credentials bound to this toolkit", response_model=list[CredentialBindingOut])
 async def list_toolkit_credentials(toolkit_id: str, request: Request):
-    """List upstream API credentials bound to this toolkit. Admin key only."""
-    if not getattr(request.state, "is_admin", False):
-        raise HTTPException(403, "Only the admin key can list toolkit credentials.")
+    """List upstream API credentials bound to this toolkit.
+    Admin (human session) may list any toolkit's credentials.
+    Agents may list credentials for their own toolkit only.
+    """
+    is_admin = getattr(request.state, "is_admin", False)
+    caller_toolkit = getattr(request.state, "toolkit_id", None)
+    if not is_admin:
+        if not caller_toolkit:
+            raise HTTPException(403, "Authentication required to list toolkit credentials.")
+        if caller_toolkit != toolkit_id:
+            raise HTTPException(403, "Agents may only list credentials for their own toolkit.")
     async with get_db() as db:
         async with db.execute(
             """SELECT cc.id, cc.credential_id, c.label, c.api_id, cc.created_at

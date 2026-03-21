@@ -21,6 +21,7 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
+from src.validators import NormModel, NormStr
 
 from src.db import get_db
 from src.bm25 import get_index
@@ -38,15 +39,15 @@ WORKFLOWS_DIR.mkdir(parents=True, exist_ok=True)
 JENTIC_HOSTNAME = os.environ.get("JENTIC_PUBLIC_HOSTNAME", "jentic-mini.home.seanblanchfield.com")
 
 
-class ImportSource(BaseModel):
-    type: str           # "path" | "url" | "inline"
+class ImportSource(NormModel):
+    type: NormStr       # "path" | "url" | "inline"
     path: str | None = None
     url: str | None = None
     filename: str | None = None
     content: str | None = None
 
 
-class ImportRequest(BaseModel):
+class ImportRequest(NormModel):
     sources: list[ImportSource]
 
 
