@@ -1,16 +1,12 @@
 """
-Catalog router — browse the jentic-public-apis public catalog.
+Catalog router — internal manifest for lazy API import.
 
-Endpoints:
-  GET  /catalog                    — list / search catalog (BM25 over manifest)
-  POST /catalog/refresh            — admin: pull fresh manifest from GitHub
-  GET  /catalog/{api_id}           — inspect a single catalog entry
+The catalog manifest is an implementation detail: it maps public API IDs to their
+spec locations in jentic/jentic-public-apis. Agents don't need to interact with it
+directly — just `POST /credentials` with an api_id and the spec is fetched automatically.
 
-Design:
-  - The manifest is a lightweight JSON file (~1-2 MB) cached at CATALOG_MANIFEST_PATH.
-  - Specs are NOT cloned in bulk — they are fetched on demand (lazy import) when
-    an agent adds a credential for a catalog API via POST /credentials.
-  - The GitHub repo (jentic/jentic-public-apis) is public — no auth required.
+Routes:
+  POST /catalog/refresh  — admin: pull fresh manifest from GitHub (auto-refreshes daily)
 """
 
 import json
@@ -21,7 +17,7 @@ import urllib.request
 import urllib.error
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from src.db import get_db
@@ -506,73 +502,19 @@ def _build_catalog_result(entry: dict, registered_ids: set[str]) -> dict:
 
 # ── Routes ────────────────────────────────────────────────────────────────────
 
-@router.get(
-    "/catalog",
-    summary="Browse the Jentic public API catalog",
-    tags=["catalog"],
-)
-async def list_catalog(
-    q: str | None = Query(None, description='Filter by API name/domain, e.g. "stripe" or "slack"'),
-    limit: int = Query(50, ge=1, le=500, description="Max results"),
-    registered_only: bool = Query(False, description="Only show APIs already imported into your registry"),
-    unregistered_only: bool = Query(False, description="Only show APIs not yet in your registry"),
-):
-    """Browse and search the public Jentic API catalog (jentic/jentic-public-apis).
-
-    Returns individual APIs including expanded sub-APIs for umbrella vendors
-    (e.g. googleapis.com/gmail, googleapis.com/calendar, atlassian.com/jira).
-    Results show `registered: true/false` to distinguish APIs already in your local
-    registry from those available to use.
-
-    To use a catalog API: call `POST /credentials` with its `api_id` — the spec
-    is imported automatically. Manifest is auto-refreshed daily; force a refresh
-    via `POST /catalog/refresh`.
-    """
-    entries = _load_manifest()
-    if not entries:
-        return {
-            "status": "empty",
-            "message": "Catalog manifest not loaded. Call POST /catalog/refresh to sync.",
-            "refresh_url": "/catalog/refresh",
-            "total": 0,
-            "data": [],
-        }
-
-    registered_ids = await _get_registered_api_ids()
-    matched = _search_manifest(entries, q, limit * 3)  # over-fetch to allow filter
-
-    out = []
-    for e in matched:
-        is_reg = e["api_id"] in registered_ids
-        if registered_only and not is_reg:
-            continue
-        if unregistered_only and is_reg:
-            continue
-        out.append(_build_catalog_result(e, registered_ids))
-        if len(out) >= limit:
-            break
-
-    age = _manifest_age_seconds()
-    return {
-        "total": len(out),
-        "catalog_total": len(entries),
-        "manifest_age_seconds": round(age) if age is not None else None,
-        "data": out,
-    }
-
-
 @router.post(
     "/catalog/refresh",
-    summary="Refresh the catalog manifest from GitHub",
-    tags=["catalog"],
+    summary="Refresh the API catalog manifest from GitHub",
+    tags=["admin"],
 )
 async def refresh_catalog():
-    """Fetches the full recursive git tree from jentic/jentic-public-apis and builds
-    a detailed manifest that correctly identifies individual APIs within umbrella vendors
-    (e.g. googleapis.com expands to googleapis.com/gmail, googleapis.com/calendar, etc.).
+    """Rebuilds the internal catalog manifest from the jentic/jentic-public-apis repository.
+    The manifest is used by lazy import — when you `POST /credentials` for an API not yet in
+    your local registry, Jentic Mini resolves the spec from this manifest automatically.
 
-    Takes ~2-5 seconds (two unauthenticated GitHub API calls). Safe to call repeatedly.
-    Falls back to a shallow top-level listing if the tree response is truncated.
+    Takes ~2–5 seconds (two unauthenticated GitHub API calls). Safe to call repeatedly.
+    The manifest auto-refreshes daily; only call this explicitly if you need immediate sync
+    after a new API has been added to the public catalog.
     """
     try:
         tree = _fetch_full_tree()
@@ -602,26 +544,6 @@ async def refresh_catalog():
         "method": method,
         "fetched_at": time.time(),
     }
-
-
-@router.get(
-    "/catalog/{api_id:path}",
-    summary="Inspect a catalog entry",
-    tags=["catalog"],
-)
-async def get_catalog_entry(api_id: str):
-    """Inspect a single catalog API entry. Shows registration status, GitHub link,
-    and available spec files (fetched live from GitHub).
-
-    Note: this makes a live GitHub API call to list the directory contents.
-    """
-    entries = _load_manifest()
-    entry = next((e for e in entries if e["api_id"] == api_id), None)
-    if not entry:
-        raise HTTPException(
-            404,
-            f"'{api_id}' not found in catalog. Run POST /catalog/refresh to update the manifest.",
-        )
 
     # Fetch directory listing to show available versions/files
     try:
