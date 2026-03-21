@@ -349,7 +349,7 @@ async def get_capability(
     if toolkit_id:
         async with get_db() as db:
             async with db.execute(
-                """SELECT c.id, c.label, c.env_var FROM credentials c
+                """SELECT c.id, c.label FROM credentials c
                    JOIN toolkit_credentials cc ON cc.credential_id = c.id
                    WHERE cc.toolkit_id = ?""",
                 (toolkit_id,),
@@ -357,7 +357,7 @@ async def get_capability(
                 creds = await cur.fetchall()
         credentials = (
             {"status": "configured",
-             "available": [{"id": c[0], "label": c[1], "env_var": c[2]} for c in creds]}
+             "available": [{"id": c[0], "label": c[1]} for c in creds]}
             if creds else {"status": "not_configured"}
         )
 
