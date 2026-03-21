@@ -76,14 +76,52 @@ async def _api_has_native_scheme(api_id: str) -> bool:
 
 @router.post("", response_model=CredentialOut, status_code=201, summary="Store an upstream API credential — add a secret to the vault for broker injection")
 async def create(body: CredentialCreate, request: Request):
+    """Store an encrypted credential in the vault for automatic broker injection.
+
+    Values are encrypted at rest and **never returned** after creation. Set `api_id` to
+    bind the credential to an API; the broker will inject it automatically when proxying
+    calls to that API.
+
+    ---
+
+    ### `auth_type` reference
+
+    Set `auth_type` to tell the broker how to inject the credential into upstream requests.
+    Based on the [Postman auth type taxonomy](https://learning.postman.com/docs/sending-requests/authorization/authorization-types/).
+
+    | `auth_type` | Status | Broker injects | `value` | `identity` |
+    |---|---|---|---|---|
+    | `bearer` | ✅ implemented | `Authorization: Bearer {value}` | Token, PAT, or OAuth access token | Not used |
+    | `basic` | ✅ implemented | `Authorization: Basic base64({identity\|"token"}:{value})` | Password or PAT | Username (optional — defaults to `"token"` if omitted, works for GitHub PATs) |
+    | `apiKey` | ✅ implemented | Custom header or query param `= {value}` | API key | For **compound schemes** (e.g. Discourse `Api-Key` + `Api-Username`): set `identity` to the username — one credential covers both headers when the overlay uses canonical `Secret`/`Identity` scheme names |
+    | `oauth2` | ⚠️ partial | `Authorization: Bearer {value}` — token must be pre-obtained | Access token (Pipedream-managed flows only via `pipedream_oauth`) | Not used |
+    | `digest` | 🔲 planned | RFC 2617 challenge-response (nonce/HMAC handshake) | Password | Username |
+    | `jwt` | 🔲 planned | `Authorization: Bearer {signed_jwt}` — auto-generated from signing key | Private key or secret | Key ID (`kid`) — signing algorithm and claims go in `context` |
+    | `aws_sig4` | 🔲 planned | `Authorization: AWS4-HMAC-SHA256 ...` signed headers | AWS Secret Access Key | AWS Access Key ID — region and service go in `context` |
+    | `oauth1` | 🔲 planned | HMAC-SHA1 signed request (nonce + timestamp) | OAuth secret | OAuth consumer key |
+    | `hawk` | 🔲 planned | `Authorization: Hawk ...` HMAC request signing | Hawk secret | Hawk key ID |
+    | `ntlm` | 🔲 not planned | Windows NTLM challenge-response | Password | Username + domain |
+    | `akamai_edgegrid` | 🔲 not planned | Akamai EdgeGrid signing | Client secret | Client token + access token in `context` |
+
+    **Notes:**
+    - `pipedream_oauth` is a reserved value written by the Pipedream integration — do not set it manually.
+    - For `oauth2` full flows (auth code, client credentials, PKCE, token refresh) see the roadmap.
+    - `context` (not yet exposed) will hold auxiliary fields for multi-value schemes (JWT claims, AWS region/service, etc.).
+
+    ---
+
+    ### Workflow
+
+    1. Call `GET /apis/{api_id}` — check `security_schemes` and `credentials_configured` to find gaps.
+    2. Post this endpoint with `api_id`, `auth_type`, `value` (and `identity` if needed).
+    3. The broker injects the credential automatically on every proxied call to that API.
+    4. To scope a credential to a specific toolkit: `POST /toolkits/{id}/credentials`.
+
+    If the API has no registered security scheme yet, submit an overlay first: `POST /apis/{api_id}/overlays`.
+    """
     if not request.state.is_human_session:
         if not await _agent_has_credential_write_permission(request.state.toolkit_id, "POST", "/credentials"):
             raise HTTPException(status_code=403, detail="Storing credentials requires a human session, or an agent key with an explicit POST /credentials allow rule on the jentic-mini credential.")
-    """Stores an encrypted upstream API credential in the vault. Values are never returned after creation.
-    Bind api_id and scheme_name to enable automatic broker injection for that API.
-    Enroll in a named toolkit via POST /toolkits/{id}/credentials to scope access.
-    If the API has no registered security scheme, first call POST /apis/{api_id}/scheme.
-    """
     api_id = getattr(body, "api_id", None)
     scheme_name = getattr(body, "auth_type", None)
 
