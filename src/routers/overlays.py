@@ -40,32 +40,33 @@ metadata, extra extensions, etc.
 - `"$.paths[*][*]"` — all operations (apply global security)
 - `"$.paths./foo.get"` — a specific operation
 
-**Security scheme example** (BasicAuth with a non-standard username prefix):
+**Security scheme example** (adding BearerAuth to an API):
 ```json
 {
   "overlay": "1.0.0",
-  "info": {"title": "GitHub auth", "version": "1.0.0"},
-  "actions": [{
-    "target": "$",
-    "update": {
-      "components": {
-        "securitySchemes": {
-          "BasicAuth": {
-            "type": "http",
-            "scheme": "basic",
-            "x-jentic-basic-username": "x-access-token"
+  "info": {"title": "GitHub REST auth", "version": "1.0.0"},
+  "actions": [
+    {
+      "target": "$",
+      "update": {
+        "components": {
+          "securitySchemes": {
+            "BearerAuth": {"type": "http", "scheme": "bearer"}
           }
         }
       }
+    },
+    {
+      "target": "$.paths[*][*]",
+      "update": {"security": [{"BearerAuth": []}]}
     }
-  }]
+  ]
 }
 ```
 
-**`x-jentic-basic-username`** (Jentic extension): sets the username half of \
-BasicAuth encoding. The broker encodes as \
-`base64("{x-jentic-basic-username}:{credential_value}")`. \
-If omitted, the credential value is used as the password with an empty username.\
+**Compound apiKey schemes** (e.g. Discourse — two separate apiKey headers): \
+name one scheme `Secret` (the primary key) and one `Identity` (the username/ID). \
+The broker resolves these by canonical name without needing further annotation.\
 """
 
 
@@ -88,10 +89,8 @@ async def submit_overlay(api_id: str, body: OverlaySubmit):
     earlier ones via merge. A new overlay starts as **pending** and is
     auto-confirmed the first time a broker call for this API succeeds.
 
-    Examples of overlay structure, common targets, and security scheme configuration
-    (including the `x-jentic-basic-username` extension for BasicAuth) are in the
-    `overlay` field description of the request body schema
-    (`#/components/schemas/OverlaySubmit/properties/overlay`).
+    See the `overlay` field schema for structure, common targets, and security
+    scheme examples including compound apiKey schemes (Discourse-style).
     """
     async with get_db() as db:
         async with db.execute("SELECT id FROM apis WHERE id=?", (api_id,)) as cur:
@@ -120,16 +119,21 @@ async def submit_overlay(api_id: str, body: OverlaySubmit):
         "api_id": api_id,
         "status": "pending",
         "message": f"Overlay submitted for '{api_id}'. Auto-confirmed on first successful broker call.",
-        "_links": {"self": f"/apis/{api_id}/overlays/{oid}", "credentials": "/credentials"},
+        "_links": {"overlays": f"/apis/{api_id}/overlays", "credentials": "/credentials"},
     }
 
 
-@router.get("/apis/{api_id:path}/overlays", summary="List overlays for an API")
+@router.get("/apis/{api_id:path}/overlays", summary="List overlays for an API — returns full overlay documents")
 async def list_overlays(api_id: str):
-    """List all overlays for an API."""
+    """Return all overlays for an API, each with its full overlay document included.
+
+    Confirmed overlays are listed first, then pending, both ordered by creation date
+    descending. Each overlay includes the complete OpenAPI Overlay 1.0 document so
+    clients don't need a second call to inspect the overlay content.
+    """
     async with get_db() as db:
         async with db.execute(
-            """SELECT id, status, contributed_by, confirmed_at, created_at
+            """SELECT id, overlay, status, contributed_by, confirmed_at, confirmed_by_execution, created_at
                FROM api_overlays WHERE api_id=?
                ORDER BY CASE status WHEN 'confirmed' THEN 0 ELSE 1 END, created_at DESC""",
             (api_id,),
@@ -138,27 +142,17 @@ async def list_overlays(api_id: str):
     return {
         "api_id": api_id,
         "overlays": [
-            {"id": r[0], "status": r[1], "contributed_by": r[2], "confirmed_at": r[3], "created_at": r[4]}
+            {
+                "id": r[0],
+                "overlay": json.loads(r[1]),
+                "status": r[2],
+                "contributed_by": r[3],
+                "confirmed_at": r[4],
+                "confirmed_by_execution": r[5],
+                "created_at": r[6],
+            }
             for r in rows
         ],
-    }
-
-
-@router.get("/apis/{api_id:path}/overlays/{overlay_id}")
-async def get_overlay(api_id: str, overlay_id: str):
-    """Get a specific overlay including its full document."""
-    async with get_db() as db:
-        async with db.execute(
-            "SELECT id, overlay, status, contributed_by, confirmed_at, confirmed_by_execution, created_at FROM api_overlays WHERE id=? AND api_id=?",
-            (overlay_id, api_id),
-        ) as cur:
-            row = await cur.fetchone()
-    if not row:
-        raise HTTPException(404, "Overlay not found")
-    return {
-        "id": row[0], "api_id": api_id, "overlay": json.loads(row[1]),
-        "status": row[2], "contributed_by": row[3], "confirmed_at": row[4],
-        "confirmed_by_execution": row[5], "created_at": row[6],
     }
 
 
