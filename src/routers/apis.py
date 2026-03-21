@@ -3,16 +3,79 @@ import re
 import uuid
 import json
 import yaml
+import copy
 from pathlib import Path
 from urllib.parse import urlparse
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Query
+from fastapi.responses import Response
 from src.models import ApiRegister, ApiOut, OperationOut, ApiListPage, OperationListPage
 from src.db import get_db
 import src.bm25 as bm25
 
 router = APIRouter()
+
+# ---------------------------------------------------------------------------
+# Spec helpers
+# ---------------------------------------------------------------------------
+
+def _deep_merge(base: dict, overlay: dict) -> dict:
+    """Recursively merge overlay into base. Overlay values win on conflict."""
+    result = copy.deepcopy(base)
+    for k, v in overlay.items():
+        if k in result and isinstance(result[k], dict) and isinstance(v, dict):
+            result[k] = _deep_merge(result[k], v)
+        else:
+            result[k] = copy.deepcopy(v)
+    return result
+
+
+async def _load_spec(spec_path: str) -> dict:
+    """Load a JSON or YAML spec file. Returns {} on failure."""
+    try:
+        p = Path(spec_path)
+        raw = p.read_text()
+        return yaml.safe_load(raw) if str(p).endswith((".yaml", ".yml")) else json.loads(raw)
+    except Exception:
+        return {}
+
+
+async def _load_merged_spec(api_id: str, spec_path: str | None) -> dict:
+    """
+    Return the base spec with all confirmed overlays applied.
+
+    Only overlay actions with target "$" are supported — they are deep-merged
+    into the root of the spec. Actions targeting specific paths/operations are
+    noted in x-jentic-unapplied-overlays for transparency.
+    """
+    spec = await _load_spec(spec_path) if spec_path else {}
+    unapplied = []
+
+    async with get_db() as db:
+        async with db.execute(
+            "SELECT overlay FROM api_overlays WHERE api_id=? AND status='confirmed' ORDER BY created_at ASC",
+            (api_id,),
+        ) as cur:
+            rows = await cur.fetchall()
+
+    for (overlay_json,) in rows:
+        try:
+            overlay = json.loads(overlay_json)
+            for action in overlay.get("actions", []):
+                target = action.get("target", "")
+                update = action.get("update", {})
+                if target == "$" and isinstance(update, dict):
+                    spec = _deep_merge(spec, update)
+                else:
+                    unapplied.append({"target": target, "note": "non-root target, not applied to merged view"})
+        except Exception:
+            pass
+
+    if unapplied:
+        spec.setdefault("x-jentic-unapplied-overlays", []).extend(unapplied)
+
+    return spec
 
 
 def _extract_vendor(api_id: str | None) -> str | None:
@@ -481,102 +544,77 @@ async def list_api_operations(
     }
 
 
-@router.get("/apis/{api_id:path}/credential-requirements",
-            summary="Credential requirements — what fields to provide when storing a credential for this API")
-async def get_credential_requirements(api_id: str):
+_VALID_SECTIONS = {"info", "servers", "security", "tags", "paths", "components", "webhooks"}
+_DEFAULT_SECTIONS = {"info", "servers", "security"}
+
+# Sections whose spec data can be large — not included by default, opt-in only
+_LARGE_SECTIONS = {"paths", "components", "webhooks"}
+
+
+@router.get("/apis/{api_id:path}/openapi.json",
+            summary="Download merged OpenAPI spec — base spec with all confirmed overlays applied")
+async def get_api_openapi(api_id: str):
     """
-    Returns the credential fields required to authenticate with this API.
+    Returns the full merged OpenAPI spec for this API as a JSON download.
 
-    Derived from the API's security schemes (spec + confirmed overlays).
-    Tells the caller exactly what to provide in POST /credentials:
-    - `secret` is always required (token, password, API key)
-    - `identity` is required for basic/digest auth and compound apiKey schemes
-      where the overlay uses the canonical name 'Identity'
-    - `context` instructions appear for exotic schemes (JWT, AWS, OAuth2, etc.)
+    All confirmed overlays are applied on top of the base spec using deep merge
+    (overlay values win on conflict). Pending overlays are not included.
 
-    Use this endpoint to drive credential collection UIs or agent prompts.
+    Overlay actions with `target: "$"` are applied as root-level deep merges.
+    Actions targeting specific paths or operations are listed in
+    `x-jentic-unapplied-overlays` for transparency.
+
+    For selective access to spec sections without downloading the full file,
+    use `GET /apis/{api_id}?sections=info,servers,security,tags`.
     """
-    from src.routers.overlays import get_merged_security_schemes
+    async with get_db() as db:
+        async with db.execute("SELECT id, spec_path FROM apis WHERE id=?", (api_id,)) as cur:
+            row = await cur.fetchone()
+    if not row:
+        raise HTTPException(404, f"API '{api_id}' not found")
 
-    schemes = await get_merged_security_schemes(api_id)
-    if not schemes:
-        raise HTTPException(404, f"No security schemes found for '{api_id}'. "
-                                 f"Submit an overlay via POST /apis/{api_id}/overlays first.")
-
-    required_fields = [{"field": "secret", "label": "API Key / Token / Password", "required": True}]
-    notes = []
-    has_identity = False
-    has_ambiguous_compound = False
-
-    scheme_items = list(schemes.items())
-    apikey_schemes = [(name, s) for name, s in scheme_items if s.get("type") == "apiKey"]
-
-    for name, scheme in scheme_items:
-        stype = scheme.get("type", "")
-        sscheme = scheme.get("scheme", "").lower()
-
-        if stype == "http" and sscheme in ("basic", "digest"):
-            if not has_identity:
-                required_fields.append({
-                    "field": "identity",
-                    "label": "Username",
-                    "required": True,
-                    "note": f"Required for {sscheme} auth. Provide your account username."
-                })
-                has_identity = True
-
-        elif stype == "apiKey" and name == "Identity":
-            # Overlay uses canonical 'Identity' name — explicitly requires identity field
-            if not has_identity:
-                required_fields.append({
-                    "field": "identity",
-                    "label": scheme.get("x-label", "Username / Account ID"),
-                    "required": True,
-                    "note": f"Maps to the '{scheme.get('name', 'identity')}' header/param."
-                })
-                has_identity = True
-
-        elif stype == "apiKey" and len(apikey_schemes) > 1 and name not in ("Secret", "Identity"):
-            # Multiple apiKey schemes but not using canonical names — ambiguous
-            has_ambiguous_compound = True
-
-        elif stype == "oauth2":
-            notes.append("OAuth 2.0: store your access token as 'secret'. "
-                         "For client credential flows, use 'context': {\"client_id\": \"...\"}.")
-
-        elif stype == "http" and sscheme == "bearer":
-            notes.append("Bearer token: store your token as 'secret'.")
-
-    if has_ambiguous_compound:
-        notes.append(
-            "This API uses multiple API key schemes without canonical naming. "
-            "Create an overlay that renames them to 'Secret' (primary key) and 'Identity' (username/ID). "
-            f"POST to /apis/{api_id}/overlays. "
-            "Example: {\"overlay\":\"1.0.0\",\"info\":{\"title\":\"Auth\",\"version\":\"1.0.0\"},"
-            "\"actions\":[{\"target\":\"$\",\"update\":{\"components\":{\"securitySchemes\":"
-            "{\"Secret\":{\"type\":\"apiKey\",\"in\":\"header\",\"name\":\"Api-Key\"},"
-            "\"Identity\":{\"type\":\"apiKey\",\"in\":\"header\",\"name\":\"Api-Username\"}}}}}]}"
-        )
-
-    response = {
-        "api_id": api_id,
-        "schemes": {name: {"type": s.get("type"), "scheme": s.get("scheme"),
-                            "in": s.get("in"), "name": s.get("name")}
-                    for name, s in scheme_items},
-        "required_fields": required_fields,
-    }
-    if notes:
-        response["notes"] = notes
-
-    return response
+    spec = await _load_merged_spec(api_id, row[1])
+    filename = api_id.replace("/", "_") + ".openapi.json"
+    return Response(
+        content=json.dumps(spec, indent=2),
+        media_type="application/json",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
-@router.get("/apis/{api_id:path}", summary="Get API summary — name, version, description, and stats", response_model=ApiOut)
-async def get_api(api_id: str):
-    """Returns API metadata: title, version, description, base URL, vendor, and total operation count. Use GET /apis/{api_id}/operations to enumerate operations."""
-    import json as _json, yaml as _yaml
-    from pathlib import Path as _Path
+@router.get("/apis/{api_id:path}", summary="Get API details — metadata, auth schemes, servers, and optional spec sections", response_model=ApiOut)
+async def get_api(
+    api_id: str,
+    sections: str | None = Query(
+        None,
+        description=(
+            "Comma-separated list of OpenAPI spec sections to include in the response. "
+            f"Valid values: {', '.join(sorted(_VALID_SECTIONS))}. "
+            f"Default (when omitted): {', '.join(sorted(_DEFAULT_SECTIONS))}. "
+            "Large sections (paths, components, webhooks) must be requested explicitly. "
+            "Use GET /apis/{api_id}/openapi.json to download the full merged spec."
+        ),
+    ),
+):
+    """
+    Returns API metadata enriched with selected OpenAPI spec sections.
 
+    **Default response** (no `?sections=`) includes:
+    - Summary fields: id, name, vendor, description, base_url, operation_count, overlay_count
+    - `info` — title, version, contact, license, terms of service
+    - `servers` — base URLs and variables (merged from spec + confirmed overlays)
+    - `security_schemes` — security scheme definitions (merged from spec + confirmed overlays),
+      plus `security_required` (global security requirements). Use this to determine what
+      credentials to configure for an API.
+
+    **Optional sections** (add via `?sections=`):
+    - `tags` — tag objects with names and descriptions
+    - `paths` — full paths object (can be very large — prefer GET /apis/{api_id}/operations)
+    - `components` — all reusable component definitions (schemas, parameters, responses, etc.)
+    - `webhooks` — OpenAPI 3.1 webhooks (if present)
+
+    **Full spec download:** `GET /apis/{api_id}/openapi.json`
+    """
     async with get_db() as db:
         async with db.execute(
             "SELECT id, name, description, spec_path, base_url, created_at FROM apis WHERE id=?",
@@ -585,32 +623,89 @@ async def get_api(api_id: str):
             row = await cur.fetchone()
         if not row:
             raise HTTPException(404, f"API '{api_id}' not found")
+
+        async with db.execute(
+            "SELECT COUNT(*) FROM operations WHERE api_id=?", (api_id,)
+        ) as cur:
+            op_count = (await cur.fetchone())[0]
+
+        async with db.execute(
+            "SELECT COUNT(*), SUM(CASE WHEN status='confirmed' THEN 1 ELSE 0 END) FROM api_overlays WHERE api_id=?",
+            (api_id,),
+        ) as cur:
+            ov_row = await cur.fetchone()
+            overlay_count = ov_row[0] if ov_row else 0
+            confirmed_overlay_count = ov_row[1] if ov_row else 0
+
         broker_map = await _fetch_oauth_brokers(db, [api_id])
 
-    spec_description = row[2]
+    # Parse requested sections
+    requested: set[str]
+    if sections is None:
+        requested = set(_DEFAULT_SECTIONS)
+    else:
+        requested = {s.strip().lower() for s in sections.split(",") if s.strip()}
+        unknown = requested - _VALID_SECTIONS
+        if unknown:
+            raise HTTPException(400, f"Unknown section(s): {', '.join(sorted(unknown))}. "
+                                     f"Valid: {', '.join(sorted(_VALID_SECTIONS))}")
+
     spec_path = row[3]
+    spec_description = row[2]
 
-    # Pull description from spec info.description if DB column is empty
-    if not spec_description and spec_path:
-        try:
-            spec_file = _Path(spec_path)
-            if spec_file.exists():
-                raw = spec_file.read_text()
-                doc = _yaml.safe_load(raw) if str(spec_file).endswith((".yaml", ".yml")) else _json.loads(raw)
-                spec_description = doc.get("info", {}).get("description")
-        except Exception:
-            pass
+    # Load merged spec only if any spec sections are requested
+    spec: dict = {}
+    if requested:
+        spec = await _load_merged_spec(api_id, spec_path)
+        if not spec_description:
+            spec_description = spec.get("info", {}).get("description")
 
-    return {
+    response: dict = {
         "id": row[0],
         "name": row[1],
         "vendor": _extract_vendor(row[0]),
         "description": spec_description,
         "base_url": row[4],
         "created_at": row[5],
-        **({"oauth_brokers": broker_map[api_id]} if api_id in broker_map else {}),
+        "operation_count": op_count,
+        "overlay_count": overlay_count,
+        "confirmed_overlay_count": confirmed_overlay_count,
     }
 
+    if api_id in broker_map:
+        response["oauth_brokers"] = broker_map[api_id]
+
+    # --- Default sections (always included unless explicitly deselected) ---
+
+    if "info" in requested and "info" in spec:
+        response["info"] = spec["info"]
+
+    if "servers" in requested:
+        response["servers"] = spec.get("servers", [])
+
+    if "security" in requested:
+        # Expose security schemes and global security requirements together
+        # under a predictable key — this is what agents need to configure credentials
+        components = spec.get("components", {})
+        schemes = components.get("securitySchemes", {})
+        response["security_schemes"] = schemes
+        response["security_required"] = spec.get("security", [])
+
+    # --- Opt-in sections (potentially large) ---
+
+    if "tags" in requested:
+        response["tags"] = spec.get("tags", [])
+
+    if "paths" in requested:
+        response["paths"] = spec.get("paths", {})
+
+    if "components" in requested:
+        response["components"] = spec.get("components", {})
+
+    if "webhooks" in requested:
+        response["webhooks"] = spec.get("webhooks", {})
+
+    return response
 
 
 @router.delete("/apis", status_code=204, include_in_schema=False)
