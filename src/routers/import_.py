@@ -29,10 +29,11 @@ from src.models import ImportOut
 
 router = APIRouter()
 
-SPECS_DIR = Path("/app/src/specs")
+_APP_SRC = Path(os.environ.get("APP_SRC_DIR", "/app/src"))
+SPECS_DIR = _APP_SRC / "specs"
 SPECS_DIR.mkdir(parents=True, exist_ok=True)
 
-WORKFLOWS_DIR = Path("/app/src/workflows")
+WORKFLOWS_DIR = _APP_SRC / "workflows"
 WORKFLOWS_DIR.mkdir(parents=True, exist_ok=True)
 
 JENTIC_HOSTNAME = os.environ.get("JENTIC_PUBLIC_HOSTNAME", "jentic-mini.home.seanblanchfield.com")

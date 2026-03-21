@@ -13,3 +13,7 @@ vendor/arazzo-engine/
 /tmp/
 node_modules
 vendor/arazzo-engine
+.arazzo-engine/
+.venv/
+data/catalog_manifest.json
+data/workflow_manifest.json

@@ -78,7 +78,7 @@ async def _ensure_spec_imported(app=None) -> None:
 
         from src.routers.import_ import _register_openapi
         import json, pathlib
-        specs_dir = pathlib.Path("/app/data/specs")
+        specs_dir = pathlib.Path(os.environ.get("APP_DATA_DIR", "/app/data")) / "specs"
         specs_dir.mkdir(parents=True, exist_ok=True)
         saved_path = str(specs_dir / "jentic-mini.json")
         pathlib.Path(saved_path).write_text(json.dumps(spec))

@@ -14,6 +14,7 @@ Design:
 """
 
 import json
+import os
 import logging
 import re
 import time
@@ -30,8 +31,9 @@ log = logging.getLogger("jentic.catalog")
 
 router = APIRouter()
 
-CATALOG_MANIFEST_PATH = Path("/app/data/catalog_manifest.json")
-WORKFLOW_MANIFEST_PATH = Path("/app/data/workflow_manifest.json")
+_APP_DATA = Path(os.environ.get("APP_DATA_DIR", "/app/data"))
+CATALOG_MANIFEST_PATH = _APP_DATA / "catalog_manifest.json"
+WORKFLOW_MANIFEST_PATH = _APP_DATA / "workflow_manifest.json"
 GITHUB_REPO = "jentic/jentic-public-apis"
 GITHUB_API_BASE = "https://api.github.com"
 CATALOG_PATH = "apis/openapi"
