@@ -184,15 +184,12 @@ async def _find_credential_for_host(
             location = scheme.get("in", "header")
             header_name = scheme.get("name", "X-API-Key")
             if location == "header":
-                # Canonical scheme names: 'Secret' → primary value, 'Identity' → identity field
-                # Used in overlays for compound apiKey schemes (e.g. Discourse Api-Key + Api-Username)
-                if scheme_name == "Identity":
-                    identity = cred.get("identity")
-                    if identity:
-                        headers[header_name] = identity
-                    # else: identity not provided — skip header rather than inject empty string
-                else:
-                    headers[header_name] = value
+                # Canonical scheme names: 'Secret' and 'Identity' are used in overlays for
+                # compound apiKey schemes (e.g. Discourse Api-Key + Api-Username).
+                # Both use the credential's primary value — two separate credentials, one
+                # per scheme. The credential.identity field is for BasicAuth (single-cred
+                # username+password), not for compound apiKey pairs.
+                headers[header_name] = value
             elif location == "query":
                 # Query params handled separately; store for URL building
                 # For now log and skip — query auth needs URL modification
