@@ -15,6 +15,7 @@ import os
 import secrets
 
 from src.db import get_db
+from src.brokers.pipedream import _API_ID_TO_PD_SLUG as _PIPEDREAM_APP_SEEDS
 
 log = logging.getLogger("jentic")
 
@@ -153,55 +154,6 @@ async def _ensure_internal_credential() -> None:
     except Exception as exc:
         log.warning("self-registration: credential creation failed — %s", exc)
 
-
-# ── Broker app seed ───────────────────────────────────────────────────────────
-
-# Maps our api_id (hostname-derived) → Pipedream app slug.
-_PIPEDREAM_APP_SEEDS: dict[str, str] = {
-    "gmail.googleapis.com":        "gmail",
-    "www.googleapis.com":          "gmail",
-    "calendar.googleapis.com":     "google_calendar",
-    "people.googleapis.com":       "google_people",
-    "sheets.googleapis.com":       "google_sheets",
-    "docs.googleapis.com":         "google_docs",
-    "drive.googleapis.com":        "google_drive",
-    "slides.googleapis.com":       "google_slides",
-    "oauth2.googleapis.com":       "google",
-    "admin.googleapis.com":        "google_admin",
-    "api.github.com":              "github",
-    "slack.com":                   "slack",
-    "api.slack.com":               "slack",
-    "api.stripe.com":              "stripe",
-    "api.twilio.com":              "twilio",
-    "api.hubapi.com":              "hubspot",
-    "salesforce.com":              "salesforce_rest_api",
-    "api.intercom.io":             "intercom",
-    "api.notion.com":              "notion",
-    "api.airtable.com":            "airtable",
-    "api.atlassian.com":           "jira",
-    "atlassian.net":               "jira",
-    "api.linear.app":              "linear_app",
-    "discord.com":                 "discord",
-    "api.zoom.us":                 "zoom",
-    "myshopify.com":               "shopify",
-    "api.xero.com":                "xero",
-    "api.dropboxapi.com":          "dropbox",
-    "api.box.com":                 "box",
-    "api.twitter.com":             "twitter",
-    "api.x.com":                   "twitter",
-    "api.linkedin.com":            "linkedin",
-    "app.asana.com/api":           "asana",
-    "api.trello.com":              "trello",
-    "api.monday.com":              "monday",
-    "api.pipedrive.com":           "pipedrive",
-    "zendesk.com":                 "zendesk",
-    "freshdesk.com":               "freshdesk",
-    "api.sendgrid.com":            "sendgrid",
-    "api.mailchimp.com":           "mailchimp",
-    "api.spotify.com":             "spotify",
-    "api.typeform.com":            "typeform",
-    "api.openai.com":              "openai",
-}
 
 
 async def seed_broker_apps(broker_id: str = "pipedream") -> None:

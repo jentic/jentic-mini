@@ -32,86 +32,107 @@ import src.vault as vault
 
 log = logging.getLogger("jentic.brokers.pipedream")
 
-# ── App slug ↔ api_host mapping ───────────────────────────────────────────────
-# Maps Jentic catalog api_id (host) → Pipedream app slug.
-# Used for account discovery: reverse-map slug → host to populate broker_accounts.
+# ── App slug ↔ api_id mapping ─────────────────────────────────────────────────
+# Single authoritative map: Jentic canonical api_id → Pipedream app slug.
+#
+# Keys must match what _derive_api_id() produces from the API's servers[0].url:
+#   - www. is stripped (googleapis.com/gmail not gmail.googleapis.com)
+#   - version suffixes stripped (/v1, /v2, etc.)
+#   - subdomain-only APIs stay as-is (api.github.com, slack.com/api, etc.)
+#
+# Used for:
+#   1. Runtime credential lookup — broker resolves api_id → slug → account
+#   2. Startup seeding — seed_broker_apps() in startup.py imports this map
+#
+# When the catalog key and the spec-derived id differ for a Google API, the
+# catalog key (googleapis.com/<service>) wins — that's what _derive_api_id
+# produces after stripping www.googleapis.com.
 _API_ID_TO_PD_SLUG: dict[str, str] = {
-    # Google
-    "gmail.googleapis.com": "gmail",
-    "calendar.googleapis.com": "google_calendar",
-    "drive.googleapis.com": "google_drive",
-    "sheets.googleapis.com": "google_sheets",
-    "docs.googleapis.com": "google_docs",
-    "admin.googleapis.com": "google_workspace",
-    "people.googleapis.com": "google_contacts",
-    "tasks.googleapis.com": "google_tasks",
-    "analytics.googleapis.com": "google_analytics",
-    "youtube.googleapis.com": "youtube",
-    "forms.googleapis.com": "google_forms",
-    "chat.googleapis.com": "google_chat",
-    "bigquery.googleapis.com": "google_bigquery",
-    "storage.googleapis.com": "google_cloud_storage",
+    # Google — all served via www.googleapis.com; derive to googleapis.com/<svc>
+    "googleapis.com/gmail":         "gmail",
+    "googleapis.com/calendar":      "google_calendar",
+    "googleapis.com/drive":         "google_drive",
+    "googleapis.com/sheets":        "google_sheets",
+    "googleapis.com/docs":          "google_docs",
+    "googleapis.com/slides":        "google_slides",
+    "googleapis.com/admin":         "google_admin",
+    "googleapis.com/people":        "google_contacts",
+    "googleapis.com/tasks":         "google_tasks",
+    "googleapis.com/analytics":     "google_analytics",
+    "googleapis.com/youtube":       "youtube",
+    "googleapis.com/forms":         "google_forms",
+    "googleapis.com/chat":          "google_chat",
+    "googleapis.com/bigquery":      "google_bigquery",
+    "googleapis.com/storage":       "google_cloud_storage",
+    # Google — subdomain-native (not www.googleapis.com)
+    "sheets.googleapis.com":        "google_sheets",
+    "people.googleapis.com":        "google_contacts",
     # Atlassian
-    "api.atlassian.com": "jira",
+    "api.atlassian.com":            "jira",
+    "atlassian.net":                "jira",
     # Communication
-    "slack.com": "slack",
-    "discord.com": "discord",
-    "api.telegram.org": "telegram_bot_api",
-    "api.sendgrid.com": "sendgrid",
-    "api.mailchimp.com": "mailchimp",
-    "api.twilio.com": "twilio",
+    "slack.com/api":                "slack",
+    "discord.com/api":              "discord",
+    "api.telegram.org":             "telegram_bot_api",
+    "api.sendgrid.com":             "sendgrid",
+    "api.mailchimp.com":            "mailchimp",
+    "api.twilio.com":               "twilio",
     # Dev tools
-    "api.github.com": "github",
-    "api.linear.app": "linear",
+    "api.github.com":               "github",
+    "api.linear.app":               "linear_app",
+    "api.vercel.com":               "vercel",
+    "api.circleci.com":             "circleci",
     # CRM / sales
-    "api.hubapi.com": "hubspot",
-    "api.salesforce.com": "salesforce",
-    "api.pipedrive.com": "pipedrive",
-    "api.close.com": "close",
+    "api.hubapi.com":               "hubspot",
+    "api.salesforce.com":           "salesforce_rest_api",
+    "salesforce.com":               "salesforce_rest_api",
+    "api.pipedrive.com":            "pipedrive",
+    "api.close.com":                "close",
+    "api.intercom.io":              "intercom",
     # Project management
-    "app.asana.com": "asana",
-    "api.trello.com": "trello",
-    "api.monday.com": "monday",
-    "api.notion.com": "notion",
-    "api.clickup.com": "clickup",
-    "api.airtable.com": "airtable",
+    "app.asana.com/api":            "asana",
+    "api.trello.com":               "trello",
+    "api.monday.com":               "monday",
+    "api.notion.com":               "notion",
+    "api.clickup.com":              "clickup",
+    "api.airtable.com":             "airtable",
     # Storage / files
-    "api.dropbox.com": "dropbox",
-    "api.box.com": "box",
+    "api.dropboxapi.com":           "dropbox",
+    "api.box.com":                  "box",
     # Finance / payments
-    "api.stripe.com": "stripe",
-    "api.xero.com": "xero",
-    "platform.intuit.com": "quickbooks",
-    # Social
-    "api.twitter.com": "twitter",
-    "graph.facebook.com": "facebook",
-    "api.linkedin.com": "linkedin",
+    "api.stripe.com":               "stripe",
+    "api.xero.com":                 "xero",
+    "platform.intuit.com":          "quickbooks",
+    # Social / media
+    "api.twitter.com":              "twitter",
+    "api.x.com":                    "twitter",
+    "graph.facebook.com":           "facebook",
+    "api.linkedin.com":             "linkedin",
+    "api.spotify.com":              "spotify",
     # Data / analytics
-    "api.mixpanel.com": "mixpanel",
-    "api.segment.com": "segment",
-    "api.amplitude.com": "amplitude",
+    "api.mixpanel.com":             "mixpanel",
+    "api.segment.com":              "segment",
+    "api.amplitude.com":            "amplitude",
     # Productivity
-    "api.zoom.us": "zoom",
-    "api.calendly.com": "calendly",
-    "api.figma.com": "figma",
-    "api.miro.com": "miro",
+    "api.zoom.us":                  "zoom",
+    "api.calendly.com":             "calendly",
+    "api.figma.com":                "figma",
+    "api.miro.com":                 "miro",
+    "api.typeform.com":             "typeform",
     # Support
-    "api.intercom.io": "intercom",
-    "api.zendesk.com": "zendesk",
-    "api.freshdesk.com": "freshdesk",
+    "api.zendesk.com":              "zendesk",
+    "zendesk.com":                  "zendesk",
+    "api.freshdesk.com":            "freshdesk",
+    "freshdesk.com":                "freshdesk",
     # E-commerce
-    "api.shopify.com": "shopify",
-    # Dev / infra
-    "api.vercel.com": "vercel",
-    "api.circleci.com": "circleci",
+    "api.shopify.com":              "shopify",
+    "myshopify.com":                "shopify",
     # AI
-    "api.openai.com": "openai",
-    "api.anthropic.com": "anthropic",
-    "api.groq.com": "groq",
-    "api.mistral.ai": "mistral",
-    "api.elevenlabs.io": "elevenlabs",
-    # Music
-    "api.spotify.com": "spotify",
+    "api.openai.com":               "openai",
+    "api.anthropic.com":            "anthropic",
+    "api.groq.com/openai":          "groq",
+    "api.mistral.ai":               "mistral",
+    "api.elevenlabs.io":            "elevenlabs",
 }
 
 # Reverse: slug → list of api_hosts
