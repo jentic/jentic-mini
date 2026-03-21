@@ -162,6 +162,22 @@ async def get_overlay(api_id: str, overlay_id: str):
     }
 
 
+@router.delete("/apis/{api_id:path}/overlays/{overlay_id}", status_code=200, summary="Delete an overlay")
+async def delete_overlay(api_id: str, overlay_id: str):
+    """Delete an overlay by ID. Works on both pending and confirmed overlays."""
+    async with get_db() as db:
+        async with db.execute(
+            "SELECT id FROM api_overlays WHERE id=? AND api_id=?",
+            (overlay_id, api_id),
+        ) as cur:
+            row = await cur.fetchone()
+        if not row:
+            raise HTTPException(404, "Overlay not found")
+        await db.execute("DELETE FROM api_overlays WHERE id=?", (overlay_id,))
+        await db.commit()
+    return {"deleted": overlay_id, "api_id": api_id}
+
+
 async def get_merged_security_schemes(api_id: str) -> dict:
     """Return merged security schemes: native spec + confirmed/pending overlays."""
     import json as _json
