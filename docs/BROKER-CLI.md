@@ -85,43 +85,28 @@ git pull upstream-brokered main
 
 ### GitHub BasicAuth encoding
 
-GitHub's git-over-HTTPS requires BasicAuth with a specific username prefix:
+GitHub's git-over-HTTPS requires BasicAuth. The wire format is:
 
 ```
-Authorization: Basic base64("x-access-token:<PAT>")
+Authorization: Basic base64("<username>:<PAT>")
 ```
 
-Jentic Mini handles this automatically via the `x-jentic-basic-username`
-overlay annotation. Register the scheme for `github.com` once and it applies
-to all future broker calls:
+GitHub accepts any non-empty string as the username — `token`, `x-access-token`,
+your actual username, all work. Jentic Mini uses `token` as the default when no
+`identity` is set on the credential.
+
+To use a specific username, set `identity` when creating or patching the credential:
 
 ```bash
-curl -s -X POST http://localhost:8900/apis/github.com/overlays \
+curl -s -X PATCH http://localhost:8900/credentials/github-com-my-pat \
   -H "X-Jentic-API-Key: tk_your_toolkit_key" \
   -H "Content-Type: application/json" \
-  -d '{
-    "overlay": "1.0.0",
-    "info": {"title": "GitHub git BasicAuth", "version": "1.0.0"},
-    "actions": [{
-      "target": "$",
-      "update": {
-        "components": {
-          "securitySchemes": {
-            "BasicAuth": {
-              "type": "http",
-              "scheme": "basic",
-              "x-jentic-basic-username": "x-access-token"
-            }
-          }
-        }
-      }
-    }]
-  }'
+  -d '{"identity": "token"}'
 ```
 
-See [CREDENTIALS.md](CREDENTIALS.md) for how to add the PAT credential, and
-`#/components/schemas/OverlaySubmit/properties/overlay` in the OpenAPI spec
-for full overlay documentation.
+For most users this is unnecessary — the default `token` username works fine with GitHub.
+
+See [CREDENTIALS.md](CREDENTIALS.md) for how to add the PAT credential.
 
 ---
 
@@ -177,10 +162,9 @@ When the broker receives a request for `host`:
 
 If no credential is found, the request is forwarded unauthenticated.
 
-If BasicAuth is selected and the scheme has no `x-jentic-basic-username`, the
-broker encodes the credential value as the password with an empty username. The
-broker returns a 401/403 hint if auth fails, including an overlay template to
-fix the username format.
+If BasicAuth is selected, the broker constructs:
+`Authorization: Basic base64("{identity ?? 'token'}:{value}")`.
+Set `identity` on the credential if the API requires a specific username.
 
 ---
 
@@ -189,7 +173,7 @@ fix the username format.
 | Symptom | Likely cause | Fix |
 |---------|-------------|-----|
 | 403 from upstream | Wrong credential selected | Add `X-Jentic-Credential` to pin the right one |
-| 400 from GitHub git push | Wrong BasicAuth encoding | Register the `x-jentic-basic-username` overlay (see above) |
+| 400 from GitHub git push | Wrong BasicAuth encoding | Check the `identity` field on the credential — should be `token` or any non-empty string |
 | No auth injected | Credential not bound to toolkit | `POST /toolkits/{id}/credentials` |
 | No auth injected | API has no security scheme | Submit an overlay via `POST /apis/{api_id}/overlays` |
 | Credential alias ignored | Credential not found by alias | Check alias matches the credential ID/label in the vault |

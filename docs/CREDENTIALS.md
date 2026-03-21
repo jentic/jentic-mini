@@ -31,8 +31,8 @@ Field meanings:
 | Field | Purpose |
 |---|---|
 | `label` | Human-readable name (for display only) |
-| `env_var` | Unique key used for vault lookup (convention: `APINAME_SCHEMENAME`) |
-| `value` | The actual credential value — encrypted on write, never returned |
+| `value` | The primary secret — API key, token, or password. Encrypted on write, never returned |
+| `identity` | Optional identity — username, client ID, account SID. Required for `basic`/`digest` auth and compound apiKey schemes using the canonical `Identity` scheme name |
 | `api_id` | Which API this credential is for (must match `apis.id`) |
 | `scheme_name` | Which security scheme in the API's spec this credential satisfies |
 
@@ -130,7 +130,7 @@ On the first HTTP 2xx response, JPE automatically flips the overlay status from 
 | `apiKey` (query) | `location: "query"`, `name: "api_key"` | Query parameter |
 | `apiKey` (cookie) | `location: "cookie"`, `name: "session"` | Cookie header |
 | `bearer` | (none) | `Authorization: Bearer {value}` |
-| `basic` | (none) | `Authorization: Basic {base64(value)}` — value format: `user:password` |
+| `basic` | (none) | `Authorization: Basic base64("{identity ?? 'token'}:{value}")` — set `identity` on the credential for user/password APIs |
 | `oauth2_client_credentials` | `token_url`, `client_id`, `client_secret` | `Authorization: Bearer {fetched_token}` |
 | `multiple_headers` | `headers: [{name, source_env_var}]` | Multiple headers simultaneously |
 
