@@ -63,7 +63,6 @@ class ApiOut(BaseModel):
     name: str | None = None
     vendor: str | None = None
     description: str | None = None
-    spec_path: str | None = None
     base_url: str | None = None
     created_at: float | None = None
     model_config = {"extra": "allow"}
