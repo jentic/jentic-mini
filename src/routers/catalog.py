@@ -353,7 +353,7 @@ def _fetch_full_tree() -> list[dict] | None:
     return data.get("tree", [])
 
 
-def _build_manifest_from_tree(tree_entries: list[dict]) -> list[dict]:
+def _build_api_manifest_from_tree(tree_entries: list[dict]) -> list[dict]:
     """Build a detailed catalog manifest from a full recursive git tree.
 
     Detects umbrella vendors (e.g. googleapis.com, atlassian.com) whose
@@ -433,7 +433,7 @@ async def refresh_catalog_if_stale() -> None:
         try:
             tree = _fetch_full_tree()
             if tree is not None:
-                api_entries = _build_manifest_from_tree(tree)
+                api_entries = _build_api_manifest_from_tree(tree)
                 wf_entries = _build_workflow_manifest_from_tree(tree)
                 method = "tree"
             else:
@@ -519,7 +519,7 @@ async def refresh_catalog():
     try:
         tree = _fetch_full_tree()
         if tree is not None:
-            api_entries = _build_manifest_from_tree(tree)
+            api_entries = _build_api_manifest_from_tree(tree)
             wf_entries = _build_workflow_manifest_from_tree(tree)
             method = "tree"
         else:

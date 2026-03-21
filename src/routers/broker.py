@@ -28,7 +28,7 @@ import time
 import uuid
 import asyncio
 from typing import Optional
-from urllib.parse import unquote
+from urllib.parse import unquote, urlparse
 
 import httpx
 from fastapi import APIRouter, Request, Response, HTTPException
@@ -584,14 +584,26 @@ async def broker(request: Request, target: str):
                     )
 
     # ── Build upstream URL ────────────────────────────────────────────────────
-    # If the target host is ourselves, route to localhost to avoid an external
-    # DNS round-trip. This is what makes jentic-in-jentic work inside Docker.
+    # Look up the registered base_url for this API — the api_id host portion may
+    # differ from the real HTTP host (e.g. api_id=googleapis.com/calendar but
+    # base_url=https://www.googleapis.com/calendar/v3 → route to www.googleapis.com).
+    # This is the single source of truth for where requests actually go.
+    routing_host = upstream_host
+    if api_id and not _is_self:
+        async with get_db() as _rdb:
+            async with _rdb.execute("SELECT base_url FROM apis WHERE id=?", (api_id,)) as _rcur:
+                _rrow = await _rcur.fetchone()
+            if _rrow and _rrow[0]:
+                _parsed_host = urlparse(_rrow[0]).hostname
+                if _parsed_host:
+                    routing_host = _parsed_host
+
     import os as _os2
     _internal_port = int(_os2.environ.get("JENTIC_INTERNAL_PORT", "8900"))
     if _is_self:
         upstream_url = f"http://localhost:{_internal_port}{upstream_path}"
     else:
-        upstream_url = f"https://{upstream_host}{upstream_path}"
+        upstream_url = f"https://{routing_host}{upstream_path}"
     if request.url.query:
         upstream_url += f"?{request.url.query}"
 

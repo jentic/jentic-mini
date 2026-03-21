@@ -49,15 +49,6 @@ class CredentialPatch(NormModel):
     )
 
 
-# ── APIs (input) ──────────────────────────────────────────────────────────────
-
-class ApiRegister(NormModel):
-    id: str | None = None  # auto-derived from spec base_url if omitted
-    name: str
-    description: str | None = None
-    spec_path: str | None = None  # absolute path inside container to arazzo/openapi file (optional — omit for broker-only APIs)
-
-
 # ── Pagination wrapper ────────────────────────────────────────────────────────
 
 class Page(BaseModel):

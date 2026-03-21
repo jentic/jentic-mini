@@ -10,7 +10,7 @@ from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import Response
-from src.models import ApiRegister, ApiOut, OperationOut, ApiListPage, OperationListPage
+from src.models import ApiOut, OperationOut, ApiListPage, OperationListPage
 from src.db import get_db
 import src.bm25 as bm25
 
@@ -134,18 +134,31 @@ def _strip_version_suffix(path: str) -> str:
 
 def _derive_api_id(base_url: str) -> str:
     """
-    Derive an API ID from its base URL.
+    Derive a canonical API ID from its base URL. This is the single function
+    used for all api_id generation — direct imports and catalog lazy-imports alike.
 
-    Strips the URL scheme and trailing version segments so the ID identifies
-    the service, not a particular version of it:
-      https://api.openai.com/v1   → api.openai.com
-      https://api.zoom.us/v2      → api.zoom.us
-      https://discord.com/api/v10 → discord.com/api
-      https://api.stripe.com      → api.stripe.com  (no change)
+    Rules applied in order:
+      1. Strip URL scheme
+      2. Strip template variables from hostname and path
+      3. Strip trailing version suffix from path
+      4. Strip leading "www." from hostname (www carries no semantic meaning
+         and diverges from the catalog directory convention)
 
-    Template variables are also removed:
-      https://{dc}.api.mailchimp.com/3.0  → api.mailchimp.com
-      https://{your-domain}.atlassian.net → atlassian.net
+    The broker uses the stored base_url column for actual HTTP routing, so the
+    api_id host portion does not need to be a verbatim proxy target.
+
+    Examples:
+      https://api.openai.com/v1              → api.openai.com
+      https://api.zoom.us/v2                 → api.zoom.us
+      https://discord.com/api/v10            → discord.com/api
+      https://api.stripe.com                 → api.stripe.com
+      https://www.googleapis.com/calendar/v3 → googleapis.com/calendar
+      https://www.googleapis.com/gmail/v1    → googleapis.com/gmail
+      https://techpreneurs.ie                → techpreneurs.ie
+
+    Template variables stripped:
+      https://{dc}.api.mailchimp.com/3.0     → api.mailchimp.com
+      https://{your-domain}.atlassian.net    → atlassian.net
     """
     parsed = urlparse(base_url)
     host = parsed.hostname or parsed.netloc or ""
@@ -163,6 +176,10 @@ def _derive_api_id(base_url: str) -> str:
     host = re.sub(r"\{[^}]+\}\.", "", host)   # leading template labels
     host = re.sub(r"\.\{[^}]+\}", "", host)   # trailing template labels
     host = host.strip(".")
+
+    # Strip leading www. — no semantic value, diverges from catalog dir convention
+    if host.startswith("www."):
+        host = host[4:]
 
     return (host + path).lower() if host else base_url
 
@@ -327,46 +344,6 @@ def _row_to_op(r) -> dict:
 
 
 # ── routes ────────────────────────────────────────────────────────────────────
-
-@router.post("/apis", response_model=ApiOut, status_code=201, summary="Add API", include_in_schema=False, deprecated=True)
-async def add_api(body: ApiRegister):
-    # Extract base URL from spec
-    base_url = _load_base_url_from_spec(body.spec_path) if body.spec_path else None
-
-    # Derive canonical API ID from base URL; fall back to caller-provided id
-    api_id = body.id
-    if not api_id:
-        if base_url:
-            api_id = _derive_api_id(base_url)
-        else:
-            raise HTTPException(400, "Cannot derive API id: no base_url in spec and no id provided")
-
-    async with get_db() as db:
-        await db.execute(
-            "INSERT OR REPLACE INTO apis (id, name, description, spec_path, base_url) VALUES (?,?,?,?,?)",
-            (api_id, body.name, body.description, body.spec_path, base_url),
-        )
-        await db.execute("DELETE FROM operations WHERE api_id=?", (api_id,))
-        ops = _parse_operations(api_id, body.spec_path, base_url)
-        for op in ops:
-            await db.execute(
-                """INSERT INTO operations
-                   (id, api_id, operation_id, jentic_id, method, path, summary, description)
-                   VALUES (?,?,?,?,?,?,?,?)""",
-                (op["id"], op["api_id"], op["operation_id"], op["jentic_id"],
-                 op["method"], op["path"], op["summary"], op["description"]),
-            )
-        await db.commit()
-        async with db.execute(
-            "SELECT id, name, description, spec_path, base_url, created_at FROM apis WHERE id=?",
-            (api_id,)
-        ) as cur:
-            row = await cur.fetchone()
-
-    await _rebuild_index()
-    return {"id": row[0], "name": row[1], "vendor": _extract_vendor(row[0]),
-            "description": row[2], "spec_path": row[3], "base_url": row[4], "created_at": row[5]}
-
 
 @router.get("/apis", summary="List APIs — browse all available API providers (local and catalog)", response_model=ApiListPage)
 async def list_apis(
