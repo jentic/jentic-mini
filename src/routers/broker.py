@@ -149,9 +149,9 @@ async def _find_credential_for_host(
     from src.routers.overlays import get_merged_security_schemes
     schemes = await get_merged_security_schemes(api_id)
 
-    if not schemes:
-        # No schemes at all — nothing to inject
-        return {}, api_id, creds[0]["id"] if creds else None
+    # Note: schemes may be empty if no spec or overlay is registered for this API.
+    # That is fine — credentials with an explicit auth_type can still be injected
+    # without a scheme definition (e.g. github.com git-over-HTTPS has no spec).
 
     headers = {}
     first_credential_id: str | None = None
@@ -210,19 +210,21 @@ async def _find_credential_for_host(
                 (v for v in schemes.values() if v.get("type") == "http" and v.get("scheme", "").lower() in ("basic", "digest")),
                 None,
             )
-            if scheme:
-                import base64 as _b64
-                # BasicAuth/DigestAuth credential construction (RFC 7617):
-                # 1. value contains ":" → treat as pre-formatted "username:password"
-                # 2. identity is set → base64("{identity}:{value}")
-                # 3. fallback → base64("token:{value}") — works for PAT-style APIs like GitHub
-                if ":" in value:
-                    _raw = value
-                elif identity:
-                    _raw = f"{identity}:{value}"
-                else:
-                    _raw = f"token:{value}"
-                headers["Authorization"] = f"Basic {_b64.b64encode(_raw.encode()).decode()}"
+            # Inject Basic auth regardless of whether a scheme is found in the spec.
+            # auth_type on the credential is authoritative — no spec/overlay required.
+            # (scheme lookup is kept for future use, e.g. digest challenge-response)
+            import base64 as _b64
+            # BasicAuth/DigestAuth credential construction (RFC 7617):
+            # 1. value contains ":" → treat as pre-formatted "username:password"
+            # 2. identity is set → base64("{identity}:{value}")
+            # 3. fallback → base64("token:{value}") — works for PAT-style APIs like GitHub
+            if ":" in value:
+                _raw = value
+            elif identity:
+                _raw = f"{identity}:{value}"
+            else:
+                _raw = f"token:{value}"
+            headers["Authorization"] = f"Basic {_b64.b64encode(_raw.encode()).decode()}"
 
         elif auth_type == "apiKey":
             # Collect all apiKey schemes from the spec
