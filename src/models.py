@@ -16,14 +16,15 @@ class CredentialCreate(NormModel):
     """Plain-text secret; encrypted before storage. Always the primary credential — token, password, API key."""
     identity: str | None = None
     """Optional identity field — username, client ID, account SID etc.
-    Required for http/basic and http/digest schemes (username), and for compound
-    apiKey schemes where one scheme is named 'Identity' in the overlay.
-    Leave null for Bearer tokens, single-value API keys, and GitHub PAT-style BasicAuth
-    where any username is accepted."""
+    Required for http/basic and http/digest schemes (username + password).
+    For compound apiKey schemes (overlay uses canonical 'Secret'/'Identity' names), the
+    Identity scheme header is injected from this field.
+    Leave null for Bearer tokens, single-value API keys, and GitHub PAT-style BasicAuth."""
     api_id: str | None = None
     """API this credential belongs to (e.g. 'techpreneurs.ie'). Required for broker injection."""
-    scheme_name: str | None = None
-    """Security scheme name from the OpenAPI spec or overlay (e.g. 'ApiKeyHeader'). Required when api_id is set."""
+    auth_type: Literal["bearer", "basic", "apiKey"] | None = None
+    """Auth type: 'bearer', 'basic', or 'apiKey'. Broker uses this to find the matching
+    security scheme in the spec/overlay rather than coupling to overlay scheme names."""
 
 
 class CredentialPatch(NormModel):
@@ -32,7 +33,7 @@ class CredentialPatch(NormModel):
     identity: str | None = None
     """Update the identity (username / client ID) for this credential."""
     api_id: str | None = None
-    scheme_name: str | None = None
+    auth_type: Literal["bearer", "basic", "apiKey"] | None = None
 
 
 # ── APIs (input) ──────────────────────────────────────────────────────────────
@@ -122,7 +123,7 @@ class CredentialOut(BaseModel):
     identity: str | None = None
     """Identity field (username, client ID, etc.) — returned so clients can confirm what was stored."""
     api_id: str | None = None
-    scheme_name: str | None = None
+    auth_type: str | None = None
     created_at: float | None = None
     updated_at: float | None = None
 
@@ -148,7 +149,7 @@ class CredentialBindingOut(BaseModel):
     credential_id: str
     label: str | None = None
     api_id: str | None = None
-    scheme_name: str | None = None
+    auth_type: str | None = None
     model_config = {"extra": "allow"}
 
 

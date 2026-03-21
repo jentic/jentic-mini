@@ -77,7 +77,7 @@ async def create_credential(
     env_var: str,
     value: str,
     api_id: str | None = None,
-    scheme_name: str | None = None,
+    scheme_name: str | None = None,  # legacy param name kept for call-site compat; stored as auth_type
     identity: str | None = None,
 ) -> dict:
     base_slug = _credential_slug(api_id, label)
@@ -95,7 +95,7 @@ async def create_credential(
             suffix_n += 1
 
         await db.execute(
-            "INSERT INTO credentials (id, label, env_var, encrypted_value, api_id, scheme_name, identity) VALUES (?,?,?,?,?,?,?)",
+            "INSERT INTO credentials (id, label, env_var, encrypted_value, api_id, auth_type, identity) VALUES (?,?,?,?,?,?,?)",
             (cid, label, env_var, enc, api_id, scheme_name, identity),
         )
         await db.commit()
@@ -116,7 +116,7 @@ async def patch_credential(cid: str, label: str | None, value: str | None,
         if api_id is not None:
             await db.execute("UPDATE credentials SET api_id=?, updated_at=unixepoch() WHERE id=?", (api_id, cid))
         if scheme_name is not None:
-            await db.execute("UPDATE credentials SET scheme_name=?, updated_at=unixepoch() WHERE id=?", (scheme_name, cid))
+            await db.execute("UPDATE credentials SET auth_type=?, updated_at=unixepoch() WHERE id=?", (scheme_name, cid))
         if identity is not None:
             await db.execute("UPDATE credentials SET identity=?, updated_at=unixepoch() WHERE id=?", (identity, cid))
         await db.commit()
@@ -177,13 +177,13 @@ async def get_credentials_for_api(toolkit_id: str, api_id: str) -> list[dict]:
     async with get_db() as db:
         if toolkit_id == DEFAULT_TOOLKIT_ID:
             async with db.execute(
-                "SELECT id, env_var, encrypted_value, scheme_name, identity FROM credentials WHERE api_id = ?",
+                "SELECT id, env_var, encrypted_value, auth_type, identity FROM credentials WHERE api_id = ?",
                 (api_id,),
             ) as cur:
                 rows = await cur.fetchall()
         else:
             async with db.execute(
-                """SELECT c.id, c.env_var, c.encrypted_value, c.scheme_name, c.identity
+                """SELECT c.id, c.env_var, c.encrypted_value, c.auth_type, c.identity
                    FROM credentials c
                    JOIN toolkit_credentials cc ON c.id = cc.credential_id
                    WHERE cc.toolkit_id = ? AND c.api_id = ?""",
@@ -194,7 +194,7 @@ async def get_credentials_for_api(toolkit_id: str, api_id: str) -> list[dict]:
         {
             "id": r[0],
             "value": decrypt(r[2]),
-            "scheme_name": r[3],
+            "auth_type": r[3],
             "identity": r[4] if len(r) > 4 else None,
         }
         for r in rows
@@ -202,7 +202,7 @@ async def get_credentials_for_api(toolkit_id: str, api_id: str) -> list[dict]:
 
 
 def _row_to_dict(row) -> dict:
-    # columns: id, label, env_var, encrypted_value, created_at, updated_at, api_id, scheme_name, identity
+    # columns: id, label, env_var, encrypted_value, created_at, updated_at, api_id, auth_type, identity
     # env_var and encrypted_value are internal — not exposed in API responses
     return {
         "id": row[0],
@@ -211,6 +211,6 @@ def _row_to_dict(row) -> dict:
         "created_at": row[4],
         "updated_at": row[5],
         "api_id": row[6] if len(row) > 6 else None,
-        "scheme_name": row[7] if len(row) > 7 else None,
+        "auth_type": row[7] if len(row) > 7 else None,
         "identity": row[8] if len(row) > 8 else None,
     }

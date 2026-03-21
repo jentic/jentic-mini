@@ -364,6 +364,15 @@ async def init_db() -> None:
             # api_broker_apps: handled by CREATE TABLE IF NOT EXISTS above (no ALTER needed)
             # Credential identity field (username / client_id / account SID etc.)
             "ALTER TABLE credentials ADD COLUMN identity TEXT",
+
+            # Rename scheme_name → auth_type; normalise values to bearer/basic/apiKey/pipedream_oauth
+            "ALTER TABLE credentials RENAME COLUMN scheme_name TO auth_type",
+            """UPDATE credentials SET auth_type = CASE
+                   WHEN auth_type IN ('BearerAuth', 'bearer') THEN 'bearer'
+                   WHEN auth_type IN ('BasicAuth', 'basic') THEN 'basic'
+                   WHEN auth_type IS NOT NULL AND auth_type NOT IN ('bearer', 'basic', 'pipedream_oauth') THEN 'apiKey'
+                   ELSE auth_type
+               END""",
         ]
         for m in migrations:
             try:

@@ -85,7 +85,7 @@ async def create(body: CredentialCreate, request: Request):
     If the API has no registered security scheme, first call POST /apis/{api_id}/scheme.
     """
     api_id = getattr(body, "api_id", None)
-    scheme_name = getattr(body, "scheme_name", None)
+    scheme_name = getattr(body, "auth_type", None)
 
     if api_id:
         # ── Lazy import: if api_id is a catalog API not yet locally registered, import it now ──
@@ -149,8 +149,8 @@ async def create(body: CredentialCreate, request: Request):
                             },
                         },
                         "note": (
-                            "The scheme_name for your credential is the key used in securitySchemes "
-                            "(e.g. 'ApiKeyAuth', 'BearerAuth', 'BasicAuth' from the examples above)."
+                            "Set auth_type on the credential to 'bearer', 'basic', or 'apiKey' — "
+                            "the broker uses this to match the right security scheme from the spec."
                         ),
                     },
                 )
@@ -179,13 +179,13 @@ async def get_credential(cid: str):
     """Retrieve metadata for a single credential. Value is never returned."""
     async with get_db() as db:
         async with db.execute(
-            "SELECT id, label, api_id, scheme_name, created_at, updated_at, identity FROM credentials WHERE id=?",
+            "SELECT id, label, api_id, auth_type, created_at, updated_at, identity FROM credentials WHERE id=?",
             (cid,),
         ) as cur:
             row = await cur.fetchone()
     if not row:
         raise HTTPException(404, "Credential not found")
-    return {"id": row[0], "label": row[1], "api_id": row[2], "scheme_name": row[3],
+    return {"id": row[0], "label": row[1], "api_id": row[2], "auth_type": row[3],
             "created_at": row[4], "updated_at": row[5], "identity": row[6] if len(row) > 6 else None}
 
 
@@ -194,7 +194,7 @@ async def patch(cid: str, body: CredentialPatch, request: Request):
     if not request.state.is_human_session:
         if not await _agent_has_credential_write_permission(request.state.toolkit_id, "PATCH", f"/credentials/{cid}"):
             raise HTTPException(status_code=403, detail="Updating credentials requires a human session, or an agent key with an explicit PATCH /credentials allow rule on the jentic-mini credential.")
-    row = await vault.patch_credential(cid, body.label, body.value, body.api_id, body.scheme_name,
+    row = await vault.patch_credential(cid, body.label, body.value, body.api_id, body.auth_type,
                                        identity=getattr(body, "identity", None))
     if not row:
         raise HTTPException(404, "Credential not found")
@@ -234,7 +234,7 @@ async def list_credentials(request: Request, api_id: str | None = None):
 
     async with get_db() as db:
         async with db.execute(
-            f"SELECT c.id, c.label, c.api_id, c.scheme_name, c.created_at, c.updated_at, c.identity "
+            f"SELECT c.id, c.label, c.api_id, c.auth_type, c.created_at, c.updated_at, c.identity "
             f"FROM credentials c {where} ORDER BY c.created_at DESC",
             params,
         ) as cur:
@@ -245,7 +245,7 @@ async def list_credentials(request: Request, api_id: str | None = None):
             "id": r[0],
             "label": r[1],
             "api_id": r[2],
-            "scheme_name": r[3],
+            "auth_type": r[3],
             "created_at": r[4],
             "updated_at": r[5],
             "identity": r[6] if len(r) > 6 else None,

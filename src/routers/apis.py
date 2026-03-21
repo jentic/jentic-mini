@@ -626,9 +626,9 @@ async def get_api(
     - `servers` — base URLs and variables (merged from spec + confirmed overlays)
     - `security_schemes` — security scheme definitions (merged from spec + confirmed overlays),
       plus `security_required` (global security requirements)
-    - `credentials_configured` — list of scheme_names that already have a credential bound.
+    - `credentials_configured` — list of auth_types that already have a credential bound.
       Use this to build a credential-setup UI: iterate `security_schemes`, check each key
-      against `credentials_configured` to determine which are missing, then prompt the user
+      against `security_schemes` (each scheme has a `type` field) to determine which auth types need credentials.
       to fill in the required fields and POST to `/credentials`.
 
     **Credential setup flow:**
@@ -637,7 +637,7 @@ async def get_api(
        - `http bearer` → `secret` (token)
        - `http basic` → `secret` (password) + optional `identity` (username)
        - `apiKey` → `secret` (key value); if compound, check scheme names for Secret/Identity
-    3. Prompt user for values, then `POST /credentials` with `api_id`, `scheme_name`, `secret`, `identity`
+    3. Prompt user for values, then `POST /credentials` with `api_id`, `auth_type`, `value` (and `identity` if needed).
     4. Verify with `GET /credentials?api_id={api_id}`
 
     **Optional sections** (add via `?sections=`):
@@ -675,7 +675,7 @@ async def get_api(
         # Which security schemes already have at least one credential bound?
         # Used by client UIs to show "configured" vs "missing" per scheme.
         async with db.execute(
-            "SELECT DISTINCT scheme_name FROM credentials WHERE api_id=? AND scheme_name IS NOT NULL",
+            "SELECT DISTINCT auth_type FROM credentials WHERE api_id=? AND auth_type IS NOT NULL",
             (api_id,),
         ) as cur:
             cred_rows = await cur.fetchall()

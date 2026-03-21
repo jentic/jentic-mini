@@ -59,7 +59,7 @@ _HOP_BY_HOP = {
 
 # How we detect credentials for a given API host
 # Looks up the api in the apis table by id (which is the scheme-stripped base URL)
-# then finds matching credentials by api_id + scheme_name and injects them as HTTP headers.
+# then finds matching credentials by api_id + auth_type and injects them as HTTP headers.
 async def _resolve_credential_ids(host: str, toolkit_id: str | None) -> tuple[str | None, list[str]]:
     """Resolve host → (api_id, [credential_ids]) without decrypting anything.
     Used for policy checks before the vault is touched.
@@ -156,61 +156,57 @@ async def _find_credential_for_host(
     headers = {}
     first_credential_id: str | None = None
     for cred in creds:
-        scheme_name = cred.get("scheme_name")
-        if not scheme_name:
-            # No scheme_name stored on this credential — fall back to the
-            # first (and usually only) scheme defined for this API.
-            # Prefer basic over bearer when both exist (git HTTPS needs Basic auth).
-            _basic_key = next((k for k, v in schemes.items() if v.get("type") == "http" and v.get("scheme", "").lower() == "basic"), None)
-            scheme_name = _basic_key or next(iter(schemes), None)
-        if not scheme_name:
-            continue
-
-        scheme = schemes.get(scheme_name, {})
-        if not scheme:
-            # Scheme name not found — fall back to the first available scheme
-            scheme_name = next(iter(schemes), None)
-            scheme = schemes.get(scheme_name, {}) if scheme_name else {}
-        if not scheme:
-            continue
-
         value = cred["value"]
-        scheme_type = scheme.get("type", "")
+        auth_type = cred.get("auth_type")
+        identity = cred.get("identity")
+
+        # Derive auth_type from spec if not stored on credential (legacy / null)
+        if not auth_type:
+            _basic_key = next(
+                (k for k, v in schemes.items() if v.get("type") == "http" and v.get("scheme", "").lower() == "basic"),
+                None,
+            )
+            _bearer_key = next(
+                (k for k, v in schemes.items() if v.get("type") == "http" and v.get("scheme", "").lower() == "bearer"),
+                None,
+            )
+            _apikey_key = next(
+                (k for k, v in schemes.items() if v.get("type") == "apiKey"),
+                None,
+            )
+            if _basic_key:
+                auth_type = "basic"
+            elif _bearer_key:
+                auth_type = "bearer"
+            elif _apikey_key:
+                auth_type = "apiKey"
+
+        if not auth_type:
+            continue
 
         if not first_credential_id:
             first_credential_id = cred["id"]
 
-        if scheme_type == "apiKey":
-            location = scheme.get("in", "header")
-            header_name = scheme.get("name", "X-API-Key")
-            if location == "header":
-                # Canonical scheme names: 'Secret' and 'Identity' are used in overlays for
-                # compound apiKey schemes (e.g. Discourse Api-Key + Api-Username).
-                # Both use the credential's primary value — two separate credentials, one
-                # per scheme. The credential.identity field is for BasicAuth (single-cred
-                # username+password), not for compound apiKey pairs.
-                headers[header_name] = value
-            elif location == "query":
-                # Query params handled separately; store for URL building
-                # For now log and skip — query auth needs URL modification
-                pass
-        elif scheme_type == "http":
-            bearer_scheme = scheme.get("scheme", "bearer").lower()
-            if bearer_scheme == "bearer":
+        # Find the matching scheme(s) in the spec by auth_type
+        if auth_type == "bearer":
+            scheme = next(
+                (v for v in schemes.values() if v.get("type") == "http" and v.get("scheme", "").lower() == "bearer"),
+                None,
+            )
+            if scheme:
                 headers["Authorization"] = f"Bearer {value}"
-            elif bearer_scheme in ("basic", "digest"):
+
+        elif auth_type == "basic":
+            scheme = next(
+                (v for v in schemes.values() if v.get("type") == "http" and v.get("scheme", "").lower() in ("basic", "digest")),
+                None,
+            )
+            if scheme:
                 import base64 as _b64
                 # BasicAuth/DigestAuth credential construction (RFC 7617):
-                #
-                # The credential's `identity` field is the username.
-                # The credential's `value` field is the password/secret.
-                #
-                # Construction rules (in priority order):
-                # 1. value contains ":" → treat as pre-formatted "username:password", encode directly
+                # 1. value contains ":" → treat as pre-formatted "username:password"
                 # 2. identity is set → base64("{identity}:{value}")
                 # 3. fallback → base64("token:{value}") — works for PAT-style APIs like GitHub
-                #    where any non-empty username is accepted
-                identity = cred.get("identity")
                 if ":" in value:
                     _raw = value
                 elif identity:
@@ -218,7 +214,29 @@ async def _find_credential_for_host(
                 else:
                     _raw = f"token:{value}"
                 headers["Authorization"] = f"Basic {_b64.b64encode(_raw.encode()).decode()}"
-        elif scheme_type == "oauth2":
+
+        elif auth_type == "apiKey":
+            # Collect all apiKey schemes from the spec
+            apikey_schemes = {k: v for k, v in schemes.items() if v.get("type") == "apiKey"}
+            if not apikey_schemes:
+                continue
+
+            # Canonical compound apiKey: overlay uses scheme names 'Secret' and 'Identity'
+            secret_scheme = apikey_schemes.get("Secret")
+            identity_scheme = apikey_schemes.get("Identity")
+            if secret_scheme and identity_scheme:
+                # Compound: Secret → cred.value, Identity → cred.identity
+                if secret_scheme.get("in") == "header":
+                    headers[secret_scheme["name"]] = value
+                if identity_scheme.get("in") == "header" and identity:
+                    headers[identity_scheme["name"]] = identity
+            else:
+                # Single apiKey: inject value into every apiKey header scheme
+                for scheme in apikey_schemes.values():
+                    if scheme.get("in") == "header":
+                        headers[scheme["name"]] = value
+
+        elif auth_type == "oauth2":
             headers["Authorization"] = f"Bearer {value}"
 
     _broker_log.debug("CRED INJECT: api_id=%r injecting headers=%s using cred=%r", api_id, list(headers.keys()), first_credential_id)
@@ -232,7 +250,7 @@ async def _find_pipedream_credential_for_host(
 ) -> tuple[str | None, str | None]:
     """Return (account_id, credential_id) for a Pipedream-managed credential in this toolkit.
 
-    Pipedream credentials have scheme_name='pipedream_oauth' and their encrypted value
+    Pipedream credentials have auth_type='pipedream_oauth' and their encrypted value
     IS the Pipedream account_id (apn_xxx). This bypasses the apis table lookup —
     Pipedream-connected APIs may not have a spec in the local catalog.
 
@@ -247,14 +265,14 @@ async def _find_pipedream_credential_for_host(
             # Caller specified an exact credential — use it directly if it's Pipedream
             async with db.execute(
                 "SELECT id, encrypted_value FROM credentials "
-                "WHERE id=? AND scheme_name='pipedream_oauth'",
+                "WHERE id=? AND auth_type='pipedream_oauth'",
                 (alias,),
             ) as cur:
                 row = await cur.fetchone()
         elif toolkit_id == DEFAULT_TOOLKIT_ID:
             async with db.execute(
                 "SELECT id, encrypted_value FROM credentials "
-                "WHERE api_id=? AND scheme_name='pipedream_oauth' LIMIT 1",
+                "WHERE api_id=? AND auth_type='pipedream_oauth' LIMIT 1",
                 (host,),
             ) as cur:
                 row = await cur.fetchone()
@@ -262,7 +280,7 @@ async def _find_pipedream_credential_for_host(
             async with db.execute(
                 """SELECT c.id, c.encrypted_value FROM credentials c
                    JOIN toolkit_credentials tc ON tc.credential_id = c.id
-                   WHERE tc.toolkit_id=? AND c.api_id=? AND c.scheme_name='pipedream_oauth'
+                   WHERE tc.toolkit_id=? AND c.api_id=? AND c.auth_type='pipedream_oauth'
                    LIMIT 1""",
                 (toolkit_id, host),
             ) as cur:
@@ -478,7 +496,7 @@ async def broker(request: Request, target: str):
 
     # ── Pipedream credential path ─────────────────────────────────────────────
     # If the vault lookup yielded no headers, check for an explicitly-provisioned
-    # Pipedream credential (scheme_name='pipedream_oauth'). This path requires:
+    # Pipedream credential (auth_type='pipedream_oauth'). This path requires:
     #   1. POST /oauth-brokers/{id}/sync  — creates the credential in the vault
     #   2. POST /toolkits/{id}/credentials — explicitly provisions it to this toolkit
     # No implicit fallback. If no credential is provisioned, we fall through to
