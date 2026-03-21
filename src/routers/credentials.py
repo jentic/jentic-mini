@@ -212,7 +212,7 @@ async def create(body: CredentialCreate, request: Request):
     return cred
 
 
-@router.get("/{cid}", response_model=CredentialOut, summary="Get an upstream API credential by ID")
+@router.get("/{cid:path}", response_model=CredentialOut, summary="Get an upstream API credential by ID")
 async def get_credential(cid: str):
     """Retrieve metadata for a single credential. Value is never returned."""
     async with get_db() as db:
@@ -227,7 +227,7 @@ async def get_credential(cid: str):
             "created_at": row[4], "updated_at": row[5], "identity": row[6] if len(row) > 6 else None}
 
 
-@router.patch("/{cid}", response_model=CredentialOut, summary="Update an upstream API credential — rotate a secret or fix its API binding")
+@router.patch("/{cid:path}", response_model=CredentialOut, summary="Update an upstream API credential — rotate a secret or fix its API binding")
 async def patch(cid: str, body: CredentialPatch, request: Request):
     if not request.state.is_human_session:
         if not await _agent_has_credential_write_permission(request.state.toolkit_id, "PATCH", f"/credentials/{cid}"):
@@ -239,7 +239,7 @@ async def patch(cid: str, body: CredentialPatch, request: Request):
     return row
 
 
-@router.delete("/{cid}", status_code=204, summary="Delete an upstream API credential")
+@router.delete("/{cid:path}", status_code=204, summary="Delete an upstream API credential")
 async def delete(cid: str, request: Request):
     if not request.state.is_human_session:
         if not await _agent_has_credential_write_permission(request.state.toolkit_id, "DELETE", f"/credentials/{cid}"):
