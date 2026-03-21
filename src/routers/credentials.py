@@ -123,60 +123,46 @@ async def create(body: CredentialCreate, request: Request):
                         "api_id": api_id,
                         "message": (
                             f"No security scheme is on record for '{api_id}'. "
-                            f"The OpenAPI spec for this API does not define how authentication works. "
-                            f"Before adding a credential, register the security scheme."
+                            f"Before adding a credential, submit an overlay that declares the scheme."
                         ),
                         "instructions": (
-                            f"Use available documentation or API explorer tools to determine "
-                            f"how '{api_id}' authenticates requests, then call "
-                            f"POST /apis/{api_id}/scheme with a structured description. "
-                            f"Once the scheme is registered, retry POST /credentials."
+                            f"Research how '{api_id}' authenticates requests, then submit an "
+                            f"OpenAPI Overlay 1.0 document to POST /apis/{api_id}/overlays. "
+                            f"Once submitted, retry POST /credentials."
                         ),
-                        "submit_to": f"POST /apis/{api_id}/scheme",
+                        "submit_to": f"POST /apis/{api_id}/overlays",
                         "examples": {
                             "api_key_in_header": {
-                                "description": "API key sent in a request header (most common)",
-                                "body": {"type": "apiKey", "in": "header", "name": "Your-Header-Name"},
+                                "overlay": "1.0.0",
+                                "info": {"title": f"{api_id} auth", "version": "1.0.0"},
+                                "actions": [{"target": "$", "update": {"components": {"securitySchemes": {"ApiKeyAuth": {"type": "apiKey", "in": "header", "name": "Your-Header-Name"}}}}}],
                             },
                             "bearer_token": {
-                                "description": "Bearer token in Authorization header",
-                                "body": {"type": "bearer"},
+                                "overlay": "1.0.0",
+                                "info": {"title": f"{api_id} auth", "version": "1.0.0"},
+                                "actions": [{"target": "$", "update": {"components": {"securitySchemes": {"BearerAuth": {"type": "http", "scheme": "bearer"}}}}}],
                             },
                             "basic_auth": {
-                                "description": "HTTP Basic authentication",
-                                "body": {"type": "basic"},
-                            },
-                            "oauth2_machine_to_machine": {
-                                "description": "OAuth2 client credentials flow",
-                                "body": {
-                                    "type": "oauth2_client_credentials",
-                                    "token_url": "https://api.example.com/oauth/token",
-                                },
-                            },
-                            "multiple_headers": {
-                                "description": "APIs requiring multiple auth headers (e.g. Discourse)",
-                                "body": [
-                                    {"type": "apiKey", "in": "header", "name": "Api-Key", "scheme_name": "ApiKeyAuth"},
-                                    {"type": "apiKey", "in": "header", "name": "Api-Username", "scheme_name": "UsernameAuth"},
-                                ],
+                                "overlay": "1.0.0",
+                                "info": {"title": f"{api_id} auth", "version": "1.0.0"},
+                                "actions": [{"target": "$", "update": {"components": {"securitySchemes": {"BasicAuth": {"type": "http", "scheme": "basic"}}}}}],
                             },
                         },
-                        "advanced": {
-                            "description": "For exotic schemes not covered above, submit a raw OpenAPI Overlay 1.0 document",
-                            "endpoint": f"POST /apis/{api_id}/overlays",
-                            "docs": "https://spec.openapis.org/overlay/latest.html",
-                        },
-                        "then": (
-                            f"After registering the scheme, POST /scheme returns the scheme_name(s). "
-                            f"Use those in POST /credentials with api_id='{api_id}'."
+                        "note": (
+                            "The scheme_name for your credential is the key used in securitySchemes "
+                            "(e.g. 'ApiKeyAuth', 'BearerAuth', 'BasicAuth' from the examples above)."
                         ),
                     },
                 )
 
     try:
+        # Auto-generate a stable internal slug (not exposed via API)
+        import re
+        slug = re.sub(r"[^a-zA-Z0-9]+", "_", f"{body.api_id or ''}_{body.label}").strip("_").upper()
+        env_var = slug or f"CRED_{uuid.uuid4().hex[:8].upper()}"
         cred = await vault.create_credential(
             body.label,
-            body.env_var,
+            env_var,
             body.value,
             api_id=api_id,
             scheme_name=scheme_name,

@@ -22,8 +22,11 @@ Human-session-only endpoints:
    - Defined in HUMAN_SESSION_ONLY set
    - Return 403 if called with an agent key
 
-Admin API key (JENTIC_API_KEY env var) is DEPRECATED and no longer recognised.
+There is NO trusted-subnet admin bypass in the general middleware.
+The subnet restriction applies only to POST /default-api-key/generate (first call).
 CLI access (docker exec) is the only superuser path.
+
+Admin API key (JENTIC_API_KEY env var) is DEPRECATED and no longer recognised.
 """
 import ipaddress
 import json
@@ -61,6 +64,10 @@ SKIP = {
     "/docs", "/openapi.json", "/redoc",
     "/favicon.ico", "/favicon.png", "/favicon.svg",
     "/login",  # HTML login form page (served from main.py)
+    "/user/login",  # API login endpoint — must be public (bug fix: was missing)
+    "/user/token",  # OAuth2 password grant for Swagger UI
+    "/user/create",  # One-time root account creation — must be public before account exists
+    "/default-api-key/generate",  # Handles its own subnet + session auth internally
 }
 SKIP_PREFIXES = ("/static", "/proxy", "/approve", "/docs", "/redoc", "/debug")
 
@@ -95,10 +102,7 @@ def _client_ip(request: Request) -> str:
     xff = request.headers.get("x-forwarded-for", "")
     raw = request.client.host if request.client else ""
     if xff:
-        resolved = xff.split(",")[0].strip()
-        logger.debug("IP: XFF=%r raw=%r → resolved=%r", xff, raw, resolved)
-        return resolved
-    logger.debug("IP: no XFF, raw=%r", raw)
+        return xff.split(",")[0].strip()
     return raw
 
 
@@ -335,17 +339,7 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
                     )
                 # Open path: fall through as anonymous
 
-        # ── 2. Trusted-subnet passthrough ─────────────────────────────────────
-        # Only reached when no tk_ key was provided. A trusted IP gets admin
-        # access to the default toolkit — no key or account needed.
-        elif is_trusted_ip(client_ip):
-            from src.db import DEFAULT_TOOLKIT_ID
-            request.state.toolkit_id = DEFAULT_TOOLKIT_ID
-            request.state.is_admin = True
-            request.state.simulate = False
-            return await call_next(request)
-
-        # ── 3. No valid auth — allow open paths, reject everything else ────────
+        # ── 2. No valid auth — allow open paths, reject everything else ────────
         if is_open:
             # Anonymous — toolkit_id stays None, broker skips credentials
             return await call_next(request)

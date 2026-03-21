@@ -13,6 +13,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, HTMLResponse
 
 from src.auth import APIKeyMiddleware
+from src.negotiate import negotiate_middleware
 from src.db import init_db, setup_state
 from src.routers import apis as apis_router
 from src.routers import search as search_router
@@ -38,6 +39,10 @@ from src.routers.catalog import refresh_catalog_if_stale
 from src.startup import self_register, seed_broker_apps
 
 logging.basicConfig(level=(os.getenv("LOG_LEVEL") or "info").upper())
+logging.getLogger("aiosqlite").setLevel(logging.WARNING)
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("httpcore").setLevel(logging.WARNING)
+logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
 log = logging.getLogger("jentic")
 
 
@@ -151,6 +156,7 @@ app = FastAPI(
 )
 
 app.add_middleware(APIKeyMiddleware)
+app.middleware("http")(negotiate_middleware)
 
 # ── Static dir — defined early so route handlers can reference it ──────────────
 STATIC_DIR = Path(__file__).parent / "static"

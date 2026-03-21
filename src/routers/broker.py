@@ -59,7 +59,7 @@ _HOP_BY_HOP = {
 
 # How we detect credentials for a given API host
 # Looks up the api in the apis table by id (which is the scheme-stripped base URL)
-# then gets the relevant env var from the vault.
+# then finds matching credentials by api_id + scheme_name and injects them as HTTP headers.
 async def _resolve_credential_ids(host: str, toolkit_id: str | None) -> tuple[str | None, list[str]]:
     """Resolve host → (api_id, [credential_ids]) without decrypting anything.
     Used for policy checks before the vault is touched.
@@ -100,6 +100,9 @@ async def _find_credential_for_host(
     credential_id is the ID of the first credential used for injection — used by the
     caller to enforce per-credential policy rules.
     """
+    import logging as _log
+    _broker_log = _log.getLogger("jentic.broker")
+
     # Resolve host → api_id
     candidates = [host]
     parts = host.split(".")
@@ -118,16 +121,29 @@ async def _find_credential_for_host(
                 api_id = row[0]
                 break
 
+    _broker_log.debug("CRED LOOKUP: host=%r → api_id=%r (toolkit=%r alias=%r)", host, api_id, toolkit_id, alias)
+
     if not api_id:
         return {}, None, None
 
     # Get credentials bound to this toolkit + api
     creds = await vault.get_credentials_for_api(toolkit_id, api_id)
+    _broker_log.debug("CRED LOOKUP: %d cred(s) for api_id=%r: %s", len(creds), api_id, [c.get("id") for c in creds])
+
     if not creds and toolkit_id:
         raise ValueError(
             f"No credentials found for '{api_id}' in toolkit '{toolkit_id}'. "
             f"Use POST /toolkits/{toolkit_id}/access-requests to request access."
         )
+
+    if alias and creds:
+        matched = [c for c in creds if c.get("id") == alias]
+        if matched:
+            _broker_log.debug("CRED LOOKUP: alias %r matched → using %r", alias, matched[0].get("id"))
+            creds = matched
+        else:
+            _broker_log.warning("CRED LOOKUP: alias %r not found in %s — falling back to first cred", alias, [c.get("id") for c in creds])
+        # If alias doesn't match any credential, fall through with all creds (best-effort)
 
     # Get merged security schemes (spec + confirmed overlays)
     from src.routers.overlays import get_merged_security_schemes
@@ -142,9 +158,19 @@ async def _find_credential_for_host(
     for cred in creds:
         scheme_name = cred.get("scheme_name")
         if not scheme_name:
+            # No scheme_name stored on this credential — fall back to the
+            # first (and usually only) scheme defined for this API.
+            # Prefer basic over bearer when both exist (git HTTPS needs Basic auth).
+            _basic_key = next((k for k, v in schemes.items() if v.get("type") == "http" and v.get("scheme", "").lower() == "basic"), None)
+            scheme_name = _basic_key or next(iter(schemes), None)
+        if not scheme_name:
             continue
 
         scheme = schemes.get(scheme_name, {})
+        if not scheme:
+            # Scheme name not found — fall back to the first available scheme
+            scheme_name = next(iter(schemes), None)
+            scheme = schemes.get(scheme_name, {}) if scheme_name else {}
         if not scheme:
             continue
 
@@ -168,16 +194,34 @@ async def _find_credential_for_host(
             if bearer_scheme == "bearer":
                 headers["Authorization"] = f"Bearer {value}"
             elif bearer_scheme == "basic":
-                headers["Authorization"] = f"Basic {value}"
+                import base64 as _b64
+                # BasicAuth encoding rules (data-driven, no API-specific logic):
+                #
+                # 1. If value contains ":" — treat as raw "username:password",
+                #    base64-encode the whole thing directly.
+                # 2. If the scheme carries x-jentic-basic-username — use it as
+                #    the username: base64("{annotation}:{value}").
+                #    e.g. GitHub overlay sets x-jentic-basic-username: "x-access-token"
+                # 3. Fallback: base64(":{value}") — token as password, no username.
+                #    Safe generic default; works for most API-key-as-password schemes.
+                if ":" in value:
+                    _raw = value
+                elif "x-jentic-basic-username" in scheme:
+                    _raw = f"{scheme['x-jentic-basic-username']}:{value}"
+                else:
+                    _raw = f":{value}"
+                headers["Authorization"] = f"Basic {_b64.b64encode(_raw.encode()).decode()}"
         elif scheme_type == "oauth2":
             headers["Authorization"] = f"Bearer {value}"
 
+    _broker_log.debug("CRED INJECT: api_id=%r injecting headers=%s using cred=%r", api_id, list(headers.keys()), first_credential_id)
     return headers, api_id, first_credential_id
 
 
 async def _find_pipedream_credential_for_host(
     host: str,
     toolkit_id: str | None,
+    alias: str | None = None,
 ) -> tuple[str | None, str | None]:
     """Return (account_id, credential_id) for a Pipedream-managed credential in this toolkit.
 
@@ -185,13 +229,22 @@ async def _find_pipedream_credential_for_host(
     IS the Pipedream account_id (apn_xxx). This bypasses the apis table lookup —
     Pipedream-connected APIs may not have a spec in the local catalog.
 
+    If alias is specified, only the credential with that ID is considered.
     Returns (None, None) if no Pipedream credential is provisioned for this host+toolkit.
     """
     if not toolkit_id:
         return None, None
     from src.db import DEFAULT_TOOLKIT_ID
     async with get_db() as db:
-        if toolkit_id == DEFAULT_TOOLKIT_ID:
+        if alias:
+            # Caller specified an exact credential — use it directly if it's Pipedream
+            async with db.execute(
+                "SELECT id, encrypted_value FROM credentials "
+                "WHERE id=? AND scheme_name='pipedream_oauth'",
+                (alias,),
+            ) as cur:
+                row = await cur.fetchone()
+        elif toolkit_id == DEFAULT_TOOLKIT_ID:
             async with db.execute(
                 "SELECT id, encrypted_value FROM credentials "
                 "WHERE api_id=? AND scheme_name='pipedream_oauth' LIMIT 1",
@@ -425,7 +478,7 @@ async def broker(request: Request, target: str):
     # unauthenticated forwarding (or the request will fail upstream with 401).
     if not inject_headers:
         pd_account_id, pd_cred_id = await _find_pipedream_credential_for_host(
-            upstream_host, toolkit_id
+            upstream_host, toolkit_id, alias=credential_alias
         )
         if pd_account_id and pd_cred_id:
             # Policy check for this Pipedream credential (same gate as vault path)
@@ -547,7 +600,12 @@ async def broker(request: Request, target: str):
         k: v for k, v in request.headers.items()
         if k.lower() not in _HOP_BY_HOP
     }
-    # Inject credentials (overrides any existing auth headers)
+    # Strip inbound auth headers before injecting vault credentials —
+    # prevents duplicate Authorization when toolkit key arrives as Basic auth
+    # (e.g. git embedding the key in the remote URL).
+    if inject_headers:
+        forward_headers.pop("authorization", None)
+    # Inject credentials (replaces any auth header)
     forward_headers.update(inject_headers)
 
     # ── Forward request ───────────────────────────────────────────────────────
@@ -651,6 +709,37 @@ async def broker(request: Request, target: str):
             await confirm_overlay(api_id, execution_id)
         except Exception:
             pass  # non-fatal
+
+    # ── Auth failure hint for BasicAuth ───────────────────────────────────────
+    # When a BasicAuth call gets 401/403, the likely cause is the wrong
+    # username format. Surface a machine-readable hint so agents can
+    # self-correct by researching and uploading an overlay.
+    if upstream_response.status_code in (401, 403):
+        auth_header = inject_headers.get("Authorization", "")
+        if auth_header.startswith("Basic "):
+            hint = {
+                "x-jentic-hint": "basic_auth_failure",
+                "message": (
+                    f"BasicAuth to {upstream_host} failed ({upstream_response.status_code}). "
+                    "The credential value may be correct but the username format is wrong. "
+                    "Research the correct BasicAuth username format for this API, then submit "
+                    f"an overlay via POST /apis/{api_id}/overlays with the 'x-jentic-basic-username' "
+                    "extension on the BasicAuth security scheme. Example: "
+                    '{"overlay":"1.0.0","info":{"title":"BasicAuth username","version":"1.0.0"},'
+                    '"actions":[{"target":"$","update":{"components":{"securitySchemes":{"BasicAuth":'
+                    '{"type":"http","scheme":"basic","x-jentic-basic-username":"<username_here>"}}}}}]}'
+                ),
+                "action": f"POST /apis/{api_id}/overlays",
+                "upstream_status": upstream_response.status_code,
+                "upstream_body": upstream_response.text[:512],
+            }
+            response_headers["X-Jentic-Hint"] = "basic_auth_failure"
+            return Response(
+                content=json.dumps(hint),
+                status_code=upstream_response.status_code,
+                headers=response_headers,
+                media_type="application/json",
+            )
 
     # ── Detect upstream 202: surface as upstream_async ───────────────────────
     # If the upstream itself returned 202, and a callback was registered,

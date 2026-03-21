@@ -128,32 +128,6 @@ async def delete_credential(cid: str) -> bool:
     return cur.rowcount > 0
 
 
-async def get_all_env_vars() -> dict[str, str]:
-    """Return {env_var: decrypted_value} for all stored credentials."""
-    async with get_db() as db:
-        async with db.execute("SELECT env_var, encrypted_value FROM credentials") as cur:
-            rows = await cur.fetchall()
-    return {row[0]: decrypt(row[1]) for row in rows}
-
-
-async def get_toolkit_env_vars(toolkit_id: str) -> dict[str, str]:
-    """
-    Return {env_var: decrypted_value} for credentials granted to a toolkit.
-
-    This enforces credential scoping — toolkits can only access the credentials
-    explicitly granted to them via POST /toolkits/{id}/credentials.
-    """
-    async with get_db() as db:
-        async with db.execute(
-            """SELECT c.env_var, c.encrypted_value
-               FROM credentials c
-               JOIN toolkit_credentials cc ON c.id = cc.credential_id
-               WHERE cc.toolkit_id = ?""",
-            (toolkit_id,)
-        ) as cur:
-            rows = await cur.fetchall()
-    return {row[0]: decrypt(row[1]) for row in rows}
-
 
 async def get_credential_value(db, vault_id: str) -> str | None:
     """
@@ -225,10 +199,10 @@ async def get_credentials_for_api(toolkit_id: str, api_id: str) -> list[dict]:
 
 def _row_to_dict(row) -> dict:
     # columns: id, label, env_var, encrypted_value, created_at, updated_at, api_id, scheme_name
+    # env_var is an internal derived key — not exposed in API responses
     return {
         "id": row[0],
         "label": row[1],
-        "env_var": row[2],
         # encrypted_value (row[3]) intentionally omitted
         "created_at": row[4],
         "updated_at": row[5],

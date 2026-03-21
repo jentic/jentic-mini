@@ -16,8 +16,9 @@ import logging
 import time
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, HTTPException, Path, Query
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request
 from pydantic import BaseModel, Field
+from src.validators import NormModel, NormStr
 
 from src.auth import require_human_session
 from src.db import get_db
@@ -104,7 +105,7 @@ automatically proxied with the user's OAuth token injected server-side.
 """
 
 
-class OAuthBrokerCreate(BaseModel):
+class OAuthBrokerCreate(NormModel):
     type: str = Field(..., description="Broker backend type. Currently supported: `pipedream`.")
     config: dict[str, Any] = Field(
         ...,
@@ -129,7 +130,7 @@ class OAuthBrokerOut(BaseModel):
     accounts_discovered: int = 0
 
 
-class SyncRequest(BaseModel):
+class SyncRequest(NormModel):
     external_user_id: str = Field(
         "default",
         description=(
@@ -295,7 +296,7 @@ async def get_oauth_broker(broker_id: BrokerIdPath):
     return _row_to_out(row)
 
 
-class ConnectLinkRequest(BaseModel):
+class ConnectLinkRequest(NormModel):
     external_user_id: str = Field(
         "default",
         description=(
@@ -329,9 +330,8 @@ class ConnectLinkRequest(BaseModel):
 @router.post(
     "/{broker_id}/connect-link",
     summary="Generate a Pipedream Connect Link for authorising apps",
-    dependencies=[Depends(require_human_session)],
 )
-async def create_connect_link(broker_id: BrokerIdPath, body: ConnectLinkRequest):
+async def create_connect_link(broker_id: BrokerIdPath, body: ConnectLinkRequest, request: Request):
     """Generate a short-lived Pipedream Connect Link URL.
 
     Visit the returned `connect_link_url` in a browser to authorise SaaS apps
@@ -341,7 +341,17 @@ async def create_connect_link(broker_id: BrokerIdPath, body: ConnectLinkRequest)
     pull the new account into jentic-mini so requests start routing through it.
 
     The link expires after ~1 hour. Generate a new one if it expires before use.
+
+    Intentionally open to agents (not human-session-only): only a human can
+    complete the OAuth flow, so generating the link is safe for agents to initiate.
+    Requires at minimum a valid toolkit key or trusted-subnet (admin) access.
     """
+    from src.auth import _build_human_only_error
+    is_admin = getattr(request.state, "is_admin", False)
+    is_human = getattr(request.state, "is_human_session", False)
+    has_toolkit = getattr(request.state, "toolkit_id", None) is not None
+    if not (is_admin or is_human or has_toolkit):
+        raise _build_human_only_error()
     live_broker = next(
         (b for b in oauth_broker_registry.brokers if getattr(b, "broker_id", None) == broker_id),
         None,
@@ -396,9 +406,8 @@ async def create_connect_link(broker_id: BrokerIdPath, body: ConnectLinkRequest)
 @router.post(
     "/{broker_id}/sync",
     summary="Sync connected accounts from the OAuth broker",
-    dependencies=[Depends(require_human_session)],
 )
-async def sync_broker_accounts(broker_id: BrokerIdPath, body: SyncRequest):
+async def sync_broker_accounts(broker_id: BrokerIdPath, body: SyncRequest, request: Request):
     """Re-fetch connected accounts from the provider and update local mappings.
 
     Call this after connecting a new app via Pipedream's hosted OAuth UI —
@@ -406,7 +415,17 @@ async def sync_broker_accounts(broker_id: BrokerIdPath, body: SyncRequest):
     responses and the broker will start routing requests to it automatically.
 
     This does **not** affect accounts already connected — it is additive.
+
+    Intentionally open to agents: syncing pulls in credentials the human already
+    authorised. No new OAuth flows are initiated.
     """
+    from src.auth import _build_human_only_error
+    is_admin = getattr(request.state, "is_admin", False)
+    is_human = getattr(request.state, "is_human_session", False)
+    has_toolkit = getattr(request.state, "toolkit_id", None) is not None
+    if not (is_admin or is_human or has_toolkit):
+        raise _build_human_only_error()
+
     async with get_db() as db:
         async with db.execute("SELECT type FROM oauth_brokers WHERE id=?", (broker_id,)) as cur:
             row = await cur.fetchone()

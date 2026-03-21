@@ -34,7 +34,7 @@ _CREATE = [
     CREATE TABLE IF NOT EXISTS credentials (
         id              TEXT PRIMARY KEY,
         label           TEXT NOT NULL,
-        env_var         TEXT NOT NULL UNIQUE,
+        env_var         TEXT UNIQUE,  -- internal slug only, not exposed via API
         encrypted_value TEXT NOT NULL,
         created_at      REAL DEFAULT (unixepoch()),
         updated_at      REAL DEFAULT (unixepoch())

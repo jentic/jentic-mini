@@ -5,14 +5,13 @@ Input models (Create/Patch/Register) and all response models are here.
 from __future__ import annotations
 from typing import Any, Literal
 from pydantic import BaseModel, Field
+from src.validators import NormModel, NormStr
 
 
 # ── Credentials (input) ───────────────────────────────────────────────────────
 
-class CredentialCreate(BaseModel):
+class CredentialCreate(NormModel):
     label: str
-    env_var: str
-    """Env var name the broker will use internally. e.g. GITHUB_BEARERAUTH_TOKEN"""
     value: str
     """Plain-text secret; encrypted before storage."""
     api_id: str | None = None
@@ -21,7 +20,7 @@ class CredentialCreate(BaseModel):
     """Security scheme name from the OpenAPI spec or overlay (e.g. 'ApiKeyHeader'). Required when api_id is set."""
 
 
-class CredentialPatch(BaseModel):
+class CredentialPatch(NormModel):
     label: str | None = None
     value: str | None = None
     api_id: str | None = None
@@ -30,11 +29,11 @@ class CredentialPatch(BaseModel):
 
 # ── APIs (input) ──────────────────────────────────────────────────────────────
 
-class ApiRegister(BaseModel):
+class ApiRegister(NormModel):
     id: str | None = None  # auto-derived from spec base_url if omitted
     name: str
     description: str | None = None
-    spec_path: str      # absolute path inside container to arazzo/openapi file
+    spec_path: str | None = None  # absolute path inside container to arazzo/openapi file (optional — omit for broker-only APIs)
 
 
 # ── Pagination wrapper ────────────────────────────────────────────────────────
@@ -117,9 +116,6 @@ class CredentialOut(BaseModel):
     scheme_name: str | None = None
     created_at: float | None = None
     updated_at: float | None = None
-    created_at: float | None = None
-    updated_at: float | None = None
-    model_config = {"extra": "allow"}
 
 
 # ── Toolkits (output) ─────────────────────────────────────────────────────────

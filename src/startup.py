@@ -117,7 +117,7 @@ async def _ensure_internal_credential() -> None:
         from src.vault import create_credential
         cred = await create_credential(
             label="Jentic Mini Admin Key",
-            env_var="",   # not env-backed
+            env_var="JENTIC_MINI_ADMIN_KEY",
             value=raw_key,
             api_id=_public_hostname(),
             scheme_name="JenticApiKey",
