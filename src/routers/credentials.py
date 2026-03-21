@@ -166,6 +166,7 @@ async def create(body: CredentialCreate, request: Request):
             body.value,
             api_id=api_id,
             scheme_name=scheme_name,
+            identity=getattr(body, "identity", None),
         )
     except Exception as e:
         raise HTTPException(400, str(e))
@@ -178,14 +179,14 @@ async def get_credential(cid: str):
     """Retrieve metadata for a single credential. Value is never returned."""
     async with get_db() as db:
         async with db.execute(
-            "SELECT id, label, api_id, scheme_name, created_at, updated_at FROM credentials WHERE id=?",
+            "SELECT id, label, api_id, scheme_name, created_at, updated_at, identity FROM credentials WHERE id=?",
             (cid,),
         ) as cur:
             row = await cur.fetchone()
     if not row:
         raise HTTPException(404, "Credential not found")
     return {"id": row[0], "label": row[1], "api_id": row[2], "scheme_name": row[3],
-            "created_at": row[4], "updated_at": row[5]}
+            "created_at": row[4], "updated_at": row[5], "identity": row[6] if len(row) > 6 else None}
 
 
 @router.patch("/{cid}", response_model=CredentialOut, summary="Update an upstream API credential — rotate a secret or fix its API binding")
@@ -193,7 +194,8 @@ async def patch(cid: str, body: CredentialPatch, request: Request):
     if not request.state.is_human_session:
         if not await _agent_has_credential_write_permission(request.state.toolkit_id, "PATCH", f"/credentials/{cid}"):
             raise HTTPException(status_code=403, detail="Updating credentials requires a human session, or an agent key with an explicit PATCH /credentials allow rule on the jentic-mini credential.")
-    row = await vault.patch_credential(cid, body.label, body.value, body.api_id, body.scheme_name)
+    row = await vault.patch_credential(cid, body.label, body.value, body.api_id, body.scheme_name,
+                                       identity=getattr(body, "identity", None))
     if not row:
         raise HTTPException(404, "Credential not found")
     return row
@@ -232,7 +234,7 @@ async def list_credentials(request: Request, api_id: str | None = None):
 
     async with get_db() as db:
         async with db.execute(
-            f"SELECT c.id, c.label, c.api_id, c.scheme_name, c.created_at, c.updated_at "
+            f"SELECT c.id, c.label, c.api_id, c.scheme_name, c.created_at, c.updated_at, c.identity "
             f"FROM credentials c {where} ORDER BY c.created_at DESC",
             params,
         ) as cur:
@@ -246,6 +248,7 @@ async def list_credentials(request: Request, api_id: str | None = None):
             "scheme_name": r[3],
             "created_at": r[4],
             "updated_at": r[5],
+            "identity": r[6] if len(r) > 6 else None,
         }
         for r in rows
     ]

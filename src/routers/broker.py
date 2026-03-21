@@ -184,7 +184,15 @@ async def _find_credential_for_host(
             location = scheme.get("in", "header")
             header_name = scheme.get("name", "X-API-Key")
             if location == "header":
-                headers[header_name] = value
+                # Canonical scheme names: 'Secret' → primary value, 'Identity' → identity field
+                # Used in overlays for compound apiKey schemes (e.g. Discourse Api-Key + Api-Username)
+                if scheme_name == "Identity":
+                    identity = cred.get("identity")
+                    if identity:
+                        headers[header_name] = identity
+                    # else: identity not provided — skip header rather than inject empty string
+                else:
+                    headers[header_name] = value
             elif location == "query":
                 # Query params handled separately; store for URL building
                 # For now log and skip — query auth needs URL modification
@@ -193,23 +201,25 @@ async def _find_credential_for_host(
             bearer_scheme = scheme.get("scheme", "bearer").lower()
             if bearer_scheme == "bearer":
                 headers["Authorization"] = f"Bearer {value}"
-            elif bearer_scheme == "basic":
+            elif bearer_scheme in ("basic", "digest"):
                 import base64 as _b64
-                # BasicAuth encoding rules (data-driven, no API-specific logic):
+                # BasicAuth/DigestAuth credential construction (RFC 7617):
                 #
-                # 1. If value contains ":" — treat as raw "username:password",
-                #    base64-encode the whole thing directly.
-                # 2. If the scheme carries x-jentic-basic-username — use it as
-                #    the username: base64("{annotation}:{value}").
-                #    e.g. GitHub overlay sets x-jentic-basic-username: "x-access-token"
-                # 3. Fallback: base64(":{value}") — token as password, no username.
-                #    Safe generic default; works for most API-key-as-password schemes.
+                # The credential's `identity` field is the username.
+                # The credential's `value` field is the password/secret.
+                #
+                # Construction rules (in priority order):
+                # 1. value contains ":" → treat as pre-formatted "username:password", encode directly
+                # 2. identity is set → base64("{identity}:{value}")
+                # 3. fallback → base64("token:{value}") — works for PAT-style APIs like GitHub
+                #    where any non-empty username is accepted
+                identity = cred.get("identity")
                 if ":" in value:
                     _raw = value
-                elif "x-jentic-basic-username" in scheme:
-                    _raw = f"{scheme['x-jentic-basic-username']}:{value}"
+                elif identity:
+                    _raw = f"{identity}:{value}"
                 else:
-                    _raw = f":{value}"
+                    _raw = f"token:{value}"
                 headers["Authorization"] = f"Basic {_b64.b64encode(_raw.encode()).decode()}"
         elif scheme_type == "oauth2":
             headers["Authorization"] = f"Bearer {value}"
@@ -721,15 +731,13 @@ async def broker(request: Request, target: str):
                 "x-jentic-hint": "basic_auth_failure",
                 "message": (
                     f"BasicAuth to {upstream_host} failed ({upstream_response.status_code}). "
-                    "The credential value may be correct but the username format is wrong. "
-                    "Research the correct BasicAuth username format for this API, then submit "
-                    f"an overlay via POST /apis/{api_id}/overlays with the 'x-jentic-basic-username' "
-                    "extension on the BasicAuth security scheme. Example: "
-                    '{"overlay":"1.0.0","info":{"title":"BasicAuth username","version":"1.0.0"},'
-                    '"actions":[{"target":"$","update":{"components":{"securitySchemes":{"BasicAuth":'
-                    '{"type":"http","scheme":"basic","x-jentic-basic-username":"<username_here>"}}}}}]}'
+                    "The credential value may be correct but the identity (username) is wrong. "
+                    "PATCH /credentials/{id} with the correct 'identity' field. "
+                    "For most token-based APIs any username works; for traditional user/password APIs "
+                    "the identity must match the actual account username."
                 ),
-                "action": f"POST /apis/{api_id}/overlays",
+                "action": f"PATCH /credentials/{{id}}",
+                "example": {"identity": "your_username_here"},
                 "upstream_status": upstream_response.status_code,
                 "upstream_body": upstream_response.text[:512],
             }

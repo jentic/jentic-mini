@@ -362,6 +362,8 @@ async def init_db() -> None:
             # Pipedream: label column for connected accounts (display name per account)
             "ALTER TABLE oauth_broker_accounts ADD COLUMN label TEXT",
             # api_broker_apps: handled by CREATE TABLE IF NOT EXISTS above (no ALTER needed)
+            # Credential identity field (username / client_id / account SID etc.)
+            "ALTER TABLE credentials ADD COLUMN identity TEXT",
         ]
         for m in migrations:
             try:

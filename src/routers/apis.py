@@ -481,6 +481,96 @@ async def list_api_operations(
     }
 
 
+@router.get("/apis/{api_id:path}/credential-requirements",
+            summary="Credential requirements — what fields to provide when storing a credential for this API")
+async def get_credential_requirements(api_id: str):
+    """
+    Returns the credential fields required to authenticate with this API.
+
+    Derived from the API's security schemes (spec + confirmed overlays).
+    Tells the caller exactly what to provide in POST /credentials:
+    - `secret` is always required (token, password, API key)
+    - `identity` is required for basic/digest auth and compound apiKey schemes
+      where the overlay uses the canonical name 'Identity'
+    - `context` instructions appear for exotic schemes (JWT, AWS, OAuth2, etc.)
+
+    Use this endpoint to drive credential collection UIs or agent prompts.
+    """
+    from src.routers.overlays import get_merged_security_schemes
+
+    schemes = await get_merged_security_schemes(api_id)
+    if not schemes:
+        raise HTTPException(404, f"No security schemes found for '{api_id}'. "
+                                 f"Submit an overlay via POST /apis/{api_id}/overlays first.")
+
+    required_fields = [{"field": "secret", "label": "API Key / Token / Password", "required": True}]
+    notes = []
+    has_identity = False
+    has_ambiguous_compound = False
+
+    scheme_items = list(schemes.items())
+    apikey_schemes = [(name, s) for name, s in scheme_items if s.get("type") == "apiKey"]
+
+    for name, scheme in scheme_items:
+        stype = scheme.get("type", "")
+        sscheme = scheme.get("scheme", "").lower()
+
+        if stype == "http" and sscheme in ("basic", "digest"):
+            if not has_identity:
+                required_fields.append({
+                    "field": "identity",
+                    "label": "Username",
+                    "required": True,
+                    "note": f"Required for {sscheme} auth. Provide your account username."
+                })
+                has_identity = True
+
+        elif stype == "apiKey" and name == "Identity":
+            # Overlay uses canonical 'Identity' name — explicitly requires identity field
+            if not has_identity:
+                required_fields.append({
+                    "field": "identity",
+                    "label": scheme.get("x-label", "Username / Account ID"),
+                    "required": True,
+                    "note": f"Maps to the '{scheme.get('name', 'identity')}' header/param."
+                })
+                has_identity = True
+
+        elif stype == "apiKey" and len(apikey_schemes) > 1 and name not in ("Secret", "Identity"):
+            # Multiple apiKey schemes but not using canonical names — ambiguous
+            has_ambiguous_compound = True
+
+        elif stype == "oauth2":
+            notes.append("OAuth 2.0: store your access token as 'secret'. "
+                         "For client credential flows, use 'context': {\"client_id\": \"...\"}.")
+
+        elif stype == "http" and sscheme == "bearer":
+            notes.append("Bearer token: store your token as 'secret'.")
+
+    if has_ambiguous_compound:
+        notes.append(
+            "This API uses multiple API key schemes without canonical naming. "
+            "Create an overlay that renames them to 'Secret' (primary key) and 'Identity' (username/ID). "
+            f"POST to /apis/{api_id}/overlays. "
+            "Example: {\"overlay\":\"1.0.0\",\"info\":{\"title\":\"Auth\",\"version\":\"1.0.0\"},"
+            "\"actions\":[{\"target\":\"$\",\"update\":{\"components\":{\"securitySchemes\":"
+            "{\"Secret\":{\"type\":\"apiKey\",\"in\":\"header\",\"name\":\"Api-Key\"},"
+            "\"Identity\":{\"type\":\"apiKey\",\"in\":\"header\",\"name\":\"Api-Username\"}}}}}]}"
+        )
+
+    response = {
+        "api_id": api_id,
+        "schemes": {name: {"type": s.get("type"), "scheme": s.get("scheme"),
+                            "in": s.get("in"), "name": s.get("name")}
+                    for name, s in scheme_items},
+        "required_fields": required_fields,
+    }
+    if notes:
+        response["notes"] = notes
+
+    return response
+
+
 @router.get("/apis/{api_id:path}", summary="Get API summary — name, version, description, and stats", response_model=ApiOut)
 async def get_api(api_id: str):
     """Returns API metadata: title, version, description, base URL, vendor, and total operation count. Use GET /apis/{api_id}/operations to enumerate operations."""

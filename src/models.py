@@ -13,7 +13,13 @@ from src.validators import NormModel, NormStr
 class CredentialCreate(NormModel):
     label: str
     value: str
-    """Plain-text secret; encrypted before storage."""
+    """Plain-text secret; encrypted before storage. Always the primary credential — token, password, API key."""
+    identity: str | None = None
+    """Optional identity field — username, client ID, account SID etc.
+    Required for http/basic and http/digest schemes (username), and for compound
+    apiKey schemes where one scheme is named 'Identity' in the overlay.
+    Leave null for Bearer tokens, single-value API keys, and GitHub PAT-style BasicAuth
+    where any username is accepted."""
     api_id: str | None = None
     """API this credential belongs to (e.g. 'techpreneurs.ie'). Required for broker injection."""
     scheme_name: str | None = None
@@ -23,6 +29,8 @@ class CredentialCreate(NormModel):
 class CredentialPatch(NormModel):
     label: str | None = None
     value: str | None = None
+    identity: str | None = None
+    """Update the identity (username / client ID) for this credential."""
     api_id: str | None = None
     scheme_name: str | None = None
 
@@ -112,6 +120,8 @@ class CredentialOut(BaseModel):
     model_config = {"extra": "ignore"}
     id: str
     label: str
+    identity: str | None = None
+    """Identity field (username, client ID, etc.) — returned so clients can confirm what was stored."""
     api_id: str | None = None
     scheme_name: str | None = None
     created_at: float | None = None
