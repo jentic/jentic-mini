@@ -254,6 +254,7 @@ async def _find_credential_for_host(
 
 async def _find_pipedream_credential_for_host(
     host: str,
+    path: str,
     toolkit_id: str | None,
     alias: str | None = None,
 ) -> tuple[str | None, str | None]:
@@ -263,11 +264,16 @@ async def _find_pipedream_credential_for_host(
     IS the Pipedream account_id (apn_xxx). This bypasses the apis table lookup —
     Pipedream-connected APIs may not have a spec in the local catalog.
 
+    Uses longest-prefix matching: the credential whose api_id is the longest prefix
+    of (host + path) wins. This correctly disambiguates googleapis.com/calendar from
+    googleapis.com/gmail when both are provisioned.
+
     If alias is specified, only the credential with that ID is considered.
     Returns (None, None) if no Pipedream credential is provisioned for this host+toolkit.
     """
     if not toolkit_id:
         return None, None
+    full_path = host + path  # e.g. "googleapis.com/calendar/v3/calendars/primary"
     from src.db import DEFAULT_TOOLKIT_ID
     async with get_db() as db:
         if alias:
@@ -279,19 +285,22 @@ async def _find_pipedream_credential_for_host(
             ) as cur:
                 row = await cur.fetchone()
         elif toolkit_id == DEFAULT_TOOLKIT_ID:
+            # Longest-prefix match: find the credential whose api_id is a prefix of host+path
             async with db.execute(
                 "SELECT id, encrypted_value FROM credentials "
-                "WHERE api_id=? AND auth_type='pipedream_oauth' LIMIT 1",
-                (host,),
+                "WHERE ? LIKE (api_id || '%') AND auth_type='pipedream_oauth' "
+                "ORDER BY length(api_id) DESC LIMIT 1",
+                (full_path,),
             ) as cur:
                 row = await cur.fetchone()
         else:
             async with db.execute(
                 """SELECT c.id, c.encrypted_value FROM credentials c
                    JOIN toolkit_credentials tc ON tc.credential_id = c.id
-                   WHERE tc.toolkit_id=? AND c.api_id=? AND c.auth_type='pipedream_oauth'
-                   LIMIT 1""",
-                (toolkit_id, host),
+                   WHERE tc.toolkit_id=? AND ? LIKE (c.api_id || '%')
+                   AND c.auth_type='pipedream_oauth'
+                   ORDER BY length(c.api_id) DESC LIMIT 1""",
+                (toolkit_id, full_path),
             ) as cur:
                 row = await cur.fetchone()
     if not row:
@@ -503,6 +512,20 @@ async def broker(request: Request, target: str):
             headers={"X-Jentic-Error": "true", "X-Jentic-Execution-Id": execution_id},
         )
 
+    # ── Compute routing host (used by both main and Pipedream paths) ──────────
+    # Look up base_url from the apis table for the matched api_id. This decouples
+    # the api_id (e.g. googleapis.com/calendar) from the real HTTP host
+    # (www.googleapis.com). Falls back to upstream_host if no base_url found.
+    routing_host = upstream_host
+    if api_id and not _is_self:
+        async with get_db() as _rdb:
+            async with _rdb.execute("SELECT base_url FROM apis WHERE id=?", (api_id,)) as _rcur:
+                _rrow = await _rcur.fetchone()
+            if _rrow and _rrow[0]:
+                _parsed_host = urlparse(_rrow[0]).hostname
+                if _parsed_host:
+                    routing_host = _parsed_host
+
     # ── Pipedream credential path ─────────────────────────────────────────────
     # If the vault lookup yielded no headers, check for an explicitly-provisioned
     # Pipedream credential (auth_type='pipedream_oauth'). This path requires:
@@ -512,7 +535,7 @@ async def broker(request: Request, target: str):
     # unauthenticated forwarding (or the request will fail upstream with 401).
     if not inject_headers:
         pd_account_id, pd_cred_id = await _find_pipedream_credential_for_host(
-            upstream_host, toolkit_id, alias=credential_alias
+            upstream_host, upstream_path, toolkit_id, alias=credential_alias
         )
         if pd_account_id and pd_cred_id:
             # Policy check for this Pipedream credential (same gate as vault path)
@@ -560,7 +583,7 @@ async def broker(request: Request, target: str):
                 }
                 _pd_resp = await _pd_broker.proxy_request_with_account(
                     account_id=pd_account_id,
-                    api_host=upstream_host,
+                    api_host=routing_host,
                     upstream_path=upstream_path,
                     method=request.method,
                     headers=_fwd_hdrs,
@@ -584,20 +607,7 @@ async def broker(request: Request, target: str):
                     )
 
     # ── Build upstream URL ────────────────────────────────────────────────────
-    # Look up the registered base_url for this API — the api_id host portion may
-    # differ from the real HTTP host (e.g. api_id=googleapis.com/calendar but
-    # base_url=https://www.googleapis.com/calendar/v3 → route to www.googleapis.com).
-    # This is the single source of truth for where requests actually go.
-    routing_host = upstream_host
-    if api_id and not _is_self:
-        async with get_db() as _rdb:
-            async with _rdb.execute("SELECT base_url FROM apis WHERE id=?", (api_id,)) as _rcur:
-                _rrow = await _rcur.fetchone()
-            if _rrow and _rrow[0]:
-                _parsed_host = urlparse(_rrow[0]).hostname
-                if _parsed_host:
-                    routing_host = _parsed_host
-
+    # routing_host was computed above from base_url lookup — use it here too.
     import os as _os2
     _internal_port = int(_os2.environ.get("JENTIC_INTERNAL_PORT", "8900"))
     if _is_self:

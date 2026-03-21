@@ -13,3 +13,5 @@ vendor/arazzo-engine/
 /tmp/
 node_modules
 vendor/arazzo-engine
+src/specs/
+src/workflows/catalog_*

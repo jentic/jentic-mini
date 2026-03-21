@@ -403,7 +403,7 @@ class PipedreamOAuthBroker:
         and create/update credentials in the vault so they can be provisioned to toolkits.
 
         Calls Pipedream's /accounts endpoint, maps app slugs back to api_hosts,
-        upserts rows, and writes a credential (scheme_name='pipedream_oauth') for
+        upserts rows, and writes a credential (auth_type='pipedream_oauth') for
         each connected account. Labels come from oauth_broker_connect_labels if
         set at connect-link time; otherwise fall back to the app slug.
 
@@ -480,15 +480,20 @@ class PipedreamOAuthBroker:
                         # Update label and value in case either changed
                         await db.execute(
                             "UPDATE credentials SET label=?, encrypted_value=?, "
-                            "api_id=?, scheme_name='pipedream_oauth', "
+                            "api_id=?, auth_type='pipedream_oauth', "
                             "updated_at=unixepoch() WHERE id=?",
                             (label, enc_account_id, api_host, cred_id),
                         )
                     else:
-                        env_var = f"PIPEDREAM_{account_id.upper().replace('-', '_')}"
+                        # env_var must be unique per (account_id, api_host) — include
+                        # the host slug so multiple APIs sharing one Pipedream account
+                        # (e.g. googleapis.com/gmail and googleapis.com/calendar) each
+                        # get their own env_var and don't collide on the UNIQUE constraint.
+                        safe_host = host_slug.upper().replace("/", "_").replace("-", "_")
+                        env_var = f"PIPEDREAM_{account_id.upper().replace('-', '_')}_{safe_host}"
                         await db.execute(
                             "INSERT INTO credentials "
-                            "(id, label, env_var, encrypted_value, api_id, scheme_name) "
+                            "(id, label, env_var, encrypted_value, api_id, auth_type) "
                             "VALUES (?, ?, ?, ?, ?, 'pipedream_oauth')",
                             (cred_id, label, env_var, enc_account_id, api_host),
                         )
