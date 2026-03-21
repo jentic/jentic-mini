@@ -543,6 +543,48 @@ async def get_api_openapi(api_id: str):
     )
 
 
+@router.get("/apis/{api_id:path}/operations", summary="List operations for an API — enumerate all available actions", response_model=OperationListPage)
+async def list_api_operations(
+    api_id: str,
+    page: int = Query(1, ge=1, description="Page number (1-indexed)"),
+    limit: int = Query(50, ge=1, le=200, description="Results per page"),
+):
+    """Returns paginated list of operations for the given API. Each item has capability id, summary, and description. Use GET /inspect/{id} for full schema."""
+    offset = (page - 1) * limit
+    async with get_db() as db:
+        async with db.execute("SELECT id FROM apis WHERE id=?", (api_id,)) as cur:
+            if not await cur.fetchone():
+                raise HTTPException(404, f"API '{api_id}' not found")
+        async with db.execute("SELECT COUNT(*) FROM operations WHERE api_id=?", (api_id,)) as cur:
+            total = (await cur.fetchone())[0]
+        async with db.execute(
+            """SELECT id, api_id, operation_id, jentic_id, method, path, summary, description
+               FROM operations WHERE api_id=? ORDER BY jentic_id LIMIT ? OFFSET ?""",
+            (api_id, limit, offset),
+        ) as cur:
+            rows = await cur.fetchall()
+
+    total_pages = max(1, (total + limit - 1) // limit)
+    has_more = page < total_pages
+    base = f"/apis/{api_id}/operations"
+    return {
+        "data": [_row_to_op(r) for r in rows],
+        "page": page,
+        "limit": limit,
+        "total": total,
+        "total_pages": total_pages,
+        "has_more": has_more,
+        "_links": {
+            "self": f"{base}?page={page}&limit={limit}",
+            **({"next": f"{base}?page={page + 1}&limit={limit}"} if has_more else {}),
+            **({"prev": f"{base}?page={page - 1}&limit={limit}"} if page > 1 else {}),
+        },
+    }
+
+
+# NOTE: This catch-all route ({api_id:path} matches slashes) MUST be registered
+# last among /apis/{api_id:path}/* routes. FastAPI/Starlette match in registration
+# order — if this route appears first, it swallows /operations, /openapi.json, etc.
 @router.get("/apis/{api_id:path}", summary="Get API details — metadata, auth schemes, servers, and optional spec sections", response_model=ApiOut)
 async def get_api(
     api_id: str,
@@ -669,43 +711,7 @@ async def get_api(
     return response
 
 
-@router.get("/apis/{api_id:path}/operations", summary="List operations for an API — enumerate all available actions", response_model=OperationListPage)
-async def list_api_operations(
-    api_id: str,
-    page: int = Query(1, ge=1, description="Page number (1-indexed)"),
-    limit: int = Query(50, ge=1, le=200, description="Results per page"),
-):
-    """Returns paginated list of operations for the given API. Each item has capability id, summary, and description. Use GET /inspect/{id} for full schema."""
-    offset = (page - 1) * limit
-    async with get_db() as db:
-        async with db.execute("SELECT id FROM apis WHERE id=?", (api_id,)) as cur:
-            if not await cur.fetchone():
-                raise HTTPException(404, f"API '{api_id}' not found")
-        async with db.execute("SELECT COUNT(*) FROM operations WHERE api_id=?", (api_id,)) as cur:
-            total = (await cur.fetchone())[0]
-        async with db.execute(
-            """SELECT id, api_id, operation_id, jentic_id, method, path, summary, description
-               FROM operations WHERE api_id=? ORDER BY jentic_id LIMIT ? OFFSET ?""",
-            (api_id, limit, offset),
-        ) as cur:
-            rows = await cur.fetchall()
-
-    total_pages = max(1, (total + limit - 1) // limit)
-    has_more = page < total_pages
-    base = f"/apis/{api_id}/operations"
-    return {
-        "data": [_row_to_op(r) for r in rows],
-        "page": page,
-        "limit": limit,
-        "total": total,
-        "total_pages": total_pages,
-        "has_more": has_more,
-        "_links": {
-            "self": f"{base}?page={page}&limit={limit}",
-            **({"next": f"{base}?page={page + 1}&limit={limit}"} if has_more else {}),
-            **({"prev": f"{base}?page={page - 1}&limit={limit}"} if page > 1 else {}),
-        },
-    }
+@router.delete("/apis", status_code=204, include_in_schema=False)
 async def delete_api(
     id: str = Query(..., description="API id to delete, e.g. api.elevenlabs.io"),
     rebuild: bool = Query(False, description="Rebuild BM25 index after delete (slow)")
