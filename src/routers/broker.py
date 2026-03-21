@@ -189,11 +189,20 @@ async def _find_credential_for_host(
 
         # Find the matching scheme(s) in the spec by auth_type
         if auth_type == "bearer":
+            # Find any HTTP auth scheme that isn't basic/digest.
+            # Use the actual scheme name from the spec/overlay — e.g. "bearer" → "Bearer",
+            # "token" → "Token". This lets vendor-specific prefixes (Deepgram "Token",
+            # GitHub "Bearer", etc.) work without touching the credential.
             scheme = next(
-                (v for v in schemes.values() if v.get("type") == "http" and v.get("scheme", "").lower() == "bearer"),
+                (v for v in schemes.values()
+                 if v.get("type") == "http" and v.get("scheme", "").lower() not in ("basic", "digest")),
                 None,
             )
             if scheme:
+                scheme_prefix = scheme.get("scheme", "bearer").capitalize()
+                headers["Authorization"] = f"{scheme_prefix} {value}"
+            else:
+                # No overlay/spec scheme found — fall back to Bearer (most common)
                 headers["Authorization"] = f"Bearer {value}"
 
         elif auth_type == "basic":
