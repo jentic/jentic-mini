@@ -131,7 +131,7 @@ export const oauthBrokers = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ external_user_id: externalUserId }),
     }),
-  connectLink: (id: string, body: { app: string; external_user_id?: string; label: string }) =>
+  connectLink: (id: string, body: { app: string; external_user_id?: string; label: string; api_id?: string }) =>
     fetchJson<ConnectLinkResponse>(`/oauth-brokers/${encodeURIComponent(id)}/connect-link`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

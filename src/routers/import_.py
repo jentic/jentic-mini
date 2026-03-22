@@ -129,6 +129,10 @@ async def _register_openapi(doc: dict, saved_path: str, force_api_id: str | None
         title = doc.get("info", {}).get("title", "unknown")
         api_id = re.sub(r"[^a-z0-9]", "-", title.lower()).strip("-")[:40]
 
+    # Allow caller to override the derived ID (e.g. catalog import uses canonical catalog api_id)
+    if force_api_id:
+        api_id = force_api_id
+
     name = doc.get("info", {}).get("title") or api_id
     description = doc.get("info", {}).get("description")
 

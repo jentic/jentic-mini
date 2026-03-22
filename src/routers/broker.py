@@ -110,29 +110,60 @@ async def _find_credential_for_host(
         candidates.append(".".join(parts[1:]))
 
     api_id = None
+    cred_host = None  # real hostname for credential lookup (may differ from api_id)
     async with get_db() as db:
         for candidate in candidates:
-            async with db.execute(
-                "SELECT id FROM apis WHERE id=? OR id LIKE ?",
-                (candidate, f"{candidate}%"),
-            ) as cur:
+            # For subdomain-style hosts (e.g. calendar.googleapis.com), also try
+            # the catalog convention of parent-domain/subdomain (googleapis.com/calendar)
+            # by extracting the leftmost subdomain label as a path hint.
+            sub_hint = host.split(".")[0] if host != candidate else None
+            row = None
+
+            # 1. Exact match
+            async with db.execute("SELECT id, base_url FROM apis WHERE id=?", (candidate,)) as cur:
                 row = await cur.fetchone()
+
+            # 2. Subdomain-hinted prefix match (e.g. googleapis.com/calendar)
+            if not row and sub_hint:
+                async with db.execute(
+                    "SELECT id, base_url FROM apis WHERE id LIKE ? ORDER BY length(id) DESC LIMIT 1",
+                    (f"{candidate}/{sub_hint}%",),
+                ) as cur:
+                    row = await cur.fetchone()
+
+            # 3. General longest-prefix match (fallback)
+            if not row:
+                async with db.execute(
+                    "SELECT id, base_url FROM apis WHERE id LIKE ? ORDER BY length(id) DESC LIMIT 1",
+                    (f"{candidate}%",),
+                ) as cur:
+                    row = await cur.fetchone()
+
             if row:
                 api_id = row[0]
+                # Credentials are stored under the real HTTP host, not the catalog api_id
+                # (which may be a normalised form like googleapis.com/gmail vs gmail.googleapis.com)
+                if row[1]:
+                    from urllib.parse import urlparse as _up
+                    _h = _up(row[1]).hostname
+                    if _h:
+                        cred_host = _h
                 break
 
-    _broker_log.debug("CRED LOOKUP: host=%r → api_id=%r (toolkit=%r alias=%r)", host, api_id, toolkit_id, alias)
+    cred_lookup_key = cred_host or api_id  # use real hostname for credential lookup
+
+    _broker_log.debug("CRED LOOKUP: host=%r → api_id=%r cred_host=%r (toolkit=%r alias=%r)", host, api_id, cred_host, toolkit_id, alias)
 
     if not api_id:
         return {}, None, None
 
-    # Get credentials bound to this toolkit + api
-    creds = await vault.get_credentials_for_api(toolkit_id, api_id)
-    _broker_log.debug("CRED LOOKUP: %d cred(s) for api_id=%r: %s", len(creds), api_id, [c.get("id") for c in creds])
+    # Get credentials bound to this toolkit + api (use real hostname as lookup key)
+    creds = await vault.get_credentials_for_api(toolkit_id, cred_lookup_key)
+    _broker_log.debug("CRED LOOKUP: %d cred(s) for cred_lookup_key=%r: %s", len(creds), cred_lookup_key, [c.get("id") for c in creds])
 
     if not creds and toolkit_id:
         raise ValueError(
-            f"No credentials found for '{api_id}' in toolkit '{toolkit_id}'. "
+            f"No credentials found for '{cred_lookup_key}' in toolkit '{toolkit_id}'. "
             f"Use POST /toolkits/{toolkit_id}/access-requests to request access."
         )
 
@@ -569,7 +600,18 @@ async def broker(request: Request, target: str):
 
             # Find the Pipedream broker instance and proxy using the credential's account_id
             from src.oauth_broker import registry as _oauth_registry
-            _ext_user = request.headers.get("x-jentic-external-user-id", "default")
+            # Always use the external_user_id stored against this account in the DB —
+            # never trust the caller-supplied header, which may differ (e.g. sdk sends
+            # michael@jentic.com but the account was registered under "default")
+            _ext_user = "default"
+            async with get_db() as _eudb:
+                async with _eudb.execute(
+                    "SELECT external_user_id FROM oauth_broker_accounts WHERE account_id=? LIMIT 1",
+                    (pd_account_id,),
+                ) as _eucur:
+                    _eurow = await _eucur.fetchone()
+                    if _eurow:
+                        _ext_user = _eurow[0]
             _pd_broker = None
             for _b in _oauth_registry.brokers:
                 if hasattr(_b, "proxy_request_with_account"):

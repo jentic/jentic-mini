@@ -215,9 +215,10 @@ async def ensure_catalog_api_imported(api_id: str) -> str | None:
         raise HTTPException(502, f"No download_url for spec file '{spec_file['name']}'")
 
     from src.routers.import_ import ImportRequest, ImportSource, import_sources
+    safe_name = api_id.replace("/", "_")
     try:
         result = await import_sources(
-            ImportRequest(sources=[ImportSource(type="url", url=download_url, filename=f"{api_id.replace('/', '_')}_{spec_file['name']}", force_api_id=api_id)])
+            ImportRequest(sources=[ImportSource(type="url", url=download_url, filename=f"{safe_name}_{spec_file['name']}", force_api_id=api_id)])
         )
     except Exception as e:
         raise HTTPException(500, f"Auto-import failed for catalog API '{api_id}': {e}")

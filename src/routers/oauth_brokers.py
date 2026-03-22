@@ -325,6 +325,17 @@ class ConnectLinkRequest(NormModel):
         ),
         examples=["work email", "personal email", "main Slack workspace"],
     )
+    api_id: str | None = Field(
+        None,
+        description=(
+            "The Jentic catalog API ID this connection maps to (e.g. `googleapis.com/gmail`). "
+            "If provided, this overrides the automatic slug-map lookup during sync — the "
+            "credential will be registered under exactly this API ID. "
+            "Find the right ID via `GET /catalog?q=<name>`. "
+            "If omitted, the slug map is used as a fallback (may not match the catalog ID)."
+        ),
+        examples=["googleapis.com/gmail", "slack.com/api", "api.github.com"],
+    )
 
 
 @router.post(
@@ -379,11 +390,11 @@ async def create_connect_link(broker_id: BrokerIdPath, body: ConnectLinkRequest,
     async with get_db() as db:
         await db.execute(
             """INSERT OR REPLACE INTO oauth_broker_connect_labels
-               (id, broker_id, external_user_id, app_slug, label, created_at)
-               VALUES (?, ?, ?, ?, ?, ?)""",
+               (id, broker_id, external_user_id, app_slug, label, api_id, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
             (
                 str(_uuid.uuid4()), broker_id, body.external_user_id,
-                body.app, body.label, time.time(),
+                body.app, body.label, body.api_id, time.time(),
             ),
         )
         await db.commit()

@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { oauthBrokers } from '../api/client'
 import type { OAuthBroker, OAuthAccount, ConnectLinkResponse } from '../api/client'
@@ -99,9 +99,69 @@ function AddBrokerForm({ onClose }: { onClose: () => void }) {
 
 // ── Connect Account Panel ────────────────────────────────────────
 
-function ConnectAccountPanel({ brokerId, externalUserId }: { brokerId: string; externalUserId: string }) {
+function CatalogSearch({ onSelect, mirrorValue }: { onSelect: (apiId: string) => void; mirrorValue?: string }) {
+  const [q, setQ] = useState('')
+  const [dirty, setDirty] = useState(false)
+  const [selected, setSelected] = useState('')
+
+  // Mirror the slug value unless user has manually edited the search field
+  useEffect(() => {
+    if (!dirty && mirrorValue !== undefined) {
+      setQ(mirrorValue)
+    }
+  }, [mirrorValue, dirty])
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['catalog-search', q],
+    queryFn: () => fetch(`/catalog?q=${encodeURIComponent(q)}&limit=10`, { credentials: 'include' })
+      .then(r => r.json()),
+    enabled: q.length >= 2,
+  })
+
+  const entries: any[] = data?.data ?? []
+
+  if (selected) {
+    return (
+      <div className="flex items-center gap-2">
+        <span className="text-xs font-mono bg-muted px-2 py-1 rounded">{selected}</span>
+        <button className="text-xs text-muted-foreground underline" onClick={() => { setSelected(''); onSelect('') }}>change</button>
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-1.5">
+      <input
+        className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-primary/50"
+        value={q}
+        onChange={e => { setQ(e.target.value); if (e.target.value === '') { setDirty(false) } else { setDirty(true) }; setSelected('') }}
+        placeholder="Search catalog, e.g. gmail, slack, github"
+      />
+      {q.length >= 2 && (
+        <div className="border border-border rounded-lg overflow-hidden max-h-40 overflow-y-auto">
+          {isLoading ? (
+            <p className="text-xs text-muted-foreground p-2">Searching...</p>
+          ) : entries.length === 0 ? (
+            <p className="text-xs text-muted-foreground p-2">No results for "{q}"</p>
+          ) : entries.map((e: any) => (
+            <button
+              key={e.api_id}
+              className="w-full text-left px-3 py-2 text-xs hover:bg-muted border-b border-border last:border-0 font-mono"
+              onClick={() => { setSelected(e.api_id); setQ(''); onSelect(e.api_id) }}
+            >
+              {e.api_id}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function ConnectAccountPanel({ brokerId, externalUserId, onDone }: { brokerId: string; externalUserId: string; onDone?: () => void }) {
   const [appSlug, setAppSlug] = useState('')
   const [label, setLabel] = useState('')
+  const [apiId, setApiId] = useState('')
   const [connectLink, setConnectLink] = useState<ConnectLinkResponse | null>(null)
 
   const linkMutation = useMutation({
@@ -110,6 +170,7 @@ function ConnectAccountPanel({ brokerId, externalUserId }: { brokerId: string; e
         app: appSlug,
         external_user_id: externalUserId,
         label: label || appSlug,
+        api_id: apiId || undefined,
       }),
     onSuccess: (data) => setConnectLink(data),
   })
@@ -131,9 +192,9 @@ function ConnectAccountPanel({ brokerId, externalUserId }: { brokerId: string; e
           Open Connect Link
         </a>
         <p className="text-xs text-muted-foreground">
-          Click the link above to connect your account in Pipedream. Return here and click <strong>Sync</strong> when done.
+          Click the link above to connect your account in Pipedream. Return here and click <strong>Done</strong> when finished — this will sync your new connection automatically.
         </p>
-        <Button variant="ghost" size="sm" onClick={() => setConnectLink(null)}>Done</Button>
+        <Button variant="ghost" size="sm" onClick={() => { setConnectLink(null); onDone?.() }}>Done — Sync Now</Button>
       </div>
     )
   }
@@ -151,10 +212,14 @@ function ConnectAccountPanel({ brokerId, externalUserId }: { brokerId: string; e
           <input className={inputClass} value={label} onChange={e => setLabel(e.target.value)} placeholder="e.g. My Gmail" />
         </div>
       </div>
+      <div>
+        <label className="block text-xs text-muted-foreground mb-1">Catalog API <span className="text-danger">*</span></label>
+        <CatalogSearch onSelect={setApiId} mirrorValue={appSlug} />
+      </div>
       {linkMutation.isError && (
         <p className="text-xs text-danger">{(linkMutation.error as Error).message}</p>
       )}
-      <Button size="sm" onClick={() => linkMutation.mutate()} loading={linkMutation.isPending} disabled={!appSlug}>
+      <Button size="sm" onClick={() => linkMutation.mutate()} loading={linkMutation.isPending} disabled={!appSlug || !apiId}>
         <ExternalLink className="h-3.5 w-3.5" /> Get Connect Link
       </Button>
     </div>
@@ -206,7 +271,7 @@ function BrokerAccounts({ broker }: { broker: OAuthBroker }) {
       )}
 
       {showConnect && (
-        <ConnectAccountPanel brokerId={broker.id} externalUserId={externalUserId} />
+        <ConnectAccountPanel brokerId={broker.id} externalUserId={externalUserId} onDone={() => { setShowConnect(false); syncMutation.mutate() }} />
       )}
 
       {isLoading ? (
