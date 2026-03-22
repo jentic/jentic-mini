@@ -167,6 +167,7 @@ function BrokerAccounts({ broker }: { broker: OAuthBroker }) {
   const queryClient = useQueryClient()
   const externalUserId = broker.config?.default_external_user_id ?? 'default'
   const [showConnect, setShowConnect] = useState(false)
+  const [confirmDeleteHost, setConfirmDeleteHost] = useState<string | null>(null)
 
   const { data: accounts, isLoading } = useQuery({
     queryKey: ['oauth-broker-accounts', broker.id],
@@ -176,6 +177,14 @@ function BrokerAccounts({ broker }: { broker: OAuthBroker }) {
   const syncMutation = useMutation({
     mutationFn: () => oauthBrokers.sync(broker.id, externalUserId),
     onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['oauth-broker-accounts', broker.id] })
+    },
+  })
+
+  const deleteAccountMutation = useMutation({
+    mutationFn: (apiHost: string) => oauthBrokers.deleteAccount(broker.id, apiHost, externalUserId),
+    onSuccess: () => {
+      setConfirmDeleteHost(null)
       queryClient.invalidateQueries({ queryKey: ['oauth-broker-accounts', broker.id] })
     },
   })
@@ -207,24 +216,62 @@ function BrokerAccounts({ broker }: { broker: OAuthBroker }) {
       ) : (
         <div className="space-y-1.5">
           {accounts.map(acc => (
-            <div key={acc.id} className="flex items-center gap-3 p-3 bg-background border border-border rounded-lg text-sm">
-              <Shield className="h-4 w-4 text-accent-teal shrink-0" />
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className="font-medium text-foreground">{acc.label || acc.app_slug}</span>
-                  <Badge variant="default" className="text-[10px]">{acc.app_slug}</Badge>
-                  {acc.api_host && <span className="text-xs text-muted-foreground font-mono">{acc.api_host}</span>}
+            <div key={acc.api_host} className="border border-border rounded-lg overflow-hidden">
+              <div className="flex items-center gap-3 p-3 bg-background text-sm">
+                <Shield className="h-4 w-4 text-accent-teal shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-medium text-foreground">{acc.label || acc.app_slug}</span>
+                    <Badge variant="default" className="text-[10px]">{acc.app_slug}</Badge>
+                    {acc.api_host && <span className="text-xs text-muted-foreground font-mono">{acc.api_host}</span>}
+                  </div>
+                  <div className="flex items-center gap-3 mt-0.5">
+                    <span className="text-xs text-muted-foreground">account: {acc.account_id}</span>
+                    {acc.synced_at && (
+                      <span className="text-xs text-muted-foreground">synced {new Date(acc.synced_at).toLocaleString()}</span>
+                    )}
+                  </div>
                 </div>
-                <div className="flex items-center gap-3 mt-0.5">
-                  <span className="text-xs text-muted-foreground">account: {acc.account_id}</span>
-                  {acc.synced_at && (
-                    <span className="text-xs text-muted-foreground">synced {new Date(acc.synced_at).toLocaleString()}</span>
-                  )}
-                </div>
+                <Badge variant={acc.healthy ? 'success' : 'danger'} className="text-[10px]">
+                  {acc.healthy ? 'healthy' : 'unhealthy'}
+                </Badge>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-destructive hover:text-destructive shrink-0"
+                  onClick={() => setConfirmDeleteHost(acc.api_host)}
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </Button>
               </div>
-              <Badge variant={acc.healthy ? 'success' : 'danger'} className="text-[10px]">
-                {acc.healthy ? 'healthy' : 'unhealthy'}
-              </Badge>
+
+              {confirmDeleteHost === acc.api_host && (
+                <div className="px-3 pb-3 pt-1 bg-destructive/5 border-t border-border text-xs space-y-2">
+                  <p className="font-medium text-destructive">Remove this connection?</p>
+                  <p className="text-muted-foreground">This will:</p>
+                  <ul className="list-disc list-inside text-muted-foreground space-y-0.5 ml-1">
+                    <li>Revoke <strong>{acc.label || acc.app_slug}</strong> in Pipedream (upstream provider)</li>
+                    <li>Remove the credential from any toolkits it's provisioned to</li>
+                    <li>Delete the credential from this instance</li>
+                  </ul>
+                  {deleteAccountMutation.isError && (
+                    <p className="text-destructive">{String(deleteAccountMutation.error)}</p>
+                  )}
+                  <div className="flex gap-2 pt-1">
+                    <Button
+                      variant="danger"
+                      size="sm"
+                      loading={deleteAccountMutation.isPending}
+                      onClick={() => deleteAccountMutation.mutate(acc.api_host)}
+                    >
+                      Remove & Revoke
+                    </Button>
+                    <Button variant="ghost" size="sm" onClick={() => setConfirmDeleteHost(null)}>
+                      Cancel
+                    </Button>
+                  </div>
+                </div>
+              )}
             </div>
           ))}
         </div>

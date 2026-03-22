@@ -117,6 +117,14 @@ export const oauthBrokers = {
     }),
   accounts: (id: string, externalUserId = 'default') =>
     fetchJson<OAuthAccount[]>(`/oauth-brokers/${encodeURIComponent(id)}/accounts?external_user_id=${encodeURIComponent(externalUserId)}`),
+  deleteAccount: (id: string, apiHost: string, externalUserId = 'default') =>
+    fetch(`/oauth-brokers/${encodeURIComponent(id)}/accounts/${encodeURIComponent(apiHost)}?external_user_id=${encodeURIComponent(externalUserId)}`, {
+      method: 'DELETE',
+      credentials: 'include',
+    }).then(async r => {
+      if (!r.ok) { const e = await r.json().catch(() => ({})); throw new Error(e.detail || 'Failed to delete account') }
+      return r.json()
+    }),
   sync: (id: string, externalUserId = 'default') =>
     fetchJson<SyncResponse>(`/oauth-brokers/${encodeURIComponent(id)}/sync`, {
       method: 'POST',

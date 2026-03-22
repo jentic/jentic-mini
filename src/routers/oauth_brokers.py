@@ -514,6 +514,100 @@ async def list_broker_accounts(broker_id: BrokerIdPath, external_user_id: Extern
 
 
 @router.delete(
+    "/{broker_id}/accounts/{api_host:path}",
+    summary="Remove a connected account from an OAuth broker",
+    dependencies=[Depends(require_human_session)],
+)
+async def delete_broker_account(broker_id: BrokerIdPath, api_host: str, external_user_id: ExternalUserIdQuery = None):
+    """Remove a specific connected account from this broker.
+
+    This performs three actions in order:
+    1. Revokes the account in the upstream provider (Pipedream) via their API
+    2. Removes the associated credential from all toolkit provisioning
+    3. Deletes the credential from the vault and the account from the local DB
+
+    If the Pipedream revoke fails, the local cleanup still proceeds (with a warning).
+    """
+    ext_uid = external_user_id or "default"
+
+    async with get_db() as db:
+        async with db.execute("SELECT id FROM oauth_brokers WHERE id=?", (broker_id,)) as cur:
+            if not await cur.fetchone():
+                raise HTTPException(404, f"OAuth broker '{broker_id}' not found")
+
+        async with db.execute(
+            "SELECT account_id FROM oauth_broker_accounts WHERE broker_id=? AND api_host=? AND external_user_id=?",
+            (broker_id, api_host, ext_uid),
+        ) as cur:
+            row = await cur.fetchone()
+
+    if not row:
+        raise HTTPException(404, f"No connected account found for api_host='{api_host}' external_user_id='{ext_uid}'")
+
+    account_id = row[0]
+    host_slug = api_host.replace(".", "-")
+    cred_id = f"pipedream-{account_id}-{host_slug}"
+
+    # 1. Revoke upstream in Pipedream
+    pipedream_revoked = False
+    live_broker = next(
+        (b for b in oauth_broker_registry.brokers if getattr(b, "broker_id", None) == broker_id),
+        None,
+    )
+    if live_broker is None:
+        from src.brokers.pipedream import PipedreamOAuthBroker
+        brokers = await PipedreamOAuthBroker.from_db()
+        live_broker = next((b for b in brokers if b.broker_id == broker_id), None)
+
+    if live_broker is not None:
+        try:
+            import urllib.request as _urlreq
+            import urllib.error as _urlerr
+            pd_token = await live_broker._get_access_token()
+            pd_url = f"https://api.pipedream.com/v1/connect/{live_broker.project_id}/accounts/{account_id}"
+            req = _urlreq.Request(pd_url, method="DELETE")
+            req.add_header("Authorization", f"Bearer {pd_token}")
+            req.add_header("X-PD-Environment", live_broker.environment)
+            try:
+                with _urlreq.urlopen(req, timeout=10):
+                    pass
+                pipedream_revoked = True
+                log.info("Pipedream account %s revoked via API", account_id)
+            except _urlerr.HTTPError as http_err:
+                body = http_err.read().decode("utf-8", errors="replace")
+                log.warning("Failed to revoke Pipedream account %s: HTTP %s %s — body: %s — continuing with local cleanup",
+                            account_id, http_err.code, http_err.reason, body)
+        except Exception as exc:
+            log.warning("Failed to revoke Pipedream account %s: %s — continuing with local cleanup", account_id, exc)
+
+    # 2. Remove from toolkit provisioning
+    async with get_db() as db:
+        await db.execute("DELETE FROM toolkit_credentials WHERE credential_id=?", (cred_id,))
+        await db.commit()
+
+    # 3. Delete from vault
+    await vault.delete_credential(cred_id)
+
+    # 4. Delete from oauth_broker_accounts
+    async with get_db() as db:
+        await db.execute(
+            "DELETE FROM oauth_broker_accounts WHERE broker_id=? AND api_host=? AND external_user_id=?",
+            (broker_id, api_host, ext_uid),
+        )
+        await db.commit()
+
+    return {
+        "status": "ok",
+        "broker_id": broker_id,
+        "api_host": api_host,
+        "account_id": account_id,
+        "credential_id": cred_id,
+        "pipedream_revoked": pipedream_revoked,
+        "deleted": True,
+    }
+
+
+@router.delete(
     "/{broker_id}",
     summary="Remove an OAuth broker",
     dependencies=[Depends(require_human_session)],
