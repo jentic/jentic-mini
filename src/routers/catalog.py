@@ -506,6 +506,45 @@ def _build_catalog_result(entry: dict, registered_ids: set[str]) -> dict:
 # ── Routes ────────────────────────────────────────────────────────────────────
 
 @router.get(
+    "/catalog",
+    summary="List the public API catalog",
+    tags=["catalog"],
+)
+async def list_catalog(
+    q: str | None = None,
+    limit: int = 50,
+    registered_only: bool = False,
+    unregistered_only: bool = False,
+):
+    """Returns entries from the cached public API catalog manifest.
+    Use ``POST /catalog/refresh`` to sync from GitHub first if the list is empty.
+    """
+    entries = _load_manifest()
+    registered_ids = await _get_registered_api_ids()
+
+    if registered_only:
+        entries = [e for e in entries if e["api_id"] in registered_ids]
+    elif unregistered_only:
+        entries = [e for e in entries if e["api_id"] not in registered_ids]
+
+    if q:
+        entries = _search_manifest(entries, q, limit)
+    else:
+        entries = entries[:limit]
+
+    results = [_build_catalog_result(e, registered_ids) for e in entries]
+    manifest = _load_manifest()
+    age = _manifest_age_seconds()
+    return {
+        "data": results,
+        "total": len(results),
+        "catalog_total": len(manifest),
+        "manifest_age_seconds": age,
+        "status": "ok" if manifest else "empty",
+    }
+
+
+@router.get(
     "/catalog/{api_id:path}",
     summary="Get a catalog entry with spec location",
     tags=["catalog"],
