@@ -1,0 +1,72 @@
+#cloud-config
+# Jentic Mini — DigitalOcean cloud-init
+# Paste into the "User Data" field when creating a Ubuntu 22.04/24.04 droplet.
+# Once the droplet boots (~2 min), visit http://<droplet-ip>:8900 to complete setup.
+
+package_update: true
+package_upgrade: true
+packages:
+  - apt-transport-https
+  - ca-certificates
+  - curl
+  - ufw
+
+runcmd:
+  # Install Docker
+  - curl -fsSL https://get.docker.com | sh
+  - systemctl enable docker
+  - systemctl start docker
+
+  # Create directories
+  - mkdir -p /opt/jentic-mini/data
+
+  # Generate vault encryption key
+  - |
+    VAULT_KEY=$(docker run --rm python:3.11-slim python3 -c \
+      "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())")
+    echo "JENTIC_VAULT_KEY=${VAULT_KEY}" >> /opt/jentic-mini/.env
+
+  # Get public IP for initial hostname
+  - |
+    PUBLIC_IP=$(curl -sf http://169.254.169.254/metadata/v1/interfaces/public/0/ipv4/address || \
+                curl -sf https://api.ipify.org)
+    echo "JENTIC_PUBLIC_HOSTNAME=${PUBLIC_IP}" >> /opt/jentic-mini/.env
+
+  # Write compose file
+  - |
+    cat > /opt/jentic-mini/compose.yml <<'EOF'
+    services:
+      jentic-mini:
+        image: ghcr.io/jentic/jentic-mini:latest
+        container_name: jentic-mini
+        restart: unless-stopped
+        ports:
+          - "8900:8900"
+        volumes:
+          - /opt/jentic-mini/data:/app/data
+        env_file:
+          - /opt/jentic-mini/.env
+        environment:
+          LOG_LEVEL: info
+    EOF
+
+  # Pull image and start
+  - cd /opt/jentic-mini && docker compose pull && docker compose up -d
+
+  # Write update script
+  - |
+    cat > /usr/local/bin/jentic-update <<'EOF'
+    #!/bin/bash
+    set -e
+    echo "Pulling latest Jentic Mini image..."
+    cd /opt/jentic-mini
+    docker compose pull
+    docker compose up -d
+    echo "Done. Jentic Mini updated."
+    EOF
+  - chmod +x /usr/local/bin/jentic-update
+
+  # Configure firewall
+  - ufw allow 22/tcp
+  - ufw allow 8900/tcp
+  - ufw --force enable
