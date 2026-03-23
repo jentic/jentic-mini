@@ -69,7 +69,7 @@ SKIP = {
     "/user/create",  # One-time root account creation — must be public before account exists
     "/default-api-key/generate",  # Handles its own subnet + session auth internally
 }
-SKIP_PREFIXES = ("/static", "/proxy", "/approve", "/docs", "/redoc", "/debug")
+SKIP_PREFIXES = ("/static", "/assets", "/proxy", "/approve", "/docs", "/redoc", "/debug")
 
 # ── Paths that allow unauthenticated agent access (no key = anonymous) ────────
 # Broker and workflow execution: upstream auth is upstream's problem
@@ -93,6 +93,9 @@ def _is_open_passthrough(path: str, method: str) -> bool:
         return True
     # Workflow execution
     if re.match(r"^/workflows/[^/]+$", path) and method == "POST":
+        return True
+    # /user/me — check session but allow unauthenticated (returns logged_in: false)
+    if path == "/user/me":
         return True
     return False
 

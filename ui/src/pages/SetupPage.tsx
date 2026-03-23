@@ -34,7 +34,7 @@ export default function SetupPage() {
       <div className="w-full max-w-md p-8 bg-muted rounded-xl border border-border shadow-2xl">
         <h1 className="text-3xl font-bold mb-6 text-center text-foreground">Welcome to Jentic Mini</h1>
 
-        {health?.default_key_claimed === false ? (
+        {health?.status === 'setup_required' ? (
           <div className="mb-6">
             <p className="mb-4 text-sm text-muted-foreground">First, generate your default agent API key:</p>
             {!generateKeyMutation.data ? (
