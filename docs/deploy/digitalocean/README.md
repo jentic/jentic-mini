@@ -11,7 +11,7 @@ The recommended way to run Jentic Mini - on a separate machine from your OpenCla
 
 ### Step 1 - Create a droplet
 
-1. Log into DigitalOcean and click **Create - Droplets**
+1. Log into DigitalOcean and click **Create -> Droplets**
 2. Choose **Ubuntu 22.04 LTS** or **24.04 LTS**
 3. Pick a size - **Basic, $6/month** (1 vCPU, 1 GB RAM) is sufficient for personal use
 4. Choose a region close to you
