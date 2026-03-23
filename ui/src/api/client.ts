@@ -98,8 +98,7 @@ export interface ConnectLinkResponse {
 }
 
 export interface SyncResponse {
-  discovered: number
-  accounts: OAuthAccount[]
+  accounts_synced: number
 }
 
 export const oauthBrokers = {

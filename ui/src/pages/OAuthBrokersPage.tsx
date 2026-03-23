@@ -267,7 +267,7 @@ function BrokerAccounts({ broker }: { broker: OAuthBroker }) {
       </div>
 
       {syncMutation.isSuccess && (
-        <p className="text-xs text-success">Synced — discovered {syncMutation.data.discovered} account(s).</p>
+        <p className="text-xs text-success">Synced — {syncMutation.data.accounts_synced} account(s) updated.</p>
       )}
 
       {showConnect && (
