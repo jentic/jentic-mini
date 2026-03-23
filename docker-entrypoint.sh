@@ -1,6 +1,6 @@
 #!/bin/sh
 # docker-entrypoint.sh — Jentic Mini container startup
-# Runs at container start (before the server). All steps are idempotent.
+# Runs as non-root (jentic user). All steps are idempotent.
 set -e
 
 export PYTHONPATH=/app
