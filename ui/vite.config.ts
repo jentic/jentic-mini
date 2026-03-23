@@ -1,8 +1,26 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+import { copyFileSync } from 'node:fs'
+import { resolve, dirname } from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+const __dirname = dirname(fileURLToPath(import.meta.url))
+
+function copyApiDocsAssets(): import('vite').Plugin {
+  return {
+    name: 'copy-api-docs-assets',
+    closeBundle() {
+      const outDir = resolve(__dirname, '../src/static')
+      const nm = resolve(__dirname, 'node_modules')
+      copyFileSync(resolve(nm, 'swagger-ui-dist/swagger-ui-bundle.js'), resolve(outDir, 'swagger-ui-bundle.js'))
+      copyFileSync(resolve(nm, 'swagger-ui-dist/swagger-ui.css'), resolve(outDir, 'swagger-ui.css'))
+      copyFileSync(resolve(nm, 'redoc/bundles/redoc.standalone.js'), resolve(outDir, 'redoc.standalone.js'))
+    },
+  }
+}
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), copyApiDocsAssets()],
   base: '/',
   build: { outDir: '../src/static', emptyOutDir: true },
   server: {
