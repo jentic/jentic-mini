@@ -18,7 +18,7 @@ The recommended way to run Jentic Mini — on a separate machine from your OpenC
 5. Expand **Advanced Options** and check **Add Initialization scripts (free)** — paste the contents of `cloud-init-do.yml` into the field that appears
 6. Click **Create Droplet**
 
-### Step 2 — Wait for boot (~2 minutes)
+### Step 2 — Wait for boot (~5–10 minutes)
 
 The cloud-init script runs automatically on first boot. It:
 - Installs Docker
@@ -29,6 +29,14 @@ The cloud-init script runs automatically on first boot. It:
 - Configures the firewall (ports 22 and 8900 open)
 
 > **Vault key:** Jentic Mini auto-generates and persists an encryption key for the credentials vault on first run. It's stored inside the `jentic-mini-data` volume and survives updates.
+
+To check when it's ready, poll the health endpoint:
+
+```bash
+curl http://<droplet-ip>:8900/health
+```
+
+It will return `connection refused` until setup is complete, then respond with `{"status":"setup_required"}` or `{"status":"ok"}`. You can also SSH into the droplet and run `docker logs jentic-mini` to see progress.
 
 ### Step 3 — Complete first-run setup
 
