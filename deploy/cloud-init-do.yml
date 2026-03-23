@@ -17,41 +17,21 @@ runcmd:
   - systemctl enable docker
   - systemctl start docker
 
-  # Create directories
-  - mkdir -p /opt/jentic-mini/data
-
-  # Generate vault encryption key
-  - |
-    VAULT_KEY=$(docker run --rm python:3.11-slim python3 -c \
-      "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())")
-    echo "JENTIC_VAULT_KEY=${VAULT_KEY}" >> /opt/jentic-mini/.env
-
   # Get public IP for initial hostname
   - |
     PUBLIC_IP=$(curl -sf http://169.254.169.254/metadata/v1/interfaces/public/0/ipv4/address || \
                 curl -sf https://api.ipify.org)
-    echo "JENTIC_PUBLIC_HOSTNAME=${PUBLIC_IP}" >> /opt/jentic-mini/.env
+    echo "JENTIC_PUBLIC_HOSTNAME=${PUBLIC_IP}" > /opt/jentic-mini.env
 
-  # Write compose file
+  # Pull and start (vault key auto-generated on first run, stored in named volume)
   - |
-    cat > /opt/jentic-mini/compose.yml <<'EOF'
-    services:
-      jentic-mini:
-        image: ghcr.io/jentic/jentic-mini:latest
-        container_name: jentic-mini
-        restart: unless-stopped
-        ports:
-          - "8900:8900"
-        volumes:
-          - /opt/jentic-mini/data:/app/data
-        env_file:
-          - /opt/jentic-mini/.env
-        environment:
-          LOG_LEVEL: info
-    EOF
-
-  # Pull image and start
-  - cd /opt/jentic-mini && docker compose pull && docker compose up -d
+    docker run -d \
+      --name jentic-mini \
+      --restart unless-stopped \
+      -p 8900:8900 \
+      -v jentic-mini-data:/app/data \
+      --env-file /opt/jentic-mini.env \
+      ghcr.io/jentic/jentic-mini:latest
 
   # Write update script
   - |
@@ -59,9 +39,16 @@ runcmd:
     #!/bin/bash
     set -e
     echo "Pulling latest Jentic Mini image..."
-    cd /opt/jentic-mini
-    docker compose pull
-    docker compose up -d
+    docker pull ghcr.io/jentic/jentic-mini:latest
+    docker stop jentic-mini && docker rm jentic-mini
+    source /opt/jentic-mini.env
+    docker run -d \
+      --name jentic-mini \
+      --restart unless-stopped \
+      -p 8900:8900 \
+      -v jentic-mini-data:/app/data \
+      --env-file /opt/jentic-mini.env \
+      ghcr.io/jentic/jentic-mini:latest
     echo "Done. Jentic Mini updated."
     EOF
   - chmod +x /usr/local/bin/jentic-update

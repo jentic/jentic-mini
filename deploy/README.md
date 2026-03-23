@@ -22,10 +22,13 @@ The recommended way to run Jentic Mini — on a separate machine from your OpenC
 
 The cloud-init script runs automatically on first boot. It:
 - Installs Docker
-- Generates a secure vault encryption key
-- Pulls the Jentic Mini Docker image
-- Starts the container on port 8900
+- Detects the droplet's public IP and sets it as `JENTIC_PUBLIC_HOSTNAME`
+- Pulls `ghcr.io/jentic/jentic-mini:latest` and starts the container
+- Creates a named Docker volume (`jentic-mini-data`) for persistent data storage
+- Adds a `jentic-update` helper script for future updates
 - Configures the firewall (ports 22 and 8900 open)
+
+> **Vault key:** Jentic Mini auto-generates and persists an encryption key for the credentials vault on first run. It's stored inside the `jentic-mini-data` volume and survives updates.
 
 ### Step 3 — Complete first-run setup
 
@@ -52,14 +55,11 @@ systemctl reload caddy
 ufw allow 443/tcp
 ```
 
-Then update the public hostname in `/opt/jentic-mini/.env`:
-```
-JENTIC_PUBLIC_HOSTNAME=your-domain.com
-```
+Then update the public hostname:
 
-And restart:
 ```bash
-cd /opt/jentic-mini && docker compose restart
+sed -i 's/JENTIC_PUBLIC_HOSTNAME=.*/JENTIC_PUBLIC_HOSTNAME=your-domain.com/' /opt/jentic-mini.env
+docker restart jentic-mini
 ```
 
 ### Updating
@@ -70,4 +70,4 @@ SSH into the droplet and run:
 jentic-update
 ```
 
-This pulls the latest image and restarts the container. Your data directory (`/opt/jentic-mini/data/`) is preserved across updates.
+This pulls the latest image, restarts the container, and preserves all data in the `jentic-mini-data` volume.
