@@ -8,7 +8,7 @@ on:
     branches: [main]
 
 jobs:
-  publish-gcr:
+  publish-ghcr:
     if: github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -17,6 +17,9 @@ jobs:
       packages: write
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 1
 
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v4
