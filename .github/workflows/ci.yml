@@ -9,14 +9,19 @@ on:
 jobs:
   build-and-smoke-test:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
 
       - name: Build Docker image
         run: docker compose build
 
-      - name: Start services
-        run: docker compose up -d
+      - name: Start services without dev bind mounts
+        run: |
+          docker run -d --name jentic-mini \
+            -p 8900:8900 \
+            -v $(pwd)/data:/app/data \
+            jentic-mini:latest
 
       - name: Wait for server to be ready
         run: |
@@ -29,7 +34,7 @@ jobs:
             sleep 2
           done
           echo "Server failed to start"
-          docker compose logs
+          docker logs jentic-mini
           exit 1
 
       - name: Health check
@@ -50,9 +55,13 @@ jobs:
       - name: Generate API key and test search
         run: |
           key=$(curl -sf -X POST http://localhost:8900/default-api-key/generate | python3 -c "import sys, json; print(json.load(sys.stdin)['key'])")
-          echo "Got key: ${key:0:10}..."
-          curl -sf "http://localhost:8900/search?q=test" -H "X-Jentic-API-Key: $key" | python3 -c "import sys, json; json.load(sys.stdin)"
+          echo "::add-mask::$key"
+          curl -sf "http://localhost:8900/search?q=test" -H "X-Jentic-API-Key: $key" | python3 -c "import sys, json; d = json.load(sys.stdin); assert isinstance(d, list), f'Expected list, got {type(d)}'"
+
+      - name: Dump logs on failure
+        if: failure()
+        run: docker logs jentic-mini
 
       - name: Stop services
         if: always()
-        run: docker compose down
+        run: docker rm -f jentic-mini
