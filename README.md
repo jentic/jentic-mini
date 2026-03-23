@@ -137,8 +137,8 @@ This starts a dev server on `http://localhost:5173` with hot module replacement,
 To rebuild the production UI bundle: `cd ui && npm run build`, then `docker compose up -d --build`.
 
 > **Note:** The container runs as a non-root user. `compose.yml` defaults to uid/gid 1000 for bind mount compatibility.
-> If your host user has a different uid, set `UID` and `GID` before starting:
-> `UID=$(id -u) GID=$(id -g) docker compose up -d`
+> If your host user has a different uid, set `HOST_UID` and `HOST_GID` before starting:
+> `HOST_UID=$(id -u) HOST_GID=$(id -g) docker compose up -d`
 
 Swagger UI is available at `http://localhost:8900/docs` for interactive API exploration.
 
