@@ -1,4 +1,5 @@
 __pycache__/
+!.claude
 *.pyc
 *.pyo
 .env
