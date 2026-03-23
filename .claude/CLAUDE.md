@@ -8,25 +8,16 @@ Jentic Mini is the open-source, self-hosted implementation of the Jentic API. It
 
 ## Running the Server
 
-### With Docker
 ```bash
 docker compose up -d
-```
-
-No env vars required when running from the project root. Set `JENTIC_HOST_PATH` only if running from a different directory.
-
-### Local development (no Docker)
-```bash
-python -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-PYTHONPATH=. uvicorn src.main:app --host 0.0.0.0 --port 8900 --reload --reload-dir src
 ```
 
 API at `http://localhost:8900`, Swagger UI at `http://localhost:8900/docs`.
 
 ### Development workflow
 - **Python changes**: `src/` is volume-mounted into the container. Uvicorn auto-reloads on any `.py` file change — no container restart needed.
-- **UI changes**: Run `cd ui && npm run build` to rebuild. Or use `npm run dev` for Vite dev server with HMR on port 5173.
+- **UI changes**: `cd ui && npm install && npm run dev` for Vite dev server with HMR on port 5173 (proxies API calls to the container on 8900).
+- **Rebuild UI in Docker**: `cd ui && npm run build`, then `docker compose up -d --build`.
 
 ### Key environment variables
 - `JENTIC_VAULT_KEY` — Fernet key for credentials vault (auto-generated from `data/vault.key` if unset)
@@ -112,9 +103,10 @@ Pluggable OAuth broker system. Currently includes `pipedream.py` for Pipedream-b
 
 The `ui/` directory contains a React (Vite + Tailwind) admin frontend.
 
-- **Build output**: `src/static/` (gitignored, generated at build time)
-- **Docker**: Multi-stage build — Node stage compiles UI, Python stage runs the server. Final image has no Node/npm.
-- **Vite plugin** (`copyApiDocsAssets`): copies `swagger-ui-dist` and `redoc` assets from `node_modules` into `src/static/` after each build, so `/docs` and `/redoc` work offline.
+- **Build output**: `static/` at project root (gitignored, generated at build time)
+- **Static path resolution**: `src/main.py` resolves `STATIC_DIR` to `<project_root>/static/`. In Docker this is `/app/static/` (outside the `./src:/app/src` bind mount, so dev mounts don't hide built assets).
+- **Docker**: Multi-stage build — Node stage compiles UI to `static/`, Python stage runs the server. Final image has no Node/npm.
+- **Vite plugin** (`copyApiDocsAssets` in `ui/vite.config.ts`): copies `swagger-ui-dist` and `redoc` assets from `node_modules` into `static/` after each build, so `/docs` and `/redoc` work offline.
 - **Favicon**: lives in `ui/public/favicon.png`, Vite copies it to output automatically.
 
 ## Data directory (all gitignored)
