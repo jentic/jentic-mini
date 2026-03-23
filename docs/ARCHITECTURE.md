@@ -111,7 +111,7 @@ This means the `/inspect/{id}` endpoint and `/search` results use a single ID fo
 
 ### 4. Credential Injection via Broker
 
-**Credentials are NEVER passed as env vars to the arazzo-runner subprocess.**
+**Credentials are NEVER passed as env vars to the arazzo-engine subprocess.**
 
 Instead, the arazzo-engine runner rewrites each source spec's `servers[0].url` to `http://localhost:8900/{host}` before execution. This routes every step through the local broker, which:
 
@@ -217,7 +217,7 @@ Stored credentials. Values are Fernet-encrypted.
 | `env_var` | TEXT UNIQUE | Key for vault lookup (e.g. `ELEVENLABS_APIKEYAUTH`) |
 | `encrypted_value` | TEXT | Fernet-encrypted credential value |
 | `api_id` | TEXT | Which API this credential is for |
-| `scheme_name` | TEXT | Which security scheme it satisfies |
+| `auth_type` | TEXT | How this credential authenticates (`bearer`, `basic`, `apiKey`, `pipedream_oauth`) |
 | `created_at` | TIMESTAMP | |
 
 ### `toolkits`
@@ -228,8 +228,11 @@ Named bundles of credentials with access control.
 |---|---|---|
 | `id` | TEXT PK | UUID |
 | `name` | TEXT | Display name |
+| `description` | TEXT | Optional description |
+| `api_key` | TEXT UNIQUE | Legacy default key (used for seeding the default toolkit) |
 | `simulate` | BOOLEAN | If true, all broker calls are simulated |
 | `created_at` | TIMESTAMP | |
+| `updated_at` | TIMESTAMP | |
 
 ### `toolkit_keys`
 
@@ -239,7 +242,7 @@ One row per issued API key. One toolkit can have multiple keys for multi-agent s
 |---|---|---|
 | `id` | TEXT PK | UUID |
 | `toolkit_id` | TEXT FK | → `toolkits.id` |
-| `key` | TEXT UNIQUE | The API key string (prefix `tk_`) |
+| `api_key` | TEXT UNIQUE | The API key string (prefix `tk_`) |
 | `label` | TEXT | Which agent/purpose this key is for |
 | `allowed_ips` | TEXT | JSON array of CIDR strings; empty = unrestricted |
 | `revoked_at` | TIMESTAMP | Soft delete; NULL = active |
