@@ -47,13 +47,11 @@ Key environment variables:
 ### Running
 
 ```bash
-# Build and start
-docker compose build
 docker compose up -d
 ```
 
 > **Note:** If running from a directory other than the project root, set `JENTIC_HOST_PATH` to the project path:
-> `JENTIC_HOST_PATH=/path/to/jentic-mini docker compose up -d`
+> `JENTIC_HOST_PATH=/path/to/jentic-mini docker compose up -d --build`
 
 API available at `http://localhost:8900`. Swagger UI at `http://localhost:8900/docs`.
 
