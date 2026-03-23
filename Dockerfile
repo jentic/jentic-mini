@@ -2,7 +2,7 @@
 FROM node:24-slim AS ui-build
 WORKDIR /build
 COPY ui/ ./ui/
-RUN mkdir -p src/static
+RUN mkdir -p static
 RUN cd ui && npm ci --ignore-scripts && npm run build
 
 # Stage 2: Python runtime
@@ -26,8 +26,9 @@ RUN mkdir -p /app/data /app/src
 # Copy source into /app/src so that `from src.xxx` imports work from WORKDIR /app
 COPY src/ /app/src/
 
-# Copy built UI assets from stage 1
-COPY --from=ui-build /build/src/static/ /app/src/static/
+# Copy built UI assets from stage 1 — placed outside /app/src/ so the
+# dev bind mount (./src:/app/src) doesn't hide them at runtime.
+COPY --from=ui-build /build/static/ /app/static/
 
 COPY src/docker-entrypoint.sh /app/docker-entrypoint.sh
 RUN chmod +x /app/docker-entrypoint.sh

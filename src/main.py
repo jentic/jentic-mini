@@ -159,7 +159,7 @@ app.add_middleware(APIKeyMiddleware)
 app.middleware("http")(negotiate_middleware)
 
 # ── Static dir — defined early so route handlers can reference it ──────────────
-STATIC_DIR = Path(__file__).parent / "static"
+STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
 
 app.include_router(capability_router.router, tags=["inspect"])
 app.include_router(workflows_router.router)

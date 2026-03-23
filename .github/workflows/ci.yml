@@ -13,15 +13,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Build Docker image
-        run: docker compose build
-
-      - name: Start services without dev bind mounts
-        run: |
-          docker run -d --name jentic-mini \
-            -p 8900:8900 \
-            -v $(pwd)/data:/app/data \
-            jentic-mini:latest
+      - name: Build and start services
+        run: docker compose up -d --build
 
       - name: Wait for server to be ready
         run: |
@@ -34,7 +27,7 @@ jobs:
             sleep 2
           done
           echo "Server failed to start"
-          docker logs jentic-mini
+          docker compose logs
           exit 1
 
       - name: Health check
@@ -60,8 +53,8 @@ jobs:
 
       - name: Dump logs on failure
         if: failure()
-        run: docker logs jentic-mini
+        run: docker compose logs
 
       - name: Stop services
         if: always()
-        run: docker rm -f jentic-mini
+        run: docker compose down
