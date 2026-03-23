@@ -30,7 +30,8 @@ from src.models import ImportOut
 
 router = APIRouter()
 
-_DATA_DIR = Path(os.getenv("DB_PATH", "/app/data/jentic-mini.db")).parent
+_db_path = Path(os.getenv("DB_PATH", "/app/data/jentic-mini.db"))
+_DATA_DIR = _db_path if _db_path.is_dir() else _db_path.parent
 SPECS_DIR = _DATA_DIR / "specs"
 SPECS_DIR.mkdir(parents=True, exist_ok=True)
 
