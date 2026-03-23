@@ -38,15 +38,16 @@ curl http://<droplet-ip>:8900/health
 
 It will return `connection refused` until setup is complete, then respond with `{"status":"setup_required"}` or `{"status":"ok"}`. You can also SSH into the droplet and run `docker logs jentic-mini` to see progress.
 
-### Step 3 - Complete first-run setup
-
-Visit `http://<droplet-ip>:8900` in your browser and follow the setup wizard to create your admin account.
-
-### Step 4 - Connect your OpenClaw agent
+### Step 3 - Connect your OpenClaw agent
 
 In your OpenClaw agent, run the Jentic skill install flow and provide:
 - **URL:** `http://<droplet-ip>:8900`
-- The agent key generated during setup
+
+The agent will generate its API key automatically on first connection.
+
+### Step 4 - Complete first-run setup
+
+Visit `http://<droplet-ip>:8900` in your browser and follow the setup wizard to create your admin account.
 
 ### Step 5 (optional) - Add a domain + TLS
 
