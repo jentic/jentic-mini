@@ -42,9 +42,7 @@ COPY --chmod=0755 docker-entrypoint.sh /app/docker-entrypoint.sh
 
 # Run as non-root
 RUN useradd -r -s /bin/false jentic \
-    && chown -R jentic:jentic /app/data \
-    && mkdir -p /app/src/specs /app/src/workflows \
-    && chown -R jentic:jentic /app/src/specs /app/src/workflows
+    && chown -R jentic:jentic /app/data
 USER jentic
 
 EXPOSE 8900
