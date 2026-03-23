@@ -18,7 +18,7 @@ The recommended way to run Jentic Mini - on a separate machine from your OpenCla
 5. Expand **Advanced Options** and check **Add Initialization scripts (free)** - paste the contents of `setup.sh` into the field that appears
 6. Click **Create Droplet**
 
-### Step 2 - Wait for boot (~10 minutes)
+### Step 2 - Wait for boot (~5 minutes)
 
 The initialization script runs automatically on first boot. It:
 - Installs Docker

@@ -2,7 +2,7 @@
 # Jentic Mini - DigitalOcean initialization script
 # When creating a droplet: expand Advanced Options, check "Add Initialization scripts (free)"
 # and paste this entire file into the field that appears.
-# Once complete (~10 min), visit http://<droplet-ip>:8900 to complete setup.
+# Once complete (~5 min), visit http://<droplet-ip>:8900 to complete setup.
 set -e
 
 # Install Docker
