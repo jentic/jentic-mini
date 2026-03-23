@@ -2,23 +2,23 @@
 
 ## DigitalOcean
 
-The recommended way to run Jentic Mini — on a separate machine from your OpenClaw instance. This maintains a hard security boundary: the agent cannot access the Docker environment or database directly.
+The recommended way to run Jentic Mini - on a separate machine from your OpenClaw instance. This maintains a hard security boundary: the agent cannot access the Docker environment or database directly.
 
 ### What you need
 
 - A [DigitalOcean](https://cloud.digitalocean.com) account
 - A domain name (optional, but recommended for TLS)
 
-### Step 1 — Create a droplet
+### Step 1 - Create a droplet
 
-1. Log into DigitalOcean and click **Create → Droplets**
+1. Log into DigitalOcean and click **Create - Droplets**
 2. Choose **Ubuntu 22.04 LTS** or **24.04 LTS**
-3. Pick a size — **Basic, $6/month** (1 vCPU, 1 GB RAM) is sufficient for personal use
+3. Pick a size - **Basic, $6/month** (1 vCPU, 1 GB RAM) is sufficient for personal use
 4. Choose a region close to you
-5. Expand **Advanced Options** and check **Add Initialization scripts (free)** — paste the contents of `cloud-init-do.yml` into the field that appears
+5. Expand **Advanced Options** and check **Add Initialization scripts (free)** - paste the contents of `cloud-init-do.yml` into the field that appears
 6. Click **Create Droplet**
 
-### Step 2 — Wait for boot (~5–10 minutes)
+### Step 2 - Wait for boot (~5-10 minutes)
 
 The cloud-init script runs automatically on first boot. It:
 - Installs Docker
@@ -38,17 +38,17 @@ curl http://<droplet-ip>:8900/health
 
 It will return `connection refused` until setup is complete, then respond with `{"status":"setup_required"}` or `{"status":"ok"}`. You can also SSH into the droplet and run `docker logs jentic-mini` to see progress.
 
-### Step 3 — Complete first-run setup
+### Step 3 - Complete first-run setup
 
 Visit `http://<droplet-ip>:8900` in your browser and follow the setup wizard to create your admin account.
 
-### Step 4 — Connect your OpenClaw agent
+### Step 4 - Connect your OpenClaw agent
 
 In your OpenClaw agent, run the Jentic skill install flow and provide:
 - **URL:** `http://<droplet-ip>:8900`
 - The agent key generated during setup
 
-### Step 5 (optional) — Add a domain + TLS
+### Step 5 (optional) - Add a domain + TLS
 
 Point a DNS A record at your droplet IP, then SSH in and run:
 

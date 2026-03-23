@@ -1,5 +1,5 @@
 #!/bin/bash
-# Jentic Mini — DigitalOcean initialization script
+# Jentic Mini - DigitalOcean initialization script
 # When creating a droplet: expand Advanced Options, check "Add Initialization scripts (free)"
 # and paste this entire file into the field that appears.
 # Once complete (~10 min), visit http://<droplet-ip>:8900 to complete setup.
