@@ -2,59 +2,60 @@
 # Jentic Mini — DigitalOcean cloud-init
 # When creating a droplet: expand Advanced Options → check "Add Initialization scripts (free)"
 # and paste this file into the field that appears.
-# Once the droplet boots (~2 min), visit http://<droplet-ip>:8900 to complete setup.
+# Once the droplet boots (~10 min), visit http://<droplet-ip>:8900 to complete setup.
 
 package_update: true
 package_upgrade: true
 packages:
-  - apt-transport-https
-  - ca-certificates
   - curl
   - ufw
 
+write_files:
+  - path: /opt/jentic-mini/setup.sh
+    permissions: '0755'
+    content: |
+      #!/bin/bash
+      set -e
+
+      # Install Docker
+      curl -fsSL https://get.docker.com | sh
+      systemctl enable docker
+      systemctl start docker
+
+      # Get public IP for initial hostname
+      PUBLIC_IP=$(curl -sf http://169.254.169.254/metadata/v1/interfaces/public/0/ipv4/address || curl -sf https://api.ipify.org)
+      echo "JENTIC_PUBLIC_HOSTNAME=${PUBLIC_IP}" > /opt/jentic-mini/jentic-mini.env
+
+      # Pull and start
+      docker run -d \
+        --name jentic-mini \
+        --restart unless-stopped \
+        -p 8900:8900 \
+        -v jentic-mini-data:/app/data \
+        --env-file /opt/jentic-mini/jentic-mini.env \
+        ghcr.io/jentic/jentic-mini:latest
+
+      # Configure firewall
+      ufw allow 22/tcp
+      ufw allow 8900/tcp
+      ufw --force enable
+
+  - path: /usr/local/bin/jentic-update
+    permissions: '0755'
+    content: |
+      #!/bin/bash
+      set -e
+      echo "Pulling latest Jentic Mini image..."
+      docker pull ghcr.io/jentic/jentic-mini:latest
+      docker stop jentic-mini && docker rm jentic-mini
+      docker run -d \
+        --name jentic-mini \
+        --restart unless-stopped \
+        -p 8900:8900 \
+        -v jentic-mini-data:/app/data \
+        --env-file /opt/jentic-mini/jentic-mini.env \
+        ghcr.io/jentic/jentic-mini:latest
+      echo "Done. Jentic Mini updated."
+
 runcmd:
-  # Install Docker
-  - curl -fsSL https://get.docker.com | sh
-  - systemctl enable docker
-  - systemctl start docker
-
-  # Get public IP for initial hostname
-  - |
-    PUBLIC_IP=$(curl -sf http://169.254.169.254/metadata/v1/interfaces/public/0/ipv4/address || \
-                curl -sf https://api.ipify.org)
-    echo "JENTIC_PUBLIC_HOSTNAME=${PUBLIC_IP}" > /opt/jentic-mini.env
-
-  # Pull and start (vault key auto-generated on first run, stored in named volume)
-  - |
-    docker run -d \
-      --name jentic-mini \
-      --restart unless-stopped \
-      -p 8900:8900 \
-      -v jentic-mini-data:/app/data \
-      --env-file /opt/jentic-mini.env \
-      ghcr.io/jentic/jentic-mini:latest
-
-  # Write update script
-  - |
-    cat > /usr/local/bin/jentic-update <<'EOF'
-    #!/bin/bash
-    set -e
-    echo "Pulling latest Jentic Mini image..."
-    docker pull ghcr.io/jentic/jentic-mini:latest
-    docker stop jentic-mini && docker rm jentic-mini
-    source /opt/jentic-mini.env
-    docker run -d \
-      --name jentic-mini \
-      --restart unless-stopped \
-      -p 8900:8900 \
-      -v jentic-mini-data:/app/data \
-      --env-file /opt/jentic-mini.env \
-      ghcr.io/jentic/jentic-mini:latest
-    echo "Done. Jentic Mini updated."
-    EOF
-  - chmod +x /usr/local/bin/jentic-update
-
-  # Configure firewall
-  - ufw allow 22/tcp
-  - ufw allow 8900/tcp
-  - ufw --force enable
+  - /opt/jentic-mini/setup.sh

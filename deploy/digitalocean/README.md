@@ -66,7 +66,7 @@ ufw allow 443/tcp
 Then update the public hostname:
 
 ```bash
-sed -i 's/JENTIC_PUBLIC_HOSTNAME=.*/JENTIC_PUBLIC_HOSTNAME=your-domain.com/' /opt/jentic-mini.env
+sed -i 's/JENTIC_PUBLIC_HOSTNAME=.*/JENTIC_PUBLIC_HOSTNAME=your-domain.com/' /opt/jentic-mini/jentic-mini.env
 docker restart jentic-mini
 ```
 
