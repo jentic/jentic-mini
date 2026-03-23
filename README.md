@@ -43,12 +43,6 @@ Jentic Mini is designed to be a fully compatible entrypoint: build your agent in
 
 ### Quick Start (pre-built image)
 
-From **DockerHub**:
-
-```bash
-docker run -d --name jentic-mini -p 8900:8900 -v jentic-mini-data:/app/data jentic/jentic-mini
-```
-
 From **GitHub Container Registry**:
 
 ```bash
