@@ -8,6 +8,13 @@ RUN cd ui && npm ci --ignore-scripts && npm run build
 # Stage 2: Python runtime
 FROM python:3.11-slim
 
+LABEL maintainer="vladimir@jentic.com" \
+      org.opencontainers.image.authors="vladimir@jentic.com" \
+      org.opencontainers.image.url="https://github.com/jentic/jentic-mini" \
+      org.opencontainers.image.source="https://github.com/jentic/jentic-mini" \
+      org.opencontainers.image.description="Jentic Mini Docker image" \
+      org.opencontainers.image.licenses="Apache-2.0"
+
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc libffi-dev curl git \
     && rm -rf /var/lib/apt/lists/*
@@ -30,9 +37,8 @@ COPY src/ /app/src/
 # dev bind mount (./src:/app/src) doesn't hide them at runtime.
 COPY --from=ui-build /build/static/ /app/static/
 
-COPY LICENSE NOTICE /app/
-COPY docker-entrypoint.sh /app/docker-entrypoint.sh
-RUN chmod +x /app/docker-entrypoint.sh
+COPY --chmod=0644 LICENSE NOTICE /app/
+COPY --chmod=0755 docker-entrypoint.sh /app/docker-entrypoint.sh
 
 EXPOSE 8900
 
