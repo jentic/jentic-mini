@@ -4,6 +4,15 @@
 
 ## What is Jentic Mini?
 
+Give your AI agents access to **1,000+ APIs** — without leaking a single credential.
+Building agents that call real APIs is painful. You end up hardcoding auth, juggling secrets in prompts,
+writing bespoke glue code for every service, and praying nothing leaks. Jentic Mini fixes this.
+It's a self-hosted API execution layer that sits between your agent and the outside world.
+Your agent says what it wants to do. Jentic Mini handles the how — finding the right API,
+injecting credentials at runtime, and brokering the request. Secrets never touch the agent. Ever.
+
+---
+
 Jentic Mini gives any AI agent a local execution layer:
 
 - **Search** — find the right API operation or workflow from a registered catalog using full-text BM25 search
@@ -30,44 +39,54 @@ Jentic Mini is designed to be a fully compatible entrypoint: build your agent in
 
 ### Prerequisites
 
-- Docker and Docker Compose
-- Python 3.11+ (for local dev without Docker)
+- [Docker](https://docs.docker.com/get-docker/) and Docker Compose
 
-### Configuration
+### Quick Start (pre-built image)
 
-Key environment variables:
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `JENTIC_API_KEY` | `changeme` | Master admin key — change this |
-| `JENTIC_VAULT_KEY` | auto-generated | Fernet key for the credentials vault |
-| `JENTIC_PUBLIC_HOSTNAME` | `localhost:8900` | Public hostname used in generated URLs |
-| `DB_PATH` | `/app/data/jentic-mini.db` | SQLite database path |
-
-### Running
+From **DockerHub**:
 
 ```bash
+docker run -d --name jentic-mini -p 8900:8900 -v jentic-mini-data:/app/data jentic/jentic-mini
+```
+
+From **GitHub Container Registry**:
+
+```bash
+docker run -d --name jentic-mini -p 8900:8900 -v jentic-mini-data:/app/data ghcr.io/jentic/jentic-mini
+```
+
+Open `http://localhost:8900` to complete setup.
+
+### Quick Start (from source)
+
+```bash
+git clone https://github.com/jentic/jentic-mini.git
+cd jentic-mini
 docker compose up -d
 ```
 
-> **Note:** If running from a directory other than the project root, set `JENTIC_HOST_PATH` to the project path:
-> `JENTIC_HOST_PATH=/path/to/jentic-mini docker compose up -d --build`
+Open `http://localhost:8900` to complete setup.
 
-API available at `http://localhost:8900`. Swagger UI at `http://localhost:8900/docs`.
+### Configuration
+
+Optional environment variables (set in `.env` or pass to `docker compose`):
+
+| Variable                 | Default        | Description                                                                          |
+|--------------------------|----------------|--------------------------------------------------------------------------------------|
+| `JENTIC_VAULT_KEY`       | auto-generated | [Fernet](https://cryptography.io/en/latest/fernet/) key for the credentials vault    |
+| `JENTIC_PUBLIC_HOSTNAME` | none           | Public hostname for self-links and workflow IDs, e.g. `jentic.example.com`           |
+| `LOG_LEVEL`              | `info`         | `debug`, `info`, `warning`, `error`                                                  |
 
 ### Authentication
 
-All endpoints require `X-Jentic-API-Key`:
-
-- **Master key** (`JENTIC_API_KEY`): full admin access — use for setup only
 - **Toolkit key** (`tk_xxx`): scoped to a toolkit's credentials and policy — give this to agents
+- **Human session**: username/password login for admin operations (credential management, toolkit setup)
 
-Typical agent setup:
-1. Admin creates a toolkit (master key): `POST /toolkits`
-2. Admin creates credentials in the vault: `POST /credentials`
-3. Admin grants credentials to the toolkit: `POST /toolkits/{id}/credentials`
-4. Admin generates a toolkit access key: `POST /toolkits/{id}/keys`
-5. Agent uses the `tk_xxx` key for all subsequent calls
+First-time setup is guided through the UI at `http://localhost:8900`. Alternatively, via the API:
+1. `POST /default-api-key/generate` from a trusted subnet to get your agent key
+2. `POST /user/create` with `{"username": "...", "password": "..."}` to create an admin account
+3. Add credentials for your APIs — specs are auto-imported from the [public catalog](https://github.com/jentic/jentic-public-apis)
+4. Agents authenticate with the `tk_xxx` key via `X-Jentic-API-Key` header
 
 ## API Overview
 
@@ -96,7 +115,28 @@ POST /credentials
 GET /workflows?source=local&q=slack
 ```
 
-See [docs/CATALOG.md](docs/CATALOG.md) for full details.
+See [docs/CATALOG.md](https://github.com/jentic/jentic-mini/blob/main/docs/CATALOG.md) for full details.
+
+## Development
+
+Prerequisites for local development without Docker:
+
+- [Python 3.11+](https://www.python.org/downloads/)
+- [Node.js 20+](https://nodejs.org/)
+
+Python source (`src/`) is volume-mounted into the container — edit any `.py` file and the server hot-reloads automatically.
+
+For UI development, run the Vite dev server alongside the container:
+
+```bash
+cd ui && npm install && npm run dev
+```
+
+This starts a dev server on `http://localhost:5173` with hot module replacement, proxying API calls to the container.
+
+To rebuild the production UI bundle: `cd ui && npm run build`, then `docker compose up -d --build`.
+
+Swagger UI is available at `http://localhost:8900/docs` for interactive API exploration.
 
 ## Architecture
 
@@ -106,6 +146,10 @@ See [docs/CATALOG.md](docs/CATALOG.md) for full details.
 - **Fernet** — symmetric encryption for the credentials vault
 - **arazzo-runner** — Arazzo workflow execution engine
 
+## Contributing
+
+Please read our [Contributing Guide](https://github.com/jentic/.github/blob/main/CONTRIBUTING.md) and [Code of Conduct](https://github.com/jentic/.github/blob/main/CODE_OF_CONDUCT.md) before submitting a pull request.
+
 ## License
 
-Apache 2.0
+This project is licensed under the [Apache 2.0 License](https://github.com/jentic/jentic-mini/blob/main/LICENSE).
