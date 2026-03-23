@@ -139,14 +139,6 @@ class SyncRequest(NormModel):
             "that was used when the user completed OAuth in Pipedream's hosted UI."
         ),
     )
-    external_user_id: str = Field(
-        "default",
-        description=(
-            "The user identity to sync accounts for. In a single-user setup this is "
-            "always `default`. In multi-user deployments, pass the Jentic user ID "
-            "that was used when the user completed OAuth in Pipedream's hosted UI."
-        ),
-    )
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
