@@ -11,7 +11,7 @@ systemctl enable docker
 systemctl start docker
 
 # Get public IP for initial hostname
-PUBLIC_IP=$(curl -sf http://169.254.169.254/metadata/v1/interfaces/public/0/ipv4/address || curl -sf https://api.ipify.org)
+PUBLIC_IP=$(curl -sf https://api.ipify.org)
 mkdir -p /opt/jentic-mini
 echo "JENTIC_PUBLIC_HOSTNAME=${PUBLIC_IP}" > /opt/jentic-mini/jentic-mini.env
 
