@@ -26,7 +26,6 @@ There is NO trusted-subnet admin bypass in the general middleware.
 The subnet restriction applies only to POST /default-api-key/generate (first call).
 CLI access (docker exec) is the only superuser path.
 
-Admin API key (JENTIC_API_KEY env var) is DEPRECATED and no longer recognised.
 """
 import ipaddress
 import json
