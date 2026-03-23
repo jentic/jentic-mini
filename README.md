@@ -71,20 +71,20 @@ Open `http://localhost:8900` to complete setup.
 
 Optional environment variables (set in `.env` or pass to `docker compose`):
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `JENTIC_VAULT_KEY` | auto-generated | Fernet key for the credentials vault |
-| `JENTIC_PUBLIC_HOSTNAME` | `localhost:8900` | Public hostname used in generated URLs |
-| `LOG_LEVEL` | `info` | `debug`, `info`, `warning`, `error` |
+| Variable                 | Default        | Description                                                                          |
+|--------------------------|----------------|--------------------------------------------------------------------------------------|
+| `JENTIC_VAULT_KEY`       | auto-generated | [Fernet](https://cryptography.io/en/latest/fernet/) key for the credentials vault    |
+| `JENTIC_PUBLIC_HOSTNAME` | none           | Public hostname for self-links and workflow IDs, e.g. `jentic.example.com`           |
+| `LOG_LEVEL`              | `info`         | `debug`, `info`, `warning`, `error`                                                  |
 
 ### Authentication
 
 - **Toolkit key** (`tk_xxx`): scoped to a toolkit's credentials and policy — give this to agents
 - **Human session**: username/password login for admin operations (credential management, toolkit setup)
 
-First-time setup:
-1. Call `POST /default-api-key/generate` from a trusted subnet to get your agent key
-2. Create an admin account at `/user/create`
+First-time setup is guided through the UI at `http://localhost:8900`. Alternatively, via the API:
+1. `POST /default-api-key/generate` from a trusted subnet to get your agent key
+2. `POST /user/create` with `{"username": "...", "password": "..."}` to create an admin account
 3. Add credentials for your APIs — specs are auto-imported from the [public catalog](https://github.com/jentic/jentic-public-apis)
 4. Agents authenticate with the `tk_xxx` key via `X-Jentic-API-Key` header
 
