@@ -8,29 +8,32 @@ Jentic Mini is the open-source, self-hosted implementation of the Jentic API. It
 
 ## Running the Server
 
-### With Docker (production-like)
+### With Docker
 ```bash
-JENTIC_HOST_PATH=$(pwd) docker compose build
 docker compose up -d
 ```
+
+No env vars required when running from the project root. Set `JENTIC_HOST_PATH` only if running from a different directory.
 
 ### Local development (no Docker)
 ```bash
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-# Install vendored arazzo-engine runner (cloned by Dockerfile, or manually):
-# pip install -e vendor/arazzo-engine/runner
 PYTHONPATH=. uvicorn src.main:app --host 0.0.0.0 --port 8900 --reload --reload-dir src
 ```
 
 API at `http://localhost:8900`, Swagger UI at `http://localhost:8900/docs`.
 
+### Development workflow
+- **Python changes**: `src/` is volume-mounted into the container. Uvicorn auto-reloads on any `.py` file change — no container restart needed.
+- **UI changes**: Run `cd ui && npm run build` to rebuild. Or use `npm run dev` for Vite dev server with HMR on port 5173.
+
 ### Key environment variables
-- `JENTIC_API_KEY` — master admin key (default: `changeme`)
 - `JENTIC_VAULT_KEY` — Fernet key for credentials vault (auto-generated from `data/vault.key` if unset)
 - `JENTIC_PUBLIC_HOSTNAME` — public hostname for self-links and workflow dispatch
 - `DB_PATH` — SQLite database path (default: `/app/data/jentic-mini.db`)
 - `LOG_LEVEL` — `debug | info | warning | error`
+- `JENTIC_HOST_PATH` — project root path for Docker mounts (defaults to `.`)
 
 ## Architecture
 
@@ -92,7 +95,7 @@ Credentials are **never** exposed to agents or passed as env vars. The broker:
 6. Logs a trace
 
 ### Workflow execution
-Arazzo workflows use a vendored fork of `arazzo-engine` (at `vendor/arazzo-engine/`). The fork patches `servers[0].url` in source specs to route all HTTP calls through the local broker (`http://localhost:8900/{host}`), ensuring every step gets credential injection, tracing, and policy enforcement.
+Arazzo workflows use `arazzo-engine` (cloned at Docker build time from `github.com/jentic/arazzo-engine`). The runner patches `servers[0].url` in source specs to route all HTTP calls through the local broker (`http://localhost:8900/{host}`), ensuring every step gets credential injection, tracing, and policy enforcement.
 
 ### ID formats
 - **Capability ID**: `METHOD/host/path` (e.g., `GET/api.elevenlabs.io/v1/voices`)
@@ -106,9 +109,18 @@ SQLite with aiosqlite. Schema defined in `src/db.py` with inline migrations. Key
 Pluggable OAuth broker system. Currently includes `pipedream.py` for Pipedream-based OAuth credential routing.
 
 ## UI
-The `ui/` directory contains a React (Vite + Tailwind) admin frontend. Built assets are served from `src/static/`. Swagger/Redoc JS assets are also vendored in `src/static/` for offline use.
 
-## Data directory
-- `data/jentic-mini.db` — SQLite database (gitignored)
-- `data/vault.key` — Fernet encryption key (gitignored, auto-generated)
-- `data/specs/` — Downloaded API specs (gitignored)
+The `ui/` directory contains a React (Vite + Tailwind) admin frontend.
+
+- **Build output**: `src/static/` (gitignored, generated at build time)
+- **Docker**: Multi-stage build — Node stage compiles UI, Python stage runs the server. Final image has no Node/npm.
+- **Vite plugin** (`copyApiDocsAssets`): copies `swagger-ui-dist` and `redoc` assets from `node_modules` into `src/static/` after each build, so `/docs` and `/redoc` work offline.
+- **Favicon**: lives in `ui/public/favicon.png`, Vite copies it to output automatically.
+
+## Data directory (all gitignored)
+- `data/jentic-mini.db` — SQLite database
+- `data/vault.key` — Fernet encryption key (auto-generated)
+- `data/specs/` — Downloaded API specs
+- `data/catalog_manifest.json` — Cached public catalog manifest
+- `data/workflow_manifest.json` — Cached workflow manifest
+- `data/workflows/` — Imported workflow files

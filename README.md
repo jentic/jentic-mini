@@ -47,16 +47,11 @@ Key environment variables:
 ### Running
 
 ```bash
-# First build — JENTIC_HOST_PATH must point to the project directory on the Docker host
-JENTIC_HOST_PATH=/configs/jentic-mini docker compose build
-
-# Start the stack
 docker compose up -d
 ```
 
-> **Note:** `JENTIC_HOST_PATH` is the host-side path to this directory (where `src/` and `data/` live).
-> It must be set at build time because Docker needs the absolute host path for the build context.
-> On Nono the project lives at `/configs/jentic-mini/`.
+> **Note:** If running from a directory other than the project root, set `JENTIC_HOST_PATH` to the project path:
+> `JENTIC_HOST_PATH=/path/to/jentic-mini docker compose up -d --build`
 
 API available at `http://localhost:8900`. Swagger UI at `http://localhost:8900/docs`.
 

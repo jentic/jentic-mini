@@ -1,7 +1,7 @@
 services:
   jentic-mini:
     build:
-      context: ${JENTIC_HOST_PATH}
+      context: ${JENTIC_HOST_PATH:-.}
       dockerfile: Dockerfile
     image: jentic-mini:latest
     container_name: jentic-mini
@@ -9,8 +9,8 @@ services:
     ports:
       - "8900:8900"
     volumes:
-      - ${JENTIC_HOST_PATH}/src:/app/src
-      - ${JENTIC_DATA_PATH:-${JENTIC_HOST_PATH}/data}:/app/data
+      - ${JENTIC_HOST_PATH:-.}/src:/app/src
+      - ${JENTIC_DATA_PATH:-${JENTIC_HOST_PATH:-.}/data}:/app/data
     environment:
       PYTHONPATH: /app
       JENTIC_PUBLIC_HOSTNAME: ${JENTIC_PUBLIC_HOSTNAME}
