@@ -64,7 +64,7 @@ async def auth_internals():
 
 
 @router.get("/env-mappings")
-async def env_mappings(arazzo_path: str = "/app/data/specs/openai.arazzo.json"):
+async def env_mappings(arazzo_path: str = ""):
     try:
         from arazzo_runner import ArazzoRunner
         runner = ArazzoRunner.from_arazzo_path(arazzo_path)
@@ -76,7 +76,7 @@ async def env_mappings(arazzo_path: str = "/app/data/specs/openai.arazzo.json"):
 
 
 @router.get("/spec")
-async def spec_info(path: str = "/app/data/specs/discourse.json"):
+async def spec_info(path: str = ""):
     p = Path(path)
     if not p.exists():
         return {"exists": False, "path": path}
