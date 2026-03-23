@@ -10,7 +10,7 @@ function copyApiDocsAssets(): import('vite').Plugin {
   return {
     name: 'copy-api-docs-assets',
     closeBundle() {
-      const outDir = resolve(__dirname, '../src/static')
+      const outDir = resolve(__dirname, '../static')
       const nm = resolve(__dirname, 'node_modules')
       copyFileSync(resolve(nm, 'swagger-ui-dist/swagger-ui-bundle.js'), resolve(outDir, 'swagger-ui-bundle.js'))
       copyFileSync(resolve(nm, 'swagger-ui-dist/swagger-ui.css'), resolve(outDir, 'swagger-ui.css'))
@@ -22,7 +22,7 @@ function copyApiDocsAssets(): import('vite').Plugin {
 export default defineConfig({
   plugins: [react(), copyApiDocsAssets()],
   base: '/',
-  build: { outDir: '../src/static', emptyOutDir: true },
+  build: { outDir: '../static', emptyOutDir: true },
   server: {
     proxy: {
       '/api': 'http://localhost:8900',
