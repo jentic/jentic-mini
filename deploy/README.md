@@ -1,31 +1,45 @@
 # Deployment
 
-## DigitalOcean (recommended)
+## DigitalOcean
 
-The quickest way to run Jentic Mini on a separate machine — which is strongly recommended for security (see [SECURITY.md](../docs/SECURITY.md)).
+The recommended way to run Jentic Mini — on a separate machine from your OpenClaw instance. This maintains a hard security boundary: the agent cannot access the Docker environment or database directly.
 
-### Steps
+### What you need
 
-1. Create a new Ubuntu 22.04 or 24.04 droplet on [DigitalOcean](https://cloud.digitalocean.com)
-2. Under **Advanced Options → User Data**, paste the contents of `cloud-init-do.yml`
-3. Create the droplet — Jentic Mini will be running at `http://<droplet-ip>:8900` within ~2 minutes
-4. Visit that URL to complete first-run setup
+- A [DigitalOcean](https://cloud.digitalocean.com) account
+- A domain name (optional, but recommended for TLS)
 
-A $6/month Basic droplet (1 vCPU, 1 GB RAM) is sufficient for personal use.
+### Step 1 — Create a droplet
 
-### Updating
+1. Log into DigitalOcean and click **Create → Droplets**
+2. Choose **Ubuntu 22.04 LTS** or **24.04 LTS**
+3. Pick a size — **Basic, $6/month** (1 vCPU, 1 GB RAM) is sufficient for personal use
+4. Choose a region close to you
+5. Under **Advanced Options**, enable **User Data** and paste the contents of `cloud-init-do.yml`
+6. Click **Create Droplet**
 
-SSH into the droplet and run:
+### Step 2 — Wait for boot (~2 minutes)
 
-```bash
-jentic-update
-```
+The cloud-init script runs automatically on first boot. It:
+- Installs Docker
+- Generates a secure vault encryption key
+- Pulls the Jentic Mini Docker image
+- Starts the container on port 8900
+- Configures the firewall (ports 22 and 8900 open)
 
-This pulls the latest image and restarts the container. Your data directory is preserved.
+### Step 3 — Complete first-run setup
 
-### TLS / custom domain
+Visit `http://<droplet-ip>:8900` in your browser and follow the setup wizard to create your admin account.
 
-Once you have a domain pointed at the droplet, add Caddy as a reverse proxy:
+### Step 4 — Connect your OpenClaw agent
+
+In your OpenClaw agent, run the Jentic skill install flow and provide:
+- **URL:** `http://<droplet-ip>:8900`
+- The agent key generated during setup
+
+### Step 5 (optional) — Add a domain + TLS
+
+Point a DNS A record at your droplet IP, then SSH in and run:
 
 ```bash
 apt install -y caddy
@@ -38,14 +52,22 @@ systemctl reload caddy
 ufw allow 443/tcp
 ```
 
-Then update `JENTIC_PUBLIC_HOSTNAME` in `/opt/jentic-mini/.env` and restart:
+Then update the public hostname in `/opt/jentic-mini/.env`:
+```
+JENTIC_PUBLIC_HOSTNAME=your-domain.com
+```
 
+And restart:
 ```bash
 cd /opt/jentic-mini && docker compose restart
 ```
 
-## Railway
+### Updating
 
-`railway.json` is provided for Railway deployments. Note that Railway uses managed volumes rather than bind mounts — configure a Volume mounted at `/app/data` in the Railway dashboard after deploying.
+SSH into the droplet and run:
 
-> **Note:** Railway auto-deploys on new image pushes. Ensure DB migrations are in place before enabling auto-deploy to avoid schema breakage on update (see [issue #13](https://github.com/jentic/jentic-mini/issues/13)).
+```bash
+jentic-update
+```
+
+This pulls the latest image and restarts the container. Your data directory (`/opt/jentic-mini/data/`) is preserved across updates.
