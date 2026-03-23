@@ -210,4 +210,4 @@ GET /collections/{collection_id}/keys
 - Credential values are never logged, never returned, and never passed to subprocess environments.
 - The `env_var` field (e.g. `ELEVENLABS_APIKEYAUTH`) is used as a vault lookup key — it does not correspond to any actual environment variable name in the host OS.
 - Per-key IP restrictions (`allowed_ips`) are evaluated against the `X-Forwarded-For` header when behind a proxy, or the direct client IP.
-- The admin key (`JENTIC_API_KEY`) bypasses collection scoping — it can see and inject all credentials.
+- Human admin sessions (via login) bypass toolkit scoping for credential management.

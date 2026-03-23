@@ -20,7 +20,7 @@ docker compose up -d
 ```
 
 - Service: http://localhost:8900
-- Swagger UI: http://localhost:8900/docs (auth with `JENTIC_API_KEY` from docker-compose.yml)
+- Swagger UI: http://localhost:8900/docs
 - Redoc: http://localhost:8900/redoc
 - Public URL (home network): https://jpe.home.seanblanchfield.com
 
@@ -32,7 +32,6 @@ Set in `/configs/jentic-personal-edition/docker-compose.yml`:
 
 | Variable | Purpose | Default |
 |---|---|---|
-| `JENTIC_API_KEY` | Master API key — full admin access | (required) |
 | `JENTIC_VAULT_KEY` | Fernet key for credential encryption | Auto-generated to `data/vault.key` if absent/invalid |
 | `DB_PATH` | SQLite database path | `/app/data/jpe.db` |
 | `JENTIC_PUBLIC_HOSTNAME` | Public hostname for workflow capability IDs | `jpe.home.seanblanchfield.com` |
