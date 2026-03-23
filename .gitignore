@@ -5,6 +5,9 @@ __pycache__/
 .env
 data/*.db
 data/vault.key
+data/catalog_manifest.json
+data/workflow_manifest.json
+data/workflows/
 data/specs/
 # Keep specs tracked
 !data/specs/.gitkeep
@@ -14,5 +17,6 @@ vendor/arazzo-engine/
 /tmp/
 node_modules
 vendor/arazzo-engine
+src/static/
 src/specs/
 src/workflows/catalog_*

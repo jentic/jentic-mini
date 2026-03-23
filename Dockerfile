@@ -1,3 +1,11 @@
+# Stage 1: Build UI
+FROM node:24-slim AS ui-build
+WORKDIR /build
+COPY ui/ ./ui/
+RUN mkdir -p src/static
+RUN cd ui && npm ci --ignore-scripts && npm run build
+
+# Stage 2: Python runtime
 FROM python:3.11-slim
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -17,6 +25,9 @@ RUN mkdir -p /app/data /app/src
 
 # Copy source into /app/src so that `from src.xxx` imports work from WORKDIR /app
 COPY src/ /app/src/
+
+# Copy built UI assets from stage 1
+COPY --from=ui-build /build/src/static/ /app/src/static/
 
 COPY src/docker-entrypoint.sh /app/docker-entrypoint.sh
 RUN chmod +x /app/docker-entrypoint.sh
