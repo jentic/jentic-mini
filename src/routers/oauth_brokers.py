@@ -106,6 +106,7 @@ automatically proxied with the user's OAuth token injected server-side.
 
 
 class OAuthBrokerCreate(NormModel):
+    id: str | None = Field(None, description="Optional custom broker ID. Auto-generated from type if omitted.")
     type: str = Field(..., description="Broker backend type. Currently supported: `pipedream`.")
     config: dict[str, Any] = Field(
         ...,
@@ -203,7 +204,7 @@ async def create_oauth_broker(body: OAuthBrokerCreate):
         async with db.execute("SELECT id FROM oauth_brokers") as cur:
             existing_ids = [r[0] for r in await cur.fetchall()]
 
-        broker_id = _make_broker_id(body.type, existing_ids)
+        broker_id = body.id if body.id and body.id not in existing_ids else _make_broker_id(body.type, existing_ids)
         secret_enc = vault.encrypt(client_secret)
 
         await db.execute(
