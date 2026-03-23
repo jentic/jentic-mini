@@ -1,6 +1,7 @@
 #cloud-config
 # Jentic Mini — DigitalOcean cloud-init
-# Paste into the "User Data" field when creating a Ubuntu 22.04/24.04 droplet.
+# When creating a droplet: expand Advanced Options → check "Add Initialization scripts (free)"
+# and paste this file into the field that appears.
 # Once the droplet boots (~2 min), visit http://<droplet-ip>:8900 to complete setup.
 
 package_update: true
