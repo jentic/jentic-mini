@@ -642,30 +642,3 @@ async def refresh_catalog():
         "method": method,
         "fetched_at": time.time(),
     }
-
-    # Fetch directory listing to show available versions/files
-    try:
-        items = _fetch_github_dir(entry["path"])
-    except Exception as e:
-        raise HTTPException(502, f"Failed to fetch catalog entry from GitHub: {e}")
-
-    registered_ids = await _get_registered_api_ids()
-    is_reg = api_id in registered_ids
-
-    # Summarise available versions / files
-    subdirs = [i for i in items if i["type"] == "dir"]
-    files = [i for i in items if i["type"] == "file"]
-    spec_files = [f for f in files if f["name"].lower().endswith((".json", ".yaml", ".yml"))]
-
-    return {
-        "api_id": api_id,
-        "registered": is_reg,
-        "github_path": entry["path"],
-        "github_url": f"https://github.com/{GITHUB_REPO}/tree/main/{entry['path']}",
-        "versions": [s["name"] for s in subdirs],
-        "spec_files": [{"name": f["name"], "size": f["size"], "download_url": f["download_url"]} for f in spec_files],
-        "_links": {
-            "credentials": f"/credentials?api_id={api_id}",
-            "api": f"/apis/{api_id}" if is_reg else None,
-        },
-    }
