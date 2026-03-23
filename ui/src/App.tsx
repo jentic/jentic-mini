@@ -19,7 +19,7 @@ import ApprovalPage from './pages/ApprovalPage'
 import { useAuth } from './hooks/useAuth'
 
 function AuthGuard() {
-  const { user, isLoading, isAccountRequired } = useAuth()
+  const { user, isLoading, isSetupOrAccountRequired } = useAuth()
   const location = useLocation()
 
   if (isLoading) {
@@ -30,7 +30,7 @@ function AuthGuard() {
     )
   }
 
-  if (isAccountRequired) {
+  if (isSetupOrAccountRequired) {
     if (location.pathname !== '/setup') return <Navigate to="/setup" replace />
     return <Outlet />
   }

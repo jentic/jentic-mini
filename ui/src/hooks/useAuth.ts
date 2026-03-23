@@ -10,7 +10,7 @@ export function useAuth() {
   })
 
   const isSetupComplete = healthQuery.data?.status === 'ok'
-  const isAccountRequired = healthQuery.data?.status === 'account_required' || healthQuery.data?.status === 'setup_required'
+  const isSetupOrAccountRequired = healthQuery.data?.status === 'account_required' || healthQuery.data?.status === 'setup_required'
 
   // Only check user session if setup is complete
   const { data, isLoading, error, refetch } = useQuery({
@@ -24,7 +24,7 @@ export function useAuth() {
     user: data,
     isLoading: isLoading || healthQuery.isLoading,
     error,
-    isAccountRequired,
+    isSetupOrAccountRequired,
     refetch
   }
 }
