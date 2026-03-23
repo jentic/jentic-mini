@@ -40,6 +40,11 @@ COPY --from=ui-build /build/static/ /app/static/
 COPY --chmod=0644 LICENSE NOTICE /app/
 COPY --chmod=0755 docker-entrypoint.sh /app/docker-entrypoint.sh
 
+# Run as non-root
+RUN useradd -r -s /bin/false jentic \
+    && chown -R jentic:jentic /app/data
+USER jentic
+
 EXPOSE 8900
 
 # Entrypoint runs DB init + broker app seed before starting the server.

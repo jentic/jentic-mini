@@ -43,12 +43,6 @@ Jentic Mini is designed to be a fully compatible entrypoint: build your agent in
 
 ### Quick Start (pre-built image)
 
-From **DockerHub**:
-
-```bash
-docker run -d --name jentic-mini -p 8900:8900 -v jentic-mini-data:/app/data jentic/jentic-mini
-```
-
 From **GitHub Container Registry**:
 
 ```bash
@@ -135,6 +129,10 @@ cd ui && npm install && npm run dev
 This starts a dev server on `http://localhost:5173` with hot module replacement, proxying API calls to the container.
 
 To rebuild the production UI bundle: `cd ui && npm run build`, then `docker compose up -d --build`.
+
+> **Note:** The container runs as a non-root user. `compose.yml` defaults to uid/gid 1000 for bind mount compatibility.
+> If your host user has a different uid, set `JENTIC_UID` and `JENTIC_GID` before starting:
+> `JENTIC_UID=$(id -u) JENTIC_GID=$(id -g) docker compose up -d`
 
 Swagger UI is available at `http://localhost:8900/docs` for interactive API exploration.
 

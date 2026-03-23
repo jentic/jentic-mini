@@ -5,6 +5,7 @@ services:
       dockerfile: Dockerfile
     image: jentic-mini:latest
     container_name: jentic-mini
+    user: "${JENTIC_UID:-1000}:${JENTIC_GID:-1000}"
     restart: unless-stopped
     ports:
       - "8900:8900"
