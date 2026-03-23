@@ -30,7 +30,7 @@ COPY src/ /app/src/
 # dev bind mount (./src:/app/src) doesn't hide them at runtime.
 COPY --from=ui-build /build/static/ /app/static/
 
-COPY src/docker-entrypoint.sh /app/docker-entrypoint.sh
+COPY docker-entrypoint.sh /app/docker-entrypoint.sh
 RUN chmod +x /app/docker-entrypoint.sh
 
 EXPOSE 8900
