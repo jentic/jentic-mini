@@ -1,18 +1,18 @@
-# JPE Architecture
+# Jentic Mini Architecture
 
 ## System Overview
 
-JPE is a FastAPI service with four primary responsibilities:
+Jentic Mini is a FastAPI service with four primary responsibilities:
 
 | Responsibility | What it does |
 |---|---|
 | **Catalog** | Stores registered APIs (OpenAPI specs) and Arazzo workflows in SQLite; indexes them with BM25 for natural language search |
-| **Broker** | Transparent HTTP reverse proxy — URL pattern `/{upstream_host}/{path}`, injects credentials automatically, enforces collection policies |
-| **Workflow orchestrator** | Executes Arazzo multi-step workflows via a vendored fork of `arazzo-runner`; each step routes through the broker for credential injection |
+| **Broker** | Transparent HTTP reverse proxy — URL pattern `/{upstream_host}/{path}`, injects credentials automatically, enforces toolkit policies |
+| **Workflow orchestrator** | Executes Arazzo multi-step workflows via `arazzo-engine`; each step routes through the broker for credential injection |
 | **Credential vault** | Fernet-encrypted SQLite store; credentials are write-only (values never returned after creation) |
 
 Additionally:
-- **Collections**: scoped credential bundles with their own API keys, access policies, and per-key IP restrictions
+- **Toolkits**: scoped credential bundles with their own API keys, access policies, and per-key IP restrictions
 - **Access control**: policy rules (allow/deny) evaluated at broker time; agent permission escalation flow
 
 ---
@@ -26,7 +26,7 @@ Client (agent or human)
     ▼
 ┌─────────────────────────────────────────────────────┐
 │  API Key Middleware  (auth.py)                       │
-│  Sets: request.state.collection_id                  │
+│  Sets: request.state.toolkit_id                     │
 │        request.state.is_admin                       │
 │        request.state.simulate                       │
 └─────────────────────────────────────────────────────┘
@@ -46,16 +46,16 @@ Client (agent or human)
 │  apis_router          → GET /apis/...               │
 │  search_router        → GET /search                 │
 │  creds_router         → /credentials               │
-│  collections_router   → /collections/...            │
-│  policy_router        → /collections/{id}/policy   │
-│  permissions_router   → /permission-requests        │
+│  toolkits_router      → /toolkits/...              │
+│  policy_router        → /toolkits/{id}/policy      │
+│  access_requests      → /toolkits/{id}/access-requests │
 │  notes_router         → /notes                     │
 │  debug_router         → /debug/...  (hidden)        │
 │  ── static mount (/static) ──                       │
 │  broker_router        → /{upstream_host}/{path}  ◄─ LAST │
 └─────────────────────────────────────────────────────┘
     │                           │
-    │ JPE routes                │ Broker routes
+    │ Internal routes           │ Broker routes
     ▼                           ▼
 ┌──────────────┐     ┌─────────────────────────────────┐
 │ SQLite DB    │     │ Upstream API                    │
@@ -101,11 +101,9 @@ Rules:
 
 ### 3. Workflow IDs
 
-Same format as Capability IDs, using the JPE hostname:
+Same format as Capability IDs, using the Jentic hostname:
 
-`POST/jpe.home.seanblanchfield.com/workflows/summarise-latest-topics`
-
-In production Jentic this would be `POST/jentic.net/workflows/slug`.
+`POST/{JENTIC_PUBLIC_HOSTNAME}/workflows/{slug}`
 
 The backend infers "is this an operation or a workflow?" by checking whether the host matches `JENTIC_PUBLIC_HOSTNAME`. If yes → workflow dispatch. If no → broker proxy.
 
@@ -115,10 +113,10 @@ This means the `/inspect/{id}` endpoint and `/search` results use a single ID fo
 
 **Credentials are NEVER passed as env vars to the arazzo-runner subprocess.**
 
-Instead, the vendored arazzo-runner is patched to rewrite each source spec's `servers[0].url` to `http://localhost:8900/{host}` before execution. This routes every step through the local broker, which:
+Instead, the arazzo-engine runner rewrites each source spec's `servers[0].url` to `http://localhost:8900/{host}` before execution. This routes every step through the local broker, which:
 
 1. Identifies the upstream host from the rewritten URL
-2. Looks up credentials in the current collection bound to that API
+2. Looks up credentials in the current toolkit bound to that API
 3. Injects the appropriate auth header
 4. Forwards the request to the real upstream
 5. Logs the result as a trace
@@ -131,7 +129,7 @@ Benefits:
 
 ### 5. Security Scheme Overlays (Auth Flywheel)
 
-Many real-world OpenAPI specs have incorrect or absent security schemes. JPE handles this with a flywheel pattern:
+Many real-world OpenAPI specs have incorrect or absent security schemes. Jentic Mini handles this with a flywheel pattern:
 
 1. Agent tries a broker call → broker returns 400 with an example `POST /apis/{api_id}/scheme` call
 2. Agent calls `POST /apis/{api_id}/scheme` with auth type + config → creates a **pending overlay**
@@ -139,47 +137,44 @@ Many real-world OpenAPI specs have incorrect or absent security schemes. JPE han
 4. Agent retries the broker call → broker injects the header
 5. On HTTP 2xx → overlay status automatically flips to **confirmed**
 
-Confirmed overlays are merged with the API's OpenAPI spec at broker time. The first agent to figure out auth for an API contributes it for all future agents using that collection.
+Confirmed overlays are merged with the API's OpenAPI spec at broker time. The first agent to figure out auth for an API contributes it for all future agents using that toolkit.
 
-### 6. Collections
+### 6. Toolkits
 
-A collection is a named bundle of credentials with an API key. Key properties:
+A toolkit is a named bundle of credentials with access keys. Key properties:
 
-- Each collection has one or more keys (`collection_keys` table), one per agent/client
+- Each toolkit has one or more keys (`toolkit_keys` table), one per agent/client
 - Keys are individually revocable (soft delete via `revoked_at`)
 - Per-key IP restrictions (CIDR array in `allowed_ips`)
-- Per-collection policy rules (allow/deny, first-match-wins)
-- The admin key (`JENTIC_API_KEY` env var) maps to a built-in `default` collection
-- Agent keys use the prefix `col_`
+- Per-toolkit policy rules (allow/deny, first-match-wins)
+- The `default` toolkit is created automatically at first setup
+- Agent keys use the prefix `tk_`
 
-Credential binding: credentials are stored globally but scoped per-collection via the `collection_credentials` join table. A broker request only injects credentials bound to the requesting collection.
+Credential binding: credentials are stored globally but scoped per-toolkit via the `toolkit_credentials` join table. A broker request only injects credentials bound to the requesting toolkit.
 
 ### 7. Route Registration Order Is Critical
 
-The broker catches `/{target:path}` — any path that isn't matched by an earlier route. If registered before JPE routers, it would swallow all JPE endpoints.
+The broker catches `/{target:path}` — any path that isn't matched by an earlier route. If registered before internal routers, it would swallow all internal endpoints.
 
 **Required order in `main.py`:**
-1. All JPE routers (capability, workflows, import, traces, overlays, apis, search, credentials, collections, policy, permissions, notes, debug)
+1. All internal routers (capability, workflows, import, traces, overlays, apis, search, credentials, toolkits, policy, access-requests, notes, debug)
 2. `/health` and `/` routes
 3. `/docs`, `/redoc`, static mount
 4. `broker_router` — **last**
 
-Breaking this order is a silent failure: JPE endpoints become unreachable and return broker errors.
+Breaking this order is a silent failure: internal endpoints become unreachable and return broker errors.
 
 ### 8. Swagger UI Served Locally
 
-All Swagger/Redoc assets are vendored into `/src/static/`:
-- `swagger-ui-bundle.js`
-- `swagger-ui.css`
-- `redoc.standalone.js`
+Swagger/Redoc assets are installed from npm packages (`swagger-ui-dist`, `redoc`) and copied into `static/` at build time by the Vite `copyApiDocsAssets` plugin.
 
-This allows the service to work fully offline and on patchy connections (common during local dev). No CDN dependency.
+This allows the service to work fully offline and on patchy connections. No CDN dependency.
 
 ---
 
 ## Database Schema
 
-Database: SQLite at `/app/data/jpe.db` (inside container) or `/configs/jentic-personal-edition/data/jpe.db` (host).
+Database: SQLite at `/app/data/jentic-mini.db` (inside container).
 
 Schema is defined in `db.py` with inline migration support.
 
@@ -225,7 +220,7 @@ Stored credentials. Values are Fernet-encrypted.
 | `scheme_name` | TEXT | Which security scheme it satisfies |
 | `created_at` | TIMESTAMP | |
 
-### `collections`
+### `toolkits`
 
 Named bundles of credentials with access control.
 
@@ -233,41 +228,40 @@ Named bundles of credentials with access control.
 |---|---|---|
 | `id` | TEXT PK | UUID |
 | `name` | TEXT | Display name |
-| `api_key` | TEXT | Legacy sentinel (admin collection only) |
 | `simulate` | BOOLEAN | If true, all broker calls are simulated |
 | `created_at` | TIMESTAMP | |
 
-### `collection_keys`
+### `toolkit_keys`
 
-One row per issued API key. Replaces per-collection single key for multi-agent support.
+One row per issued API key. One toolkit can have multiple keys for multi-agent support.
 
 | Column | Type | Notes |
 |---|---|---|
 | `id` | TEXT PK | UUID |
-| `collection_id` | TEXT FK | → `collections.id` |
-| `key` | TEXT UNIQUE | The API key string (prefix `col_`) |
+| `toolkit_id` | TEXT FK | → `toolkits.id` |
+| `key` | TEXT UNIQUE | The API key string (prefix `tk_`) |
 | `label` | TEXT | Which agent/purpose this key is for |
 | `allowed_ips` | TEXT | JSON array of CIDR strings; empty = unrestricted |
 | `revoked_at` | TIMESTAMP | Soft delete; NULL = active |
 | `created_at` | TIMESTAMP | |
 
-### `collection_credentials`
+### `toolkit_credentials`
 
-Join table binding credentials to collections.
+Join table binding credentials to toolkits.
 
 | Column | Type | Notes |
 |---|---|---|
-| `collection_id` | TEXT FK | → `collections.id` |
+| `toolkit_id` | TEXT FK | → `toolkits.id` |
 | `credential_id` | TEXT FK | → `credentials.id` |
 
-### `collection_policies`
+### `toolkit_policies`
 
-Per-collection access policy. One row per collection.
+Per-toolkit access policy. One row per toolkit.
 
 | Column | Type | Notes |
 |---|---|---|
 | `id` | TEXT PK | UUID |
-| `collection_id` | TEXT FK | → `collections.id` |
+| `toolkit_id` | TEXT FK | → `toolkits.id` |
 | `default_action` | TEXT | `allow` or `deny` |
 | `rules` | TEXT | JSON array of rule objects `{action, pattern}` |
 
@@ -301,7 +295,7 @@ Top-level trace log for both operation and workflow executions.
 | Column | Type | Notes |
 |---|---|---|
 | `id` | TEXT PK | UUID — the trace ID |
-| `collection_id` | TEXT FK | Which collection ran this |
+| `toolkit_id` | TEXT FK | Which toolkit ran this |
 | `operation_id` | TEXT | Set for single-operation calls |
 | `workflow_id` | TEXT | Set for workflow calls (slug) |
 | `status` | TEXT | `success`, `error`, `simulated` |
@@ -338,7 +332,7 @@ Client-contributed security scheme patches.
 | `api_id` | TEXT FK | → `apis.id` |
 | `overlay_json` | TEXT | The OpenAPI overlay document (JSON) |
 | `status` | TEXT | `pending` or `confirmed` |
-| `contributed_by` | TEXT | collection_id that submitted it |
+| `contributed_by` | TEXT | toolkit_id that submitted it |
 | `created_at` | TIMESTAMP | |
 | `confirmed_at` | TIMESTAMP | Set automatically on first successful broker 2xx |
 
@@ -351,7 +345,7 @@ Agent-contributed feedback on any resource.
 | `id` | TEXT PK | UUID |
 | `resource_type` | TEXT | e.g. `api`, `operation`, `workflow` |
 | `resource_id` | TEXT | ID of the resource being annotated |
-| `collection_id` | TEXT | Who left the note |
+| `toolkit_id` | TEXT | Who left the note |
 | `body` | TEXT | Freeform text |
 | `created_at` | TIMESTAMP | |
 
@@ -362,7 +356,7 @@ Agent escalation requests — agent asks for access it doesn't currently have.
 | Column | Type | Notes |
 |---|---|---|
 | `id` | TEXT PK | UUID |
-| `collection_id` | TEXT | Requesting collection |
+| `toolkit_id` | TEXT | Requesting toolkit |
 | `resource_type` | TEXT | What kind of resource (e.g. `capability`) |
 | `resource_id` | TEXT | Which resource |
 | `reason` | TEXT | Agent-provided justification |
@@ -372,7 +366,7 @@ Agent escalation requests — agent asks for access it doesn't currently have.
 
 ### `api_keys`
 
-Reserved for future fine-grained scope assignment. Currently the admin key is the `JENTIC_API_KEY` env var and collection keys live in `collection_keys`.
+Reserved for future fine-grained scope assignment. Currently toolkit keys live in `toolkit_keys`.
 
 ---
 
@@ -413,29 +407,11 @@ Description is abbreviated to ≤3 sentences by `utils._abbreviate()` to keep se
 
 ---
 
-## Arazzo Runner Fork
+## Arazzo Engine
 
-**Location:** `/mnt/jentic-pe/vendor/arazzo-engine/`
-**Branch:** `jpe-patches`
+**Source:** Cloned at Docker build time from `github.com/jentic/arazzo-engine`.
 
-The vendored fork of `arazzo-runner` adds JPE-specific runtime parameters so workflows route through the broker.
-
-### Patches Applied
-
-**`models.py`** — `RuntimeParams` extended:
-```python
-class RuntimeParams(BaseModel):
-    # ... existing fields ...
-    auth_headers: dict[str, str] | None = None
-    server_base_url: str | None = None
-```
-
-**`http.py`** — `HTTPExecutor.execute_request` injects `extra_auth_headers` before each HTTP request if `runtime_params.auth_headers` is set.
-
-**`runner.py`** — `ArazzoRunner`:
-- `__init__` accepts `runtime_params: RuntimeParams | None`
-- `_apply_jpe_runtime_params()` rewrites `servers[0].url` in each source spec to `http://localhost:8900/{host}`
-- `execute_workflow()` and `execute_operation()` both call `_apply_jpe_runtime_params()` before execution
+The arazzo-engine runner adds runtime parameters so workflows route through the broker.
 
 ### Preprocessing in `workflows.py`
 
@@ -456,12 +432,12 @@ This ensures every step's HTTP call goes to `localhost:8900` (the broker) rather
 
 ```
 Client: GET /api.elevenlabs.io/v1/voices
-  → auth.py: validates X-Jentic-API-Key, sets collection_id
+  → auth.py: validates X-Jentic-API-Key, sets toolkit_id
   → broker.py: first segment "api.elevenlabs.io" contains dot → broker route
-  → check policy: does this collection allow GET/api.elevenlabs.io/v1/voices?
+  → check policy: does this toolkit allow GET/api.elevenlabs.io/v1/voices?
   → if simulate=true: return mock 200 {}
   → find API registration for api.elevenlabs.io
-  → find credentials in this collection for api.elevenlabs.io
+  → find credentials in this toolkit for api.elevenlabs.io
   → find confirmed overlays for api.elevenlabs.io
   → merge security schemes from spec + overlays
   → build auth header (e.g. xi-api-key: sk-...)
@@ -475,10 +451,10 @@ Client: GET /api.elevenlabs.io/v1/voices
 ### Workflow Execution
 
 ```
-Client: POST /jpe.home.seanblanchfield.com/workflows/summarise-latest-topics
+Client: POST /{JENTIC_PUBLIC_HOSTNAME}/workflows/summarise-latest-topics
   → auth.py: validates key
   → broker.py: host = JENTIC_PUBLIC_HOSTNAME → internal dispatch
-  → workflows.py: dispatch_workflow("summarise-latest-topics", inputs, collection_id)
+  → workflows.py: dispatch_workflow("summarise-latest-topics", inputs, toolkit_id)
   → read arazzo spec from disk
   → apply input schema defaults
   → preprocess: rewrite server URLs to localhost:8900/{host}
