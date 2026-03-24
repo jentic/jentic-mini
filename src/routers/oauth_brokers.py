@@ -258,10 +258,13 @@ async def create_oauth_broker(body: OAuthBrokerCreate):
 @router.get(
     "",
     summary="List registered OAuth brokers",
-    dependencies=[Depends(require_human_session)],
+    tags=["inspect"],
 )
 async def list_oauth_brokers():
-    """Return all registered OAuth brokers as a flat list. `client_secret` is never included."""
+    """Return all registered OAuth brokers as a flat list. `client_secret` is never included.
+
+    Accessible to both agents (toolkit key) and humans (session).
+    """
     async with get_db() as db:
         async with db.execute(
             "SELECT id, type, client_id, project_id, created_at FROM oauth_brokers"
@@ -274,7 +277,7 @@ async def list_oauth_brokers():
 @router.get(
     "/{broker_id}",
     summary="Get an OAuth broker",
-    dependencies=[Depends(require_human_session)],
+    tags=["inspect"],
 )
 async def get_oauth_broker(broker_id: BrokerIdPath):
     async with get_db() as db:
@@ -483,7 +486,7 @@ async def sync_broker_accounts(broker_id: BrokerIdPath, body: SyncRequest, reque
 @router.get(
     "/{broker_id}/accounts",
     summary="List connected accounts for an OAuth broker",
-    dependencies=[Depends(require_human_session)],
+    tags=["inspect"],
 )
 async def list_broker_accounts(broker_id: BrokerIdPath, external_user_id: ExternalUserIdQuery = None):
     """List the OAuth-connected account mappings stored for this broker.
