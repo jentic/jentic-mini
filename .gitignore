@@ -1,5 +1,6 @@
 __pycache__/
-!.claude
+!/.claude
+/.claude/settings.local.json
 *.pyc
 *.pyo
 .env
