@@ -1,8 +1,89 @@
+import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '../api/client'
 import { Badge } from '../components/ui/Badge'
-import { ChevronLeft, Workflow, ArrowRight } from 'lucide-react'
+import { ChevronLeft, Workflow, ArrowRight, ExternalLink, Loader2, Zap } from 'lucide-react'
+
+function CatalogWorkflowFallback({ slug, navigate }: { slug: string; navigate: (path: string) => void }) {
+  const queryClient = useQueryClient()
+  const [importing, setImporting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  // Convert slug back to api_id: apideck.com~ecosystem → apideck.com/ecosystem
+  const apiId = slug.replace('~', '/')
+  const githubUrl = `https://github.com/jentic/jentic-public-apis/tree/main/workflows/${slug}`
+
+  const handleImport = async () => {
+    setImporting(true)
+    setError(null)
+    try {
+      const catalogRes = await fetch(`/catalog/${apiId}`, { credentials: 'include' })
+      if (!catalogRes.ok) {
+        const body = await catalogRes.json().catch(() => ({}))
+        throw new Error(body.detail || `Catalog lookup failed (${catalogRes.status})`)
+      }
+      const catalogEntry = await catalogRes.json()
+      if (!catalogEntry.spec_url) {
+        throw new Error('No spec URL found for this API in the catalog')
+      }
+      const importRes = await fetch('/import', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sources: [{ type: 'url', url: catalogEntry.spec_url, force_api_id: apiId }] }),
+      })
+      if (!importRes.ok) {
+        const body = await importRes.json().catch(() => ({}))
+        throw new Error(body.detail || `Import failed (${importRes.status})`)
+      }
+      const importResult = await importRes.json()
+      if (importResult.failed > 0) {
+        const err = importResult.results?.[0]?.error || 'Unknown error'
+        throw new Error(`Import failed: ${err}`)
+      }
+      queryClient.invalidateQueries({ queryKey: ['workflows'] })
+      navigate('/workflows')
+    } catch (e: any) {
+      setError(e.message)
+    } finally {
+      setImporting(false)
+    }
+  }
+
+  return (
+    <div className="space-y-6 max-w-4xl">
+      <button onClick={() => navigate('/workflows')}
+        className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors">
+        <ChevronLeft className="h-4 w-4" /> Back to Workflows
+      </button>
+      <div className="bg-muted border border-border rounded-xl p-6 space-y-4">
+        <div className="flex items-start gap-3">
+          <Workflow className="h-6 w-6 text-accent-pink mt-0.5 shrink-0" />
+          <div>
+            <h1 className="font-heading text-xl font-bold text-foreground">{apiId}</h1>
+            <p className="text-xs font-mono text-muted-foreground mt-0.5">{slug}</p>
+          </div>
+        </div>
+        <p className="text-sm text-muted-foreground">
+          This workflow is available in the Jentic public catalog. Import it to view details and execute.
+        </p>
+        {error && <p className="text-xs text-danger">{error}</p>}
+        <div className="flex items-center gap-3">
+          <button onClick={handleImport} disabled={importing}
+            className="inline-flex items-center gap-1.5 text-sm text-accent-teal hover:text-accent-teal/80 disabled:opacity-50">
+            {importing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Zap className="h-4 w-4" />}
+            {importing ? 'Importing...' : 'Import this workflow'}
+          </button>
+          <a href={githubUrl} target="_blank" rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 text-sm text-primary hover:text-primary/80">
+            <ExternalLink className="h-3.5 w-3.5" /> View on GitHub
+          </a>
+        </div>
+      </div>
+    </div>
+  )
+}
 
 export default function WorkflowDetailPage() {
   const { slug } = useParams<{ slug: string }>()
@@ -16,15 +97,7 @@ export default function WorkflowDetailPage() {
 
   if (isLoading) return <div className="text-center py-16 text-muted-foreground">Loading workflow...</div>
 
-  if (!workflow) return (
-    <div className="text-center py-16 text-muted-foreground">
-      <p>Workflow not found.</p>
-      <button onClick={() => navigate('/workflows')}
-        className="mt-4 px-4 py-2 bg-muted border border-border rounded-lg text-sm">
-        Back to Workflows
-      </button>
-    </div>
-  )
+  if (!workflow) return <CatalogWorkflowFallback slug={slug!} navigate={navigate} />
 
   const steps: any[] = workflow.steps ?? []
   const inputs: any[] = workflow.inputs ?? []
