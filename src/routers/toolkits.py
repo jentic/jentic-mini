@@ -721,6 +721,7 @@ async def get_credential_permissions(toolkit_id: str, cred_id: str):
     summary="Replace permission rules for a specific credential",
     tags=["toolkits"],
     response_model=list[PermissionRule],
+    dependencies=[Depends(require_human_session)],
 )
 async def set_credential_permissions(toolkit_id: str, cred_id: str, body: list[PolicyRule]):
     """Replaces the entire agent rule list for this credential.
@@ -741,6 +742,7 @@ async def set_credential_permissions(toolkit_id: str, cred_id: str, body: list[P
     summary="Add or remove individual permission rules for a specific credential",
     tags=["toolkits"],
     response_model=list[PermissionRule],
+    dependencies=[Depends(require_human_session)],
 )
 async def patch_credential_permissions(toolkit_id: str, cred_id: str, body: PermissionsPatch):
     """Incrementally update rules for this credential without replacing the full list.
