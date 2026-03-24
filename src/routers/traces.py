@@ -10,6 +10,7 @@ Routes:
   GET /traces/{id}        full trace with step-level detail
 """
 import json
+import logging
 import uuid
 from typing import Any
 
@@ -18,6 +19,7 @@ from src.db import get_db
 from src.models import TraceOut, TraceListPage
 
 router = APIRouter()
+log = logging.getLogger("jentic.traces")
 
 
 # ── DB helpers ────────────────────────────────────────────────────────────────
@@ -35,13 +37,22 @@ async def write_trace(
     error: str | None,
     step_outputs: dict | None = None,
 ) -> str:
-    """Write an execution trace (+ optional step records) to the DB."""
+    """Write an execution trace (+ optional step records) to the DB.
+
+    Uses UPSERT to preserve created_at on updates (e.g. async pending → success).
+    """
     async with get_db() as db:
         await db.execute(
-            """INSERT OR REPLACE INTO executions
+            """INSERT INTO executions
                (id, toolkit_id, operation_id, workflow_id, spec_path,
-                status, http_status, duration_ms, error, completed_at)
-               VALUES (?,?,?,?,?,?,?,?,?,unixepoch())""",
+                status, http_status, duration_ms, error, created_at, completed_at)
+               VALUES (?,?,?,?,?,?,?,?,?,unixepoch(),unixepoch())
+               ON CONFLICT(id) DO UPDATE SET
+                 status=excluded.status,
+                 http_status=excluded.http_status,
+                 duration_ms=excluded.duration_ms,
+                 error=excluded.error,
+                 completed_at=unixepoch()""",
             (trace_id, toolkit_id, operation_id, workflow_id, spec_path,
              status, http_status, duration_ms, error),
         )
@@ -73,9 +84,7 @@ def new_trace_id() -> str:
 
 
 async def safe_write_trace(**kwargs) -> None:
-    """Fire-and-forget trace writer. Prevents trace failures from affecting responses."""
-    import logging
-    log = logging.getLogger("jentic.traces")
+    """Safe trace writer. Prevents trace failures from affecting responses."""
     try:
         await write_trace(**kwargs)
     except Exception as exc:

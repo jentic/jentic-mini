@@ -64,7 +64,7 @@ export default function TraceDetailPage() {
         {trace.error && (
           <div className="mt-4 p-3 bg-danger/10 border border-danger/30 rounded-lg">
             <p className="text-xs text-muted-foreground mb-1">Error</p>
-            <p className="text-sm text-danger font-mono">{trace.error}</p>
+            <pre className="text-sm text-danger font-mono whitespace-pre-wrap break-words">{trace.error}</pre>
           </div>
         )}
       </div>
@@ -84,7 +84,7 @@ export default function TraceDetailPage() {
                     {step.http_status && <StatusBadge status={step.http_status} />}
                     {step.status && !step.http_status && <Badge variant={step.status === 'error' ? 'danger' : 'success'}>{step.status}</Badge>}
                   </div>
-                  {step.error && <p className="text-xs text-danger mt-1">{String(step.error)}</p>}
+                  {step.error && <pre className="text-xs text-danger mt-1 whitespace-pre-wrap break-words font-mono">{String(step.error)}</pre>}
                 </div>
               </div>
             ))}

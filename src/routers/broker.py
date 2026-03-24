@@ -21,11 +21,10 @@ Special request headers:
 
 Response headers added:
   X-Jentic-Error      — "true" when the error is from Jentic, not upstream
-  X-Jentic-Execution-Id — UUID for this broker call (for tracing)
+  X-Jentic-Execution-Id — trace ID (exec_*) for this broker call
 """
 import json
 import time
-import uuid
 import asyncio
 from typing import Optional
 from urllib.parse import unquote, urlparse
@@ -469,6 +468,23 @@ async def broker(request: Request, target: str):
 
     execution_id = new_trace_id()
     started_at = time.time()
+
+    # Helper to write broker traces (reduces duplication across 10+ call sites)
+    async def _write_trace(status: str, http_status: int, error: str | None = None) -> None:
+        """Write trace for this broker call. All broker exit points should call this."""
+        if not is_simulate:
+            await safe_write_trace(
+                trace_id=execution_id,
+                toolkit_id=toolkit_id,
+                operation_id=f"{request.method}/{upstream_host}{upstream_path}",
+                workflow_id=None,
+                spec_path=None,
+                status=status,
+                http_status=http_status,
+                duration_ms=int((time.time() - started_at) * 1000),
+                error=error,
+                step_outputs=None,
+            )
     # toolkit_id is None for unauthenticated (anonymous) requests —
     # credential injection and policy checks are skipped in that case.
     toolkit_id: str | None = getattr(request.state, "toolkit_id", None)
@@ -510,19 +526,7 @@ async def broker(request: Request, target: str):
                 path=upstream_path,
             )
             if not allowed:
-                if not is_simulate:
-                    await safe_write_trace(
-                        trace_id=execution_id,
-                        toolkit_id=toolkit_id,
-                        operation_id=f"{request.method}/{upstream_host}{upstream_path}",
-                        workflow_id=None,
-                        spec_path=None,
-                        status="policy_denied",
-                        http_status=403,
-                        duration_ms=int((time.time() - started_at) * 1000),
-                        error=f"Policy denied: {reason}",
-                        step_outputs=None,
-                    )
+                await _write_trace("policy_denied", 403, f"Policy denied: {reason}")
                 error_body = {
                     "error": "policy_denied",
                     "message": f"{request.method} {upstream_host}{upstream_path} denied by credential policy. {reason}",
@@ -552,19 +556,7 @@ async def broker(request: Request, target: str):
             alias=credential_alias,
         )
     except Exception as e:
-        if not is_simulate:
-            await safe_write_trace(
-                trace_id=execution_id,
-                toolkit_id=toolkit_id,
-                operation_id=f"{request.method}/{upstream_host}{upstream_path}",
-                workflow_id=None,
-                spec_path=None,
-                status="error",
-                http_status=500,
-                duration_ms=int((time.time() - started_at) * 1000),
-                error=f"Credential lookup failed: {str(e)}",
-                step_outputs=None,
-            )
+        await _write_trace("error", 500, f"Credential lookup failed: {str(e)}")
         error_body = {"error": "CREDENTIAL_LOOKUP_FAILED", "message": str(e)}
         return Response(
             content=json.dumps(error_body),
@@ -610,19 +602,7 @@ async def broker(request: Request, target: str):
                         path=upstream_path,
                     )
                     if not allowed:
-                        if not is_simulate:
-                            await safe_write_trace(
-                                trace_id=execution_id,
-                                toolkit_id=toolkit_id,
-                                operation_id=f"{request.method}/{upstream_host}{upstream_path}",
-                                workflow_id=None,
-                                spec_path=None,
-                                status="policy_denied",
-                                http_status=403,
-                                duration_ms=int((time.time() - started_at) * 1000),
-                                error=f"Policy denied: {reason}",
-                                step_outputs=None,
-                            )
+                        await _write_trace("policy_denied", 403, f"Policy denied: {reason}")
                         error_body = {
                             "error": "policy_denied",
                             "message": f"{request.method} {upstream_host}{upstream_path} denied. {reason}",
@@ -678,20 +658,8 @@ async def broker(request: Request, target: str):
                 )
                 if _pd_resp is not None:
                     # Write trace for Pipedream proxy call
-                    if not is_simulate:
-                        trace_status = "success" if _pd_resp.status_code < 400 else "error"
-                        await safe_write_trace(
-                            trace_id=execution_id,
-                            toolkit_id=toolkit_id,
-                            operation_id=f"{request.method}/{upstream_host}{upstream_path}",
-                            workflow_id=None,
-                            spec_path=None,
-                            status=trace_status,
-                            http_status=_pd_resp.status_code,
-                            duration_ms=int((time.time() - started_at) * 1000),
-                            error=None,
-                            step_outputs=None,
-                        )
+                    trace_status = "success" if _pd_resp.status_code < 400 else "error"
+                    await _write_trace(trace_status, _pd_resp.status_code)
                     _pd_resp_headers = {
                         k: v for k, v in _pd_resp.headers.items()
                         if k.lower() not in _HOP_BY_HOP
@@ -797,18 +765,7 @@ async def broker(request: Request, target: str):
 
                 # Update trace with final status
                 trace_status = "success" if resp.status_code < 400 else "error"
-                await safe_write_trace(
-                    trace_id=execution_id,
-                    toolkit_id=toolkit_id,
-                    operation_id=f"{request.method}/{upstream_host}{upstream_path}",
-                    workflow_id=None,
-                    spec_path=None,
-                    status=trace_status,
-                    http_status=resp.status_code,
-                    duration_ms=int((time.time() - started_at) * 1000),
-                    error=None,
-                    step_outputs=None,
-                )
+                await _write_trace(trace_status, resp.status_code)
 
                 if upstream_async_flag:
                     await update_job(job_id, status="upstream_async", result=result,
@@ -819,18 +776,7 @@ async def broker(request: Request, target: str):
                     await update_job(job_id, status="failed", error=resp.text[:512], http_status=resp.status_code)
             except Exception as exc:
                 # Update trace on exception
-                await safe_write_trace(
-                    trace_id=execution_id,
-                    toolkit_id=toolkit_id,
-                    operation_id=f"{request.method}/{upstream_host}{upstream_path}",
-                    workflow_id=None,
-                    spec_path=None,
-                    status="error",
-                    http_status=500,
-                    duration_ms=int((time.time() - started_at) * 1000),
-                    error=f"Background task error: {str(exc)}",
-                    step_outputs=None,
-                )
+                await _write_trace("error", 500, f"Background task error: {str(exc)}")
                 await update_job(job_id, status="failed", error=str(exc))
             finally:
                 _running_tasks.pop(job_id, None)
@@ -839,18 +785,7 @@ async def broker(request: Request, target: str):
         _running_tasks[job_id] = task
 
         # Write pending trace (will be updated by background task)
-        await safe_write_trace(
-            trace_id=execution_id,
-            toolkit_id=toolkit_id,
-            operation_id=f"{request.method}/{upstream_host}{upstream_path}",
-            workflow_id=None,
-            spec_path=None,
-            status="pending",
-            http_status=202,
-            duration_ms=int((time.time() - started_at) * 1000),
-            error=None,
-            step_outputs=None,
-        )
+        await _write_trace("pending", 202)
 
         return Response(
             content=json.dumps({
@@ -873,18 +808,7 @@ async def broker(request: Request, target: str):
                 content=body_bytes if body_bytes else None,
             )
     except httpx.TimeoutException:
-        await safe_write_trace(
-            trace_id=execution_id,
-            toolkit_id=toolkit_id,
-            operation_id=f"{request.method}/{upstream_host}{upstream_path}",
-            workflow_id=None,
-            spec_path=None,
-            status="timeout",
-            http_status=504,
-            duration_ms=int((time.time() - started_at) * 1000),
-            error=f"Upstream {upstream_host} timeout after 60s",
-            step_outputs=None,
-        )
+        await _write_trace("timeout", 504, f"Upstream {upstream_host} timeout after 60s")
         error_body = {
             "error": "UPSTREAM_TIMEOUT",
             "message": f"Upstream {upstream_host} did not respond within 60s",
@@ -896,18 +820,7 @@ async def broker(request: Request, target: str):
             headers={"X-Jentic-Error": "true", "X-Jentic-Execution-Id": execution_id},
         )
     except httpx.RequestError as e:
-        await safe_write_trace(
-            trace_id=execution_id,
-            toolkit_id=toolkit_id,
-            operation_id=f"{request.method}/{upstream_host}{upstream_path}",
-            workflow_id=None,
-            spec_path=None,
-            status="error",
-            http_status=502,
-            duration_ms=int((time.time() - started_at) * 1000),
-            error=f"Network error: {str(e)}",
-            step_outputs=None,
-        )
+        await _write_trace("error", 502, f"Network error: {str(e)}")
         error_body = {
             "error": "UPSTREAM_UNREACHABLE",
             "message": f"Could not reach {upstream_host}: {str(e)}",
@@ -957,18 +870,7 @@ async def broker(request: Request, target: str):
             }
             response_headers["X-Jentic-Hint"] = "basic_auth_failure"
             # Write trace for BasicAuth failure hint path
-            await safe_write_trace(
-                trace_id=execution_id,
-                toolkit_id=toolkit_id,
-                operation_id=f"{request.method}/{upstream_host}{upstream_path}",
-                workflow_id=None,
-                spec_path=None,
-                status="error",
-                http_status=upstream_response.status_code,
-                duration_ms=int((time.time() - started_at) * 1000),
-                error="BasicAuth failure - identity mismatch",
-                step_outputs=None,
-            )
+            await _write_trace("error", upstream_response.status_code, "BasicAuth failure - identity mismatch")
             return Response(
                 content=json.dumps(hint),
                 status_code=upstream_response.status_code,
@@ -1000,18 +902,7 @@ async def broker(request: Request, target: str):
 
     # Write trace for standard path (includes 202 upstream async case)
     trace_status = "success" if upstream_response.status_code < 400 else "error"
-    await safe_write_trace(
-        trace_id=execution_id,
-        toolkit_id=toolkit_id,
-        operation_id=f"{request.method}/{upstream_host}{upstream_path}",
-        workflow_id=None,
-        spec_path=None,
-        status=trace_status,
-        http_status=upstream_response.status_code,
-        duration_ms=int((time.time() - started_at) * 1000),
-        error=None,
-        step_outputs=None,
-    )
+    await _write_trace(trace_status, upstream_response.status_code)
 
     return Response(
         content=upstream_response.content,
