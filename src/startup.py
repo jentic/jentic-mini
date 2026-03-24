@@ -53,13 +53,20 @@ async def self_register(app=None) -> None:
 async def register_install() -> None:
     """On first startup, generate a random install ID and register it with Jentic.
 
-    The install ID is a random UUID stored in /app/data/install-id.txt. It is
-    anonymous — no personal data, no IP address, no machine information is
-    transmitted. The ID is used to count installs and, in future, to enable
-    community contribution features (workflow sharing, API fix contributions).
+    The install ID is a random UUID stored in /app/data/install-id.txt. A second
+    local marker file, /app/data/install-registered.txt, is written after a
+    successful registration so that future startups can skip the network call.
 
-    Set JENTIC_TELEMETRY=off to skip the network call. The install ID file is
-    still created for idempotency, but nothing is sent to Jentic.
+    The JSON payload sent to Jentic contains only this UUID ({"id": "<uuid>"}).
+    No additional device, host, or user metadata is included in the payload.
+    As with any outbound HTTP request, the server and intermediate network
+    infrastructure may observe and log the client IP address in standard logs.
+    The ID is used to count installs and, in future, to enable community
+    contribution features (workflow sharing, API fix contributions).
+
+    Set JENTIC_TELEMETRY=off to skip the registration HTTP request. The install
+    ID file is still created for idempotency, but no registration payload is
+    sent to Jentic and the install-registered marker is not written.
     """
     # Ensure data dir exists
     _INSTALL_ID_FILE.parent.mkdir(parents=True, exist_ok=True)
