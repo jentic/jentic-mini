@@ -30,7 +30,7 @@ from src.models import ImportOut
 
 router = APIRouter()
 
-from src.config import JENTIC_PUBLIC_HOSTNAME, SPECS_DIR, WORKFLOWS_DIR
+from src.config import SPECS_DIR, WORKFLOWS_DIR
 SPECS_DIR.mkdir(parents=True, exist_ok=True)
 WORKFLOWS_DIR.mkdir(parents=True, exist_ok=True)
 
