@@ -152,7 +152,7 @@ Swagger UI is available at `http://localhost:8900/docs` for interactive API expl
 
 ## Telemetry & Community Contributions
 
-On first startup, Jentic Mini generates a random UUID and registers it with Jentic (`api.jentic.com/api/v1/register-install`). This ID is fully anonymous — no personal data, no IP address, and no machine information is ever transmitted.
+On first startup, Jentic Mini generates a random UUID and registers it with Jentic (`https://api.jentic.com/api/v1/register-install`). This ID is fully anonymous — only the UUID is included in the registration payload, and no hostname or other machine identifiers are sent. As with any HTTPS request, the client IP address may still appear in standard server or network logs, but it is not included in the application payload.
 
 This install ID is the foundation for community contribution features: when your instance discovers a working workflow or an API improvement, it can share that back under your anonymous install ID, benefiting everyone running Jentic. Disabling telemetry also disables the ability to contribute workflows and API fixes back to the community.
 
