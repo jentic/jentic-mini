@@ -25,7 +25,7 @@ from fastapi.responses import HTMLResponse, Response
 from src.db import get_db
 from src.utils import workflow_has_async_steps
 from src.models import WorkflowOut
-from src.config import JENTIC_HOSTNAME
+from src.config import JENTIC_PUBLIC_HOSTNAME
 
 router = APIRouter()
 
@@ -34,14 +34,14 @@ def workflow_capability_id(slug: str) -> str:
     """Return the canonical capability ID for a workflow.
 
     Format: POST/{jentic_hostname}/workflows/{slug}
-    e.g.:   POST/{JENTIC_HOSTNAME}/workflows/discourse-openai-summarise
+    e.g.:   POST/{JENTIC_PUBLIC_HOSTNAME}/workflows/discourse-openai-summarise
     """
-    return f"POST/{JENTIC_HOSTNAME}/workflows/{slug}"
+    return f"POST/{JENTIC_PUBLIC_HOSTNAME}/workflows/{slug}"
 
 
 def workflow_url(slug: str) -> str:
     """Return the functioning HTTPS URL for a workflow."""
-    return f"https://{JENTIC_HOSTNAME}/workflows/{slug}"
+    return f"https://{JENTIC_PUBLIC_HOSTNAME}/workflows/{slug}"
 
 
 def _parse_arazzo(arazzo_path: str) -> dict:
@@ -327,7 +327,7 @@ h1 span{{color:#888;font-weight:normal;font-size:.6em;margin-left:12px}}</style>
 <h2>APIs used</h2>
 <p>{apis_html}</p>
 <h2>Execute</h2>
-<p>POST to <code>https://{JENTIC_HOSTNAME}/workflows/{slug}</code> with your inputs and <code>X-Jentic-API-Key</code> header.</p>
+<p>POST to <code>https://{JENTIC_PUBLIC_HOSTNAME}/workflows/{slug}</code> with your inputs and <code>X-Jentic-API-Key</code> header.</p>
 <h2>Arazzo source</h2>
 <pre>{doc and json.dumps(doc, indent=2)[:4000]}</pre>
 </body></html>"""

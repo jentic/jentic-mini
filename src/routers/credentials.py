@@ -5,11 +5,11 @@ from fastapi.responses import JSONResponse
 from src.models import CredentialCreate, CredentialOut, CredentialPatch
 import src.vault as vault
 from src.db import get_db
-from src.config import JENTIC_HOSTNAME
+from src.config import JENTIC_PUBLIC_HOSTNAME
 
 
 def _self_api_id() -> str:
-    return JENTIC_HOSTNAME
+    return JENTIC_PUBLIC_HOSTNAME
 
 
 async def _agent_has_credential_write_permission(toolkit_id: str | None, method: str, path: str) -> bool:

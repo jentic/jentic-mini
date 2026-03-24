@@ -21,7 +21,7 @@ Arazzo is to API workflows what OpenAPI is to individual operations.
 The canonical way to execute a workflow is via the broker, using the workflow's Capability ID:
 
 ```bash
-curl -X POST https://localhost:8900/localhost:8900/workflows/summarise-latest-topics \
+curl -X POST http://localhost:8900/localhost/workflows/summarise-latest-topics \
   -H "X-Jentic-API-Key: $KEY" \
   -H "Content-Type: application/json" \
   -d '{"inputs": {"topic_count": 5}}'
@@ -105,7 +105,7 @@ Auth failures (401/403) get a separate remediation hint pointing to the credenti
 
 **Location:** `/mnt/jentic-pe/src/specs/techpreneurs-openai.arazzo.json`
 
-**Capability ID:** `POST/localhost:8900/workflows/summarise-latest-topics`
+**Capability ID:** `POST/localhost/workflows/summarise-latest-topics`
 
 **What it does:** Fetches the latest topics from the Techpreneurs Discourse forum, then asks OpenAI to summarise them.
 
@@ -119,7 +119,7 @@ Auth failures (401/403) get a separate remediation hint pointing to the credenti
 
 **Invocation:**
 ```bash
-curl -X POST http://localhost:8900/localhost:8900/workflows/summarise-latest-topics \
+curl -X POST http://localhost:8900/localhost/workflows/summarise-latest-topics \
   -H "X-Jentic-API-Key: $KEY" \
   -H "Content-Type: application/json" \
   -d '{}'
@@ -144,7 +144,7 @@ Arazzo runtime expressions (`$steps.X.outputs.Y`) pass data **verbatim** between
 2. Use query parameters to limit response size (e.g. `?per_page=5` on list endpoints)
 3. Pre-process data in workflow inputs before invocation
 
-**Proper solution (not yet built):** A custom Arazzo extension for transformation steps, or a JPE-provided `transform` pseudo-operation at `/localhost:8900/transform` that accepts data + a jq/JSONPath filter and returns the result.
+**Proper solution (not yet built):** A custom Arazzo extension for transformation steps, or a JPE-provided `transform` pseudo-operation at `/localhost/transform` that accepts data + a jq/JSONPath filter and returns the result.
 
 ---
 
@@ -182,21 +182,21 @@ Place the file in `/mnt/jentic-pe/src/specs/` and use `"source": "file"` with a 
 After import, the workflow appears in:
 - `GET /workflows` — list
 - `GET /search?q=...` — BM25 search
-- `GET /inspect/POST/localhost:8900/workflows/{slug}` — inspect
+- `GET /inspect/POST/localhost/workflows/{slug}` — inspect
 
 ---
 
 ## Inspecting a Workflow
 
 ```http
-GET /inspect/POST/localhost:8900/workflows/summarise-latest-topics
+GET /inspect/POST/localhost/workflows/summarise-latest-topics
 X-Jentic-API-Key: {key}
 ```
 
 Returns:
 ```json
 {
-  "id": "POST/localhost:8900/workflows/summarise-latest-topics",
+  "id": "POST/localhost/workflows/summarise-latest-topics",
   "type": "workflow",
   "name": "Summarise Latest Techpreneurs Topics",
   "description": "Fetches latest forum topics and returns an AI-generated summary.",
@@ -211,7 +211,7 @@ Returns:
     {"step_id": "summarise", "operation": "POST/api.openai.com/v1/chat/completions"}
   ],
   "_links": {
-    "execute": "/localhost:8900/workflows/summarise-latest-topics"
+    "execute": "/localhost/workflows/summarise-latest-topics"
   }
 }
 ```

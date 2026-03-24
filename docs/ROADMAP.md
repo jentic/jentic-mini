@@ -10,7 +10,7 @@ Everything listed here was built in a single session as a proof-of-concept imple
 - Docker Compose deployment at `/configs/jentic-personal-edition/`
 - Fernet-encrypted credential vault (write-only semantics)
 - Swagger UI + Redoc served locally from vendored assets (no CDN dependency)
-- Public URL via Caddy reverse proxy: https://localhost:8900
+- Public URL via Caddy reverse proxy: https://localhost
 
 ### Catalog
 
@@ -69,7 +69,7 @@ Arazzo runtime expressions (`$steps.X.outputs.Y`) pass data verbatim. When step 
 
 Options:
 - Custom Arazzo extension: a `transform` step type with jq/JSONPath filter
-- JPE pseudo-operation: `POST /localhost:8900/transform` that accepts `{data, filter}` and returns filtered result — agents can include this as a workflow step
+- JPE pseudo-operation: `POST /localhost/transform` that accepts `{data, filter}` and returns filtered result — agents can include this as a workflow step
 - Input preprocessing: let callers pre-filter before invoking the workflow (workaround, not a fix)
 
 **Async workflow execution**

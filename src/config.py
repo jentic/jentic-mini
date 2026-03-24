@@ -12,7 +12,7 @@ SPECS_DIR = DATA_DIR / "specs"
 WORKFLOWS_DIR = DATA_DIR / "workflows"
 
 # ── Public hostname ───────────────────────────────────────────────────────────
-JENTIC_HOSTNAME = os.getenv("JENTIC_PUBLIC_HOSTNAME", "localhost:8900")
+JENTIC_PUBLIC_HOSTNAME = os.getenv("JENTIC_PUBLIC_HOSTNAME") or "localhost"
 
 # ── Toolkit defaults ──────────────────────────────────────────────────────────
 DEFAULT_TOOLKIT_ID = "default"

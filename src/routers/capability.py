@@ -23,7 +23,7 @@ from urllib.parse import quote
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import Response
 from src.db import get_db
-from src.config import JENTIC_HOSTNAME
+from src.config import JENTIC_PUBLIC_HOSTNAME
 
 router = APIRouter()
 
@@ -222,7 +222,7 @@ async def _get_workflow_capability(slug: str, capability_id: str, toolkit_id: st
 
     involved_apis = json.loads(involved_apis_str) if involved_apis_str else []
 
-    workflow_url = f"https://{JENTIC_HOSTNAME}/workflows/{slug}"
+    workflow_url = f"https://{JENTIC_PUBLIC_HOSTNAME}/workflows/{slug}"
     encoded_id = quote(capability_id, safe="")
 
     result: dict = {
@@ -240,7 +240,7 @@ async def _get_workflow_capability(slug: str, capability_id: str, toolkit_id: st
         "apis": involved_apis,
         "_links": {
             "self": f"/inspect/{encoded_id}",
-            "execute": f"POST /{JENTIC_HOSTNAME}/workflows/{slug}",
+            "execute": f"POST /{JENTIC_PUBLIC_HOSTNAME}/workflows/{slug}",
             # Full Arazzo definition for those who want the technical spec
             "definition": f"/workflows/{slug}",
         },
@@ -290,7 +290,7 @@ async def get_capability(
     # Workflow capability IDs: POST/{jentic_hostname}/workflows/{slug}
     # Detect by checking the host portion after the method prefix.
     _wf_re = re.compile(
-        rf"^POST/{re.escape(JENTIC_HOSTNAME)}/workflows/(.+)$", re.IGNORECASE
+        rf"^POST/{re.escape(JENTIC_PUBLIC_HOSTNAME)}/workflows/(.+)$", re.IGNORECASE
     )
     _wf_match = _wf_re.match(capability_id)
     if _wf_match:

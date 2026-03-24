@@ -2,6 +2,18 @@
 import re
 from typing import Any
 
+from src.config import JENTIC_PUBLIC_HOSTNAME
+
+
+def build_absolute_url(request, path: str) -> str:
+    """Build an absolute URL from a request and a path.
+
+    Respects X-Forwarded-Proto behind reverse proxies.
+    """
+    host = request.headers.get("host", JENTIC_PUBLIC_HOSTNAME)
+    scheme = request.headers.get("x-forwarded-proto", request.url.scheme)
+    return f"{scheme}://{host}{path}"
+
 # Jentic research: 2 sentences is optimal for tool-selection accuracy.
 # We allow 3 (2 + buffer) to avoid cutting meaningful context.
 SEARCH_MAX_SENTENCES = 3

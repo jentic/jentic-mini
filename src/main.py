@@ -6,7 +6,7 @@ import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.openapi.docs import get_redoc_html
 from fastapi.openapi.utils import get_openapi
 from fastapi.staticfiles import StaticFiles
@@ -37,7 +37,7 @@ from src.routers import oauth_brokers as oauth_brokers_router
 from src.routers.apis import rebuild_index_on_startup
 from src.routers.catalog import refresh_catalog_if_stale
 from src.startup import self_register, seed_broker_apps
-from src.config import JENTIC_HOSTNAME
+from src.utils import build_absolute_url
 
 logging.basicConfig(level=(os.getenv("LOG_LEVEL") or "info").upper())
 logging.getLogger("aiosqlite").setLevel(logging.WARNING)
@@ -183,7 +183,7 @@ app.include_router(oauth_brokers_router.router, tags=["credentials"])
 
 # ── Meta routes: health + root — MUST be before broker catch-all ─────────────
 @app.get("/health", tags=["meta"])
-async def health():
+async def health(request: Request):
     """Returns current setup state with explicit instructions for agents."""
     state = await setup_state()
 
@@ -202,7 +202,7 @@ async def health():
             "message": "Agent key is active. No admin account has been created yet.",
             "next_step": "Tell your user to visit setup_url to create their admin account. "
                          "Your agent key works immediately — you do not need to wait.",
-            "setup_url": f"https://{JENTIC_HOSTNAME}/user/create",
+            "setup_url": build_absolute_url(request, "/user/create"),
             "version": "0.2.0",
         }
 

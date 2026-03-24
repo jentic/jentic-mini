@@ -34,7 +34,7 @@ import httpx
 from fastapi import APIRouter, Request, Response, HTTPException
 from fastapi.routing import APIRoute
 
-from src.config import JENTIC_HOSTNAME
+from src.config import JENTIC_PUBLIC_HOSTNAME
 from src.db import get_db
 import src.vault as vault
 # Lazy import to avoid circular deps — imported inline where needed
@@ -431,7 +431,7 @@ async def broker(request: Request, target: str):
     # (handles cases where the container doesn't have env vars set)
     _request_host = request.headers.get("host", "").split(":")[0]
     _is_self = (
-        upstream_host == JENTIC_HOSTNAME
+        upstream_host == JENTIC_PUBLIC_HOSTNAME
         or upstream_host == _request_host
         or upstream_host in ("localhost", "127.0.0.1", "0.0.0.0")
     )

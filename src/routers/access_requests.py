@@ -18,7 +18,6 @@ URL structure (nested under /toolkits):
   GET    /toolkits/{toolkit_id}/access-requests/approve/{req_id}  (HTML UI)
 """
 import json
-import os
 import time
 import uuid
 from typing import Literal
@@ -28,6 +27,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from src.auth import require_human_session
 from pydantic import BaseModel, Field
 from src.validators import NormModel
+from src.utils import build_absolute_url
 
 from src.db import get_db
 from src.models import AccessRequestOut, PermissionRule
@@ -147,15 +147,7 @@ async def create_access_request(toolkit_id: str, request: Request, body: AccessR
 
     req_id = "areq_" + str(uuid.uuid4())[:8]
 
-    public_hostname = os.environ.get("JENTIC_PUBLIC_HOSTNAME")
-    if public_hostname:
-        approve_url = f"https://{public_hostname}/approve/{toolkit_id}/{req_id}"
-    else:
-        host = request.headers.get("host", "localhost:8900").split(",")[0].strip()
-        scheme = request.headers.get("x-forwarded-proto", request.url.scheme).split(",")[0].strip()
-        if scheme not in ("http", "https"):
-            scheme = "http"
-        approve_url = f"{scheme}://{host}/approve/{toolkit_id}/{req_id}"
+    approve_url = build_absolute_url(request, f"/approve/{toolkit_id}/{req_id}")
 
     # Store payload as the flat fields relevant to this request type
     payload_dict = {
