@@ -47,6 +47,7 @@ class ImportSource(NormModel):
     url: str | None = None
     filename: str | None = None
     content: str | None = None
+    force_api_id: str | None = None  # override derived api_id (e.g. catalog canonical ID)
 
 
 class ImportRequest(NormModel):
@@ -110,7 +111,7 @@ def _url_to_filename(url: str) -> str:
 
 # ── OpenAPI registration ──────────────────────────────────────────────────────
 
-async def _register_openapi(doc: dict, saved_path: str) -> dict:
+async def _register_openapi(doc: dict, saved_path: str, force_api_id: str | None = None) -> dict:
     """Register an OpenAPI spec as an API + operations in Jentic."""
     # Import the heavy lifting from apis.py
     from src.routers.apis import (
@@ -123,7 +124,7 @@ async def _register_openapi(doc: dict, saved_path: str) -> dict:
     if servers:
         base_url = servers[0].get("url")
 
-    api_id = _derive_api_id(base_url) if base_url else None
+    api_id = force_api_id or (_derive_api_id(base_url) if base_url else None)
     if not api_id:
         title = doc.get("info", {}).get("title", "unknown")
         api_id = re.sub(r"[^a-z0-9]", "-", title.lower()).strip("-")[:40]
@@ -246,7 +247,7 @@ async def import_sources(body: ImportRequest):
             if _is_arazzo(doc):
                 result = await _register_arazzo(doc, saved_path)
             else:
-                result = await _register_openapi(doc, saved_path)
+                result = await _register_openapi(doc, saved_path, force_api_id=source.force_api_id)
             results.append({"index": i, "status": "success", **result})
         except Exception as e:
             results.append({
