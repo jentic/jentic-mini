@@ -193,16 +193,16 @@ GET /oauth-brokers/pipedream/accounts?external_user_id=frank
 
 ---
 
-### `DELETE /oauth-brokers/pipedream/accounts/{account_id}`
+### `DELETE /oauth-brokers/pipedream/accounts/{api_host}`
 
-Disconnect an account (removes from local tracking, optionally deletes the credential).
+Disconnect an account by its API host (removes from local tracking, revokes on Pipedream's side, and removes credential from vault).
 
 ```
-DELETE /oauth-brokers/pipedream/accounts/apn_xyz123
-DELETE /oauth-brokers/pipedream/accounts/apn_xyz123?delete_credential=false
+DELETE /oauth-brokers/pipedream/accounts/googleapis.com/drive
+DELETE /oauth-brokers/pipedream/accounts/googleapis.com/drive?external_user_id=frank
 ```
 
-Note: this does NOT revoke the token on Pipedream's side. Do that in the Pipedream dashboard if needed.
+Note: Requires human session. If the Pipedream revoke fails, local cleanup still proceeds with a warning.
 
 ---
 
