@@ -10,7 +10,7 @@ Everything listed here was built in a single session as a proof-of-concept imple
 - Docker Compose deployment at `/configs/jentic-personal-edition/`
 - Fernet-encrypted credential vault (write-only semantics)
 - Swagger UI + Redoc served locally from vendored assets (no CDN dependency)
-- Public URL via Caddy reverse proxy: https://jpe.home.seanblanchfield.com
+- Public URL via Caddy reverse proxy: https://localhost:8900
 
 ### Catalog
 
@@ -69,7 +69,7 @@ Arazzo runtime expressions (`$steps.X.outputs.Y`) pass data verbatim. When step 
 
 Options:
 - Custom Arazzo extension: a `transform` step type with jq/JSONPath filter
-- JPE pseudo-operation: `POST /jpe.home.seanblanchfield.com/transform` that accepts `{data, filter}` and returns filtered result — agents can include this as a workflow step
+- JPE pseudo-operation: `POST /localhost:8900/transform` that accepts `{data, filter}` and returns filtered result — agents can include this as a workflow step
 - Input preprocessing: let callers pre-filter before invoking the workflow (workaround, not a fix)
 
 **Async workflow execution**
@@ -119,7 +119,7 @@ Standard `GET /llms.txt` endpoint for LLM discovery. Returns a structured descri
 WebSocket vs long-polling for async workflow progress. Leaning toward SSE (Server-Sent Events) for simplicity, but needs a decision before implementation.
 
 **Production workflow domain**
-Workflow IDs currently use `jpe.home.seanblanchfield.com`. Production Jentic needs a canonical domain. Options: `jentic.net`, `functioncall.net`. Decision pending.
+Workflow IDs currently use `localhost:8900`. Production Jentic needs a canonical domain. Options: `jentic.net`, `functioncall.net`. Decision pending.
 
 **OAuth2 bundled setup flow**
 OAuth2 APIs (Spotify, Google, Slack user tokens, etc.) require multi-step human interaction for initial token grant. Proposed: agent calls `POST /credentials/oauth2/init`, JPE returns a single URL where the human completes the OAuth dance, JPE stores the access + refresh tokens, handles refresh automatically. Agent never touches the OAuth flow.

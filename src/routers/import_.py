@@ -38,7 +38,7 @@ SPECS_DIR.mkdir(parents=True, exist_ok=True)
 WORKFLOWS_DIR = _DATA_DIR / "workflows"
 WORKFLOWS_DIR.mkdir(parents=True, exist_ok=True)
 
-JENTIC_HOSTNAME = os.environ.get("JENTIC_PUBLIC_HOSTNAME", "jentic-mini.home.seanblanchfield.com")
+from src.config import JENTIC_HOSTNAME
 
 
 class ImportSource(NormModel):

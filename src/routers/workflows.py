@@ -13,7 +13,6 @@ as operation IDs. The backend detects them by matching the Jentic hostname.
 """
 import copy
 import json
-import os
 import tempfile
 import uuid
 import yaml
@@ -26,11 +25,9 @@ from fastapi.responses import HTMLResponse, Response
 from src.db import get_db
 from src.utils import workflow_has_async_steps
 from src.models import WorkflowOut
+from src.config import JENTIC_HOSTNAME
 
 router = APIRouter()
-
-# Jentic public hostname — used to build canonical capability IDs for workflows
-JENTIC_HOSTNAME = os.environ.get("JENTIC_PUBLIC_HOSTNAME", "jentic-mini.home.seanblanchfield.com")
 
 
 def workflow_capability_id(slug: str) -> str:

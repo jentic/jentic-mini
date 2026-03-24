@@ -1,15 +1,15 @@
 """Upstream API credentials vault routes."""
-import os
 import uuid
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse
 from src.models import CredentialCreate, CredentialOut, CredentialPatch
 import src.vault as vault
 from src.db import get_db
+from src.config import JENTIC_HOSTNAME
 
 
 def _self_api_id() -> str:
-    return os.getenv("JENTIC_PUBLIC_HOSTNAME") or os.getenv("JENTIC_HOSTNAME") or "jentic-mini.home.seanblanchfield.com"
+    return JENTIC_HOSTNAME
 
 
 async def _agent_has_credential_write_permission(toolkit_id: str | None, method: str, path: str) -> bool:

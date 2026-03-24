@@ -12,6 +12,7 @@ from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import Response
 from src.models import ApiOut, OperationOut, ApiListPage, OperationListPage
 from src.db import get_db
+from src.config import JENTIC_HOSTNAME
 import src.bm25 as bm25
 
 router = APIRouter()
@@ -294,7 +295,7 @@ async def _rebuild_index():
     try:
         from src.routers.workflows import workflow_capability_id
     except Exception:
-        workflow_capability_id = lambda s: f"POST/jentic-mini.home.seanblanchfield.com/workflows/{s}"  # TODO: import JENTIC_HOSTNAME
+        workflow_capability_id = lambda s: f"POST/{JENTIC_HOSTNAME}/workflows/{s}"
 
     wfs = [
         {

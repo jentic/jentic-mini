@@ -14,7 +14,6 @@ Workflow IDs are detected by matching the Jentic hostname + /workflows/ path.
 The backend transparently handles both types — callers need not distinguish.
 """
 import json
-import os
 import re
 import yaml
 from pathlib import Path
@@ -24,8 +23,7 @@ from urllib.parse import quote
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import Response
 from src.db import get_db
-
-JENTIC_HOSTNAME = os.environ.get("JENTIC_PUBLIC_HOSTNAME", "jentic-mini.home.seanblanchfield.com")
+from src.config import JENTIC_HOSTNAME
 
 router = APIRouter()
 
