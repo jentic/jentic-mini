@@ -1,5 +1,6 @@
 import { Outlet, Link, useLocation } from 'react-router-dom'
 import { JenticLogo } from '../ui/Logo'
+import { BookOpen } from 'lucide-react'
 import { useAuth } from '../../hooks/useAuth'
 import { usePendingRequests } from '../../hooks/usePendingRequests'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
@@ -61,6 +62,19 @@ export function Layout() {
           <NavLink to="/traces" icon={<span>📈</span>} label="Traces" />
           <NavLink to="/jobs" icon={<span>⚙️</span>} label="Async Jobs" />
         </nav>
+
+        <div className="px-3 py-3 border-t border-border">
+          <a
+            href="/docs"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-3 px-4 py-2 rounded-md text-sm text-foreground hover:bg-muted hover:text-primary transition-all duration-150"
+          >
+            <BookOpen className="h-4 w-4" />
+            <span className="font-semibold">API Docs</span>
+          </a>
+          <p className="px-4 pt-2 text-[10px] font-mono text-muted-foreground/50">jentic mini · self-hosted</p>
+        </div>
       </aside>
 
       {/* Main Content */}
