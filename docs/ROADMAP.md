@@ -119,7 +119,7 @@ Standard `GET /llms.txt` endpoint for LLM discovery. Returns a structured descri
 WebSocket vs long-polling for async workflow progress. Leaning toward SSE (Server-Sent Events) for simplicity, but needs a decision before implementation.
 
 **Production workflow domain**
-Workflow IDs currently use `localhost:8900`. Production Jentic needs a canonical domain. Options: `jentic.net`, `functioncall.net`. Decision pending.
+Workflow IDs currently use `localhost`. Production Jentic needs a canonical domain. Options: `jentic.net`, `functioncall.net`. Decision pending.
 
 **OAuth2 bundled setup flow**
 OAuth2 APIs (Spotify, Google, Slack user tokens, etc.) require multi-step human interaction for initial token grant. Proposed: agent calls `POST /credentials/oauth2/init`, JPE returns a single URL where the human completes the OAuth dance, JPE stores the access + refresh tokens, handles refresh automatically. Agent never touches the OAuth flow.

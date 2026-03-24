@@ -34,7 +34,7 @@ Set in `/configs/jentic-personal-edition/docker-compose.yml`:
 |---|---|---|
 | `JENTIC_VAULT_KEY` | Fernet key for credential encryption | Auto-generated to `data/vault.key` if absent/invalid |
 | `DB_PATH` | SQLite database path | `/app/data/jpe.db` |
-| `JENTIC_PUBLIC_HOSTNAME` | Public hostname for workflow capability IDs | `localhost:8900` |
+| `JENTIC_PUBLIC_HOSTNAME` | Public hostname for workflow capability IDs | `localhost` |
 
 ## File Layout
 
