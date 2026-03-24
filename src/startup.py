@@ -21,6 +21,7 @@ from src.brokers.pipedream import _API_ID_TO_PD_SLUG as _PIPEDREAM_APP_SEEDS
 
 _REGISTER_INSTALL_URL = "https://api.jentic.com/api/v1/register-install"
 _INSTALL_ID_FILE = pathlib.Path("/app/data/install-id.txt")
+_INSTALL_REGISTERED_FILE = pathlib.Path("/app/data/install-registered.txt")
 
 log = logging.getLogger("jentic")
 
@@ -63,15 +64,18 @@ async def register_install() -> None:
     # Ensure data dir exists
     _INSTALL_ID_FILE.parent.mkdir(parents=True, exist_ok=True)
 
-    # Load or create the install ID
+    # Load or create the install ID (never deleted — stable across restarts)
     if _INSTALL_ID_FILE.exists():
         install_id = _INSTALL_ID_FILE.read_text().strip()
-        log.debug("register_install: existing install ID %s", install_id)
-        return  # Already registered on a previous startup
     else:
         install_id = str(uuid.uuid4())
         _INSTALL_ID_FILE.write_text(install_id)
         log.info("register_install: new install ID %s", install_id)
+
+    # Already successfully registered on a previous startup — nothing to do
+    if _INSTALL_REGISTERED_FILE.exists():
+        log.debug("register_install: already registered — skipping")
+        return
 
     # Opt-out check
     if os.environ.get("JENTIC_TELEMETRY", "").lower() == "off":
@@ -87,15 +91,12 @@ async def register_install() -> None:
                 json={"id": install_id},
             )
             if resp.is_success:
+                _INSTALL_REGISTERED_FILE.write_text(install_id)
                 log.info("register_install: registered successfully")
             else:
                 log.warning("register_install: server returned %d — will retry on next startup", resp.status_code)
-                # Remove file so we retry next startup
-                _INSTALL_ID_FILE.unlink(missing_ok=True)
     except Exception as exc:
         log.warning("register_install: network call failed (%s) — will retry on next startup", exc)
-        # Remove file so we retry next startup
-        _INSTALL_ID_FILE.unlink(missing_ok=True)
 
 
 # ── Step 1: import own OpenAPI spec ──────────────────────────────────────────
