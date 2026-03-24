@@ -514,27 +514,30 @@ async def get_catalog_entry(api_id: str):
     """Return details for a single catalog API, including the spec download URL.
 
     Use the returned `spec_url` with `POST /import` to import this API:
-    ```json
-    POST /import
-    {"sources": [{"type": "url", "url": "<spec_url>", "force_api_id": "<api_id>"}]}
-    ```
+
+        POST /import
+        {"sources": [{"type": "url", "url": "<spec_url>", "force_api_id": "<api_id>"}]}
     """
     entries = _load_manifest()
     entry = next((e for e in entries if e["api_id"] == api_id), None)
     if not entry:
         raise HTTPException(404, f"'{api_id}' not found in the public catalog.")
 
-    registered_ids = await _get_registered_api_ids()
-    is_registered = api_id in registered_ids
+    async with get_db() as db:
+        async with db.execute("SELECT 1 FROM apis WHERE id=? LIMIT 1", (api_id,)) as cur:
+            is_registered = await cur.fetchone() is not None
 
     spec_file = None
     spec_url = None
+    spec_error = None
     try:
         spec_file = _find_spec_recursive(entry["path"])
         if spec_file:
             spec_url = spec_file.get("download_url")
-    except Exception:
-        pass
+    except urllib.error.HTTPError as e:
+        spec_error = f"GitHub returned {e.code}: {e.reason}"
+    except Exception as e:
+        spec_error = str(e)
 
     links: dict = {
         "github": f"https://github.com/{GITHUB_REPO}/tree/main/{entry['path']}",
@@ -545,13 +548,16 @@ async def get_catalog_entry(api_id: str):
     if spec_url:
         links["import"] = "/import"
 
-    return {
+    result: dict = {
         "api_id": api_id,
         "registered": is_registered,
         "spec_url": spec_url,
         "spec_filename": spec_file["name"] if spec_file else None,
         "_links": links,
     }
+    if spec_error:
+        result["spec_error"] = spec_error
+    return result
 
 
 @router.post(

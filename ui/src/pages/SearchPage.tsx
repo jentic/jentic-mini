@@ -161,6 +161,11 @@ function CatalogPanel({ result, onClose }: { result: any; onClose: () => void })
         const body = await importRes.json().catch(() => ({}))
         throw new Error(body.detail || `Import failed (${importRes.status})`)
       }
+      const importResult = await importRes.json()
+      if (importResult.failed > 0) {
+        const err = importResult.results?.[0]?.error || 'Unknown error'
+        throw new Error(`Import failed: ${err}`)
+      }
       setImported(true)
       queryClient.invalidateQueries({ queryKey: ['search'] })
     } catch (e: any) {
