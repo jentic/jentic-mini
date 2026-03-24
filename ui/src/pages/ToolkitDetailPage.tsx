@@ -16,19 +16,16 @@ function CredentialPermissionEditor({ toolkitId, credential, onClose }: {
 }) {
   const queryClient = useQueryClient()
   const [rules, setRules] = useState<any[]>([])
-  const [loading, setLoading] = useState(true)
 
-  const { data: permissions } = useQuery({
+  const { data: permissions, isLoading, isError } = useQuery({
     queryKey: ['permissions', toolkitId, credential.credential_id],
     queryFn: () => api.getPermissions(toolkitId, credential.credential_id),
   })
 
   React.useEffect(() => {
     if (permissions) {
-      // Filter out system safety rules (they have _comment: "System safety rule")
       const agentRules = Array.isArray(permissions) ? permissions.filter((r: any) => !r._comment?.includes('System safety')) : []
       setRules(agentRules)
-      setLoading(false)
     }
   }, [permissions])
 
@@ -41,9 +38,15 @@ function CredentialPermissionEditor({ toolkitId, credential, onClose }: {
     },
   })
 
-  if (loading) return (
+  if (isLoading) return (
     <div className="border-t border-border bg-background/50 p-5">
       <p className="text-sm text-muted-foreground">Loading permissions...</p>
+    </div>
+  )
+
+  if (isError) return (
+    <div className="border-t border-border bg-background/50 p-5">
+      <p className="text-sm text-danger">Failed to load permissions.</p>
     </div>
   )
 
@@ -291,10 +294,12 @@ export default function ToolkitDetailPage() {
             className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary/10 border border-primary/30 text-primary hover:bg-primary/20 rounded-lg text-sm font-medium transition-colors">
             <Plus className="h-4 w-4" /> Request Access
           </button>
-          <button onClick={() => setShowSettings(true)}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-muted border border-border text-foreground hover:bg-muted/60 rounded-lg text-sm transition-colors">
-            <Settings className="h-4 w-4" /> Settings
-          </button>
+          {id !== 'default' && (
+            <button onClick={() => setShowSettings(true)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-muted border border-border text-foreground hover:bg-muted/60 rounded-lg text-sm transition-colors">
+              <Settings className="h-4 w-4" /> Settings
+            </button>
+          )}
         </div>
       </div>
 
@@ -407,11 +412,13 @@ export default function ToolkitDetailPage() {
                       <Edit2 className="h-3 w-3" /> Permissions
                       {editingPermForCred === cred.credential_id ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
                     </button>
-                    <ConfirmInline onConfirm={() => unbindMutation.mutate(cred.credential_id)} message="Unbind this credential?" confirmLabel="Unbind">
-                      <button className="inline-flex items-center gap-1 px-2 py-1 bg-danger/10 border border-danger/30 text-danger hover:bg-danger/20 rounded text-xs transition-colors">
-                        <Unlink className="h-3 w-3" /> Unbind
-                      </button>
-                    </ConfirmInline>
+                    {id !== 'default' && (
+                      <ConfirmInline onConfirm={() => unbindMutation.mutate(cred.credential_id)} message="Unbind this credential?" confirmLabel="Unbind">
+                        <button className="inline-flex items-center gap-1 px-2 py-1 bg-danger/10 border border-danger/30 text-danger hover:bg-danger/20 rounded text-xs transition-colors">
+                          <Unlink className="h-3 w-3" /> Unbind
+                        </button>
+                      </ConfirmInline>
+                    )}
                   </div>
                 </div>
                 {editingPermForCred === cred.credential_id && (
