@@ -8,7 +8,7 @@ on:
     branches: [main]
 
 jobs:
-  publish-ghcr:
+  publish:
     if: github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -27,35 +27,6 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v4
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
-
-      - name: Build and push
-        uses: docker/build-push-action@v7
-        with:
-          context: .
-          push: true
-          platforms: linux/amd64,linux/arm64
-          provenance: false
-          tags: ghcr.io/jentic/jentic-mini:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-  publish-dockerhub:
-    if: github.event.workflow_run.conclusion == 'success'
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          ref: ${{ github.event.workflow_run.head_sha }}
-          fetch-depth: 1
 
       - name: Log in to Docker Hub
         uses: docker/login-action@v4
@@ -76,6 +47,8 @@ jobs:
           push: true
           platforms: linux/amd64,linux/arm64
           provenance: false
-          tags: jentic/jentic-mini:latest
+          tags: |
+            ghcr.io/jentic/jentic-mini:latest
+            jentic/jentic-mini:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
