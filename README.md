@@ -1,5 +1,7 @@
 # Jentic Mini
 
+> ⚠️ **Early Access** — Jentic Mini is new and under active development. It may contain bugs, rough edges, and security gaps we haven't found yet. It is **not recommended for production use** at this stage. We're sharing it early so the community can explore it, test it, and help shape it. Use it in personal or development environments, and please [report issues](https://github.com/jentic/jentic-mini/issues) as you find them.
+
 **Jentic Mini** is the open-source, self-hosted implementation of the Jentic API — fully API-compatible with the [Jentic hosted and VPC editions](https://jentic.com).
 
 ## What is Jentic Mini?
@@ -33,7 +35,7 @@ The **Jentic hosted and VPC editions** offer deeper implementations across four 
 | **Simulation** | Basic simulate mode | Full sandbox for simulating API calls and toolkit behaviour (enterprise-only) |
 | **Catalog** | ~1,044 APIs + ~380 workflow sources from [jentic-public-apis](https://github.com/jentic/jentic-public-apis); auto-imported on credential add | Central catalog — aggregates the collective know-how of agents across API definitions and Arazzo workflows |
 
-Jentic Mini is designed to be a fully compatible entrypoint: build your agent integrations against Jentic Mini locally, then point at the hosted API for production.
+Jentic Mini is a self-hosted deployment option for individuals and small teams who want full control over their data and credentials. For teams that need managed scaling, SLAs, or enterprise features, [Jentic](https://jentic.com) offers hosted and on-premises editions — [get in touch](https://jentic.com/contact) to find out more.
 
 ## Getting Started
 
