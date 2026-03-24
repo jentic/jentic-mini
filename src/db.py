@@ -373,6 +373,9 @@ async def init_db() -> None:
                    WHEN auth_type IS NOT NULL AND auth_type NOT IN ('bearer', 'basic', 'pipedream_oauth') THEN 'apiKey'
                    ELSE auth_type
                END""",
+            # User-specified catalog API ID on connect-link and account rows
+            "ALTER TABLE oauth_broker_connect_labels ADD COLUMN api_id TEXT",
+            "ALTER TABLE oauth_broker_accounts ADD COLUMN api_id TEXT",
         ]
         for m in migrations:
             try:

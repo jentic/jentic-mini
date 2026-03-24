@@ -435,13 +435,13 @@ class PipedreamOAuthBroker:
         count = 0
 
         async with get_db() as db:
-            # Load pending labels: {app_slug: label}
+            # Load pending labels and user-specified api_ids: {app_slug: (label, api_id)}
             async with db.execute(
-                "SELECT app_slug, label FROM oauth_broker_connect_labels "
+                "SELECT app_slug, label, api_id FROM oauth_broker_connect_labels "
                 "WHERE broker_id=? AND external_user_id=?",
                 (self.broker_id, external_user_id),
             ) as cur:
-                pending_labels: dict[str, str] = {r[0]: r[1] for r in await cur.fetchall()}
+                pending: dict[str, tuple[str, str | None]] = {r[0]: (r[1], r[2]) for r in await cur.fetchall()}
 
             consumed_slugs: set[str] = set()
 
@@ -452,18 +452,57 @@ class PipedreamOAuthBroker:
                 if not account_id or not app_slug:
                     continue
 
-                label = pending_labels.get(app_slug, app_slug)
+                label, user_api_id = pending.get(app_slug, (app_slug, None))
 
-                hosts = pd_slug_to_hosts(app_slug)
+                # If no pending label, check if we already have a stored api_id for this account
+                # (from a previous sync where the user specified one). This prevents the slug map
+                # fallback from creating duplicate rows on subsequent syncs.
+                if not user_api_id:
+                    async with db.execute(
+                        "SELECT api_id FROM oauth_broker_accounts WHERE broker_id=? AND external_user_id=? AND account_id=? LIMIT 1",
+                        (self.broker_id, external_user_id, account_id),
+                    ) as cur:
+                        existing = await cur.fetchone()
+                    if existing and existing[0]:
+                        user_api_id = existing[0]
+
+                # Use user-specified api_id if provided; otherwise fall back to slug map
+                if user_api_id:
+                    hosts = [user_api_id]
+                    # Auto-import the catalog spec so the local API registry is populated
+                    try:
+                        from src.routers.catalog import ensure_catalog_api_imported
+                        await ensure_catalog_api_imported(user_api_id)
+                    except Exception as exc:
+                        log.warning("Auto-import of catalog API '%s' failed: %s", user_api_id, exc)
+                    # Resolve the real hostname from the imported spec's base_url.
+                    # The credential api_id must be the real HTTP host (e.g. gmail.googleapis.com)
+                    # so that the broker's prefix-match lookup works at execution time.
+                    try:
+                        from urllib.parse import urlparse as _urlparse
+                        async with get_db() as _rdb:
+                            async with _rdb.execute(
+                                "SELECT base_url FROM apis WHERE id=?", (user_api_id,)
+                            ) as _rcur:
+                                _rrow = await _rcur.fetchone()
+                        if _rrow and _rrow[0]:
+                            _real_host = _urlparse(_rrow[0]).hostname
+                            if _real_host:
+                                hosts = [_real_host]
+                                log.info("Resolved real host for '%s': %s", user_api_id, _real_host)
+                    except Exception as exc:
+                        log.warning("Could not resolve real host for '%s': %s", user_api_id, exc)
+                else:
+                    hosts = pd_slug_to_hosts(app_slug)
                 for api_host in hosts:
                     row_id = f"{self.broker_id}:{external_user_id}:{api_host}"
                     await db.execute(
                         """INSERT OR REPLACE INTO oauth_broker_accounts
                            (id, broker_id, external_user_id, api_host, app_slug,
-                            account_id, label, healthy, synced_at)
-                           VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?)""",
+                            account_id, label, api_id, healthy, synced_at)
+                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?)""",
                         (row_id, self.broker_id, external_user_id,
-                         api_host, app_slug, account_id, label, time.time()),
+                         api_host, app_slug, account_id, label, user_api_id, time.time()),
                     )
 
                     # Upsert a credential in the vault so users can provision it to toolkits.
@@ -500,7 +539,7 @@ class PipedreamOAuthBroker:
 
                     count += 1
 
-                if app_slug in pending_labels:
+                if app_slug in pending:
                     consumed_slugs.add(app_slug)
 
             # Remove consumed pending labels

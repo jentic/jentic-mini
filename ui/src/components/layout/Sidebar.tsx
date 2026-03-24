@@ -8,6 +8,7 @@ import {
   Database,
   Wrench,
   Key,
+  Link2,
   Workflow,
   Activity,
   Briefcase,
@@ -27,6 +28,7 @@ const navItems: NavItem[] = [
   { path: '/workflows',  label: 'Workflows',  icon: <Workflow className="h-4 w-4" /> },
   { path: '/toolkits',   label: 'Toolkits',   icon: <Wrench className="h-4 w-4" /> },
   { path: '/credentials',label: 'Credentials',icon: <Key className="h-4 w-4" /> },
+  { path: '/oauth-brokers', label: 'OAuth Brokers', icon: <Link2 className="h-4 w-4" /> },
   { path: '/traces',     label: 'Traces',     icon: <Activity className="h-4 w-4" /> },
   { path: '/jobs',       label: 'Jobs',       icon: <Briefcase className="h-4 w-4" /> },
 ]

@@ -66,6 +66,7 @@ export function Layout() {
           <div className="mt-4 mb-2 text-[10px] font-mono tracking-widest uppercase text-primary/60 px-4">Security</div>
           <NavLink to="/toolkits" icon={<span>🛡️</span>} label="Toolkits" />
           <NavLink to="/credentials" icon={<span>🔐</span>} label="Credentials" />
+          <NavLink to="/oauth-brokers" icon={<span>🔗</span>} label="OAuth Brokers" />
           
           <div className="mt-4 mb-2 text-[10px] font-mono tracking-widest uppercase text-primary/60 px-4">Observability</div>
           <NavLink to="/traces" icon={<span>📈</span>} label="Traces" />

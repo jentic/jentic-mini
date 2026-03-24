@@ -61,4 +61,81 @@ export const api = {
   cancelJob: (jobId: string) => ObserveService.cancelJobJobsJobIdDelete({ jobId }),
 }
 
+// --- OAuth Brokers (not in generated client — direct fetch) ---
+
+async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(url, { credentials: 'include', ...init })
+  if (!res.ok) {
+    const body = await res.text().catch(() => '')
+    throw new Error(`${res.status} ${res.statusText}: ${body}`)
+  }
+  return res.json()
+}
+
+export interface OAuthBroker {
+  id: string
+  type: string
+  config: Record<string, any>
+  created_at?: string
+}
+
+export interface OAuthAccount {
+  id: string
+  broker_id: string
+  external_user_id: string
+  api_host: string
+  app_slug: string
+  account_id: string
+  label: string
+  healthy: boolean
+  synced_at: string
+}
+
+export interface ConnectLinkResponse {
+  connect_link_url: string
+  token: string
+  expires_in: number
+}
+
+export interface SyncResponse {
+  accounts_synced: number
+}
+
+export const oauthBrokers = {
+  list: () => fetchJson<OAuthBroker[]>('/oauth-brokers'),
+  get: (id: string) => fetchJson<OAuthBroker>(`/oauth-brokers/${encodeURIComponent(id)}`),
+  create: (body: { id: string; type: string; config: Record<string, any> }) =>
+    fetchJson<OAuthBroker>('/oauth-brokers', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }),
+  delete: (id: string) =>
+    fetch(`/oauth-brokers/${encodeURIComponent(id)}`, { method: 'DELETE', credentials: 'include' }).then(r => {
+      if (!r.ok) throw new Error(`${r.status} ${r.statusText}`)
+    }),
+  accounts: (id: string, externalUserId = 'default') =>
+    fetchJson<OAuthAccount[]>(`/oauth-brokers/${encodeURIComponent(id)}/accounts?external_user_id=${encodeURIComponent(externalUserId)}`),
+  deleteAccount: (id: string, apiHost: string, externalUserId = 'default') =>
+    fetch(`/oauth-brokers/${encodeURIComponent(id)}/accounts/${encodeURIComponent(apiHost)}?external_user_id=${encodeURIComponent(externalUserId)}`, {
+      method: 'DELETE',
+      credentials: 'include',
+    }).then(async r => {
+      if (!r.ok) { const e = await r.json().catch(() => ({})); throw new Error(e.detail || 'Failed to delete account') }
+      return r.json()
+    }),
+  sync: (id: string, externalUserId = 'default') =>
+    fetchJson<SyncResponse>(`/oauth-brokers/${encodeURIComponent(id)}/sync`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ external_user_id: externalUserId }),
+    }),
+  connectLink: (id: string, body: { app: string; external_user_id?: string; label: string; api_id?: string }) =>
+    fetchJson<ConnectLinkResponse>(`/oauth-brokers/${encodeURIComponent(id)}/connect-link`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }),
+}
+
 export * from './generated'

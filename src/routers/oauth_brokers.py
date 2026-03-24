@@ -106,6 +106,7 @@ automatically proxied with the user's OAuth token injected server-side.
 
 
 class OAuthBrokerCreate(NormModel):
+    id: str | None = Field(None, description="Optional custom broker ID. Auto-generated from type if omitted.")
     type: str = Field(..., description="Broker backend type. Currently supported: `pipedream`.")
     config: dict[str, Any] = Field(
         ...,
@@ -131,14 +132,6 @@ class OAuthBrokerOut(BaseModel):
 
 
 class SyncRequest(NormModel):
-    external_user_id: str = Field(
-        "default",
-        description=(
-            "The user identity to sync accounts for. In a single-user setup this is "
-            "always `default`. In multi-user deployments, pass the Jentic user ID "
-            "that was used when the user completed OAuth in Pipedream's hosted UI."
-        ),
-    )
     external_user_id: str = Field(
         "default",
         description=(
@@ -211,7 +204,7 @@ async def create_oauth_broker(body: OAuthBrokerCreate):
         async with db.execute("SELECT id FROM oauth_brokers") as cur:
             existing_ids = [r[0] for r in await cur.fetchall()]
 
-        broker_id = _make_broker_id(body.type, existing_ids)
+        broker_id = body.id if body.id and body.id not in existing_ids else _make_broker_id(body.type, existing_ids)
         secret_enc = vault.encrypt(client_secret)
 
         await db.execute(
@@ -325,6 +318,17 @@ class ConnectLinkRequest(NormModel):
         ),
         examples=["work email", "personal email", "main Slack workspace"],
     )
+    api_id: str | None = Field(
+        None,
+        description=(
+            "The Jentic catalog API ID this connection maps to (e.g. `googleapis.com/gmail`). "
+            "If provided, this overrides the automatic slug-map lookup during sync — the "
+            "credential will be registered under exactly this API ID. "
+            "Find the right ID via `GET /catalog?q=<name>`. "
+            "If omitted, the slug map is used as a fallback (may not match the catalog ID)."
+        ),
+        examples=["googleapis.com/gmail", "slack.com/api", "api.github.com"],
+    )
 
 
 @router.post(
@@ -379,11 +383,11 @@ async def create_connect_link(broker_id: BrokerIdPath, body: ConnectLinkRequest,
     async with get_db() as db:
         await db.execute(
             """INSERT OR REPLACE INTO oauth_broker_connect_labels
-               (id, broker_id, external_user_id, app_slug, label, created_at)
-               VALUES (?, ?, ?, ?, ?, ?)""",
+               (id, broker_id, external_user_id, app_slug, label, api_id, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
             (
                 str(_uuid.uuid4()), broker_id, body.external_user_id,
-                body.app, body.label, time.time(),
+                body.app, body.label, body.api_id, time.time(),
             ),
         )
         await db.commit()
@@ -511,6 +515,100 @@ async def list_broker_accounts(broker_id: BrokerIdPath, external_user_id: Extern
 
     cols = ["external_user_id", "api_host", "app_slug", "account_id", "healthy", "synced_at"]
     return [dict(zip(cols, r)) for r in rows]
+
+
+@router.delete(
+    "/{broker_id}/accounts/{api_host:path}",
+    summary="Remove a connected account from an OAuth broker",
+    dependencies=[Depends(require_human_session)],
+)
+async def delete_broker_account(broker_id: BrokerIdPath, api_host: str, external_user_id: ExternalUserIdQuery = None):
+    """Remove a specific connected account from this broker.
+
+    This performs three actions in order:
+    1. Revokes the account in the upstream provider (Pipedream) via their API
+    2. Removes the associated credential from all toolkit provisioning
+    3. Deletes the credential from the vault and the account from the local DB
+
+    If the Pipedream revoke fails, the local cleanup still proceeds (with a warning).
+    """
+    ext_uid = external_user_id or "default"
+
+    async with get_db() as db:
+        async with db.execute("SELECT id FROM oauth_brokers WHERE id=?", (broker_id,)) as cur:
+            if not await cur.fetchone():
+                raise HTTPException(404, f"OAuth broker '{broker_id}' not found")
+
+        async with db.execute(
+            "SELECT account_id FROM oauth_broker_accounts WHERE broker_id=? AND api_host=? AND external_user_id=?",
+            (broker_id, api_host, ext_uid),
+        ) as cur:
+            row = await cur.fetchone()
+
+    if not row:
+        raise HTTPException(404, f"No connected account found for api_host='{api_host}' external_user_id='{ext_uid}'")
+
+    account_id = row[0]
+    host_slug = api_host.replace(".", "-")
+    cred_id = f"pipedream-{account_id}-{host_slug}"
+
+    # 1. Revoke upstream in Pipedream
+    pipedream_revoked = False
+    live_broker = next(
+        (b for b in oauth_broker_registry.brokers if getattr(b, "broker_id", None) == broker_id),
+        None,
+    )
+    if live_broker is None:
+        from src.brokers.pipedream import PipedreamOAuthBroker
+        brokers = await PipedreamOAuthBroker.from_db()
+        live_broker = next((b for b in brokers if b.broker_id == broker_id), None)
+
+    if live_broker is not None:
+        try:
+            import urllib.request as _urlreq
+            import urllib.error as _urlerr
+            pd_token = await live_broker._get_access_token()
+            pd_url = f"https://api.pipedream.com/v1/connect/{live_broker.project_id}/accounts/{account_id}"
+            req = _urlreq.Request(pd_url, method="DELETE")
+            req.add_header("Authorization", f"Bearer {pd_token}")
+            req.add_header("X-PD-Environment", live_broker.environment)
+            try:
+                with _urlreq.urlopen(req, timeout=10):
+                    pass
+                pipedream_revoked = True
+                log.info("Pipedream account %s revoked via API", account_id)
+            except _urlerr.HTTPError as http_err:
+                body = http_err.read().decode("utf-8", errors="replace")
+                log.warning("Failed to revoke Pipedream account %s: HTTP %s %s — body: %s — continuing with local cleanup",
+                            account_id, http_err.code, http_err.reason, body)
+        except Exception as exc:
+            log.warning("Failed to revoke Pipedream account %s: %s — continuing with local cleanup", account_id, exc)
+
+    # 2. Remove from toolkit provisioning
+    async with get_db() as db:
+        await db.execute("DELETE FROM toolkit_credentials WHERE credential_id=?", (cred_id,))
+        await db.commit()
+
+    # 3. Delete from vault
+    await vault.delete_credential(cred_id)
+
+    # 4. Delete from oauth_broker_accounts
+    async with get_db() as db:
+        await db.execute(
+            "DELETE FROM oauth_broker_accounts WHERE broker_id=? AND api_host=? AND external_user_id=?",
+            (broker_id, api_host, ext_uid),
+        )
+        await db.commit()
+
+    return {
+        "status": "ok",
+        "broker_id": broker_id,
+        "api_host": api_host,
+        "account_id": account_id,
+        "credential_id": cred_id,
+        "pipedream_revoked": pipedream_revoked,
+        "deleted": True,
+    }
 
 
 @router.delete(

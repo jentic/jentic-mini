@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { useNavigate, Link } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '../api/client'
 import { Badge, MethodBadge } from '../components/ui/Badge'
@@ -160,7 +160,6 @@ type CatalogFilter = 'all' | 'registered' | 'unregistered'
 
 function CatalogTab({ q }: { q: string }) {
   const queryClient = useQueryClient()
-  const navigate = useNavigate()
   const [filter, setFilter] = useState<CatalogFilter>('all')
   const [importingId, setImportingId] = useState<string | null>(null)
   const [importedIds, setImportedIds] = useState<Set<string>>(new Set())
@@ -185,9 +184,47 @@ function CatalogTab({ q }: { q: string }) {
   })
 
   const handleImport = async (entry: any) => {
-    setImportingId(entry.api_id)
+    const apiId = entry.api_id
+    setImportingId(apiId)
     try {
-      navigate(`/credentials/new?api_id=${encodeURIComponent(entry.api_id)}`)
+      // Step 1: Get spec URL from catalog
+      const catalogRes = await fetch(`/catalog/${apiId}`, { credentials: 'include' })
+      if (!catalogRes.ok) {
+        const body = await catalogRes.json().catch(() => ({}))
+        throw new Error(body.detail || `Catalog lookup failed (${catalogRes.status})`)
+      }
+      const catalogEntry = await catalogRes.json()
+      if (!catalogEntry.spec_url) {
+        throw new Error('No spec URL found for this API in the catalog')
+      }
+
+      // Step 2: Import via POST /import
+      const importRes = await fetch('/import', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sources: [{
+            type: 'url',
+            url: catalogEntry.spec_url,
+            force_api_id: apiId,
+          }],
+        }),
+      })
+      if (!importRes.ok) {
+        const body = await importRes.json().catch(() => ({}))
+        throw new Error(body.detail || `Import failed (${importRes.status})`)
+      }
+      const importResult = await importRes.json()
+      if (importResult.failed > 0) {
+        const err = importResult.results?.[0]?.error || 'Unknown error'
+        throw new Error(`Import failed: ${err}`)
+      }
+      setImportedIds(prev => new Set(prev).add(apiId))
+      queryClient.invalidateQueries({ queryKey: ['catalog'] })
+      queryClient.invalidateQueries({ queryKey: ['apis'] })
+    } catch (e: any) {
+      alert(`Import failed: ${e.message}`)
     } finally {
       setImportingId(null)
     }

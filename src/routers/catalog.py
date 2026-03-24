@@ -215,9 +215,10 @@ async def ensure_catalog_api_imported(api_id: str) -> str | None:
         raise HTTPException(502, f"No download_url for spec file '{spec_file['name']}'")
 
     from src.routers.import_ import ImportRequest, ImportSource, import_sources
+    safe_name = api_id.replace("/", "_")
     try:
         result = await import_sources(
-            ImportRequest(sources=[ImportSource(type="url", url=download_url, filename=f"{api_id.replace('/', '_')}_{spec_file['name']}", force_api_id=api_id)])
+            ImportRequest(sources=[ImportSource(type="url", url=download_url, filename=f"{safe_name}_{spec_file['name']}", force_api_id=api_id)])
         )
     except Exception as e:
         raise HTTPException(500, f"Auto-import failed for catalog API '{api_id}': {e}")
@@ -506,6 +507,45 @@ def _build_catalog_result(entry: dict, registered_ids: set[str]) -> dict:
 # ── Routes ────────────────────────────────────────────────────────────────────
 
 @router.get(
+    "/catalog",
+    summary="List the public API catalog",
+    tags=["catalog"],
+)
+async def list_catalog(
+    q: str | None = None,
+    limit: int = 50,
+    registered_only: bool = False,
+    unregistered_only: bool = False,
+):
+    """Returns entries from the cached public API catalog manifest.
+    Use ``POST /catalog/refresh`` to sync from GitHub first if the list is empty.
+    """
+    entries = _load_manifest()
+    registered_ids = await _get_registered_api_ids()
+
+    if registered_only:
+        entries = [e for e in entries if e["api_id"] in registered_ids]
+    elif unregistered_only:
+        entries = [e for e in entries if e["api_id"] not in registered_ids]
+
+    if q:
+        entries = _search_manifest(entries, q, limit)
+    else:
+        entries = entries[:limit]
+
+    results = [_build_catalog_result(e, registered_ids) for e in entries]
+    manifest = _load_manifest()
+    age = _manifest_age_seconds()
+    return {
+        "data": results,
+        "total": len(results),
+        "catalog_total": len(manifest),
+        "manifest_age_seconds": age,
+        "status": "ok" if manifest else "empty",
+    }
+
+
+@router.get(
     "/catalog/{api_id:path}",
     summary="Get a catalog entry with spec location",
     tags=["catalog"],
@@ -601,31 +641,4 @@ async def refresh_catalog():
         "workflow_sources": len(wf_entries),
         "method": method,
         "fetched_at": time.time(),
-    }
-
-    # Fetch directory listing to show available versions/files
-    try:
-        items = _fetch_github_dir(entry["path"])
-    except Exception as e:
-        raise HTTPException(502, f"Failed to fetch catalog entry from GitHub: {e}")
-
-    registered_ids = await _get_registered_api_ids()
-    is_reg = api_id in registered_ids
-
-    # Summarise available versions / files
-    subdirs = [i for i in items if i["type"] == "dir"]
-    files = [i for i in items if i["type"] == "file"]
-    spec_files = [f for f in files if f["name"].lower().endswith((".json", ".yaml", ".yml"))]
-
-    return {
-        "api_id": api_id,
-        "registered": is_reg,
-        "github_path": entry["path"],
-        "github_url": f"https://github.com/{GITHUB_REPO}/tree/main/{entry['path']}",
-        "versions": [s["name"] for s in subdirs],
-        "spec_files": [{"name": f["name"], "size": f["size"], "download_url": f["download_url"]} for f in spec_files],
-        "_links": {
-            "credentials": f"/credentials?api_id={api_id}",
-            "api": f"/apis/{api_id}" if is_reg else None,
-        },
     }
