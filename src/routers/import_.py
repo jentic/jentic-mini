@@ -30,15 +30,9 @@ from src.models import ImportOut
 
 router = APIRouter()
 
-_db_path = Path(os.getenv("DB_PATH", "/app/data/jentic-mini.db"))
-_DATA_DIR = _db_path if _db_path.is_dir() else _db_path.parent
-SPECS_DIR = _DATA_DIR / "specs"
+from src.config import SPECS_DIR, WORKFLOWS_DIR
 SPECS_DIR.mkdir(parents=True, exist_ok=True)
-
-WORKFLOWS_DIR = _DATA_DIR / "workflows"
 WORKFLOWS_DIR.mkdir(parents=True, exist_ok=True)
-
-JENTIC_HOSTNAME = os.environ.get("JENTIC_PUBLIC_HOSTNAME", "jentic-mini.home.seanblanchfield.com")
 
 
 class ImportSource(NormModel):

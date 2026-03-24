@@ -1,8 +1,7 @@
 """Database initialisation and connection helper."""
-import os
 import aiosqlite
 
-DB_PATH = os.getenv("DB_PATH", "/app/data/jentic-mini.db")
+from src.config import DB_PATH, DEFAULT_TOOLKIT_ID
 
 _CREATE = [
     # Core API Registry
@@ -321,9 +320,6 @@ _CREATE = [
     )
     """,
 ]
-
-# Fixed ID for the default toolkit — maps to admin key access
-DEFAULT_TOOLKIT_ID = "default"
 
 
 async def init_db() -> None:

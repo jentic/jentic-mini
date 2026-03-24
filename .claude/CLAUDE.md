@@ -45,6 +45,7 @@ Registration order in `src/main.py`:
 ### Core modules (`src/`)
 | File | Purpose |
 |------|---------|
+| `config.py` | Centralised constants: `DB_PATH`, `JENTIC_PUBLIC_HOSTNAME`, `SPECS_DIR`, `WORKFLOWS_DIR`, `DEFAULT_TOOLKIT_ID` |
 | `main.py` | FastAPI app, router registration, lifespan, OpenAPI schema customization |
 | `auth.py` | API key middleware — validates `X-Jentic-API-Key` header |
 | `db.py` | SQLite schema init + migrations (aiosqlite) |
@@ -55,7 +56,7 @@ Registration order in `src/main.py`:
 | `validators.py` | Input validation |
 | `negotiate.py` | Content negotiation middleware |
 | `startup.py` | Self-registration + broker app seeding at startup |
-| `utils.py` | Shared utilities (e.g., `_abbreviate()` for search result truncation) |
+| `utils.py` | Shared utilities (`_abbreviate()`, `build_absolute_url()`, `parse_prefer_wait()`) |
 
 ### Routers (`src/routers/`)
 | Router | Tag | Key responsibility |

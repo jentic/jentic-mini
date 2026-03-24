@@ -18,6 +18,7 @@ import uuid
 
 from src.db import get_db
 from src.brokers.pipedream import _API_ID_TO_PD_SLUG as _PIPEDREAM_APP_SEEDS
+from src.config import JENTIC_PUBLIC_HOSTNAME
 
 _REGISTER_INSTALL_URL = "https://api.jentic.com/api/v1/register-install"
 _INSTALL_ID_FILE = pathlib.Path("/app/data/install-id.txt")
@@ -30,10 +31,7 @@ _INTERNAL_PORT      = int(os.getenv("JENTIC_INTERNAL_PORT", "8900"))
 
 
 def _public_hostname() -> str:
-    return (
-        os.environ.get("JENTIC_PUBLIC_HOSTNAME")
-        or "jentic-mini.home.seanblanchfield.com"
-    )
+    return JENTIC_PUBLIC_HOSTNAME
 
 
 async def self_register(app=None) -> None:

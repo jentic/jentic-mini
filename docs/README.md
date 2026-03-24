@@ -22,7 +22,7 @@ docker compose up -d
 - Service: http://localhost:8900
 - Swagger UI: http://localhost:8900/docs
 - Redoc: http://localhost:8900/redoc
-- Public URL (home network): https://jpe.home.seanblanchfield.com
+- Public URL (home network): https://localhost
 
 Authenticate all requests with the `X-Jentic-API-Key` header.
 
@@ -34,7 +34,7 @@ Set in `/configs/jentic-personal-edition/docker-compose.yml`:
 |---|---|---|
 | `JENTIC_VAULT_KEY` | Fernet key for credential encryption | Auto-generated to `data/vault.key` if absent/invalid |
 | `DB_PATH` | SQLite database path | `/app/data/jpe.db` |
-| `JENTIC_PUBLIC_HOSTNAME` | Public hostname for workflow capability IDs | `jpe.home.seanblanchfield.com` |
+| `JENTIC_PUBLIC_HOSTNAME` | Public hostname for workflow capability IDs | `localhost` |
 
 ## File Layout
 
@@ -81,7 +81,7 @@ Set in `/configs/jentic-personal-edition/docker-compose.yml`:
 ## Key Concepts
 
 - **Capability ID**: `METHOD/host/path` — e.g. `GET/api.elevenlabs.io/v1/voices`
-- **Workflow ID**: `POST/jpe.home.seanblanchfield.com/workflows/slug`
+- **Workflow ID**: `POST/localhost/workflows/slug`
 - **Collection**: a named bundle of credentials with its own API key(s), policies, and IP restrictions
 - **Broker**: the catch-all proxy at `/{host}/{path}` that injects credentials and enforces policy
 - **Overlay**: a client-contributed security scheme patch for APIs with broken/missing auth specs

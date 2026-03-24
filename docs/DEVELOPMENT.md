@@ -279,11 +279,11 @@ curl http://localhost:8900/workflows/summarise-latest-topics \
   -H "X-Jentic-API-Key: $KEY" | python3 -m json.tool
 
 # 2. Inspect it (shows inputs, steps, links)
-curl "http://localhost:8900/inspect/POST%2Fjpe.home.seanblanchfield.com%2Fworkflows%2Fsummarise-latest-topics" \
+curl "http://localhost:8900/inspect/POST%2Flocalhost%2Fworkflows%2Fsummarise-latest-topics" \
   -H "X-Jentic-API-Key: $KEY" | python3 -m json.tool
 
 # 3. Execute it
-curl -X POST http://localhost:8900/jpe.home.seanblanchfield.com/workflows/summarise-latest-topics \
+curl -X POST http://localhost:8900/localhost/workflows/summarise-latest-topics \
   -H "X-Jentic-API-Key: $KEY" \
   -H "Content-Type: application/json" \
   -d '{}' | python3 -m json.tool
