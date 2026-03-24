@@ -90,6 +90,14 @@ First-time setup is guided through the UI at `http://localhost:8900`. Alternativ
 3. Add credentials for your APIs — specs are auto-imported from the [public catalog](https://github.com/jentic/jentic-public-apis)
 4. Agents authenticate with the `tk_xxx` key via `X-Jentic-API-Key` header
 
+## Using with OpenClaw
+
+You can connect your OpenClaw agent to Jentic Mini using the Jentic skill on [ClawHub](https://clawhub.com). Once installed, the skill handles credential storage and routes your agent's API calls through your Jentic Mini instance. To install and configure it, just tell your OpenClaw agent:
+
+> "install and set up the jentic skill from ClawHub"
+
+Your agent will install the skill, prompt you for your Jentic Mini URL and API key, and store the configuration automatically.
+
 ## API Overview
 
 | Tag | Who uses it | Purpose |
