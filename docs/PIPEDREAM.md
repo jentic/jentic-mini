@@ -11,7 +11,7 @@ OAuth is the auth standard used by every major SaaS platform (Gmail, Slack, Sale
 - Implementing the authorization code flow, token refresh, PKCE, etc.
 - Handling token storage and rotation securely
 
-Pipedream has done all of this for 3,000+ apps. Jentic Mini borrows that infrastructure: the user sees a Pipedream-hosted OAuth consent page, authorizes the app, and Pipedream stores the token. Jentic Mini then fetches the token and stores it in its local vault. All subsequent API calls go through the normal Jentic broker — Pipedream is only involved in the initial auth.
+Pipedream has done all of this for 3,000+ apps. Jentic Mini borrows that infrastructure: the user sees a Pipedream-hosted OAuth consent page, authorizes the app, and Pipedream stores the OAuth tokens. Jentic Mini stores the resulting `account_id` reference locally, and all subsequent API calls are routed through Pipedream's Connect proxy — which injects the OAuth token server-side before forwarding to the upstream API.
 
 **Tradeoff:** End users see Pipedream branding during the OAuth flow. Acceptable for self-hosted/personal use. If you need white-label OAuth, Pipedream supports [custom OAuth clients](https://pipedream.com/docs/connect/managed-auth/oauth-clients/).
 
@@ -66,7 +66,7 @@ Once the broker is registered, the connect and sync operations are **open to age
 1. Agent calls POST /oauth-brokers/pipedream/connect-link
    → Jentic Mini authenticates with Pipedream using your registered broker credentials
    → Pipedream mints a one-time connect token
-   → Jentic Mini returns a connect URL (expires 4h)
+   → Jentic Mini returns a connect URL (expires ~1 hour)
    → Agent surfaces the URL to the human: "Click here to connect your Google Drive"
 
 2. Human opens the URL in their browser
@@ -77,8 +77,8 @@ Once the broker is registered, the connect and sync operations are **open to age
 
 3. Agent calls POST /oauth-brokers/pipedream/sync
    → Jentic Mini fetches the token from Pipedream and stores it in its local encrypted vault
-   → From now on: normal Jentic broker handles all API calls
-   → Pipedream is only contacted again for token refresh
+   → Jentic Mini stores the Pipedream `account_id` reference locally
+   → All subsequent API calls are proxied through Pipedream's Connect proxy
 
 4. (Automatic) Token refresh _(planned)_
    → Token refresh on 401 is not yet wired into the broker
@@ -129,6 +129,9 @@ Generate a one-time OAuth connect URL. Callable by agents (toolkit key) and huma
 
 You may also pass `api_id` (e.g. `"googleapis.com/drive"`) as optional metadata alongside `app`. It does **not** replace `app` — the broker does not perform automatic `api_id` → Pipedream slug resolution. It is used to override the credential's API ID registration during sync.
 
+- `connect_link_url`: One-time URL — open in a browser to complete OAuth
+- `expires_at`: Unix timestamp (seconds) when the link expires (~1 hour from generation)
+
 **Response:**
 ```json
 {
@@ -136,7 +139,7 @@ You may also pass `api_id` (e.g. `"googleapis.com/drive"`) as optional metadata 
   "external_user_id": "frank",
   "app": "google_drive",
   "connect_link_url": "https://pipedream.com/_static/connect.html?token=ctok_...&app=google_drive",
-  "expires_at": "2026-03-24T15:16:25Z",
+  "expires_at": 1234567890,
   "next_step": "Visit connect_link_url in your browser, authorise google_drive, then call POST /oauth-brokers/pipedream/sync"
 }
 ```
@@ -286,7 +289,4 @@ POST /oauth-brokers/pipedream/sync
 ## Pricing
 
 - **Free in Pipedream's development environment** — unlimited usage
-- **Production**: billed per unique external user (we extract tokens directly and don't use Pipedream's proxy, so only the end-user count matters)
-- For personal/single-user Jentic Mini: minimal cost (you're one external user)
-
-See [Pipedream Connect pricing](https://pipedream.com/pricing?plan=Connect).
+**Note on Pipedream pricing:** API calls are routed through Pipedream's Connect proxy — Pipedream injects the OAuth token server-side and forwards the request. This means calls count against Pipedream's proxy usage credits, not just the end-user count. See [Pipedream Connect pricing](https://pipedream.com/pricing?plan=Connect) for current credit costs.
