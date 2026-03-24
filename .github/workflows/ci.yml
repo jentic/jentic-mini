@@ -21,6 +21,7 @@ jobs:
           docker run -d --name jentic-mini \
             -p 8900:8900 \
             -v jentic-ci-data:/app/data \
+            -e JENTIC_TELEMETRY=off \
             jentic-mini:latest
 
       - name: Wait for server to be ready
