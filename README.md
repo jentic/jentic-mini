@@ -2,6 +2,12 @@
 
 > ⚠️ **Early Access** — Jentic Mini is new and under active development. It may contain bugs, rough edges, and security gaps we haven't found yet. It is **not recommended for production use** at this stage. We're sharing it early so the community can explore it, test it, and help shape it. Use it in personal or development environments, and please [report issues](https://github.com/jentic/jentic-mini/issues) as you find them.
 
+**Using OpenClaw?** The fastest way to get started is via the Jentic skill on [ClawHub](https://clawhub.com) — it will guide you through your installation options and connect your agent automatically. Just tell your OpenClaw agent:
+
+> "install and set up the jentic skill from ClawHub"
+
+---
+
 **Jentic Mini** is the open-source, self-hosted implementation of the Jentic API — fully API-compatible with the [Jentic hosted and VPC editions](https://jentic.com).
 
 ## What is Jentic Mini?
@@ -89,14 +95,6 @@ First-time setup is guided through the UI at `http://localhost:8900`. Alternativ
 2. `POST /user/create` with `{"username": "...", "password": "..."}` to create an admin account
 3. Add credentials for your APIs — specs are auto-imported from the [public catalog](https://github.com/jentic/jentic-public-apis)
 4. Agents authenticate with the `tk_xxx` key via `X-Jentic-API-Key` header
-
-## Using with OpenClaw
-
-You can connect your OpenClaw agent to Jentic Mini using the Jentic skill on [ClawHub](https://clawhub.com). Once installed, the skill handles credential storage and routes your agent's API calls through your Jentic Mini instance. To install and configure it, just tell your OpenClaw agent:
-
-> "install and set up the jentic skill from ClawHub"
-
-Your agent will install the skill, prompt you for your Jentic Mini URL and API key, and store the configuration automatically.
 
 ## API Overview
 
