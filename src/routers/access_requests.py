@@ -151,8 +151,10 @@ async def create_access_request(toolkit_id: str, request: Request, body: AccessR
     if public_hostname:
         approve_url = f"https://{public_hostname}/approve/{toolkit_id}/{req_id}"
     else:
-        host = request.headers.get("host", "localhost:8900")
-        scheme = request.headers.get("x-forwarded-proto", request.url.scheme)
+        host = request.headers.get("host", "localhost:8900").split(",")[0].strip()
+        scheme = request.headers.get("x-forwarded-proto", request.url.scheme).split(",")[0].strip()
+        if scheme not in ("http", "https"):
+            scheme = "http"
         approve_url = f"{scheme}://{host}/approve/{toolkit_id}/{req_id}"
 
     # Store payload as the flat fields relevant to this request type

@@ -419,7 +419,6 @@ async def get_toolkit(toolkit_id: str, request: Request):
 
 @router.patch("/{toolkit_id}", summary="Update toolkit — rename or update description", response_model=ToolkitOut)
 async def patch_toolkit(toolkit_id: str, body: ToolkitPatch, request: Request):
-    from src.db import DEFAULT_TOOLKIT_ID
     if toolkit_id == DEFAULT_TOOLKIT_ID:
         raise HTTPException(403, "The default toolkit cannot be modified.")
     async with get_db() as db:
@@ -446,7 +445,6 @@ async def patch_toolkit(toolkit_id: str, body: ToolkitPatch, request: Request):
 
 @router.delete("/{toolkit_id}", status_code=204, summary="Delete toolkit and revoke all its client API keys")
 async def delete_toolkit(toolkit_id: str):
-    from src.db import DEFAULT_TOOLKIT_ID
     if toolkit_id == DEFAULT_TOOLKIT_ID:
         raise HTTPException(403, "The default toolkit cannot be deleted.")
     async with get_db() as db:

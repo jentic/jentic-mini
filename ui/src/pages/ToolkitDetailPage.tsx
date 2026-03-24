@@ -46,7 +46,7 @@ function CredentialPermissionEditor({ toolkitId, credential, onClose }: {
 
   if (isError) return (
     <div className="border-t border-border bg-background/50 p-5">
-      <p className="text-sm text-muted-foreground">No permissions configured yet.</p>
+      <p className="text-sm text-danger">Failed to load permissions.</p>
     </div>
   )
 
