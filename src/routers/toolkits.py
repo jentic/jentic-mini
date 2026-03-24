@@ -20,7 +20,7 @@ from pydantic import BaseModel, Field
 from src.validators import NormModel
 from typing import Any
 
-from src.auth import default_allowed_ips
+from src.auth import default_allowed_ips, require_human_session
 from src.db import get_db, DEFAULT_TOOLKIT_ID
 import src.vault as vault
 from src.models import (
@@ -417,7 +417,8 @@ async def get_toolkit(toolkit_id: str, request: Request):
     return data
 
 
-@router.patch("/{toolkit_id}", summary="Update toolkit — rename or update description", response_model=ToolkitOut)
+@router.patch("/{toolkit_id}", summary="Update toolkit — rename or update description", response_model=ToolkitOut,
+              dependencies=[Depends(require_human_session)])
 async def patch_toolkit(toolkit_id: str, body: ToolkitPatch, request: Request):
     if toolkit_id == DEFAULT_TOOLKIT_ID:
         raise HTTPException(403, "The default toolkit cannot be modified.")
@@ -443,7 +444,8 @@ async def patch_toolkit(toolkit_id: str, body: ToolkitPatch, request: Request):
     return await get_toolkit(toolkit_id, request)
 
 
-@router.delete("/{toolkit_id}", status_code=204, summary="Delete toolkit and revoke all its client API keys")
+@router.delete("/{toolkit_id}", status_code=204, summary="Delete toolkit and revoke all its client API keys",
+               dependencies=[Depends(require_human_session)])
 async def delete_toolkit(toolkit_id: str):
     if toolkit_id == DEFAULT_TOOLKIT_ID:
         raise HTTPException(403, "The default toolkit cannot be deleted.")
