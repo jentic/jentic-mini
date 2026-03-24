@@ -150,6 +150,23 @@ Swagger UI is available at `http://localhost:8900/docs` for interactive API expl
 - **Fernet** — symmetric encryption for the credentials vault
 - **arazzo-runner** — Arazzo workflow execution engine
 
+## Telemetry & Community Contributions
+
+On first startup, Jentic Mini generates a random UUID and registers it with Jentic (`api.jentic.com/api/v1/register-install`). This ID is fully anonymous — no personal data, no IP address, and no machine information is ever transmitted.
+
+This install ID is the foundation for community contribution features: when your instance discovers a working workflow or an API improvement, it can share that back under your anonymous install ID, benefiting everyone running Jentic. Disabling telemetry also disables the ability to contribute workflows and API fixes back to the community.
+
+The install ID is stored locally at `/app/data/install-id.txt`.
+
+**To opt out**, set `JENTIC_TELEMETRY=off`:
+
+```bash
+docker run -d --name jentic-mini -p 8900:8900 \
+  -v jentic-mini-data:/app/data \
+  -e JENTIC_TELEMETRY=off \
+  jentic/jentic-mini
+```
+
 ## Contributing
 
 Please read our [Contributing Guide](https://github.com/jentic/.github/blob/main/CONTRIBUTING.md) and [Code of Conduct](https://github.com/jentic/.github/blob/main/CODE_OF_CONDUCT.md) before submitting a pull request.
