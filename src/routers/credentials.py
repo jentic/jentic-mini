@@ -59,6 +59,7 @@ async def _get_confirmed_scheme(api_id: str, scheme_name: str | None) -> dict | 
 async def _api_has_native_scheme(api_id: str) -> bool:
     """True if the API's own OpenAPI spec defines at least one security scheme."""
     import json as _json
+    import yaml as _yaml
     async with get_db() as db:
         async with db.execute("SELECT spec_path FROM apis WHERE id=?", (api_id,)) as cur:
             row = await cur.fetchone()
@@ -66,7 +67,14 @@ async def _api_has_native_scheme(api_id: str) -> bool:
         return False
     try:
         with open(row[0]) as f:
-            spec = _json.load(f)
+            raw = f.read()
+        if row[0].endswith((".yaml", ".yml")):
+            spec = _yaml.safe_load(raw)
+        else:
+            try:
+                spec = _json.loads(raw)
+            except _json.JSONDecodeError:
+                spec = _yaml.safe_load(raw)
         schemes = spec.get("components", {}).get("securitySchemes", {})
         return bool(schemes)
     except Exception:
