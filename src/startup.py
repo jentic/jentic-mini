@@ -73,7 +73,16 @@ async def register_install() -> None:
 
     # Load or create the install ID (never deleted — stable across restarts)
     if _INSTALL_ID_FILE.exists():
-        install_id = _INSTALL_ID_FILE.read_text().strip()
+        raw = _INSTALL_ID_FILE.read_text().strip()
+        try:
+            # Validate and normalize as UUID; this raises ValueError on invalid/empty input
+            install_uuid = uuid.UUID(raw)
+            install_id = str(install_uuid)
+        except (ValueError, TypeError, AttributeError):
+            # Regenerate if file is empty or corrupted and overwrite on disk
+            install_id = str(uuid.uuid4())
+            _INSTALL_ID_FILE.write_text(install_id)
+            log.info("register_install: regenerated invalid install ID %s", install_id)
     else:
         install_id = str(uuid.uuid4())
         _INSTALL_ID_FILE.write_text(install_id)
