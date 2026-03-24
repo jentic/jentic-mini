@@ -4,14 +4,8 @@ __pycache__/
 *.pyc
 *.pyo
 .env
-data/*.db
-data/vault.key
-data/catalog_manifest.json
-data/workflow_manifest.json
-data/workflows/
-data/specs/
-# Keep specs tracked
-!data/specs/.gitkeep
+data/*
+!data/.gitkeep
 vendor/arazzo-engine/
 .DS_Store
 *.tmp
