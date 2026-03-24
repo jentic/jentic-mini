@@ -81,10 +81,10 @@ export default function TracesPage() {
                     <tr key={trace.id} className="border-b border-border/50 hover:bg-background/50 cursor-pointer transition-colors"
                       onClick={() => navigate(`/traces/${trace.id}`)}>
                       <td className="px-4 py-3 text-muted-foreground font-mono text-xs whitespace-nowrap">{timeAgo(trace.created_at)}</td>
-                      <td className="px-4 py-3 text-foreground">{trace.toolkit_name ?? trace.toolkit_id ?? '—'}</td>
+                      <td className="px-4 py-3 text-foreground">{trace.toolkit_id ?? '—'}</td>
                       <td className="px-4 py-3 font-mono text-xs text-muted-foreground truncate max-w-[300px]">
-                        {trace.workflow_slug && <span className="mr-2 px-1.5 py-0.5 rounded bg-primary/10 text-primary text-[10px] font-mono">workflow</span>}
-                        {trace.capability_id ?? trace.workflow_slug ?? '—'}
+                        {trace.workflow_id && <span className="mr-2 px-1.5 py-0.5 rounded bg-primary/10 text-primary text-[10px] font-mono">workflow</span>}
+                        {trace.operation_id ?? trace.workflow_id ?? '—'}
                       </td>
                       <td className="px-4 py-3">
                         {trace.http_status ? <StatusBadge status={trace.http_status} /> : (

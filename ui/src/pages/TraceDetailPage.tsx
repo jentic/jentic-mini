@@ -38,23 +38,35 @@ export default function TraceDetailPage() {
       <div className="bg-muted border border-border rounded-xl p-5 space-y-4">
         <h3 className="font-heading font-semibold text-foreground border-b border-border pb-3">Summary</h3>
         <div className="grid grid-cols-2 gap-4">
-          <div><p className="text-xs text-muted-foreground mb-1">Toolkit</p><p className="text-foreground font-medium">{trace.toolkit_name ?? trace.toolkit_id ?? '—'}</p></div>
+          <div><p className="text-xs text-muted-foreground mb-1">Toolkit</p><p className="text-foreground font-medium">{trace.toolkit_id ?? '—'}</p></div>
           <div><p className="text-xs text-muted-foreground mb-1">Status</p>
             {trace.http_status ? <StatusBadge status={trace.http_status} /> : <Badge variant={trace.status === 'error' ? 'danger' : 'success'}>{trace.status ?? '—'}</Badge>}
           </div>
-          {trace.capability_id && (
-            <div className="col-span-2"><p className="text-xs text-muted-foreground mb-1">Operation</p><code className="text-sm text-accent-teal font-mono">{trace.capability_id}</code></div>
+          {trace.operation_id && (
+            <div className="col-span-2"><p className="text-xs text-muted-foreground mb-1">Operation</p><code className="text-sm text-accent-teal font-mono break-all">{trace.operation_id}</code></div>
           )}
-          {trace.workflow_slug && (
-            <div className="col-span-2"><p className="text-xs text-muted-foreground mb-1">Workflow</p><code className="text-sm text-accent-pink font-mono">{trace.workflow_slug}</code></div>
+          {trace.workflow_id && (
+            <div className="col-span-2"><p className="text-xs text-muted-foreground mb-1">Workflow</p><code className="text-sm text-accent-pink font-mono break-all">{trace.workflow_id}</code></div>
+          )}
+          {trace.spec_path && (
+            <div className="col-span-2"><p className="text-xs text-muted-foreground mb-1">Spec Path</p><code className="text-xs text-muted-foreground font-mono">{trace.spec_path}</code></div>
           )}
           <div><p className="text-xs text-muted-foreground mb-1">Duration</p>
             <div className="flex items-center gap-1.5"><Zap className="h-4 w-4 text-accent-yellow" /><span className="text-foreground font-mono">{trace.duration_ms != null ? `${trace.duration_ms}ms` : '—'}</span></div>
           </div>
-          <div><p className="text-xs text-muted-foreground mb-1">Created</p>
+          <div><p className="text-xs text-muted-foreground mb-1">Execution Time</p>
             <div className="flex items-center gap-1.5"><Clock className="h-4 w-4 text-muted-foreground" /><span className="text-foreground text-sm">{trace.created_at ? new Date(trace.created_at * 1000).toLocaleString() : '—'}</span></div>
           </div>
+          {trace.completed_at && trace.completed_at !== trace.created_at && (
+            <div className="col-span-2"><p className="text-xs text-muted-foreground mb-1">Completed</p><span className="text-foreground text-sm">{new Date(trace.completed_at * 1000).toLocaleString()}</span></div>
+          )}
         </div>
+        {trace.error && (
+          <div className="mt-4 p-3 bg-danger/10 border border-danger/30 rounded-lg">
+            <p className="text-xs text-muted-foreground mb-1">Error</p>
+            <p className="text-sm text-danger font-mono">{trace.error}</p>
+          </div>
+        )}
       </div>
 
       {/* Steps */}
@@ -67,9 +79,10 @@ export default function TraceDetailPage() {
                 <div className="h-6 w-6 rounded-full bg-primary/10 border border-primary/30 flex items-center justify-center text-xs font-mono text-primary shrink-0">{i+1}</div>
                 <div className="flex-1">
                   <div className="flex items-center gap-2 flex-wrap">
-                    {step.capability_id && <code className="text-sm font-mono text-foreground">{step.capability_id}</code>}
+                    {step.step_id && <code className="text-xs font-mono text-muted-foreground mr-2">{step.step_id}</code>}
+                    {step.operation && <code className="text-sm font-mono text-foreground">{step.operation}</code>}
                     {step.http_status && <StatusBadge status={step.http_status} />}
-                    {step.duration_ms != null && <span className="text-xs text-muted-foreground">{step.duration_ms}ms</span>}
+                    {step.status && !step.http_status && <Badge variant={step.status === 'error' ? 'danger' : 'success'}>{step.status}</Badge>}
                   </div>
                   {step.error && <p className="text-xs text-danger mt-1">{String(step.error)}</p>}
                 </div>
@@ -93,14 +106,6 @@ export default function TraceDetailPage() {
           <div className="px-5 py-4 border-b border-border"><h3 className="font-heading font-semibold text-foreground">Response</h3></div>
           <div className="px-5 py-4">
             <pre className="bg-background border border-border rounded-lg p-4 text-xs font-mono text-foreground overflow-auto max-h-64">{JSON.stringify(trace.response, null, 2)}</pre>
-          </div>
-        </div>
-      )}
-      {trace.error && (
-        <div className="bg-muted border border-danger/30 rounded-xl overflow-hidden">
-          <div className="px-5 py-4 border-b border-danger/30"><h3 className="font-heading font-semibold text-danger">Error</h3></div>
-          <div className="px-5 py-4">
-            <pre className="bg-danger/10 border border-danger/30 rounded-lg p-4 text-xs font-mono text-danger overflow-auto">{trace.error}</pre>
           </div>
         </div>
       )}

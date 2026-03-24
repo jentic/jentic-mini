@@ -72,6 +72,16 @@ def new_trace_id() -> str:
     return "exec_" + uuid.uuid4().hex[:12]
 
 
+async def safe_write_trace(**kwargs) -> None:
+    """Fire-and-forget trace writer. Prevents trace failures from affecting responses."""
+    import logging
+    log = logging.getLogger("jentic.traces")
+    try:
+        await write_trace(**kwargs)
+    except Exception as exc:
+        log.warning("trace write failed (non-fatal): %s", exc)
+
+
 # ── Routes ────────────────────────────────────────────────────────────────────
 
 @router.get("/traces", summary="List execution traces — audit recent broker and workflow calls", response_model=TraceListPage)
