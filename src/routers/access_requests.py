@@ -18,6 +18,7 @@ URL structure (nested under /toolkits):
   GET    /toolkits/{toolkit_id}/access-requests/approve/{req_id}  (HTML UI)
 """
 import json
+import os
 import time
 import uuid
 from typing import Literal
@@ -146,8 +147,13 @@ async def create_access_request(toolkit_id: str, request: Request, body: AccessR
 
     req_id = "areq_" + str(uuid.uuid4())[:8]
 
-    from src.routers.capability import JENTIC_HOSTNAME
-    approve_url = f"https://{JENTIC_HOSTNAME}/approve/{toolkit_id}/{req_id}"
+    public_hostname = os.environ.get("JENTIC_PUBLIC_HOSTNAME")
+    if public_hostname:
+        approve_url = f"https://{public_hostname}/approve/{toolkit_id}/{req_id}"
+    else:
+        host = request.headers.get("host", "localhost:8900")
+        scheme = request.headers.get("x-forwarded-proto", request.url.scheme)
+        approve_url = f"{scheme}://{host}/approve/{toolkit_id}/{req_id}"
 
     # Store payload as the flat fields relevant to this request type
     payload_dict = {

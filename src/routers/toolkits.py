@@ -418,7 +418,10 @@ async def get_toolkit(toolkit_id: str, request: Request):
 
 
 @router.patch("/{toolkit_id}", summary="Update toolkit — rename or update description", response_model=ToolkitOut)
-async def patch_toolkit(toolkit_id: str, body: ToolkitPatch):
+async def patch_toolkit(toolkit_id: str, body: ToolkitPatch, request: Request):
+    from src.db import DEFAULT_TOOLKIT_ID
+    if toolkit_id == DEFAULT_TOOLKIT_ID:
+        raise HTTPException(403, "The default toolkit cannot be modified.")
     async with get_db() as db:
         async with db.execute("SELECT id FROM toolkits WHERE id=?", (toolkit_id,)) as cur:
             if not await cur.fetchone():
@@ -438,11 +441,14 @@ async def patch_toolkit(toolkit_id: str, body: ToolkitPatch):
                 list(updates.values()) + [toolkit_id]
             )
             await db.commit()
-    return await get_toolkit(toolkit_id)
+    return await get_toolkit(toolkit_id, request)
 
 
 @router.delete("/{toolkit_id}", status_code=204, summary="Delete toolkit and revoke all its client API keys")
 async def delete_toolkit(toolkit_id: str):
+    from src.db import DEFAULT_TOOLKIT_ID
+    if toolkit_id == DEFAULT_TOOLKIT_ID:
+        raise HTTPException(403, "The default toolkit cannot be deleted.")
     async with get_db() as db:
         await db.execute("DELETE FROM toolkits WHERE id=?", (toolkit_id,))
         await db.commit()
@@ -663,7 +669,7 @@ async def list_toolkit_credentials(toolkit_id: str, request: Request):
     ]
 
 
-@router.delete("/{toolkit_id}/credentials/{credential_id}", status_code=204, summary="Unbind an upstream API credential from this toolkit")
+@router.delete("/{toolkit_id}/credentials/{credential_id:path}", status_code=204, summary="Unbind an upstream API credential from this toolkit")
 async def remove_credential_from_toolkit(toolkit_id: str, credential_id: str):
     async with get_db() as db:
         await db.execute(
@@ -676,7 +682,7 @@ async def remove_credential_from_toolkit(toolkit_id: str, credential_id: str):
 # ── Credential-scoped Permissions ────────────────────────────────────────────
 
 @policy_router.get(
-    "/{toolkit_id}/credentials/{cred_id}/permissions",
+    "/{toolkit_id}/credentials/{cred_id:path}/permissions",
     summary="Get the permission rules for a specific credential in this toolkit",
     tags=["toolkits"],
     response_model=list[PermissionRule],
@@ -711,7 +717,7 @@ async def get_credential_permissions(toolkit_id: str, cred_id: str):
 
 
 @policy_router.put(
-    "/{toolkit_id}/credentials/{cred_id}/permissions",
+    "/{toolkit_id}/credentials/{cred_id:path}/permissions",
     summary="Replace permission rules for a specific credential",
     tags=["toolkits"],
     response_model=list[PermissionRule],
@@ -731,7 +737,7 @@ async def set_credential_permissions(toolkit_id: str, cred_id: str, body: list[P
 
 
 @policy_router.patch(
-    "/{toolkit_id}/credentials/{cred_id}/permissions",
+    "/{toolkit_id}/credentials/{cred_id:path}/permissions",
     summary="Add or remove individual permission rules for a specific credential",
     tags=["toolkits"],
     response_model=list[PermissionRule],
