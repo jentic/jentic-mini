@@ -12,10 +12,16 @@ See docs/SELF-REGISTRATION.md for design rationale.
 import asyncio
 import logging
 import os
+import pathlib
 import secrets
+import uuid
 
 from src.db import get_db
 from src.brokers.pipedream import _API_ID_TO_PD_SLUG as _PIPEDREAM_APP_SEEDS
+
+_REGISTER_INSTALL_URL = "https://api.jentic.com/api/v1/register-install"
+_INSTALL_ID_FILE = pathlib.Path("/app/data/install-id.txt")
+_INSTALL_REGISTERED_FILE = pathlib.Path("/app/data/install-registered.txt")
 
 log = logging.getLogger("jentic")
 
@@ -37,8 +43,76 @@ async def self_register(app=None) -> None:
         await asyncio.sleep(2)
         await _ensure_spec_imported(app)
         await _ensure_internal_credential()
+        await register_install()
 
     asyncio.create_task(_run())
+
+
+# ── Install registration ──────────────────────────────────────────────────────
+
+async def register_install() -> None:
+    """On first startup, generate a random install ID and register it with Jentic.
+
+    The install ID is a random UUID stored in /app/data/install-id.txt. A second
+    local marker file, /app/data/install-registered.txt, is written after a
+    successful registration so that future startups can skip the network call.
+
+    The JSON payload sent to Jentic contains only this UUID ({"id": "<uuid>"}).
+    No additional device, host, or user metadata is included in the payload.
+    As with any outbound HTTP request, the server and intermediate network
+    infrastructure may observe and log the client IP address in standard logs.
+    The ID is used to count installs and, in future, to enable community
+    contribution features (workflow sharing, API fix contributions).
+
+    Set JENTIC_TELEMETRY=off to skip the registration HTTP request. The install
+    ID file is still created for idempotency, but no registration payload is
+    sent to Jentic and the install-registered marker is not written.
+    """
+    # Ensure data dir exists
+    _INSTALL_ID_FILE.parent.mkdir(parents=True, exist_ok=True)
+
+    # Load or create the install ID (never deleted — stable across restarts)
+    if _INSTALL_ID_FILE.exists():
+        raw = _INSTALL_ID_FILE.read_text().strip()
+        try:
+            # Validate and normalize as UUID; this raises ValueError on invalid/empty input
+            install_uuid = uuid.UUID(raw)
+            install_id = str(install_uuid)
+        except (ValueError, TypeError, AttributeError):
+            # Regenerate if file is empty or corrupted and overwrite on disk
+            install_id = str(uuid.uuid4())
+            _INSTALL_ID_FILE.write_text(install_id)
+            log.info("register_install: regenerated invalid install ID %s", install_id)
+    else:
+        install_id = str(uuid.uuid4())
+        _INSTALL_ID_FILE.write_text(install_id)
+        log.debug("register_install: new install ID (truncated) %s...", install_id[:8])
+
+    # Already successfully registered on a previous startup — nothing to do
+    if _INSTALL_REGISTERED_FILE.exists():
+        log.debug("register_install: already registered — skipping")
+        return
+
+    # Opt-out check
+    if os.environ.get("JENTIC_TELEMETRY", "").lower() == "off":
+        log.info("register_install: telemetry disabled (JENTIC_TELEMETRY=off) — skipping")
+        return
+
+    # Fire the registration call
+    try:
+        import httpx
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.post(
+                _REGISTER_INSTALL_URL,
+                json={"id": install_id},
+            )
+            if resp.is_success:
+                _INSTALL_REGISTERED_FILE.write_text(install_id)
+                log.info("register_install: registered successfully")
+            else:
+                log.warning("register_install: server returned %d — will retry on next startup", resp.status_code)
+    except Exception as exc:
+        log.warning("register_install: network call failed (%s) — will retry on next startup", exc)
 
 
 # ── Step 1: import own OpenAPI spec ──────────────────────────────────────────
