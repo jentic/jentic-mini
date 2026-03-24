@@ -127,7 +127,7 @@ class CredentialOut(BaseModel):
     identity: str | None = None
     """Identity field (username, client ID, etc.) — returned so clients can confirm what was stored."""
     api_id: str | None = None
-    auth_type: Literal["bearer", "basic", "apiKey", "pipedream_oauth"] | None = None
+    auth_type: str | None = None
     created_at: float | None = None
     updated_at: float | None = None
 
