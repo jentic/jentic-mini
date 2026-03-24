@@ -80,9 +80,9 @@ Once the broker is registered, the connect and sync operations are **open to age
    → From now on: normal Jentic broker handles all API calls
    → Pipedream is only contacted again for token refresh
 
-4. (Automatic) Token refresh
-   → If the broker gets a 401 from upstream, it fetches a fresh token from Pipedream
-   → Vault is updated silently — the agent never sees the 401
+4. (Automatic) Token refresh _(planned)_
+   → Token refresh on 401 is not yet wired into the broker
+   → For now, re-run `POST /oauth-brokers/pipedream/sync` to manually refresh tokens
 ```
 
 You can also initiate connect-link manually via the Jentic Mini UI at `http://localhost:8900/oauth-brokers`, but letting the agent handle it is the recommended approach — it keeps the human interaction to a single OAuth approval click.
@@ -123,11 +123,11 @@ Generate a one-time OAuth connect URL. Callable by agents (toolkit key) and huma
 }
 ```
 
-- `app`: Pipedream app slug (e.g. `google_drive`, `gmail`, `slack`, `github`). Find slugs via `GET /oauth-brokers/pipedream/apps` or at [pipedream.com/apps](https://pipedream.com/apps).
+- `app`: **Required.** Pipedream app slug (e.g. `google_drive`, `gmail`, `slack`, `github`). Find slugs in [`src/brokers/pipedream.py`](../src/brokers/pipedream.py) or at [pipedream.com/apps](https://pipedream.com/apps).
 - `external_user_id`: Your identifier for the user. Use `"default"` for single-user setups.
 - `label`: Required — used to distinguish multiple accounts for the same app, since Pipedream only returns the app name (not the account email) at connect time.
 
-You may also pass `api_id` (e.g. `"googleapis.com/drive"`) instead of `app` — Jentic Mini will resolve it to the correct Pipedream slug automatically.
+You may also pass `api_id` (e.g. `"googleapis.com/drive"`) as optional metadata alongside `app`. It does **not** replace `app` — the broker does not perform automatic `api_id` → Pipedream slug resolution. It is used to override the credential's API ID registration during sync.
 
 **Response:**
 ```json
@@ -227,7 +227,7 @@ The current mapping covers:
 | **AI** | OpenAI, Anthropic, Groq, Mistral, ElevenLabs |
 | **Music** | Spotify |
 
-To see the full list or check a specific app: `GET /oauth-brokers/pipedream/apps?q={name}`
+To see the full list of supported apps and their Jentic `api_id` mappings, consult the slug map in [`src/brokers/pipedream.py`](../src/brokers/pipedream.py) or browse the Pipedream app directory at [pipedream.com/apps](https://pipedream.com/apps).
 
 Pipedream itself supports 3,000+ apps — if an app isn't in the slug map but exists in Pipedream, pass `app` directly (the Pipedream slug) and it will work. File a PR to add it to the mapping.
 
@@ -272,14 +272,14 @@ curl -H "X-Jentic-API-Key: $AGENT_KEY" \
 
 ## Token Refresh
 
-Pipedream-sourced OAuth tokens expire (typically 1 hour for Google). Token refresh is handled automatically:
+Automatic token refresh on 401 is **not yet implemented** in the broker. `refresh_pipedream_credential()` exists in `src/routers/pipedream.py` but is not yet wired into the broker handler — this is Phase 2 work (see roadmap).
 
-- When the broker forwards a request and gets a 401 from upstream
-- If the credential is Pipedream-sourced (tracked in `pipedream_accounts`)
-- The broker fetches a fresh token from Pipedream and updates the vault
-- The request is retried — the agent never sees the 401
+In the meantime, if you receive 401 errors on broker calls, re-run sync to manually refresh the token:
 
-**Note:** The refresh hook is not yet wired into the broker — it's available as `src.routers.pipedream.refresh_pipedream_credential()`. Phase 2 work (see roadmap).
+```bash
+POST /oauth-brokers/pipedream/sync
+{ "external_user_id": "frank" }
+```
 
 ---
 
