@@ -156,7 +156,7 @@ On first startup, Jentic Mini generates a random UUID and registers it with Jent
 
 This install ID is the foundation for community contribution features: when your instance discovers a working workflow or an API improvement, it can share that back under your anonymous install ID, benefiting everyone running Jentic. Disabling telemetry also disables the ability to contribute workflows and API fixes back to the community.
 
-The install ID is stored locally at `/app/data/install-id.txt`.
+The install ID is stored locally at `/app/data/install-id.txt`. A second marker file (`/app/data/install-registered.txt`) is written after successful registration so that subsequent startups skip the network call.
 
 **To opt out**, set `JENTIC_TELEMETRY=off`:
 
