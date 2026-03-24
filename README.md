@@ -35,7 +35,7 @@ The **Jentic hosted and VPC editions** offer deeper implementations across four 
 | **Simulation** | Basic simulate mode | Full sandbox for simulating API calls and toolkit behaviour (enterprise-only) |
 | **Catalog** | ~1,044 APIs + ~380 workflow sources from [jentic-public-apis](https://github.com/jentic/jentic-public-apis); auto-imported on credential add | Central catalog — aggregates the collective know-how of agents across API definitions and Arazzo workflows |
 
-Jentic Mini is a first-class deployment option for teams who want full control over their data and credentials. Hosted Jentic is an alternative for teams who want managed scaling, SLAs, and enterprise features — both are production targets, not a development-to-production pipeline.
+Jentic Mini is a self-hosted deployment option for individuals and small teams who want full control over their data and credentials. For production use at scale, [hosted Jentic](https://jentic.com) is the first-class alternative.
 
 ## Getting Started
 
