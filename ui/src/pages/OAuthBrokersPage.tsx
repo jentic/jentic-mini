@@ -293,7 +293,7 @@ function BrokerAccounts({ broker }: { broker: OAuthBroker }) {
                   <div className="flex items-center gap-3 mt-0.5">
                     <span className="text-xs text-muted-foreground">account: {acc.account_id}</span>
                     {acc.synced_at && (
-                      <span className="text-xs text-muted-foreground">synced {new Date(acc.synced_at).toLocaleString()}</span>
+                      <span className="text-xs text-muted-foreground">synced {new Date(Number(acc.synced_at) * 1000).toLocaleString()}</span>
                     )}
                   </div>
                 </div>
@@ -380,7 +380,7 @@ function BrokerCard({ broker }: { broker: OAuthBroker }) {
             )}
             {broker.created_at && (
               <span className="text-xs text-muted-foreground">
-                created {new Date(broker.created_at).toLocaleDateString()}
+                created {new Date(Number(broker.created_at) * 1000).toLocaleDateString()}
               </span>
             )}
           </div>
