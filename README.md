@@ -2,15 +2,17 @@
 
 > ⚠️ **Early Access** — Jentic Mini is new and under active development. It may contain bugs, rough edges, and security gaps we haven't found yet. It is **not recommended for production use** at this stage. We're sharing it early so the community can explore it, test it, and help shape it. Use it in personal or development environments, and please [report issues](https://github.com/jentic/jentic-mini/issues) as you find them.
 
+**Jentic Mini** is the open-source, self-hosted implementation of the Jentic API — fully API-compatible with the [Jentic hosted and VPC editions](https://jentic.com).
+
+## Quick Start
+
 **Using OpenClaw?** The fastest way to get started is via the Jentic skill on [ClawHub](https://clawhub.com) — it will guide you through your installation options and connect your agent automatically. Just tell your OpenClaw agent:
 
 > "install and set up the jentic skill from ClawHub"
 
 **Want the full stack on a fresh VPS?** [jentic-quick-claw](https://github.com/jentic/jentic-quick-claw) installs OpenClaw, Jentic Mini, Mattermost, and a file browser in one command — everything pre-wired and secured via Tailscale.
 
----
-
-**Jentic Mini** is the open-source, self-hosted implementation of the Jentic API — fully API-compatible with the [Jentic hosted and VPC editions](https://jentic.com).
+**Just want Jentic Mini standalone?** See [Getting Started](#getting-started) below.
 
 ## What is Jentic Mini?
 
