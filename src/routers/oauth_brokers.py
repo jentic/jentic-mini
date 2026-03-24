@@ -258,7 +258,6 @@ async def create_oauth_broker(body: OAuthBrokerCreate):
 @router.get(
     "",
     summary="List registered OAuth brokers",
-    dependencies=[Depends(require_human_session)],
 )
 async def list_oauth_brokers():
     """Return all registered OAuth brokers as a flat list. `client_secret` is never included."""
@@ -274,7 +273,6 @@ async def list_oauth_brokers():
 @router.get(
     "/{broker_id}",
     summary="Get an OAuth broker",
-    dependencies=[Depends(require_human_session)],
 )
 async def get_oauth_broker(broker_id: BrokerIdPath):
     async with get_db() as db:
