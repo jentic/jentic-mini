@@ -1,21 +1,19 @@
-
 export function JenticLogo() {
   return (
     <div className="flex items-center gap-2">
-      {/* Inline SVG logo — multicoloured eye-like mark */}
-      <svg width="28" height="28" viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <circle cx="14" cy="14" r="13" stroke="#7aacaf" strokeWidth="1.5" />
-        <circle cx="14" cy="14" r="7" fill="#7aacaf" opacity="0.15" />
-        <circle cx="14" cy="14" r="4" fill="#7aacaf" opacity="0.6" />
-        <circle cx="14" cy="14" r="2" fill="#79d2b8" />
-        {/* Orbit marks */}
-        <circle cx="14" cy="3" r="1.2" fill="#f1e38b" />
-        <circle cx="14" cy="25" r="1.2" fill="#edadaf" />
-        <circle cx="3" cy="14" r="1.2" fill="#68baec" />
-        <circle cx="25" cy="14" r="1.2" fill="#fdbd79" />
+      {/* Jentic J-mark icon — pure SVG paths, no font dependency */}
+      <svg width="28" height="28" viewBox="0 0 1500 1500" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path
+          fill="#7aacaf"
+          d="M1270.2,190c-40.4-5.7-86.9,51.2-126.9,153.4-46.2,118.3-93.1,236.7-142.5,351.5l-.5,1.1-27.8,65.3h0c0,0-.9,2.3-.9,2.3-20.6,48.5-88.5,208.5-110.3,259.8-14.6,34.3-30.2,67.3-46.8,98.9,0,0,0,.1,0,.2h0c0,.2-.2.4-.3.5-11.5,21.9-24.2,42.2-38.1,60.1-94.8,122.6-221.9,155.3-314.7,160.4-139.6,2.3-324.9-54.3-402.1-262.9-36.6-94.8-45.6-209.3-42.7-319.4h643c0,0-25.9,59.6-25.9,59.6l-5.3,12.2-54.1,1.5c-47,1.3-92.7.6-140.3,2.8-42.1,2-81.8-1.4-114.7,36.1-13.1,14.9-21.8,33-26.3,52.3-6.2,26.6-2.6,46.6,10.4,78.8,26.9,59.9,81.9,95.6,147.3,95.6s4,0,6-.1c37-1.2,75.7-14.2,107.5-37.9,28.1-21,49.3-53.5,65.7-89.4l41.3-103.5L934,248.6v-.2c0,0,0,0,0,0,6.7-16.9,13.5-33.9,20.1-51,0-.2.2-.4.2-.6,12.1-29.4,25.6-29.6,25.8-29.6,0,0,43.4-10.9,135.8-10.9s140.1,7.5,142.6,9.1c2.4,1.6,11.7,2.8,11.6,24.5Z"
+        />
+        <path
+          fill="#7aacaf"
+          d="M1460.7,761.3h-.5l-34.6-109.8-.3-1-36.4-115.3h0c0,0-67.8-215.1-67.8-215.1-12.8-38.1-23.7-77.7-55.1-71-54.9,12-86.7,103.8-113.1,175.9-6.3,17.2-12.9,35.8-16.5,56l8.3,10.2,219.4,270,2.4,3h-298.7l-42-.3-.4.9-25,57.2-5.4,12.3h489.2l-23.4-73.2ZM1388.2,812h0c0-.1.3,0,.3,0h-.3Z"
+        />
       </svg>
       <div className="flex items-baseline gap-1">
-        <span className="font-heading font-bold text-foreground text-lg">jentic</span>
+        <span style={{ fontFamily: 'system-ui, -apple-system, sans-serif', fontWeight: 700, fontSize: '1.125rem' }} className="text-foreground">jentic</span>
         <span className="font-mono text-xs text-accent-teal/70 bg-accent-teal/10 px-1 rounded">mini</span>
       </div>
     </div>
