@@ -1,5 +1,7 @@
 # Jentic Mini
 
+> ⚠️ **Early Access** — Jentic Mini is new and under active development. It may contain bugs, rough edges, and security gaps we haven't found yet. It is **not recommended for production use** at this stage. We're sharing it early so the community can explore it, test it, and help shape it. Use it in personal or development environments, and please [report issues](https://github.com/jentic/jentic-mini/issues) as you find them.
+
 **Jentic Mini** is the open-source, self-hosted implementation of the Jentic API — fully API-compatible with the [Jentic hosted and VPC editions](https://jentic.com).
 
 ## What is Jentic Mini?
