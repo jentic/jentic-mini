@@ -68,8 +68,7 @@ async def _api_has_native_scheme(api_id: str) -> bool:
         with open(row[0]) as f:
             spec = _json.load(f)
         schemes = spec.get("components", {}).get("securitySchemes", {})
-        global_sec = spec.get("security", [])
-        return bool(schemes and global_sec)
+        return bool(schemes)
     except Exception:
         return False
 
