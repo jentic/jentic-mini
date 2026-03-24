@@ -481,7 +481,6 @@ async def sync_broker_accounts(broker_id: BrokerIdPath, body: SyncRequest, reque
 @router.get(
     "/{broker_id}/accounts",
     summary="List connected accounts for an OAuth broker",
-    dependencies=[Depends(require_human_session)],
 )
 async def list_broker_accounts(broker_id: BrokerIdPath, external_user_id: ExternalUserIdQuery = None):
     """List the OAuth-connected account mappings stored for this broker.
