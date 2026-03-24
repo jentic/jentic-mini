@@ -6,6 +6,8 @@
 
 > "install and set up the jentic skill from ClawHub"
 
+**Want the full stack on a fresh VPS?** [jentic-quick-claw](https://github.com/jentic/jentic-quick-claw) installs OpenClaw, Jentic Mini, Mattermost, and a file browser in one command — everything pre-wired and secured via Tailscale.
+
 ---
 
 **Jentic Mini** is the open-source, self-hosted implementation of the Jentic API — fully API-compatible with the [Jentic hosted and VPC editions](https://jentic.com).
