@@ -69,7 +69,7 @@ export default function CredentialsPage() {
                 )}
               </div>
               <div className="flex items-center gap-2">
-                <button onClick={() => navigate(`/credentials/${cred.id}/edit`)}
+                <button onClick={() => navigate(`/credentials/${encodeURIComponent(cred.id)}/edit`)}
                   className="inline-flex items-center gap-1 px-3 py-1.5 bg-muted border border-border text-foreground hover:bg-muted/60 rounded-lg text-sm transition-colors">
                   <Settings className="h-4 w-4" /> Edit
                 </button>
