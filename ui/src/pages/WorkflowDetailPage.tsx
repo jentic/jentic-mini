@@ -37,6 +37,11 @@ function CatalogWorkflowFallback({ slug, navigate }: { slug: string; navigate: (
         const body = await importRes.json().catch(() => ({}))
         throw new Error(body.detail || `Import failed (${importRes.status})`)
       }
+      const importResult = await importRes.json()
+      if (importResult.failed > 0) {
+        const err = importResult.results?.[0]?.error || 'Unknown error'
+        throw new Error(`Import failed: ${err}`)
+      }
       queryClient.invalidateQueries({ queryKey: ['workflows'] })
       navigate('/workflows')
     } catch (e: any) {

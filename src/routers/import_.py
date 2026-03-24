@@ -156,7 +156,10 @@ async def _register_openapi(doc: dict, saved_path: str, force_api_id: str | None
 
     await _rebuild_index()
 
-    # Auto-import catalog workflows when importing from catalog
+    # Auto-import catalog workflows when importing from catalog.
+    # Note: POST /credentials also calls lazy_import_catalog_workflows as a safety net
+    # for cases where the API was already registered (skipping _register_openapi).
+    # Both calls are idempotent (upserts).
     workflows_imported = []
     if force_api_id:
         try:
