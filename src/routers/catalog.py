@@ -217,7 +217,7 @@ async def ensure_catalog_api_imported(api_id: str) -> str | None:
     from src.routers.import_ import ImportRequest, ImportSource, import_sources
     try:
         result = await import_sources(
-            ImportRequest(sources=[ImportSource(type="url", url=download_url, filename=f"{api_id}_{spec_file['name']}")])
+            ImportRequest(sources=[ImportSource(type="url", url=download_url, filename=f"{api_id.replace('/', '_')}_{spec_file['name']}", force_api_id=api_id)])
         )
     except Exception as e:
         raise HTTPException(500, f"Auto-import failed for catalog API '{api_id}': {e}")
@@ -226,6 +226,9 @@ async def ensure_catalog_api_imported(api_id: str) -> str | None:
     results = result.get("results", []) if isinstance(result, dict) else []
     if results:
         imported_id = results[0].get("id")
+        if results[0].get("status") == "failed":
+            log.warning("Lazy-import failed for '%s': %s", api_id, results[0].get("error"))
+            raise HTTPException(502, f"Import failed for '{api_id}': {results[0].get('error')}")
     log.info("Lazy-import done for '%s' → registered as '%s'", api_id, imported_id)
     return imported_id or api_id
 
@@ -501,6 +504,55 @@ def _build_catalog_result(entry: dict, registered_ids: set[str]) -> dict:
 
 
 # ── Routes ────────────────────────────────────────────────────────────────────
+
+@router.get(
+    "/catalog/{api_id:path}",
+    summary="Get a catalog entry with spec location",
+    tags=["catalog"],
+)
+async def get_catalog_entry(api_id: str):
+    """Return details for a single catalog API, including the spec download URL.
+
+    Use the returned `spec_url` with `POST /import` to import this API:
+    ```json
+    POST /import
+    {"sources": [{"type": "url", "url": "<spec_url>", "force_api_id": "<api_id>"}]}
+    ```
+    """
+    entries = _load_manifest()
+    entry = next((e for e in entries if e["api_id"] == api_id), None)
+    if not entry:
+        raise HTTPException(404, f"'{api_id}' not found in the public catalog.")
+
+    registered_ids = await _get_registered_api_ids()
+    is_registered = api_id in registered_ids
+
+    spec_file = None
+    spec_url = None
+    try:
+        spec_file = _find_spec_recursive(entry["path"])
+        if spec_file:
+            spec_url = spec_file.get("download_url")
+    except Exception:
+        pass
+
+    links: dict = {
+        "github": f"https://github.com/{GITHUB_REPO}/tree/main/{entry['path']}",
+    }
+    if is_registered:
+        links["api"] = f"/apis/{api_id}"
+        links["operations"] = f"/apis/{api_id}/operations"
+    if spec_url:
+        links["import"] = "/import"
+
+    return {
+        "api_id": api_id,
+        "registered": is_registered,
+        "spec_url": spec_url,
+        "spec_filename": spec_file["name"] if spec_file else None,
+        "_links": links,
+    }
+
 
 @router.post(
     "/catalog/refresh",

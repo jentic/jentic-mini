@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react'
 import { useNavigate, useSearchParams, Link } from 'react-router-dom'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '../api/client'
 import { Badge, MethodBadge } from '../components/ui/Badge'
 import { Search, X, ChevronDown, ChevronUp, ExternalLink, Copy, Check, Loader2, Zap, Globe } from 'lucide-react'
@@ -120,6 +120,94 @@ function InspectPanel({ capabilityId, onClose }: { capabilityId: string; onClose
   )
 }
 
+function CatalogPanel({ result, onClose }: { result: any; onClose: () => void }) {
+  const links = result._links ?? {}
+  const queryClient = useQueryClient()
+  const [importing, setImporting] = useState(false)
+  const [imported, setImported] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const apiId = result.api_id ?? result.id
+
+  const handleImport = async () => {
+    setImporting(true)
+    setError(null)
+    try {
+      // Step 1: Get spec URL from catalog
+      const catalogRes = await fetch(`/catalog/${apiId}`, { credentials: 'include' })
+      if (!catalogRes.ok) {
+        const body = await catalogRes.json().catch(() => ({}))
+        throw new Error(body.detail || `Catalog lookup failed (${catalogRes.status})`)
+      }
+      const catalogEntry = await catalogRes.json()
+      if (!catalogEntry.spec_url) {
+        throw new Error('No spec URL found for this API in the catalog')
+      }
+
+      // Step 2: Import via POST /import
+      const importRes = await fetch('/import', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sources: [{
+            type: 'url',
+            url: catalogEntry.spec_url,
+            force_api_id: apiId,
+          }],
+        }),
+      })
+      if (!importRes.ok) {
+        const body = await importRes.json().catch(() => ({}))
+        throw new Error(body.detail || `Import failed (${importRes.status})`)
+      }
+      setImported(true)
+      queryClient.invalidateQueries({ queryKey: ['search'] })
+    } catch (e: any) {
+      setError(e.message)
+    } finally {
+      setImporting(false)
+    }
+  }
+
+  return (
+    <div className="border-t border-border bg-background/50 p-5 space-y-3">
+      <div className="flex items-start justify-between gap-2">
+        <div className="space-y-1">
+          <p className="font-medium text-foreground text-sm">{apiId}</p>
+          <p className="text-xs text-muted-foreground">
+            {imported
+              ? 'Imported successfully. Search again to see individual operations.'
+              : 'This API is available in the Jentic public catalog. Import it to browse and execute its operations.'}
+          </p>
+        </div>
+        <button onClick={onClose} className="text-muted-foreground hover:text-foreground shrink-0">
+          <X className="h-4 w-4" />
+        </button>
+      </div>
+      {error && <p className="text-xs text-danger">{error}</p>}
+      <div className="flex items-center gap-3 pt-2 border-t border-border">
+        {!imported && (
+          <button
+            onClick={handleImport}
+            disabled={importing}
+            className="inline-flex items-center gap-1 text-xs text-accent-teal hover:text-accent-teal/80 disabled:opacity-50"
+          >
+            {importing ? <Loader2 className="h-3 w-3 animate-spin" /> : <Zap className="h-3 w-3" />}
+            {importing ? 'Importing...' : 'Import this API'}
+          </button>
+        )}
+        {links.github && (
+          <a href={links.github} target="_blank" rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 text-xs text-primary hover:text-primary/80">
+            <ExternalLink className="h-3 w-3" /> View on GitHub
+          </a>
+        )}
+      </div>
+    </div>
+  )
+}
+
 function ResultCard({ result, expanded, onToggle }: {
   result: any
   expanded: boolean
@@ -189,7 +277,9 @@ function ResultCard({ result, expanded, onToggle }: {
       </button>
 
       {expanded && (
-        <InspectPanel capabilityId={result.id} onClose={onToggle} />
+        isLocal
+          ? <InspectPanel capabilityId={result.id} onClose={onToggle} />
+          : <CatalogPanel result={result} onClose={onToggle} />
       )}
     </div>
   )
