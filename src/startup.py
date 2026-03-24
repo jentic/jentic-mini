@@ -86,7 +86,7 @@ async def register_install() -> None:
     else:
         install_id = str(uuid.uuid4())
         _INSTALL_ID_FILE.write_text(install_id)
-        log.info("register_install: new install ID %s", install_id)
+        log.debug("register_install: new install ID (truncated) %s...", install_id[:8])
 
     # Already successfully registered on a previous startup — nothing to do
     if _INSTALL_REGISTERED_FILE.exists():
