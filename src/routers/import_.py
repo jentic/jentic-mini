@@ -156,12 +156,23 @@ async def _register_openapi(doc: dict, saved_path: str, force_api_id: str | None
 
     await _rebuild_index()
 
+    # Auto-import catalog workflows when importing from catalog
+    workflows_imported = []
+    if force_api_id:
+        try:
+            from src.routers.catalog import lazy_import_catalog_workflows
+            workflows_imported = await lazy_import_catalog_workflows(api_id)
+        except Exception as e:
+            import logging
+            logging.getLogger("jentic.import").warning("Workflow auto-import failed for '%s': %s", api_id, e)
+
     return {
         "type": "api",
         "id": api_id,
         "name": name,
         "operations_indexed": len(ops),
         "spec_path": saved_path,
+        "workflows_imported": len(workflows_imported),
     }
 
 

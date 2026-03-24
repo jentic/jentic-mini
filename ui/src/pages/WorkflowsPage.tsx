@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import { api } from '../api/client'
 import { Card, CardBody } from '../components/ui/Card'
 import { Badge } from '../components/ui/Badge'
-import { Workflow, ChevronRight } from 'lucide-react'
+import { Workflow, ChevronRight, Zap, Globe } from 'lucide-react'
 
 export default function WorkflowsPage() {
   const navigate = useNavigate()
@@ -54,8 +54,16 @@ export default function WorkflowsPage() {
               )}
 
               <div className="flex items-center gap-2 flex-wrap">
-                {wf.steps && (
-                  <Badge variant="default">{wf.steps.length} steps</Badge>
+                <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-mono border shrink-0 ${
+                  wf.source === 'local'
+                    ? 'bg-success/10 text-success border-success/20'
+                    : 'bg-accent-yellow/10 text-accent-yellow border-accent-yellow/20'
+                }`}>
+                  {wf.source === 'local' ? <Zap className="h-2.5 w-2.5" /> : <Globe className="h-2.5 w-2.5" />}
+                  {wf.source === 'local' ? 'local' : 'catalog'}
+                </span>
+                {wf.steps_count > 0 && (
+                  <Badge variant="default">{wf.steps_count} steps</Badge>
                 )}
                 {wf.involved_apis?.map((apiId: any) => (
                   <Badge key={apiId} variant="default" className="font-mono text-[10px]">{apiId}</Badge>
