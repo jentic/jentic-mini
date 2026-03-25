@@ -37,6 +37,7 @@ const SCHEME_TYPE_LABELS: Record<SchemeType, string> = {
 
 function schemeTypeFromRaw(s: { type?: string; scheme?: string }): SchemeType {
   if (s.type === 'oauth2') return 'oauth2'
+  if (s.type === 'oauth2') return 'oauth2'
   if (s.type === 'http' && s.scheme?.toLowerCase() === 'bearer') return 'bearer'
   if (s.type === 'http' && s.scheme?.toLowerCase() === 'basic') return 'basic'
   if (s.type === 'apiKey') return 'apiKey'
