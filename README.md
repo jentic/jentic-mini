@@ -1,4 +1,6 @@
-# Jentic Mini
+<p align="center">
+  <img src="https://raw.githubusercontent.com/jentic/jentic-mini/main/assets/jentic-mini-logo.svg" alt="Jentic Mini" width="400">
+</p>
 
 Give your AI agents access to **10,000+ APIs** — without leaking a single credential.
 Building agents that call real APIs is painful. You end up hardcoding auth, juggling secrets in prompts,
@@ -22,6 +24,12 @@ injecting credentials at runtime, and brokering the request. Secrets never touch
 ## What is Jentic Mini?
 
 **Jentic Mini** is the open-source, self-hosted implementation of the Jentic API — fully API-compatible with the [Jentic hosted and VPC editions](https://jentic.com).
+
+---
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/jentic/jentic-mini/main/assets/architecture-light.svg" alt="Jentic Mini Architecture" width="800">
+</p>
 
 ---
 
