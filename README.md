@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://raw.githubusercontent.com/jentic/jentic-mini/main/assets/jentic-mini-logo.svg" alt="Jentic Mini" width="400">
+  <a href="https://jentic.com/mini"><img src="https://raw.githubusercontent.com/jentic/jentic-mini/main/assets/jentic-mini-logo.svg" alt="Jentic Mini" width="400"></a>
 </p>
 
 Give your AI agents access to **10,000+ APIs** — without leaking a single credential.
