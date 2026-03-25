@@ -265,6 +265,7 @@ function CredentialFields({ selectedApi, onBack, onSaved, editId, existing }: Cr
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
+    if (schemeType === 'oauth2') return
     setError(null)
 
     // Derive auth_type from scheme

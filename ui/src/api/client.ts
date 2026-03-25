@@ -15,8 +15,8 @@ export const api = {
     if (q) params.set('q', q)
     return fetchJson<any>(`/apis?${params}`)
   },
-  getApi: (apiId: string) => fetchJson<any>(`/apis/${encodeURIComponent(apiId)}`),
-  getCatalogEntry: (apiId: string) => fetchJson<any>(`/catalog/${encodeURIComponent(apiId)}`),
+  getApi: (apiId: string) => fetchJson<any>(`/apis/${apiId}`),
+  getCatalogEntry: (apiId: string) => fetchJson<any>(`/catalog/${apiId}`),
   listOperations: (apiId: string, page = 1, limit = 50) => CatalogService.listApiOperationsApisApiIdOperationsGet({ apiId, page, limit }),
   declareScheme: (apiId: string, body: any) => CatalogService.submitSchemeApisApiIdSchemePost({ apiId, requestBody: body }),
   listOverlays: (apiId: string) => CatalogService.listOverlaysApisApiIdOverlaysGet({ apiId }),
@@ -51,9 +51,9 @@ export const api = {
   denyAccessRequest: (toolkitId: string, reqId: string) => ToolkitsService.denyAccessRequestToolkitsToolkitIdAccessRequestsReqIdDenyPost({ toolkitId, reqId }),
   listCredentials: (apiId?: string) => fetchJson<any>(`/credentials${apiId ? `?api_id=${encodeURIComponent(apiId)}` : ''}`),
   createCredential: (body: any) => fetchJson<any>('/credentials', { method: 'POST', body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' } }),
-  getCredential: (cid: string) => fetchJson<any>(`/credentials/${encodeURIComponent(cid)}`),
-  updateCredential: (cid: string, body: any) => fetchJson<any>(`/credentials/${encodeURIComponent(cid)}`, { method: 'PATCH', body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' } }),
-  deleteCredential: (cid: string) => fetchJson<any>(`/credentials/${encodeURIComponent(cid)}`, { method: 'DELETE' }),
+  getCredential: (cid: string) => fetchJson<any>(`/credentials/${cid}`),
+  updateCredential: (cid: string, body: any) => fetchJson<any>(`/credentials/${cid}`, { method: 'PATCH', body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' } }),
+  deleteCredential: (cid: string) => fetchJson<any>(`/credentials/${cid}`, { method: 'DELETE' }),
   search: (q: string, n = 10) => SearchService.searchSearchGet({ q, n }),
   inspectCapability: (capabilityId: string, toolkitId?: string) => InspectService.getCapabilityInspectCapabilityIdGet({ capabilityId, toolkitId }),
   listTraces: ({ limit = 20, offset = 0, page, toolkit: _toolkit, workflow: _workflow }: { limit?: number; offset?: number; page?: number; toolkit?: string; workflow?: string } = {}) => {
@@ -74,7 +74,8 @@ async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
     const body = await res.text().catch(() => '')
     throw new Error(`${res.status} ${res.statusText}: ${body}`)
   }
-  return res.json()
+  const text = await res.text()
+  return text ? JSON.parse(text) : (undefined as unknown as T)
 }
 
 export interface OAuthBroker {
