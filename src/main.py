@@ -6,7 +6,7 @@ import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Response
 from fastapi.openapi.docs import get_redoc_html
 from fastapi.openapi.utils import get_openapi
 from fastapi.staticfiles import StaticFiles
@@ -366,10 +366,12 @@ async def spa_middleware(request: Request, call_next):
     if request.method == "GET":
         path = request.url.path
         accept = request.headers.get("accept", "")
-        if "text/html" in accept and any(path == p or path.startswith(p + "/") for p in _SPA_PATHS):
+        wants_html = any(part.strip().startswith("text/html") for part in accept.split(","))
+        if wants_html and any(path == p or path.startswith(p + "/") for p in _SPA_PATHS):
             index_path = STATIC_DIR / "index.html"
             if index_path.exists():
                 return FileResponse(index_path)
+            return Response(content="UI not built", status_code=404, media_type="text/plain")
     return await call_next(request)
 
 # ── Broker catch-all — MUST be registered last ────────────────────────────────
