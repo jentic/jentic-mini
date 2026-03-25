@@ -69,6 +69,8 @@ export function Layout() {
             target="_blank"
             rel="noopener noreferrer"
             className="flex items-center gap-3 px-4 py-2 rounded-md text-sm text-foreground hover:bg-muted hover:text-primary transition-all duration-150"
+            aria-label="API Docs (opens in a new tab)"
+            title="API Docs (opens in a new tab)"
           >
             <BookOpen className="h-4 w-4" />
             <span className="font-semibold">API Docs</span>
