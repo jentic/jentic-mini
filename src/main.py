@@ -229,7 +229,12 @@ _VERSION_CACHE_TTL = 6 * 3600  # check GitHub at most once every 6 hours
 
 @app.get("/version", tags=["meta"])
 async def get_version():
-    """Returns current version and latest GitHub release (cached 6 h)."""
+    """Returns current version and latest GitHub release (cached 6 h).
+    Set JENTIC_TELEMETRY=off to disable the outbound GitHub check.
+    """
+    if os.getenv("JENTIC_TELEMETRY", "").lower() == "off":
+        return {"current": APP_VERSION, "latest": None, "release_url": None}
+
     global _version_cache
     now = time.time()
     if now - _version_cache["ts"] > _VERSION_CACHE_TTL:
