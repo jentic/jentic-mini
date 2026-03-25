@@ -336,6 +336,7 @@ async def init_db() -> None:
             "ALTER TABLE toolkits ADD COLUMN simulate INTEGER NOT NULL DEFAULT 0",
             # IP allowlist: JSON array of CIDR/IP strings, or NULL = unrestricted
             "ALTER TABLE toolkits ADD COLUMN allowed_ips TEXT",
+            "ALTER TABLE toolkits ADD COLUMN disabled INTEGER NOT NULL DEFAULT 0",
             # Credential → API association
             "ALTER TABLE credentials ADD COLUMN api_id TEXT",
             "ALTER TABLE credentials ADD COLUMN scheme_name TEXT",

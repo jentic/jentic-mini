@@ -48,6 +48,7 @@ export interface ToolkitOut {
   description?: string | null
   created_at?: number | null
   simulate?: boolean
+  disabled?: boolean
   keys: ToolkitKeyOut[]
   credentials: CredentialBindingOut[]
   permissions: Record<string, unknown>[]
@@ -65,6 +66,7 @@ export interface ToolkitPatch {
   name?: string | null
   description?: string | null
   simulate?: boolean | null
+  disabled?: boolean | null
 }
 
 export interface PermissionRule {
