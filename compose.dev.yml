@@ -13,6 +13,7 @@
 services:
   vite:
     image: node:24-slim
+    user: "${JENTIC_UID:-1000}:${JENTIC_GID:-1000}"
     working_dir: /app/ui
     command: sh -c "npm install --ignore-scripts && npm run dev"
     volumes:
