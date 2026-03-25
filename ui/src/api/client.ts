@@ -9,8 +9,14 @@ export const api = {
   logout: () => UserService.logoutUserLogoutPost(),
   createUser: (username: string, password: string) => UserService.createUserUserCreatePost({ requestBody: { username, password } }),
   generateDefaultKey: () => UserService.generateDefaultKeyDefaultApiKeyGeneratePost(),
-  listApis: (page = 1, limit = 20, source?: string, q?: string) => CatalogService.listApisApisGet({ page, limit, source: source ?? null, q: q ?? null }),
-  getApi: (apiId: string) => CatalogService.getApiApisApiIdGet({ apiId }),
+  listApis: (page = 1, limit = 20, source?: string, q?: string) => {
+    const params = new URLSearchParams({ page: String(page), limit: String(limit) })
+    if (source) params.set('source', source)
+    if (q) params.set('q', q)
+    return fetchJson<any>(`/apis?${params}`)
+  },
+  getApi: (apiId: string) => fetchJson<any>(`/apis/${apiId}`),
+  getCatalogEntry: (apiId: string) => fetchJson<any>(`/catalog/${apiId}`),
   listOperations: (apiId: string, page = 1, limit = 50) => CatalogService.listApiOperationsApisApiIdOperationsGet({ apiId, page, limit }),
   declareScheme: (apiId: string, body: any) => CatalogService.submitSchemeApisApiIdSchemePost({ apiId, requestBody: body }),
   listOverlays: (apiId: string) => CatalogService.listOverlaysApisApiIdOverlaysGet({ apiId }),
@@ -18,7 +24,6 @@ export const api = {
   importSpec: (sources: any[]) => CatalogService.importSourcesImportPost({ requestBody: { sources } }),
   listCatalog: (q?: string, limit = 50, registeredOnly = false, unregisteredOnly = false) => CatalogService.listCatalogCatalogGet({ q: q ?? null, limit, registeredOnly, unregisteredOnly }),
   refreshCatalog: () => CatalogService.refreshCatalogCatalogRefreshPost(),
-  getCatalogEntry: (apiId: string) => CatalogService.getCatalogEntryCatalogApiIdGet({ apiId }),
   importFromCatalog: (apiId: string) => CatalogService.getCatalogEntryCatalogApiIdGet({ apiId }),
   listWorkflows: () => CatalogService.listWorkflowsWorkflowsGet(),
   getWorkflow: (slug: string) => CatalogService.getWorkflowWorkflowsSlugGet({ slug }),
@@ -44,11 +49,11 @@ export const api = {
   createAccessRequest: (toolkitId: string, body: any) => ToolkitsService.createAccessRequestToolkitsToolkitIdAccessRequestsPost({ toolkitId, requestBody: body }),
   approveAccessRequest: (toolkitId: string, reqId: string) => ToolkitsService.approveAccessRequestToolkitsToolkitIdAccessRequestsReqIdApprovePost({ toolkitId, reqId }),
   denyAccessRequest: (toolkitId: string, reqId: string) => ToolkitsService.denyAccessRequestToolkitsToolkitIdAccessRequestsReqIdDenyPost({ toolkitId, reqId }),
-  listCredentials: (apiId?: string) => CredentialsService.listCredentialsCredentialsGet({ apiId: apiId ?? null }),
-  createCredential: (body: any) => CredentialsService.createCredentialsPost({ requestBody: body }),
-  getCredential: (cid: string) => CredentialsService.getCredentialCredentialsCidGet({ cid }),
-  updateCredential: (cid: string, body: any) => CredentialsService.patchCredentialsCidPatch({ cid, requestBody: body }),
-  deleteCredential: (cid: string) => CredentialsService.deleteCredentialsCidDelete({ cid }),
+  listCredentials: (apiId?: string) => fetchJson<any>(`/credentials${apiId ? `?api_id=${encodeURIComponent(apiId)}` : ''}`),
+  createCredential: (body: any) => fetchJson<any>('/credentials', { method: 'POST', body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' } }),
+  getCredential: (cid: string) => fetchJson<any>(`/credentials/${cid}`),
+  updateCredential: (cid: string, body: any) => fetchJson<any>(`/credentials/${cid}`, { method: 'PATCH', body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' } }),
+  deleteCredential: (cid: string) => fetchJson<any>(`/credentials/${cid}`, { method: 'DELETE' }),
   search: (q: string, n = 10) => SearchService.searchSearchGet({ q, n }),
   inspectCapability: (capabilityId: string, toolkitId?: string) => InspectService.getCapabilityInspectCapabilityIdGet({ capabilityId, toolkitId }),
   listTraces: ({ limit = 20, offset = 0, page, toolkit: _toolkit, workflow: _workflow }: { limit?: number; offset?: number; page?: number; toolkit?: string; workflow?: string } = {}) => {
@@ -69,7 +74,8 @@ async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
     const body = await res.text().catch(() => '')
     throw new Error(`${res.status} ${res.statusText}: ${body}`)
   }
-  return res.json()
+  const text = await res.text()
+  return text ? JSON.parse(text) : (undefined as unknown as T)
 }
 
 export interface OAuthBroker {
