@@ -1,6 +1,6 @@
 # Jentic Mini
 
-Give your AI agents access to **1,000+ APIs** — without leaking a single credential.
+Give your AI agents access to **10,000+ APIs** — without leaking a single credential.
 Building agents that call real APIs is painful. You end up hardcoding auth, juggling secrets in prompts,
 writing bespoke glue code for every service, and praying nothing leaks. Jentic Mini fixes this.
 It's a self-hosted API execution layer that sits between your agent and the outside world.
@@ -32,7 +32,7 @@ Jentic Mini gives any AI agent a local execution layer:
 - **Observe** — inspect execution traces, async job handles, and audit logs
 - **Toolkits** — define scoped access policies and credential bundles for agents (one toolkit key per agent, individually revocable)
 - **Credentials vault** — store API keys, OAuth tokens, and secrets in an encrypted local vault; they're injected at execution time and never returned via the API
-- **Public catalog** — browse and import from 1,044 OpenAPI specs and 380 Arazzo workflow sources in the [Jentic public catalog](https://github.com/jentic/jentic-public-apis); specs and workflows are imported automatically when you add credentials
+- **Public catalog** — browse and import from 10,000+ OpenAPI specs and 380 Arazzo workflow sources in the [Jentic public catalog](https://github.com/jentic/jentic-public-apis); specs and workflows are imported automatically when you add credentials
 
 ## Hosted vs Self-hosted
 
@@ -43,7 +43,7 @@ The **Jentic hosted and VPC editions** offer deeper implementations across four 
 | **Search** | BM25 full-text search | Advanced semantic search (~64% accuracy improvement over BM25) |
 | **Request brokering** | In-process credential injection | Scalable AWS Lambda-based broker with encryption at rest and in-transit, SOC 2-grade security, and 3rd-party credential vault integrations (HashiCorp Vault, AWS Secrets Manager, etc.) |
 | **Simulation** | Basic simulate mode | Full sandbox for simulating API calls and toolkit behaviour (enterprise-only) |
-| **Catalog** | ~1,044 APIs + ~380 workflow sources from [jentic-public-apis](https://github.com/jentic/jentic-public-apis); auto-imported on credential add | Central catalog — aggregates the collective know-how of agents across API definitions and Arazzo workflows |
+| **Catalog** | ~10,000+ APIs + ~380 workflow sources from [jentic-public-apis](https://github.com/jentic/jentic-public-apis); auto-imported on credential add | Central catalog — aggregates the collective know-how of agents across API definitions and Arazzo workflows |
 
 Jentic Mini is a self-hosted deployment option for individuals and small teams who want full control over their data and credentials. For teams that need managed scaling, SLAs, or enterprise features, [Jentic](https://jentic.com) offers hosted and on-premises editions — [get in touch](https://jentic.com/contact) to find out more.
 
@@ -114,7 +114,7 @@ First-time setup is guided through the UI at `http://localhost:8900`. Alternativ
 
 ## Public Catalog
 
-Jentic Mini is connected to the [Jentic public API catalog](https://github.com/jentic/jentic-public-apis) — ~1,044 API specs and ~380 Arazzo workflow sources.
+Jentic Mini is connected to the [Jentic public API catalog](https://github.com/jentic/jentic-public-apis) — ~10,000+ API specs and ~380 Arazzo workflow sources.
 
 The catalog manifest is fetched lazily at startup (two GitHub API calls) and cached locally for 24 hours. Specs and workflows are imported **automatically** the first time you add credentials for a catalog API.
 
