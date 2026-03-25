@@ -13,3 +13,5 @@ vendor/arazzo-engine/
 node_modules
 vendor/arazzo-engine
 /static/
+/src/specs/
+/src/workflows/
