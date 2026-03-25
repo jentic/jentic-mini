@@ -103,7 +103,6 @@ export interface CredentialOut {
 export interface CredentialCreate {
   label: string
   api_id?: string | null
-  scheme_name?: string | null
   auth_type?: 'bearer' | 'basic' | 'apiKey' | null
   identity?: string | null
   value: string
@@ -112,7 +111,6 @@ export interface CredentialCreate {
 export interface CredentialPatch {
   label?: string | null
   api_id?: string | null
-  scheme_name?: string | null
   auth_type?: 'bearer' | 'basic' | 'apiKey' | null
   identity?: string | null
   value?: string | null

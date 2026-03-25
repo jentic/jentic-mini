@@ -26,7 +26,7 @@ interface SchemeOption {
   label: string       // human label (e.g. "Bearer Token")
 }
 
-const SCHEME_TYPE_PRIORITY: SchemeType[] = ['bearer', 'apiKey', 'basic', 'oauth2']
+const SCHEME_TYPE_PRIORITY: SchemeType[] = ['bearer', 'apiKey', 'basic', 'oauth2', 'unknown']
 const SCHEME_TYPE_LABELS: Record<SchemeType, string> = {
   bearer: 'Bearer Token',
   apiKey: 'API Key',
@@ -74,7 +74,7 @@ function firstSchemeNameFromSchemes(schemes: RawSchemes): string | null {
  */
 function useApiSchemes(selectedApi: ApiOut | null): { schemes: RawSchemes; loading: boolean } {
   const isCatalog = selectedApi?.source === 'catalog'
-  const isLocal = selectedApi?.source === 'local'
+  const isLocal = selectedApi?.source === 'local' || (selectedApi && !selectedApi.source)
 
   // Local: fetch full API detail
   const { data: localDetail, isLoading: localLoading } = useQuery({
@@ -128,7 +128,8 @@ function ApiPicker({ onSelect }: { onSelect: (api: ApiOut) => void }) {
 
   const { data, isLoading } = useQuery({
     queryKey: ['apis-search', debouncedQuery],
-    queryFn: () => api.listApis(1, 30, undefined, debouncedQuery || undefined),
+    queryFn: () => api.listApis(1, 30, undefined, debouncedQuery),
+    enabled: debouncedQuery.length > 0,
     placeholderData: prev => prev,
   })
 
@@ -207,9 +208,10 @@ interface CredFieldsProps {
   onBack: () => void
   onSaved: () => void
   editId?: string
+  existing?: any
 }
 
-function CredentialFields({ selectedApi, onBack, onSaved, editId }: CredFieldsProps) {
+function CredentialFields({ selectedApi, onBack, onSaved, editId, existing }: CredFieldsProps) {
   const queryClient = useQueryClient()
   const isEdit = !!editId
 
@@ -219,16 +221,31 @@ function CredentialFields({ selectedApi, onBack, onSaved, editId }: CredFieldsPr
   const defaultScheme = schemeOptions[0] ?? null
   const [selectedScheme, setSelectedScheme] = useState<SchemeOption | null>(null)
 
-  // Reset scheme selection when API changes
-  useEffect(() => { setSelectedScheme(null) }, [selectedApi.id])
+  // Reset scheme selection and fields when API changes
+  useEffect(() => {
+    setSelectedScheme(null)
+    setLabel(selectedApi.name ?? selectedApi.id)
+    setValue('')
+    setIdentity('')
+    setError(null)
+  }, [selectedApi.id])
+
+  // Prefill from existing credential in edit mode
+  useEffect(() => {
+    if (existing) {
+      setLabel(existing.label ?? '')
+      setIdentity(existing.identity ?? '')
+      // value is write-only — leave blank
+    }
+  }, [existing])
 
   const activeScheme = selectedScheme ?? defaultScheme
   const schemeType = activeScheme?.type ?? 'unknown'
   const schemeName = activeScheme?.name ?? firstSchemeNameFromSchemes(schemes)
 
-  const [label, setLabel] = useState(selectedApi.name ?? selectedApi.id)
+  const [label, setLabel] = useState(existing?.label ?? selectedApi.name ?? selectedApi.id)
   const [value, setValue] = useState('')
-  const [identity, setIdentity] = useState('')
+  const [identity, setIdentity] = useState(existing?.identity ?? '')
   const [error, setError] = useState<string | null>(null)
 
   // For OAuth, show a different CTA
@@ -263,7 +280,7 @@ function CredentialFields({ selectedApi, onBack, onSaved, editId }: CredFieldsPr
       updateMutation.mutate({
         label: label || null,
         api_id: selectedApi.id,
-        scheme_name: schemeName,
+        auth_type: authTypeMap[schemeType],
         value: value || null,
         identity: identity || null,
       })
@@ -272,7 +289,6 @@ function CredentialFields({ selectedApi, onBack, onSaved, editId }: CredFieldsPr
       createMutation.mutate({
         label,
         api_id: selectedApi.id,
-        scheme_name: schemeName ?? undefined,
         auth_type: authTypeMap[schemeType],
         value,
         identity: identity || undefined,
@@ -485,6 +501,7 @@ export default function CredentialFormPage() {
             onBack={() => setStep('pick')}
             onSaved={() => navigate('/credentials')}
             editId={id}
+            existing={existing}
           />
         )}
         {step === 'fill' && !selectedApi && isEdit && (
