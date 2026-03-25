@@ -43,28 +43,17 @@ export function useUpdateCheck(): UpdateStatus {
 
     async function check() {
       try {
-        // Get current version from our own /health endpoint
-        const healthRes = await fetch('/health')
-        if (!healthRes.ok) return
-        const health = await healthRes.json()
-        const currentVersion: string = health.version || 'dev'
+        // Backend proxies the GitHub check with a 6h server-side cache —
+        // avoids browser hitting GitHub directly (rate limits, private repos)
+        const res = await fetch('/version')
+        if (!res.ok) return
+        const data = await res.json()
 
-        // Don't bother checking if running a dev build
-        if (currentVersion === 'dev') return
+        const currentVersion: string = data.current || 'dev'
+        const latestVersion: string = data.latest || ''
+        const releaseUrl: string = data.release_url || ''
 
-        // Check GitHub releases API for latest release
-        const ghRes = await fetch(
-          'https://api.github.com/repos/jentic/jentic-mini/releases/latest',
-          { headers: { Accept: 'application/vnd.github+json' } }
-        )
-        // 404 = no releases yet — that's fine, stay silent
-        if (!ghRes.ok) return
-
-        const release = await ghRes.json()
-        const latestVersion: string = release.tag_name || ''
-        const releaseUrl: string = release.html_url || ''
-
-        if (!latestVersion) return
+        if (!latestVersion || currentVersion === 'dev') return
 
         const updateAvailable = isNewer(latestVersion, currentVersion)
         const result: UpdateStatus = {
@@ -77,7 +66,7 @@ export function useUpdateCheck(): UpdateStatus {
         sessionStorage.setItem('jentic_update_check', JSON.stringify(result))
         setStatus(result)
       } catch {
-        // Silently ignore — network errors, CORS issues, rate limits, etc.
+        // Silently ignore — network errors, etc.
       }
     }
 

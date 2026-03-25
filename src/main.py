@@ -3,6 +3,7 @@ Jentic Mini — main.py
 """
 import logging
 import os
+import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -218,6 +219,42 @@ async def health(request: Request):
         "status": "ok",
         "version": APP_VERSION,
         "apis_registered": api_count,
+    }
+
+
+# ── Version / update-check ─────────────────────────────────────────────────
+_version_cache: dict = {"ts": 0.0, "latest": None, "release_url": None}
+_VERSION_CACHE_TTL = 6 * 3600  # check GitHub at most once every 6 hours
+
+
+@app.get("/version", tags=["meta"])
+async def get_version():
+    """Returns current version and latest GitHub release (cached 6 h)."""
+    global _version_cache
+    now = time.time()
+    if now - _version_cache["ts"] > _VERSION_CACHE_TTL:
+        # Mark attempt immediately so concurrent requests don't pile up
+        _version_cache["ts"] = now
+        try:
+            import httpx
+            async with httpx.AsyncClient() as client:
+                r = await client.get(
+                    "https://api.github.com/repos/jentic/jentic-mini/releases/latest",
+                    headers={"Accept": "application/vnd.github+json"},
+                    timeout=5.0,
+                )
+                if r.status_code == 200:
+                    data = r.json()
+                    _version_cache["latest"] = data.get("tag_name")
+                    _version_cache["release_url"] = data.get("html_url")
+                # 404 = no releases yet; 403/429 = rate limited — stay silent
+        except Exception:
+            pass  # network error — return what we have
+
+    return {
+        "current": APP_VERSION,
+        "latest": _version_cache["latest"],
+        "release_url": _version_cache["release_url"],
     }
 
 
