@@ -24,6 +24,16 @@ function copyApiDocsAssets(): import('vite').Plugin {
 // When running Vite directly on the host, the default http://localhost:8900 applies.
 const apiHost = process.env.VITE_API_HOST || 'http://localhost:8900'
 
+// Paths that are also React Router routes (e.g. /toolkits, /search).
+// For these, browser navigations (Accept: text/html) must serve index.html so
+// the SPA can render — only JSON/API calls should be proxied to the backend.
+// Pure API-only paths (no matching SPA route) can use the simpler string form.
+const spaRoute = {
+  target: apiHost,
+  bypass: (req: import('http').IncomingMessage) =>
+    req.headers.accept?.includes('text/html') ? '/index.html' : null,
+}
+
 export default defineConfig({
   plugins: [react(), copyApiDocsAssets()],
   base: '/',
@@ -32,24 +42,26 @@ export default defineConfig({
     host: '0.0.0.0',
     allowedHosts: true,
     proxy: {
-      '/api':          apiHost,
-      '/user':         apiHost,
-      '/search':       apiHost,
-      '/toolkits':     apiHost,
-      '/credentials':  apiHost,
-      '/traces':       apiHost,
-      '/jobs':         apiHost,
-      '/apis':         apiHost,
-      '/workflows':    apiHost,
-      '/catalog':      apiHost,
-      '/health':       apiHost,
-      '/import':       apiHost,
-      '/inspect':      apiHost,
-      '/notes':        apiHost,
+      // Pure API routes — no conflicting SPA page
+      '/api':             apiHost,
+      '/user':            apiHost,
+      '/apis':            apiHost,
+      '/health':          apiHost,
+      '/import':          apiHost,
+      '/inspect':         apiHost,
+      '/notes':           apiHost,
       '/default-api-key': apiHost,
-      '/oauth-brokers': apiHost,
-      '/docs':         apiHost,
-      '/openapi.json': apiHost,
+      '/oauth-brokers':   apiHost,
+      '/docs':            apiHost,
+      '/openapi.json':    apiHost,
+      // SPA + API dual-use routes — serve index.html for browser navigations
+      '/search':      spaRoute,
+      '/toolkits':    spaRoute,
+      '/credentials': spaRoute,
+      '/traces':      spaRoute,
+      '/jobs':        spaRoute,
+      '/workflows':   spaRoute,
+      '/catalog':     spaRoute,
     }
   }
 })
