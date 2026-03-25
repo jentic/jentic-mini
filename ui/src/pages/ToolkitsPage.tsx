@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '../api/client'
 import { usePendingRequests } from '../hooks/usePendingRequests'
 import type { ToolkitCreate } from '../api/types'
-import { Plus, Wrench, AlertTriangle, Key, X } from 'lucide-react'
+import { Plus, Wrench, AlertTriangle, Key, X, Ban } from 'lucide-react'
 
 function CreateModal({ onClose, onCreated }: { onClose: () => void; onCreated: (id: string) => void }) {
   const queryClient = useQueryClient()
@@ -108,11 +108,16 @@ export default function ToolkitsPage({ createNew = false }: ToolkitsPageProps) {
             const pendingCount = pendingByToolkit[toolkit.id] ?? 0
             return (
               <Link to={`/toolkits/${toolkit.id}`} key={toolkit.id}
-                className="p-5 bg-muted border border-border rounded-xl hover:border-primary/50 hover:bg-muted/80 transition-all block space-y-3">
+                className={`p-5 bg-muted border rounded-xl hover:border-primary/50 hover:bg-muted/80 transition-all block space-y-3 ${toolkit.disabled ? 'border-danger/40 opacity-70' : 'border-border'}`}>
                 <div className="flex items-start justify-between gap-2">
                   <div>
                     <div className="flex items-center gap-2 flex-wrap">
                       <h3 className="font-heading font-semibold text-foreground">{toolkit.name}</h3>
+                      {toolkit.disabled && (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-mono bg-danger/10 text-danger border border-danger/30">
+                          <Ban className="h-3 w-3" />SUSPENDED
+                        </span>
+                      )}
                       {pendingCount > 0 && (
                         <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-mono bg-warning/10 text-warning border border-warning/20">
                           <AlertTriangle className="h-3 w-3" />{pendingCount} pending

@@ -46,6 +46,7 @@ class ToolkitPatch(NormModel):
     name: str | None = None
     description: str | None = None
     simulate: bool | None = None
+    disabled: bool | None = None
 
 
 class KeyCreate(NormModel):
@@ -265,13 +266,14 @@ async def create_toolkit(body: ToolkitCreate):
 async def list_toolkits(request: Request):
     """List all toolkits."""
     async with get_db() as db:
-        async with db.execute("SELECT id, name, description, simulate, created_at FROM toolkits") as cur:
+        async with db.execute("SELECT id, name, description, simulate, disabled, created_at FROM toolkits") as cur:
             rows = await cur.fetchall()
     return [
         {
             "id": r[0], "name": r[1], "description": r[2],
             "simulate": bool(r[3]),
-            "created_at": r[4],
+            "disabled": bool(r[4]),
+            "created_at": r[5],
             "_links": {**_toolkit_links(r[0]), "keys": f"/toolkits/{r[0]}/keys"},
         }
         for r in rows
@@ -341,7 +343,7 @@ async def get_toolkit(toolkit_id: str, request: Request):
     """
     async with get_db() as db:
         async with db.execute(
-            "SELECT id, name, description, simulate, created_at FROM toolkits WHERE id=?",
+            "SELECT id, name, description, simulate, disabled, created_at FROM toolkits WHERE id=?",
             (toolkit_id,)
         ) as cur:
             row = await cur.fetchone()
@@ -397,7 +399,8 @@ async def get_toolkit(toolkit_id: str, request: Request):
         "name": row[1],
         "description": row[2],
         "simulate": bool(row[3]),
-        "created_at": row[4],
+        "disabled": bool(row[4]),
+        "created_at": row[5],
         "bound_apis": bound_apis,
         "credentials": credentials,
         "_links": _toolkit_links(toolkit_id),
@@ -433,6 +436,8 @@ async def patch_toolkit(toolkit_id: str, body: ToolkitPatch, request: Request):
             updates["description"] = body.description
         if body.simulate is not None:
             updates["simulate"] = int(body.simulate)
+        if body.disabled is not None:
+            updates["disabled"] = int(body.disabled)
         if updates:
             updates["updated_at"] = time.time()
             set_clause = ", ".join(f"{k}=?" for k in updates)

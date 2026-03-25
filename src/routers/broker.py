@@ -512,6 +512,25 @@ async def broker(request: Request, target: str):
     credential_alias = request.headers.get("x-jentic-credential")
     callback_url = request.headers.get("x-jentic-callback")
 
+    # ── Killswitch: reject all requests for disabled toolkits ─────────────────
+    if toolkit_id:
+        async with get_db() as _ks_db:
+            async with _ks_db.execute(
+                "SELECT disabled FROM toolkits WHERE id=?", (toolkit_id,)
+            ) as _ks_cur:
+                _ks_row = await _ks_cur.fetchone()
+        if _ks_row and _ks_row[0]:
+            return Response(
+                content=json.dumps({
+                    "error": "toolkit_suspended",
+                    "message": f"Toolkit '{toolkit_id}' has been suspended. All API access is blocked. Contact the toolkit owner to restore access.",
+                    "toolkit_id": toolkit_id,
+                }),
+                status_code=403,
+                media_type="application/json",
+                headers={"X-Jentic-Error": "true"},
+            )
+
     # ── Prefer: wait=N for single broker calls ────────────────────────────────
     # Parsed here and threaded through to the async path below if the upstream
     # call takes too long.
