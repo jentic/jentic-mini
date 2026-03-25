@@ -1,6 +1,6 @@
 import { Outlet, Link, useLocation } from 'react-router-dom'
 import { JenticLogo } from '../ui/Logo'
-import { BookOpen } from 'lucide-react'
+import { BookOpen, ExternalLink } from 'lucide-react'
 import { useAuth } from '../../hooks/useAuth'
 import { usePendingRequests } from '../../hooks/usePendingRequests'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
@@ -69,13 +69,21 @@ export function Layout() {
             target="_blank"
             rel="noopener noreferrer"
             className="flex items-center gap-3 px-4 py-2 rounded-md text-sm text-foreground hover:bg-muted hover:text-primary transition-all duration-150"
-            aria-label="API Docs (opens in a new tab)"
-            title="API Docs (opens in a new tab)"
+            aria-label="API (opens in a new tab)"
+            title="API (opens in a new tab)"
           >
             <BookOpen className="h-4 w-4" />
-            <span className="font-semibold">API Docs</span>
+            <span className="font-semibold">API</span>
           </a>
-          <p className="px-4 pt-2 text-[10px] font-mono text-muted-foreground/50">jentic mini · self-hosted</p>
+          <a
+            href="https://jentic.com"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-1.5 px-4 pt-2 text-[11px] font-medium text-muted-foreground/70 hover:text-primary transition-colors"
+          >
+            <ExternalLink className="h-3 w-3 shrink-0" />
+            More at jentic.com
+          </a>
         </div>
       </aside>
 
