@@ -257,7 +257,6 @@ export default function ToolkitDetailPage() {
     onSuccess: () => navigate('/toolkits'),
   })
 
-  const [killswitchOpen, setKillswitchOpen] = useState(false)
   const killswitchMutation = useMutation({
     mutationFn: (disabled: boolean) => api.updateToolkit(id!, { disabled }),
     onSuccess: () => {
@@ -312,52 +311,6 @@ export default function ToolkitDetailPage() {
         </div>
       </div>
 
-      {/* Kill switch — collapsible */}
-      <div className={`border rounded-xl overflow-hidden ${toolkit.disabled ? 'border-danger/50 bg-danger/5' : 'border-border bg-muted'}`}>
-        <button
-          onClick={() => setKillswitchOpen(o => !o)}
-          className="w-full flex items-center justify-between px-5 py-3 text-left"
-        >
-          <div className="flex items-center gap-2">
-            <Ban className={`h-4 w-4 ${toolkit.disabled ? 'text-danger' : 'text-muted-foreground'}`} />
-            <span className={`text-sm font-medium ${toolkit.disabled ? 'text-danger' : 'text-foreground'}`}>
-              Kill switch
-            </span>
-            {toolkit.disabled
-              ? <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-mono bg-danger/15 text-danger border border-danger/30">SUSPENDED</span>
-              : <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-mono bg-muted text-muted-foreground border border-border">Active</span>
-            }
-          </div>
-          {killswitchOpen ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
-        </button>
-        {killswitchOpen && (
-          <div className={`px-5 py-4 border-t flex items-center justify-between gap-4 ${toolkit.disabled ? 'border-danger/20' : 'border-border'}`}>
-            <p className="text-xs text-muted-foreground">
-              {toolkit.disabled
-                ? 'All API requests from agents using this toolkit are currently blocked with a 403 error.'
-                : 'Immediately block all API requests from agents using this toolkit.'}
-            </p>
-            {toolkit.disabled ? (
-              <ConfirmInline onConfirm={() => killswitchMutation.mutate(false)} message="Restore access to this toolkit?" confirmLabel="Restore">
-                <button disabled={killswitchMutation.isPending}
-                  className="inline-flex items-center gap-1.5 px-4 py-2 bg-primary/10 border border-primary/40 text-primary hover:bg-primary/20 rounded-lg text-sm font-medium transition-colors disabled:opacity-50 whitespace-nowrap">
-                  <ShieldCheck className="h-4 w-4" />
-                  {killswitchMutation.isPending ? 'Restoring...' : 'Restore Access'}
-                </button>
-              </ConfirmInline>
-            ) : (
-              <ConfirmInline onConfirm={() => killswitchMutation.mutate(true)} message="Block all API access for this toolkit immediately?" confirmLabel="Kill Access">
-                <button disabled={killswitchMutation.isPending}
-                  className="inline-flex items-center gap-1.5 px-4 py-2 bg-danger/10 border border-danger/40 text-danger hover:bg-danger/20 rounded-lg text-sm font-medium transition-colors disabled:opacity-50 whitespace-nowrap">
-                  <Ban className="h-4 w-4" />
-                  {killswitchMutation.isPending ? 'Suspending...' : 'Kill All Access'}
-                </button>
-              </ConfirmInline>
-            )}
-          </div>
-        )}
-      </div>
-
       {/* Pending requests */}
       {pending.length > 0 && (
         <div className="bg-warning/10 border border-warning/30 rounded-xl p-5 space-y-3">
@@ -383,13 +336,39 @@ export default function ToolkitDetailPage() {
       )}
 
       {/* API Keys */}
-      <div className="bg-muted border border-border rounded-xl overflow-hidden">
-        <div className="px-5 py-4 border-b border-border flex items-center justify-between">
-          <h3 className="font-heading font-semibold text-foreground">API Keys ({keys.length})</h3>
-          <button onClick={() => setShowKeyCreate(true)}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary text-background hover:bg-primary/80 rounded-lg text-sm font-medium transition-colors">
-            <Plus className="h-4 w-4" /> Create Key
-          </button>
+      <div className={`border rounded-xl overflow-hidden ${toolkit.disabled ? 'border-danger/50' : 'border-border'} bg-muted`}>
+        <div className={`px-5 py-4 border-b flex items-center justify-between gap-3 ${toolkit.disabled ? 'border-danger/30 bg-danger/5' : 'border-border'}`}>
+          <div className="flex items-center gap-2">
+            <h3 className="font-heading font-semibold text-foreground">API Keys ({keys.length})</h3>
+            {toolkit.disabled && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-mono bg-danger/15 text-danger border border-danger/30">
+                <Ban className="h-3 w-3" />SUSPENDED
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            {toolkit.disabled ? (
+              <ConfirmInline onConfirm={() => killswitchMutation.mutate(false)} message="Restore access to this toolkit?" confirmLabel="Restore">
+                <button disabled={killswitchMutation.isPending}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary/10 border border-primary/40 text-primary hover:bg-primary/20 rounded-lg text-sm font-medium transition-colors disabled:opacity-50">
+                  <ShieldCheck className="h-4 w-4" />
+                  {killswitchMutation.isPending ? 'Restoring...' : 'Restore Access'}
+                </button>
+              </ConfirmInline>
+            ) : (
+              <ConfirmInline onConfirm={() => killswitchMutation.mutate(true)} message="Block all API access for this toolkit immediately?" confirmLabel="Kill Access">
+                <button disabled={killswitchMutation.isPending}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-muted border border-border text-muted-foreground hover:text-danger hover:border-danger/40 hover:bg-danger/5 rounded-lg text-sm transition-colors disabled:opacity-50">
+                  <Ban className="h-4 w-4" />
+                  Kill switch
+                </button>
+              </ConfirmInline>
+            )}
+            <button onClick={() => setShowKeyCreate(true)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary text-background hover:bg-primary/80 rounded-lg text-sm font-medium transition-colors">
+              <Plus className="h-4 w-4" /> Create Key
+            </button>
+          </div>
         </div>
         <div className="px-5 py-4 space-y-3">
           {newKey && (
