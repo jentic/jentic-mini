@@ -1,6 +1,6 @@
 # Jentic Mini
 
-Give your AI agents access to **1,000+ APIs** — without leaking a single credential.
+Give your AI agents access to **10,000+ APIs** — without leaking a single credential.
 Building agents that call real APIs is painful. You end up hardcoding auth, juggling secrets in prompts,
 writing bespoke glue code for every service, and praying nothing leaks. Jentic Mini fixes this.
 It's a self-hosted API execution layer that sits between your agent and the outside world.
