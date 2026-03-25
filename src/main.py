@@ -39,6 +39,8 @@ from src.routers.catalog import refresh_catalog_if_stale
 from src.startup import self_register, seed_broker_apps
 from src.utils import build_absolute_url
 
+APP_VERSION = os.getenv("APP_VERSION", "0.2.0")
+
 logging.basicConfig(level=(os.getenv("LOG_LEVEL") or "info").upper())
 logging.getLogger("aiosqlite").setLevel(logging.WARNING)
 logging.getLogger("httpx").setLevel(logging.WARNING)
@@ -148,7 +150,7 @@ app = FastAPI(
         "| **catalog** | Humans/admin | Register APIs, upload specs, overlays, notes |\n"
         "| **credentials** | Humans only | Manage the credentials vault |\n\n"
         "Agents with a toolkit key need: **search**, **inspect**, **execute**, **toolkits** (read), **observe**."
-    ),    version="0.2.0",
+    ),    version=APP_VERSION,
     lifespan=lifespan,
     docs_url=None,
     redoc_url=None,
@@ -194,7 +196,7 @@ async def health(request: Request):
             "message": "No default API key has been issued yet.",
             "next_step": "Call POST /default-api-key/generate from a trusted subnet to obtain your agent key.",
             "generate_url": "/default-api-key/generate",
-            "version": "0.2.0",
+            "version": APP_VERSION,
         }
 
     if not state["account_created"]:
@@ -204,7 +206,7 @@ async def health(request: Request):
             "next_step": "Tell your user to visit setup_url to create their admin account. "
                          "Your agent key works immediately — you do not need to wait.",
             "setup_url": build_absolute_url(request, "/user/create"),
-            "version": "0.2.0",
+            "version": APP_VERSION,
         }
 
     # Fully set up
@@ -214,7 +216,7 @@ async def health(request: Request):
 
     return {
         "status": "ok",
-        "version": "0.2.0",
+        "version": APP_VERSION,
         "apis_registered": api_count,
     }
 

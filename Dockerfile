@@ -8,12 +8,16 @@ RUN cd ui && npm ci --ignore-scripts && npm run build
 # Stage 2: Python runtime
 FROM python:3.11-slim
 
+ARG APP_VERSION=0.2.0
+ENV APP_VERSION=${APP_VERSION}
+
 LABEL maintainer="vladimir@jentic.com" \
       org.opencontainers.image.authors="vladimir@jentic.com" \
       org.opencontainers.image.url="https://github.com/jentic/jentic-mini" \
       org.opencontainers.image.source="https://github.com/jentic/jentic-mini" \
       org.opencontainers.image.description="Jentic Mini Docker image" \
-      org.opencontainers.image.licenses="Apache-2.0"
+      org.opencontainers.image.licenses="Apache-2.0" \
+      org.opencontainers.image.version="${APP_VERSION}"
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc libffi-dev curl git \
