@@ -459,8 +459,7 @@ export default function ToolkitDetailPage() {
       </div>
 
       {/* Danger Zone */}
-      {id !== 'default' && (
-        <div className="bg-muted border border-danger/30 rounded-xl overflow-hidden">
+      <div className="bg-muted border border-danger/30 rounded-xl overflow-hidden">
           <div className="px-5 py-4 border-b border-danger/20">
             <h3 className="font-heading font-semibold text-danger text-sm">Danger Zone</h3>
           </div>
@@ -508,7 +507,6 @@ export default function ToolkitDetailPage() {
             </div>
           </div>
         </div>
-      )}
 
       {/* Settings Modal */}
       {showSettings && (
