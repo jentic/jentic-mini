@@ -6,5 +6,6 @@ export type ToolkitPatch = {
     name?: (string | null);
     description?: (string | null);
     simulate?: (boolean | null);
+    disabled?: (boolean | null);
 };
 
