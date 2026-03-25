@@ -358,7 +358,7 @@ if STATIC_DIR.exists():
 # Browsers (Accept: text/html) get the React SPA.
 _SPA_PATHS = {
     "/approve", "/search", "/catalog", "/workflows", "/toolkits",
-    "/credentials", "/traces", "/jobs", "/oauth-brokers",
+    "/credentials", "/traces", "/jobs", "/oauth-brokers", "/setup",
 }
 
 @app.middleware("http")
