@@ -104,6 +104,8 @@ export interface CredentialCreate {
   label: string
   api_id?: string | null
   scheme_name?: string | null
+  auth_type?: 'bearer' | 'basic' | 'apiKey' | null
+  identity?: string | null
   value: string
 }
 
@@ -111,6 +113,8 @@ export interface CredentialPatch {
   label?: string | null
   api_id?: string | null
   scheme_name?: string | null
+  auth_type?: 'bearer' | 'basic' | 'apiKey' | null
+  identity?: string | null
   value?: string | null
 }
 
@@ -126,7 +130,8 @@ export interface ApiOut {
 }
 
 export interface ApiListPage {
-  items: ApiOut[]
+  items?: ApiOut[]
+  data?: ApiOut[]
   total?: number | null
   page?: number | null
   size?: number | null

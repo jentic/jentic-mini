@@ -2,6 +2,7 @@ import React, { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '../api/client'
+import type { CredentialOut } from '../api/types'
 import { Key, Plus, Trash2, Settings } from 'lucide-react'
 import { Button } from '../components/ui/Button'
 import { Badge } from '../components/ui/Badge'
@@ -11,10 +12,11 @@ export default function CredentialsPage() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
 
-  const { data: credentials, isLoading } = useQuery({
+  const { data: credentialsRaw, isLoading } = useQuery({
     queryKey: ['credentials'],
     queryFn: () => api.listCredentials(),
   })
+  const credentials = (credentialsRaw as any)?.data ?? (credentialsRaw as CredentialOut[] | undefined) ?? []
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => api.deleteCredential(id),
@@ -53,7 +55,7 @@ export default function CredentialsPage() {
         </div>
       ) : (
         <div className="space-y-2">
-          {credentials.map(cred => (
+          {(credentials as CredentialOut[]).map(cred => (
             <div key={cred.id} className="flex items-center gap-3 p-4 bg-muted border border-border rounded-xl">
               <Key className="h-5 w-5 text-accent-yellow shrink-0" />
               <div className="flex-1 min-w-0">
