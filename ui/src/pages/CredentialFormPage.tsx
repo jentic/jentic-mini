@@ -74,7 +74,7 @@ function firstSchemeNameFromSchemes(schemes: RawSchemes): string | null {
  */
 function useApiSchemes(selectedApi: ApiOut | null): { schemes: RawSchemes; loading: boolean } {
   const isCatalog = selectedApi?.source === 'catalog'
-  const isLocal = selectedApi?.source === 'local' || (selectedApi && !selectedApi.source)
+  const isLocal = selectedApi?.source === 'local' || (!!selectedApi && !selectedApi.source)
 
   // Local: fetch full API detail
   const { data: localDetail, isLoading: localLoading } = useQuery({
