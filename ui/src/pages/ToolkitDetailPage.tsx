@@ -343,7 +343,7 @@ export default function ToolkitDetailPage() {
             <h3 className="font-heading font-semibold text-foreground">API Keys ({keys.length})</h3>
             {toolkit.disabled && (
               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-mono bg-danger/15 text-danger border border-danger/30">
-                <Ban className="h-3 w-3" />SUSPENDED
+                <Ban className="h-3 w-3" />Toolkit Suspended
               </span>
             )}
           </div>
@@ -363,10 +363,12 @@ export default function ToolkitDetailPage() {
                 <Ban className="h-4 w-4" /> Kill switch
               </button>
             )}
-            <button onClick={() => setShowKeyCreate(true)}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary text-background hover:bg-primary/80 rounded-lg text-sm font-medium transition-colors">
-              <Plus className="h-4 w-4" /> Create Key
-            </button>
+            {!toolkit.disabled && (
+              <button onClick={() => setShowKeyCreate(true)}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary text-background hover:bg-primary/80 rounded-lg text-sm font-medium transition-colors">
+                <Plus className="h-4 w-4" /> Create Key
+              </button>
+            )}
           </div>
         </div>
         {/* Kill switch confirmation row */}
