@@ -4,6 +4,7 @@ import { JenticLogo } from '../ui/Logo'
 import { BookOpen, ExternalLink, Menu, X } from 'lucide-react'
 import { useAuth } from '../../hooks/useAuth'
 import { usePendingRequests } from '../../hooks/usePendingRequests'
+import { useUpdateCheck } from '../../hooks/useUpdateCheck'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { UserService } from '../../api/generated'
 
@@ -39,6 +40,7 @@ function NavLink({
 }
 
 function SidebarContents({ onClose }: { onClose?: () => void }) {
+  const { updateAvailable, latestVersion, releaseUrl } = useUpdateCheck()
   return (
     <aside className="w-60 bg-muted border-r border-border flex flex-col h-full">
       <div className="h-16 flex items-center px-6 border-b border-border shrink-0">
@@ -79,6 +81,17 @@ function SidebarContents({ onClose }: { onClose?: () => void }) {
       </nav>
 
       <div className="px-3 py-3 border-t border-border shrink-0">
+        {updateAvailable && releaseUrl && (
+          <a
+            href={releaseUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-2 px-4 py-2 mb-1 rounded-md text-xs font-semibold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 hover:bg-amber-100 dark:hover:bg-amber-900/40 transition-colors"
+          >
+            <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse shrink-0" />
+            Update available: {latestVersion}
+          </a>
+        )}
         <a
           href="/docs"
           target="_blank"
