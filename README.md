@@ -138,13 +138,19 @@ Prerequisites for local development without Docker:
 
 Python source (`src/`) is volume-mounted into the container — edit any `.py` file and the server hot-reloads automatically.
 
-For UI development, run the Vite dev server alongside the container:
+For UI development, use the dev compose override which runs Vite in a container with full HMR:
+
+```bash
+docker compose -f compose.yml -f compose.dev.yml up
+```
+
+This starts a Vite dev server on `http://localhost:5173` with hot module replacement, proxying API calls to the backend on port 8900. Edit files in `ui/` and changes appear instantly.
+
+Alternatively, run Vite directly on the host (requires Node.js 20+):
 
 ```bash
 cd ui && npm install && npm run dev
 ```
-
-This starts a dev server on `http://localhost:5173` with hot module replacement, proxying API calls to the container.
 
 To rebuild the production UI bundle: `cd ui && npm run build`, then `docker compose up -d --build`.
 
