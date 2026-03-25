@@ -85,19 +85,23 @@
   <line x1="780" y1="294" x2="780" y2="350" stroke="#7aacaf" stroke-width="2" marker-end="url(#arrowhead)"/>
 
   <!-- ===== ROW 3: EXTERNAL APIs ===== -->
-  <text x="480" y="370" text-anchor="middle" fill="#4a5568" font-size="11" font-weight="600" letter-spacing="1">HTTP APIs</text>
+  <text x="480" y="370" text-anchor="middle" fill="#4a5568" font-size="11" font-weight="600" letter-spacing="1">HTTP APIs &amp; Workflows</text>
 
-  <rect x="95" y="380" width="170" height="50" rx="10" fill="#f5fafa" stroke="#d0d7de" stroke-width="1"/>
-  <text x="180" y="410" text-anchor="middle" fill="#1f2328" font-size="13" font-weight="600">Gmail</text>
+  <rect x="55" y="380" width="155" height="50" rx="10" fill="#f5fafa" stroke="#d0d7de" stroke-width="1"/>
+  <text x="132" y="410" text-anchor="middle" fill="#1f2328" font-size="13" font-weight="600">Gmail</text>
 
-  <rect x="295" y="380" width="170" height="50" rx="10" fill="#f5fafa" stroke="#d0d7de" stroke-width="1"/>
-  <text x="380" y="410" text-anchor="middle" fill="#1f2328" font-size="13" font-weight="600">GitHub</text>
+  <rect x="225" y="380" width="155" height="50" rx="10" fill="#f5fafa" stroke="#d0d7de" stroke-width="1"/>
+  <text x="302" y="410" text-anchor="middle" fill="#1f2328" font-size="13" font-weight="600">GitHub</text>
 
-  <rect x="495" y="380" width="170" height="50" rx="10" fill="#f5fafa" stroke="#d0d7de" stroke-width="1"/>
-  <text x="580" y="410" text-anchor="middle" fill="#1f2328" font-size="13" font-weight="600">Slack</text>
+  <rect x="395" y="380" width="155" height="50" rx="10" fill="#f5fafa" stroke="#d0d7de" stroke-width="1"/>
+  <text x="472" y="410" text-anchor="middle" fill="#1f2328" font-size="13" font-weight="600">Slack</text>
 
-  <rect x="695" y="380" width="170" height="50" rx="10" fill="#f5fafa" stroke="#d0d7de" stroke-width="1"/>
-  <text x="780" y="410" text-anchor="middle" fill="#1f2328" font-size="13" font-weight="600">Any API</text>
+  <rect x="565" y="380" width="155" height="50" rx="10" fill="#f5fafa" stroke="#d0d7de" stroke-width="1"/>
+  <text x="642" y="410" text-anchor="middle" fill="#1f2328" font-size="13" font-weight="600">Any API</text>
+
+  <rect x="735" y="380" width="170" height="50" rx="10" fill="#f5fafa" stroke="#7ab648" stroke-width="1.5"/>
+  <text x="820" y="402" text-anchor="middle" fill="#1f2328" font-size="12" font-weight="600">Any Arazzo</text>
+  <text x="820" y="418" text-anchor="middle" fill="#1f2328" font-size="12" font-weight="600">Workflow</text>
 
   <!-- Vault tagline -->
   <text x="740" y="286" text-anchor="middle" fill="#edadaf" font-size="11" font-weight="600" font-style="italic">Secrets never exposed to agents</text>
