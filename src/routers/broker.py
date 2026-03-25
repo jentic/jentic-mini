@@ -351,6 +351,27 @@ def _is_broker_path(path: str) -> bool:
     return "." in first_segment and not first_segment.startswith(".")
 
 
+# Custom Starlette path convertor so the broker catch-all only matches paths
+# whose first segment looks like a hostname (contains a dot, e.g. api.stripe.com).
+# This means UI routes like /search or /catalog never reach the broker at all —
+# they are handled by earlier registered routes or the SPA catch-all in main.py.
+from starlette.convertors import Convertor, CONVERTOR_TYPES  # noqa: E402
+
+class _BrokerHostConvertor(Convertor):
+    # First segment must contain a dot, not start with one, and have at least one char before the dot.
+    # Rejects: .well-known/..., /@vite/..., empty first segment
+    # Matches: api.stripe.com/v1/customers, httpbin.org/get
+    regex = r"[^/.][^/]*\.[^/.][^/]*(?:/.*)?$"
+
+    def convert(self, value: str) -> str:
+        return value
+
+    def to_string(self, value: str) -> str:
+        return value
+
+CONVERTOR_TYPES["brokerhost"] = _BrokerHostConvertor()
+
+
 _BROKER_DESCRIPTION = (
     "Routes any HTTP request to the upstream API, injecting credentials automatically.\n\n"
     "URL shape: `/{upstream_host}/{path}` — e.g. `/api.stripe.com/v1/customers`\n\n"
@@ -387,7 +408,7 @@ _BROKER_RESPONSES = {
 # The real handler below is include_in_schema=False.
 
 @router.get(
-    "/{target:path}",
+    "/{target:brokerhost}",
     include_in_schema=True,
     tags=["execute"],
     summary="Broker — proxy a call to any registered API with automatic credential injection",
@@ -401,7 +422,7 @@ async def broker_doc_stub(request: Request, target: str):
 
 
 @router.api_route(
-    "/{target:path}",
+    "/{target:brokerhost}",
     methods=["POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"],
     include_in_schema=False,
 )
