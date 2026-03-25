@@ -37,7 +37,6 @@ const SCHEME_TYPE_LABELS: Record<SchemeType, string> = {
 
 function schemeTypeFromRaw(s: { type?: string; scheme?: string }): SchemeType {
   if (s.type === 'oauth2') return 'oauth2'
-  if (s.type === 'oauth2') return 'oauth2'
   if (s.type === 'http' && s.scheme?.toLowerCase() === 'bearer') return 'bearer'
   if (s.type === 'http' && s.scheme?.toLowerCase() === 'basic') return 'basic'
   if (s.type === 'apiKey') return 'apiKey'
@@ -287,7 +286,7 @@ function CredentialFields({ selectedApi, onBack, onSaved, editId, existing }: Cr
         identity: identity || null,
       })
     } else {
-      if (!value && schemeType !== 'oauth2') { setError('Credential value is required'); return }
+      if (!value) { setError('Credential value is required'); return }
       createMutation.mutate({
         label,
         api_id: selectedApi.id,
