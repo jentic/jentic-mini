@@ -423,8 +423,8 @@ async def get_toolkit(toolkit_id: str, request: Request):
 @router.patch("/{toolkit_id}", summary="Update toolkit — rename or update description", response_model=ToolkitOut,
               dependencies=[Depends(require_human_session)])
 async def patch_toolkit(toolkit_id: str, body: ToolkitPatch, request: Request):
-    if toolkit_id == DEFAULT_TOOLKIT_ID:
-        raise HTTPException(403, "The default toolkit cannot be modified.")
+    if toolkit_id == DEFAULT_TOOLKIT_ID and (body.name is not None or body.description is not None or body.simulate is not None):
+        raise HTTPException(403, "The default toolkit's name, description and simulate flag cannot be modified.")
     async with get_db() as db:
         async with db.execute("SELECT id FROM toolkits WHERE id=?", (toolkit_id,)) as cur:
             if not await cur.fetchone():
