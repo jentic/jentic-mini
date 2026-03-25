@@ -353,34 +353,24 @@ if STATIC_DIR.exists():
     if assets_dir.exists():
         app.mount("/assets", StaticFiles(directory=str(assets_dir)), name="assets")
 
-# ── SPA catch-all — serve index.html for React Router paths ──────────────────
-# The broker only activates when the first path segment contains "." (e.g. api.stripe.com).
-# Any other unknown path (e.g. /approve/x/y, /toolkits, /search) is a React Router
-# route — return index.html and let the client handle it.
-def _spa():
-    index_path = STATIC_DIR / "index.html"
-    if index_path.exists():
-        return FileResponse(index_path)
-    from fastapi import HTTPException
-    raise HTTPException(status_code=404, detail="UI not built")
+# ── SPA middleware — serve index.html for browser navigations to SPA routes ───
+# API clients (Accept: application/json) get the API response.
+# Browsers (Accept: text/html) get the React SPA.
+_SPA_PATHS = {
+    "/approve", "/search", "/catalog", "/workflows", "/toolkits",
+    "/credentials", "/traces", "/jobs", "/oauth-brokers",
+}
 
-for _spa_path in [
-    "/approve/{toolkit_id}/{req_id}",
-    "/search",
-    "/catalog",
-    "/workflows",
-    "/workflows/{slug}",
-    "/toolkits",
-    "/toolkits/{id}",
-    "/credentials",
-    "/credentials/new",
-    "/credentials/{id}/edit",
-    "/traces",
-    "/traces/{id}",
-    "/jobs",
-    "/jobs/{id}",
-]:
-    app.add_api_route(_spa_path, lambda: _spa(), methods=["GET"], include_in_schema=False)
+@app.middleware("http")
+async def spa_middleware(request: Request, call_next):
+    if request.method == "GET":
+        path = request.url.path
+        accept = request.headers.get("accept", "")
+        if "text/html" in accept and any(path == p or path.startswith(p + "/") for p in _SPA_PATHS):
+            index_path = STATIC_DIR / "index.html"
+            if index_path.exists():
+                return FileResponse(index_path)
+    return await call_next(request)
 
 # ── Broker catch-all — MUST be registered last ────────────────────────────────
 app.include_router(broker_router.router)
