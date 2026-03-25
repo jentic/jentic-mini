@@ -345,7 +345,7 @@ async def redoc():
 # ── Broker catch-all — MUST be registered last ────────────────────────────────
 # Paths whose first segment contains "." route to the broker.
 # All Jentic-internal routes above take priority by registration order.
-# ── Static files ──────────────────────────────────────────────────────────────
+# ── Static files — MUST be before broker catch-all ────────────────────────────
 if STATIC_DIR.exists():
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
     # Also serve Vite build assets at /assets (Vite default output path)

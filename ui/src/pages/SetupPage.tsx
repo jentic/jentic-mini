@@ -18,7 +18,11 @@ export default function SetupPage() {
   })
 
   const generateKeyMutation = useMutation({
-    mutationFn: () => fetch('/default-api-key/generate', { method: 'POST', credentials: 'include' }).then(r => r.json()),
+    mutationFn: async () => {
+      const r = await fetch('/default-api-key/generate', { method: 'POST', credentials: 'include' })
+      if (!r.ok) throw new Error(`Key generation failed (${r.status})`)
+      return r.json()
+    },
     onSuccess: () => refetchHealth(),
   })
 
