@@ -190,6 +190,7 @@ async def health(request: Request):
     if not state["default_key_claimed"]:
         return {
             "status": "setup_required",
+            "account_created": state["account_created"],
             "message": "No default API key has been issued yet.",
             "next_step": "Call POST /default-api-key/generate from a trusted subnet to obtain your agent key.",
             "generate_url": "/default-api-key/generate",
@@ -353,12 +354,9 @@ if STATIC_DIR.exists():
         app.mount("/assets", StaticFiles(directory=str(assets_dir)), name="assets")
 
 # ── SPA catch-all — serve index.html for React Router paths ──────────────────
-# This must be BEFORE the broker catch-all.
 # The broker only activates when the first path segment contains "." (e.g. api.stripe.com).
 # Any other unknown path (e.g. /approve/x/y, /toolkits, /search) is a React Router
 # route — return index.html and let the client handle it.
-# We avoid a greedy /{path:path} here to prevent intercepting broker GET requests.
-# Instead, explicit prefixes for known SPA entry points that may be deep-linked.
 def _spa():
     index_path = STATIC_DIR / "index.html"
     if index_path.exists():
@@ -383,7 +381,6 @@ for _spa_path in [
     "/jobs/{id}",
 ]:
     app.add_api_route(_spa_path, lambda: _spa(), methods=["GET"], include_in_schema=False)
-
 
 # ── Broker catch-all — MUST be registered last ────────────────────────────────
 app.include_router(broker_router.router)
