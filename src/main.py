@@ -40,7 +40,7 @@ from src.routers.catalog import refresh_catalog_if_stale
 from src.startup import self_register, seed_broker_apps
 from src.utils import build_absolute_url
 
-APP_VERSION = os.getenv("APP_VERSION", "0.2.0")
+APP_VERSION = os.getenv("APP_VERSION", "0.1.0")
 
 logging.basicConfig(level=(os.getenv("LOG_LEVEL") or "info").upper())
 logging.getLogger("aiosqlite").setLevel(logging.WARNING)

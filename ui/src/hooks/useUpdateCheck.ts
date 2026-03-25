@@ -43,21 +43,24 @@ export function useUpdateCheck(): UpdateStatus {
 
     async function check() {
       try {
+        // TODO: replace hardcoded version with /version endpoint once backend
+        // versioning is properly wired up
+        const CURRENT_VERSION = '0.1.0'
+
         // Backend proxies the GitHub check with a 6h server-side cache —
         // avoids browser hitting GitHub directly (rate limits, private repos)
         const res = await fetch('/version')
         if (!res.ok) return
         const data = await res.json()
 
-        const currentVersion: string = data.current || 'dev'
         const latestVersion: string = data.latest || ''
         const releaseUrl: string = data.release_url || ''
 
-        if (!latestVersion || currentVersion === 'dev') return
+        if (!latestVersion) return
 
-        const updateAvailable = isNewer(latestVersion, currentVersion)
+        const updateAvailable = isNewer(latestVersion, CURRENT_VERSION)
         const result: UpdateStatus = {
-          currentVersion,
+          currentVersion: CURRENT_VERSION,
           latestVersion,
           updateAvailable,
           releaseUrl,

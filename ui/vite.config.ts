@@ -47,6 +47,7 @@ export default defineConfig({
       '/user':            apiHost,
       '/apis':            apiHost,
       '/health':          apiHost,
+      '/version':         apiHost,
       '/import':          apiHost,
       '/inspect':         apiHost,
       '/notes':           apiHost,
