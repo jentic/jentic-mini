@@ -1,0 +1,29 @@
+# compose.dev.yml — Development overrides for Jentic Mini
+#
+# Adds a Vite dev server with full HMR on port 5173.
+# Hit http://<host>:5173 directly for the hot-reloaded UI.
+# API calls are proxied by Vite to the FastAPI backend on port 8900.
+#
+# Usage (from the stack directory):
+#   docker compose -f compose.yml -f compose.dev.yml up
+#
+# node_modules is stored in a named volume so subsequent restarts are instant.
+# On first start, npm install runs — takes ~30s.
+
+services:
+  vite:
+    image: node:24-slim
+    user: "${JENTIC_UID:-1000}:${JENTIC_GID:-1000}"
+    restart: unless-stopped
+    working_dir: /app/ui
+    command: sh -c "npm install --ignore-scripts && npm run dev"
+    volumes:
+      - ${JENTIC_HOST_PATH:-.}/ui:/app/ui
+      - ui_node_modules:/app/ui/node_modules
+    ports:
+      - "5173:5173"
+    environment:
+      VITE_API_HOST: http://jentic-mini:8900
+
+volumes:
+  ui_node_modules:

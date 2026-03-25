@@ -19,27 +19,37 @@ function copyApiDocsAssets(): import('vite').Plugin {
   }
 }
 
+// In Docker dev (compose.dev.yml) this is overridden to http://jentic-mini:8900
+// so the Vite container can reach the API container by service name.
+// When running Vite directly on the host, the default http://localhost:8900 applies.
+const apiHost = process.env.VITE_API_HOST || 'http://localhost:8900'
+
 export default defineConfig({
   plugins: [react(), copyApiDocsAssets()],
   base: '/',
   build: { outDir: '../static', emptyOutDir: true },
   server: {
+    host: '0.0.0.0',
+    allowedHosts: true,
     proxy: {
-      '/api': 'http://localhost:8900',
-      '/user': 'http://localhost:8900',
-      '/search': 'http://localhost:8900',
-      '/toolkits': 'http://localhost:8900',
-      '/credentials': 'http://localhost:8900',
-      '/traces': 'http://localhost:8900',
-      '/jobs': 'http://localhost:8900',
-      '/apis': 'http://localhost:8900',
-      '/workflows': 'http://localhost:8900',
-      '/catalog': 'http://localhost:8900',
-      '/health': 'http://localhost:8900',
-      '/import': 'http://localhost:8900',
-      '/inspect': 'http://localhost:8900',
-      '/notes': 'http://localhost:8900',
-      '/default-api-key': 'http://localhost:8900'
+      '/api':          apiHost,
+      '/user':         apiHost,
+      '/search':       apiHost,
+      '/toolkits':     apiHost,
+      '/credentials':  apiHost,
+      '/traces':       apiHost,
+      '/jobs':         apiHost,
+      '/apis':         apiHost,
+      '/workflows':    apiHost,
+      '/catalog':      apiHost,
+      '/health':       apiHost,
+      '/import':       apiHost,
+      '/inspect':      apiHost,
+      '/notes':        apiHost,
+      '/default-api-key': apiHost,
+      '/oauth-brokers': apiHost,
+      '/docs':         apiHost,
+      '/openapi.json': apiHost,
     }
   }
 })
