@@ -108,7 +108,7 @@ function InspectPanel({ capabilityId, onClose }: { capabilityId: string; onClose
         {detail._links?.upstream && (
           <a href={detail._links.upstream} target="_blank" rel="noopener noreferrer"
             className="inline-flex items-center gap-1 text-xs text-primary hover:text-primary/80">
-            <ExternalLink className="h-3 w-3" /> API Docs
+            <ExternalLink className="h-3 w-3" /> API
           </a>
         )}
         <Link to={`/traces?capability=${encodeURIComponent(capabilityId)}`}
