@@ -11,7 +11,12 @@ function parseSemver(v: string): number[] {
   return v.replace(/^v/, '').split('.').map(n => parseInt(n, 10) || 0)
 }
 
+function isSemver(v: string): boolean {
+  return /^\d+\.\d+\.\d+/.test(v.replace(/^v/, ''))
+}
+
 function isNewer(latest: string, current: string): boolean {
+  if (!isSemver(latest) || !isSemver(current)) return false
   const l = parseSemver(latest)
   const c = parseSemver(current)
   for (let i = 0; i < 3; i++) {
