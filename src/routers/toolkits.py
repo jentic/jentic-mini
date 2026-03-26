@@ -266,14 +266,34 @@ async def create_toolkit(body: ToolkitCreate):
 async def list_toolkits(request: Request):
     """List all toolkits."""
     async with get_db() as db:
-        async with db.execute("SELECT id, name, description, simulate, disabled, created_at FROM toolkits") as cur:
+        async with db.execute(
+            """
+            SELECT
+                t.id, t.name, t.description, t.simulate, t.disabled, t.created_at,
+                COUNT(DISTINCT tk.id) AS key_count,
+                COUNT(DISTINCT tc.rowid) AS bound_credential_count
+            FROM toolkits t
+            LEFT JOIN toolkit_keys tk ON t.id = tk.toolkit_id AND tk.revoked_at IS NULL
+            LEFT JOIN toolkit_credentials tc ON t.id = tc.toolkit_id
+            GROUP BY t.id
+            """
+        ) as cur:
             rows = await cur.fetchall()
+
+        # The default toolkit implicitly sees ALL credentials, not just
+        # those explicitly bound via toolkit_credentials.
+        total_cred_count = 0
+        async with db.execute("SELECT COUNT(*) FROM credentials") as cur:
+            total_cred_count = (await cur.fetchone())[0]
+
     return [
         {
             "id": r[0], "name": r[1], "description": r[2],
             "simulate": bool(r[3]),
             "disabled": bool(r[4]),
             "created_at": r[5],
+            "key_count": r[6],
+            "credential_count": total_cred_count if r[0] == DEFAULT_TOOLKIT_ID else r[7],
             "_links": {**_toolkit_links(r[0]), "keys": f"/toolkits/{r[0]}/keys"},
         }
         for r in rows
