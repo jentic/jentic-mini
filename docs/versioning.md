@@ -2,30 +2,34 @@
 
 ## What We Have Now
 
-### Single source of truth: `APP_VERSION`
+### Git tags + CI (standard Docker pattern)
 
-The version number lives in one place — the `Dockerfile`:
+The version is defined by the **git tag** (e.g. `v0.1.0`). CI extracts the version and passes it as a Docker build arg. No VERSION file — the tag is the single source of truth.
+
+The `Dockerfile` declares a dev default that CI overrides:
 
 ```dockerfile
 ARG APP_VERSION=0.1.0
 ENV APP_VERSION=${APP_VERSION}
 ```
 
-The Python backend reads it at runtime:
+`src/config.py` reads the env var with the same dev fallback:
 
 ```python
-APP_VERSION = os.getenv("APP_VERSION", "0.1.0")
+APP_VERSION = os.getenv("APP_VERSION", "unknown")
 ```
 
-The fallback in `main.py` should always match the Dockerfile default. CI can override at build time:
+CI overrides at build time from the git tag:
 
 ```bash
-docker build --build-arg APP_VERSION=0.2.0 -t jentic-mini:latest .
+docker build --build-arg APP_VERSION=${GITHUB_REF_NAME#v} -t jentic-mini:latest .
 ```
+
+In Docker, `APP_VERSION` is always set by the Dockerfile ARG/ENV. The `config.py` fallback (`"unknown"`) only applies to bare-metal dev where the env var is unset — it signals that the version hasn't been injected. Semantic-release bumps the Dockerfile default automatically on each release.
 
 The version is exposed in:
 - `GET /health` — `version` field
-- `GET /version` — `current` field
+- `GET /version` — `current` field (frontend reads this for update checks)
 - OCI image label `org.opencontainers.image.version`
 - The FastAPI OpenAPI schema (`/docs`)
 
@@ -54,43 +58,11 @@ docker run -d --name jentic-mini -p 8900:8900 \
   jentic/jentic-mini
 ```
 
-### Current limitation (temporary)
-
-The client-side baseline version is **hardcoded as `"0.1.0"`** in `useUpdateCheck.ts`:
-
-```ts
-const CURRENT_VERSION = '0.1.0'
-```
-
-This means every installation currently reports itself as `0.1.0` regardless of what version is actually running. The badge will fire correctly for any GitHub release > `0.1.0`, but it won't distinguish between installations running different versions.
-
 ---
 
 ## What's Still To Do
 
-### 1. Wire up dynamic current version in the frontend (priority: medium)
-
-Replace the hardcoded `"0.1.0"` in `useUpdateCheck.ts` with the value from `GET /version`:
-
-```ts
-const currentVersion: string = data.current  // from backend
-```
-
-This is already returned by the `/version` endpoint — the hook just needs to use it. Blocked on the backend version being reliably set at build time (see item 2).
-
-### 2. Automate version bumping in CI (priority: medium)
-
-Currently the version number must be manually updated in the Dockerfile before each release. The workflow should be:
-
-1. Decide on the new version (e.g. `0.2.0`)
-2. Update `Dockerfile` ARG (and `main.py` fallback for dev)
-3. Commit, tag (`git tag v0.2.0`), push
-4. CI builds the image with `--build-arg APP_VERSION=0.2.0`
-5. CI publishes a GitHub release for the tag
-
-Until CI is set up, this is a manual checklist.
-
-### 3. GitHub release process (priority: low, pre-release)
+### 1. GitHub release process (priority: low, pre-release)
 
 Currently releases are published manually via the GitHub UI. For a proper release cadence:
 
@@ -119,9 +91,10 @@ Currently the update check is purely client-side. A future option is for the bac
 
 | Decision | Rationale |
 |---|---|
-| `APP_VERSION` env var as source of truth | Single place to change; CI can inject at build time; no pyproject.toml or package.json needed |
+| Git tag as version source of truth | Standard Docker pattern (Traefik, Prometheus, Grafana); CI passes `--build-arg` |
+| `APP_VERSION` env var + dev fallback | Dockerfile ARG/ENV sets it in Docker; `config.py` fallback for bare-metal dev; both must match |
+| Frontend reads `current` from `/version` | No hardcoded version in the client; always reflects what the backend actually reports |
 | Backend proxies GitHub API check | Avoids browser rate limits (60 req/hr unauthenticated per IP); works for private repos; allows server-side caching |
 | 6-hour cache TTL | ~4 GitHub API calls/day per deployment; well within unauthenticated limits even with many installs |
 | `sessionStorage` cache in browser | Avoids re-checking on every page navigation within a session; clears on tab close |
-| Hardcode `0.1.0` as client baseline (temporary) | Unblocks the feature while proper version injection is set up; to be replaced within days |
 | Strip `v` prefix in semver comparison | GitHub tags conventionally use `v0.1.0`; backend version strings conventionally don't |
