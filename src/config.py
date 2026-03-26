@@ -2,6 +2,11 @@
 import os
 from pathlib import Path
 
+# ── Version ───────────────────────────────────────────────────────────────────
+# In Docker, APP_VERSION is set via Dockerfile ARG/ENV (CI overrides with
+# --build-arg APP_VERSION from the git tag).
+APP_VERSION = os.getenv("APP_VERSION", "unknown")
+
 # ── Database ──────────────────────────────────────────────────────────────────
 DB_PATH = os.getenv("DB_PATH", "/app/data/jentic-mini.db")
 

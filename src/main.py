@@ -12,6 +12,7 @@ from fastapi.openapi.docs import get_redoc_html
 from fastapi.openapi.utils import get_openapi
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, HTMLResponse
+import httpx
 
 from src.auth import APIKeyMiddleware
 from src.negotiate import negotiate_middleware
@@ -37,10 +38,9 @@ from src.routers import default_key as default_key_router
 from src.routers import oauth_brokers as oauth_brokers_router
 from src.routers.apis import rebuild_index_on_startup
 from src.routers.catalog import refresh_catalog_if_stale
+from src.config import APP_VERSION
 from src.startup import self_register, seed_broker_apps
 from src.utils import build_absolute_url
-
-APP_VERSION = os.getenv("APP_VERSION", "0.1.0")
 
 logging.basicConfig(level=(os.getenv("LOG_LEVEL") or "info").upper())
 logging.getLogger("aiosqlite").setLevel(logging.WARNING)
@@ -235,13 +235,11 @@ async def get_version():
     if os.getenv("JENTIC_TELEMETRY", "").lower() == "off":
         return {"current": APP_VERSION, "latest": None, "release_url": None}
 
-    global _version_cache
     now = time.time()
     if now - _version_cache["ts"] > _VERSION_CACHE_TTL:
         # Mark attempt immediately so concurrent requests don't pile up
         _version_cache["ts"] = now
         try:
-            import httpx
             async with httpx.AsyncClient() as client:
                 r = await client.get(
                     "https://api.github.com/repos/jentic/jentic-mini/releases/latest",
@@ -250,7 +248,8 @@ async def get_version():
                 )
                 if r.status_code == 200:
                     data = r.json()
-                    _version_cache["latest"] = data.get("tag_name")
+                    tag = data.get("tag_name") or ""
+                    _version_cache["latest"] = tag.lstrip("v") or None
                     _version_cache["release_url"] = data.get("html_url")
                 # 404 = no releases yet; 403/429 = rate limited — stay silent
         except Exception:
