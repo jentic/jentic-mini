@@ -13,7 +13,7 @@ ARG APP_VERSION=0.1.0
 ENV APP_VERSION=${APP_VERSION}
 ```
 
-`src/config.py` reads the env var with the same dev fallback:
+`src/config.py` reads the env var with a sentinel fallback for bare-metal dev:
 
 ```python
 APP_VERSION = os.getenv("APP_VERSION", "unknown")
