@@ -19,14 +19,14 @@ jobs:
         with:
           fetch-depth: 0
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: 22
 
       - name: Run semantic-release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: npx --yes semantic-release @semantic-release/exec @semantic-release/git
+        run: npx --yes --package semantic-release --package @semantic-release/exec --package @semantic-release/git semantic-release
 
       - name: Extract released version
         id: version
