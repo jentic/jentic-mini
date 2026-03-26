@@ -30,7 +30,8 @@ jobs:
       - name: Extract released version
         id: version
         run: |
-          # semantic-release creates a tag on the current commit if a release was made
+          # semantic-release creates the tag via GitHub API — fetch it
+          git fetch --tags
           tag=$(git tag --points-at HEAD | grep '^v' | head -1)
           if [ -n "$tag" ]; then
             echo "version=${tag#v}" >> "$GITHUB_OUTPUT"

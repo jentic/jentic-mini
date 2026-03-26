@@ -92,7 +92,7 @@ Currently the update check is purely client-side. A future option is for the bac
 | Decision | Rationale |
 |---|---|
 | Git tag as version source of truth | Standard Docker pattern (Traefik, Prometheus, Grafana); CI passes `--build-arg` |
-| `APP_VERSION` env var + dev fallback | Dockerfile ARG/ENV sets it in Docker; `config.py` fallback for bare-metal dev; both must match |
+| `APP_VERSION` env var + dev fallback | Dockerfile ARG/ENV sets it in Docker; `config.py` falls back to `"unknown"` for bare-metal dev |
 | Frontend reads `current` from `/version` | No hardcoded version in the client; always reflects what the backend actually reports |
 | Backend proxies GitHub API check | Avoids browser rate limits (60 req/hr unauthenticated per IP); works for private repos; allows server-side caching |
 | 6-hour cache TTL | ~4 GitHub API calls/day per deployment; well within unauthenticated limits even with many installs |
