@@ -37,6 +37,10 @@ RUN mkdir -p /app/data /app/src
 # Copy source into /app/src so that `from src.xxx` imports work from WORKDIR /app
 COPY src/ /app/src/
 
+# Copy Alembic migration config and scripts
+COPY alembic.ini /app/alembic.ini
+COPY alembic/ /app/alembic/
+
 # Copy built UI assets from stage 1 — placed outside /app/src/ so the
 # dev bind mount (./src:/app/src) doesn't hide them at runtime.
 COPY --from=ui-build /build/static/ /app/static/
