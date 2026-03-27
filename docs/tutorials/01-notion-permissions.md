@@ -20,9 +20,9 @@ In Notion, open the page or database you want the agent to access, click **...**
 
 Tell your agent:
 
-> "Add my Notion API key to Jentic. The API is notion.com/notion-api and the auth type is bearer."
+> "I have a Notion API key I'd like to add to Jentic."
 
-Your agent will give you a link to the Jentic Mini credentials page where you can enter the token value directly. Paste in your `ntn_` secret there — the credential is encrypted in the vault and never returned via the API. The token value never passes through the agent.
+Your agent will guide you to the Jentic Mini UI to enter the credential — it won't ask you for the token value itself. Follow the link your agent provides, select the Notion API, choose **Bearer Token** as the auth type, and paste in your `ntn_` secret. The credential is encrypted in the vault and never returned via the API. The token value never passes through the agent.
 
 ## Step 3 — Try to create a page
 
