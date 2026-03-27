@@ -4,7 +4,7 @@ This tutorial connects Gmail to Jentic Mini and shows how the permissions model 
 
 Gmail's own OAuth scopes don't offer "drafts only, no send" — `gmail.compose` grants both. Jentic Mini's permission rules add that boundary at the proxy layer.
 
-> **Prerequisites:** You need Jentic Mini running and connected to your agent. If you haven't set that up yet, the fastest path is via the [Jentic skill on ClawHub](https://clawhub.com) — tell your OpenClaw agent *"install and set up the jentic skill from ClawHub"* and it will walk you through everything. For manual setup, see [Getting Started](../README.md#getting-started).
+> **Prerequisites:** You need Jentic Mini running and connected to your agent. If you haven't set that up yet, the fastest path is via the [Jentic skill on ClawHub](https://clawhub.com) — tell your OpenClaw agent *"install and set up the jentic skill from ClawHub"* and it will walk you through everything. For manual setup, see [Getting Started](../../README.md#getting-started).
 
 You'll also need a Google account and a free [Pipedream](https://pipedream.com) account (your agent will guide you through Pipedream setup if it's your first time).
 
@@ -25,7 +25,7 @@ Your agent will:
 
 The OAuth token is stored encrypted and never returned via the API. Your agent knows the credential exists but can never retrieve the token value.
 
-> **First time using OAuth?** If you haven't set up a Pipedream broker yet, your agent will guide you through it — or see the [Pipedream Connect setup guide](PIPEDREAM.md#setup-required-before-first-use). It's a one-time setup that takes about 5 minutes.
+> **First time using OAuth?** If you haven't set up a Pipedream broker yet, your agent will guide you through it — or see the [Pipedream Connect setup guide](../PIPEDREAM.md#setup-required-before-first-use). It's a one-time setup that takes about 5 minutes.
 
 ## Step 2 — Try to create a draft
 
@@ -96,7 +96,7 @@ The agent will attempt to call the Gmail send endpoint. Jentic Mini blocks it �
 ## Next steps
 
 - **Add more APIs** — ask your agent to search the Jentic catalog for any API you use, or browse at `http://localhost:8900/catalog`
-- **Connect more OAuth apps** — Slack, Google Drive, Salesforce, and 3,000+ more via [Pipedream Connect](PIPEDREAM.md)
+- **Connect more OAuth apps** — Slack, Google Drive, Salesforce, and 3,000+ more via [Pipedream Connect](../PIPEDREAM.md)
 - **Create additional toolkits** — scope different agents to different APIs and permissions
-- **Explore workflows** — multi-step Arazzo workflows chain operations across APIs — see [WORKFLOWS.md](WORKFLOWS.md)
+- **Explore workflows** — multi-step Arazzo workflows chain operations across APIs — see [WORKFLOWS.md](../WORKFLOWS.md)
 - **Read the full API docs** — Swagger UI at `http://localhost:8900/docs`
