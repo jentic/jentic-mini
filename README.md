@@ -21,6 +21,8 @@ injecting credentials at runtime, and brokering the request. Secrets never touch
 
 **Just want Jentic Mini standalone?** See [Getting Started](#getting-started) below.
 
+**Already running?** Jump to the [hands-on tutorial](docs/TUTORIAL.md) — connect Gmail with OAuth and set permissions so your agent can draft emails but not send them.
+
 ## What is Jentic Mini?
 
 **Jentic Mini** is the open-source, self-hosted implementation of the Jentic API — fully API-compatible with the [Jentic hosted and VPC editions](https://jentic.com).
@@ -86,6 +88,8 @@ docker compose up -d
 ```
 
 Open `http://localhost:8900` to complete setup.
+
+**Next:** Follow the [hands-on tutorial](docs/TUTORIAL.md) to see Jentic Mini in action — from calling a public API with zero setup, to connecting Gmail with OAuth and setting permissions so your agent can draft emails but not send them.
 
 ### Configuration
 
