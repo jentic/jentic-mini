@@ -271,6 +271,15 @@ async def favicon():
     return FileResponse(path, media_type="image/png")
 
 
+@app.get("/llms.txt", tags=["meta"], include_in_schema=False)
+async def llms_txt():
+    """Machine-readable summary for LLMs (https://llmstxt.org/)."""
+    path = Path(__file__).resolve().parent.parent / "llms.txt"
+    if path.exists():
+        return FileResponse(path, media_type="text/plain; charset=utf-8")
+    return Response(content="# Jentic Mini\n", media_type="text/plain; charset=utf-8")
+
+
 @app.get("/", tags=["meta"], include_in_schema=False)
 async def root():
     index_path = STATIC_DIR / "index.html"
