@@ -1,6 +1,6 @@
 # Tutorial: Gmail Drafts With Agent Permissions
 
-This tutorial connects Gmail to Jentic Mini and sets permissions so your agent can **create drafts but not send emails**. It covers OAuth credential setup, the permission rules model, and what happens when the agent hits a boundary.
+This tutorial connects Gmail to Jentic Mini and shows how the permissions model works in practice. Your agent will try to create a draft, get blocked, request access, and then succeed — all through natural conversation.
 
 Gmail's own OAuth scopes don't offer "drafts only, no send" — `gmail.compose` grants both. Jentic Mini's permission rules add that boundary at the proxy layer.
 
@@ -27,16 +27,32 @@ The OAuth token is stored encrypted and never returned via the API. Your agent k
 
 > **First time using OAuth?** If you haven't set up a Pipedream broker yet, your agent will guide you through it — or see the [Pipedream Connect setup guide](PIPEDREAM.md#setup-required-before-first-use). It's a one-time setup that takes about 5 minutes.
 
-## Step 2 — Set permissions: drafts yes, send no
+## Step 2 — Try to create a draft
 
-By default, Jentic Mini's system safety rules **deny all write operations** (POST, PUT, PATCH, DELETE). This is intentional — write access must be explicitly granted by a human.
+Now tell your agent:
 
-The Gmail API uses these paths:
-- `POST /gmail/v1/users/me/drafts` — create a draft
-- `PUT /gmail/v1/users/me/drafts/{id}` — update a draft
-- `POST /gmail/v1/users/me/messages/send` — send an email
+> "Draft an email to colleague@example.com with the subject 'Meeting notes' and a summary of what we discussed today."
 
-We want to allow the first two and block the third. Open the Jentic Mini UI and navigate to **Toolkits → Default → Bound Credentials**. Find the Gmail credential, click **Permissions**, and add this rule:
+The agent will compose the email and attempt to call the Gmail API through Jentic Mini's broker. It will be **blocked** — by default, Jentic Mini's system safety rules deny all write operations (POST, PUT, PATCH, DELETE). The agent hasn't been granted permission to create drafts yet.
+
+The agent will get back an error like:
+
+```json
+{
+  "error": "policy_denied",
+  "message": "Request denied by policy: POST is not allowed."
+}
+```
+
+## Step 3 — Grant permission
+
+Your agent should recognise the policy denial and offer to request access. If it doesn't, tell it:
+
+> "Request permission to create and update Gmail drafts."
+
+The agent will submit an access request to Jentic Mini, which generates an approval link. The agent gives you the link — click it to open the Jentic Mini approval page.
+
+On the approval page you'll see what the agent is requesting. Approve it, and the permission rule is applied:
 
 | Effect | Methods | Path |
 |--------|---------|------|
@@ -51,39 +67,21 @@ This single rule allows POST and PUT to any path containing `drafts`. The system
 
 The result: the agent can create and update drafts, read emails, but **cannot send**. `POST /gmail/v1/users/me/messages/send` doesn't match `drafts`, so it falls through to the system deny rule.
 
-## Step 3 — Agent creates a draft
+## Step 4 — Create the draft
 
-Tell your agent:
+Tell your agent to try again:
 
-> "Draft an email to colleague@example.com with the subject 'Meeting notes' and a summary of what we discussed today."
+> "Try drafting that email again."
 
-The agent composes the email and calls the Gmail API through Jentic Mini's broker. Behind the scenes:
+This time the broker checks the permission rules, finds the `drafts` allow rule, injects the OAuth token, and forwards the request to Gmail. The draft appears in your Gmail Drafts folder. You can review and send it yourself.
 
-1. The broker identifies the upstream host (`gmail.googleapis.com`)
-2. Looks up the credential for this toolkit
-3. Checks the permission rules — `POST` to a path containing `drafts` → **allowed**
-4. Injects the OAuth token (via Pipedream's proxy) — the agent never sees it
-5. Forwards the request to Gmail
-6. Logs a trace and returns the response
-
-The draft appears in your Gmail Drafts folder. You can review and send it yourself.
-
-## Step 4 — Verify that sending is blocked
+## Step 5 — Verify that sending is blocked
 
 Try telling your agent:
 
 > "Send an email directly to someone@example.com saying hello."
 
-The agent will attempt to call the Gmail send endpoint. Jentic Mini blocks it:
-
-```json
-{
-  "error": "policy_denied",
-  "message": "Request denied by policy: POST to /gmail/v1/users/me/messages/send is not allowed."
-}
-```
-
-The email is never sent. The agent gets a clear error explaining why, and the denied attempt is recorded in the trace log. Your agent can explain what happened and suggest requesting additional permissions if needed.
+The agent will attempt to call the Gmail send endpoint. Jentic Mini blocks it — the send path doesn't match `drafts`, so it falls through to the system deny rule. The email is never sent, and the denied attempt is recorded in the trace log.
 
 ---
 
@@ -91,7 +89,7 @@ The email is never sent. The agent gets a clear error explaining why, and the de
 
 - **Credentials never touch the agent.** The OAuth token lives in the vault. The agent calls through the broker; the broker injects the token.
 - **Permissions go beyond what the API offers.** Gmail's OAuth scopes grant `gmail.compose` as a single scope — it doesn't distinguish between drafting and sending. Jentic Mini's permission rules add that boundary at the proxy layer.
-- **The human stays in control.** Credential setup is a single OAuth click. Permission changes require a human session. The agent handles the conversation; the human just approves.
+- **The agent hits a wall and recovers.** The deny → request → approve → retry flow is the normal way agents gain access. The human approves once; the agent remembers.
 
 ---
 
