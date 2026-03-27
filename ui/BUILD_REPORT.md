@@ -171,15 +171,17 @@ Import for `InspectService` added.
 ## 🧪 Build Status
 
 ```bash
-✓ TypeScript compilation passed
+✓ TypeScript compilation passed (tsc --noEmit, zero errors)
 ✓ Vite build succeeded
-✓ 1576 modules transformed
-✓ Output: 395.50 kB JS, 20.95 kB CSS
+✓ TailwindCSS 4 via @tailwindcss/vite plugin (no PostCSS)
+✓ Zero hardcoded colors, zero emoji icons
 ```
 
 **Fixed issues:**
 - React Query v5 `onSuccess` → `useEffect` pattern
 - Credentials query `queryFn` call signature
+- TailwindCSS 3 → 4 migration: `outline-none` → `outline-hidden` (10 files)
+- Removed `postcss.config.js` and `tailwind.config.js` (replaced by `@theme inline` in CSS)
 
 ---
 
@@ -207,27 +209,39 @@ Both gaps are expected — overlays and notes are advanced admin features, not c
 
 ## 🎨 UI/UX Highlights
 
-1. **Consistent design language**:
+1. **Design token system** (TailwindCSS 4):
+   - Single-file theme architecture (`src/index.css`) using shadcn/TW4-native pattern
+   - `@theme inline` maps CSS custom properties to Tailwind utility classes
+   - Full HSL color palette in `:root` matching `@jentic/frontend-theme`
+   - Semantic token names throughout: `bg-primary`, `text-foreground`, `border-border`, etc.
+   - Zero hardcoded Tailwind default colors (no `red-500`, `gray-300`, etc.)
+   - No separate `tailwind.config.js` or `styles.css` — everything in `index.css`
+
+2. **Lucide React icons**:
+   - All icons are SVG components from `lucide-react`
+   - Zero emoji characters used as icons anywhere in the codebase
+
+3. **Consistent design language**:
    - Badge variants for status (success/warning/danger)
    - Method badges (GET/POST/etc.) with color coding
    - Source badges (local/catalog) with icons
    - ConfirmInline for destructive actions
 
-2. **Smart loading states**:
+4. **Smart loading states**:
    - Skeleton text ("Loading...")
    - Empty states with helpful CTAs
    - Inline spinners for mutations
 
-3. **Search & filter**:
+5. **Search & filter**:
    - Debounced search inputs
    - Filter chips with clear buttons
    - Pagination controls
 
-4. **Keyboard-friendly**:
+6. **Keyboard-friendly**:
    - Autofocus on search inputs
    - Enter to submit forms
 
-5. **Mobile-responsive**:
+7. **Mobile-responsive**:
    - Grid layouts adapt (1/2/4 columns)
    - Overflow-x-auto on tables
 

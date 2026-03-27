@@ -8,7 +8,7 @@
 - Docker Compose deployment with multi-stage build (Node → Python, no Node in final image)
 - Fernet-encrypted credential vault (write-only semantics)
 - Swagger UI + Redoc served locally from vendored assets (no CDN dependency)
-- React + Vite admin UI (Tailwind, dark mode, responsive sidebar with mobile hamburger drawer)
+- React + Vite admin UI (TailwindCSS 4, CSS custom property design tokens, Lucide React icons, dark-first theme, responsive sidebar with mobile hamburger drawer)
 - SPA served with content negotiation — browser navigations get HTML, API calls get JSON
 - Non-root container execution (configurable UID/GID)
 
@@ -86,6 +86,13 @@
 - ~166 `any` / `@ts-ignore` instances in the TypeScript UI — undermines type safety and makes refactoring risky.
 - No error boundaries — unhandled errors crash the whole UI rather than a section.
 - No accessibility (a11y) audit has been done.
+
+**Completed (v0.3):**
+- TailwindCSS 3 → 4 upgrade with `@tailwindcss/vite` plugin (PostCSS and JS config removed)
+- Design token system: single-file theme in `index.css` using shadcn/TW4-native `@theme inline` pattern; full HSL palette matching `@jentic/frontend-theme`
+- All hardcoded Tailwind default colors replaced with semantic tokens
+- All emoji icons replaced with Lucide React SVG components
+- `outline-none` → `outline-hidden` for TW4 accessibility compliance
 
 ### Versioning, Releases, and Updates
 

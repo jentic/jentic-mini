@@ -102,13 +102,30 @@ Pluggable OAuth broker system. Currently includes `pipedream.py` for Pipedream-b
 
 ## UI
 
-The `ui/` directory contains a React (Vite + Tailwind) admin frontend.
+The `ui/` directory contains a React 18 + Vite 5 admin frontend.
 
+### Tech stack
+- **TailwindCSS 4** via `@tailwindcss/vite` plugin (no PostCSS, no JS config file)
+- **Design tokens**: Single-file theme in `ui/src/index.css` using the shadcn/TW4-native pattern:
+  - `@theme inline` maps CSS custom properties to Tailwind utility classes (e.g. `--color-primary: var(--primary)` → `bg-primary`, `text-primary`)
+  - `:root` defines the full HSL color palette and semantic mappings
+  - `@layer base` sets body, heading, and button cursor styles
+- **Icons**: Lucide React (SVG components, no emoji)
+- **Fonts**: Sora (body), Nunito Sans (headings), Geist Mono (code) — loaded via Google Fonts in `index.html`
+
+### Build
 - **Build output**: `static/` at project root (gitignored, generated at build time)
 - **Static path resolution**: `src/main.py` resolves `STATIC_DIR` to `<project_root>/static/`. In Docker this is `/app/static/` (outside the `./src:/app/src` bind mount, so dev mounts don't hide built assets).
 - **Docker**: Multi-stage build — Node stage compiles UI to `static/`, Python stage runs the server. Final image has no Node/npm.
 - **Vite plugin** (`copyApiDocsAssets` in `ui/vite.config.ts`): copies `swagger-ui-dist` and `redoc` assets from `node_modules` into `static/` after each build, so `/docs` and `/redoc` work offline.
 - **Favicon**: lives in `ui/public/favicon.png`, Vite copies it to output automatically.
+
+### Adding colors or tokens
+All theming is in `ui/src/index.css`. To add a new semantic color:
+1. Add the raw HSL value to `:root` (e.g. `--info: hsl(210 80% 60%)`)
+2. Add the semantic mapping to `:root` if needed (e.g. `--info-foreground: hsl(0 0% 100%)`)
+3. Map it in `@theme inline` (e.g. `--color-info: var(--info)`)
+4. Use it in components as `bg-info`, `text-info`, etc.
 
 ## Data directory (all gitignored)
 - `data/jentic-mini.db` — SQLite database
