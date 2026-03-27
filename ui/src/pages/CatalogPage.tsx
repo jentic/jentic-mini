@@ -399,7 +399,7 @@ export default function CatalogPage() {
             value={q}
             onChange={e => setQ(e.target.value)}
             placeholder="Filter by name or API ID..."
-            className="w-full bg-muted border border-border rounded-lg pl-8 pr-3 py-1.5 text-sm text-foreground placeholder:text-muted-foreground/60 focus:border-primary focus:outline-none"
+            className="w-full bg-muted border border-border rounded-lg pl-8 pr-3 py-1.5 text-sm text-foreground placeholder:text-muted-foreground/60 focus:border-primary focus:outline-hidden"
           />
         </div>
       </div>

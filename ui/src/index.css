@@ -1,9 +1,124 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+
+/*
+  THEME — Tailwind utility class mappings.
+  @theme inline maps CSS vars to Tailwind classes without emitting extra variables.
+  e.g. --color-primary: var(--primary) → bg-primary, text-primary, etc.
+*/
+@theme inline {
+  /* Surface colors */
+  --color-background: var(--background);
+  --color-background-secondary: var(--background-secondary);
+  --color-foreground: var(--foreground);
+  --color-foreground-lighter: var(--foreground-lighter);
+
+  /* Brand / Primary */
+  --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
+  --color-primary-foreground: var(--primary-foreground);
+
+  /* Muted */
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+
+  /* Card */
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+
+  /* Borders */
+  --color-border: var(--border);
+  --color-border-hover: var(--border-hover);
+
+  /* Focus ring */
+  --color-ring: var(--ring);
+
+  /* Accent colors */
+  --color-accent-orange: var(--accent-orange);
+  --color-accent-yellow: var(--accent-yellow);
+  --color-accent-green: var(--accent-green);
+  --color-accent-teal: var(--accent-green);
+  --color-accent-pink: var(--accent-pink);
+  --color-accent-blue: var(--accent-blue);
+
+  /* State colors */
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-danger: var(--danger);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+
+  /* Fonts */
+  --font-sans: "Sora", sans-serif;
+  --font-heading: "Nunito Sans", sans-serif;
+  --font-mono: "Geist Mono", monospace;
+
+  /* Radius */
+  --radius-sm: calc(var(--radius) - 8px);
+  --radius-md: calc(var(--radius) - 4px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+}
+
+/*
+  TOKENS — Designer's Official Color Palette.
+  Full color values so var(--primary) works anywhere (CSS, JS, custom styles).
+  color-mix() handles opacity modifiers automatically.
+  Values match @jentic/frontend-theme.
+*/
+:root {
+  /* Primary scale */
+  --primary-300: hsl(192 35% 8%);     /* #0E1A1D - Darkest */
+  --primary-350: hsl(192 36% 13%);    /* #162629 - Card background */
+  --primary-400: hsl(192 38% 16%);    /* #193238 */
+  --primary-500: hsl(186 28% 26%);    /* #305256 */
+  --primary-700: hsl(185 18% 50%);    /* #689296 */
+  --primary-800: hsl(183 29% 72%);    /* #A3CACC */
+  --primary-900: hsl(189 15% 91%);    /* #E4EAEB */
+  --primary-950: hsl(180 11% 96%);    /* #F5F7F7 */
+
+  /* Accent colors */
+  --accent-orange: hsl(31 97% 73%);   /* #FDBD79 */
+  --accent-yellow: hsl(52 78% 75%);   /* #F1E38B */
+  --accent-green: hsl(162 66% 62%);   /* #5EDEB9 */
+  --accent-pink: hsl(358 64% 80%);    /* #EDADAF */
+  --accent-blue: hsl(203 78% 67%);    /* #68BAEC */
+
+  /* Semantic mappings */
+  --background: var(--primary-300);
+  --background-secondary: var(--primary-400);
+  --card: var(--primary-350);
+  --card-foreground: hsl(0 0% 100%);
+  --border: var(--primary-500);
+  --border-hover: var(--primary-700);
+  --foreground: hsl(0 0% 100%);
+  --foreground-lighter: var(--primary-900);
+  --muted: var(--primary-400);
+  --muted-foreground: var(--primary-900);
+  --primary: var(--primary-800);
+  --primary-hover: var(--primary-900);
+  --primary-foreground: var(--primary-300);
+  --success: hsl(162 66% 62%);
+  --warning: hsl(52 78% 75%);
+  --danger: hsl(358 64% 80%);
+  --destructive: hsl(13 87% 46%);     /* #DB3B0F */
+  --destructive-foreground: hsl(0 0% 100%);
+  --ring: var(--primary-800);
+  --radius: 0.75rem;
+}
 
 @layer base {
+  body {
+    @apply bg-background text-foreground;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
   h1, h2, h3, h4, h5, h6 {
     @apply font-heading font-bold;
+  }
+
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
   }
 }

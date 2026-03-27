@@ -48,7 +48,7 @@ export function TopBar({ username, pendingCount = 0 }: TopBarProps) {
             placeholder="Search catalog..."
             value={search}
             onChange={e => setSearch(e.target.value)}
-            className="w-full bg-muted border border-border rounded-lg pl-9 pr-4 py-1.5 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none transition-all"
+            className="w-full bg-muted border border-border rounded-lg pl-9 pr-4 py-1.5 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-hidden transition-all"
           />
         </div>
       </form>

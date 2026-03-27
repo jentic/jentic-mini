@@ -31,12 +31,12 @@ function CreateModal({ onClose, onCreated }: { onClose: () => void; onCreated: (
           <div>
             <label className="text-xs text-muted-foreground block mb-1">Name *</label>
             <input type="text" value={name} onChange={e => setName(e.target.value)} required autoFocus
-              className="w-full bg-background border border-border rounded-lg px-3 py-2 text-foreground focus:border-primary focus:outline-none" />
+              className="w-full bg-background border border-border rounded-lg px-3 py-2 text-foreground focus:border-primary focus:outline-hidden" />
           </div>
           <div>
             <label className="text-xs text-muted-foreground block mb-1">Description</label>
             <textarea value={description} onChange={e => setDescription(e.target.value)} rows={2}
-              className="w-full bg-background border border-border rounded-lg px-3 py-2 text-foreground focus:border-primary focus:outline-none resize-none" />
+              className="w-full bg-background border border-border rounded-lg px-3 py-2 text-foreground focus:border-primary focus:outline-hidden resize-none" />
           </div>
           <label className="flex items-center gap-3 cursor-pointer">
             <input type="checkbox" checked={simulate} onChange={e => setSimulate(e.target.checked)} className="rounded" />

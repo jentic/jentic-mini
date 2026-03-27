@@ -155,7 +155,7 @@ export default function SetupPage() {
                 onChange={e => setUsername(e.target.value)}
                 required
                 disabled={accountAlreadyExists}
-                className="w-full bg-background border border-border rounded-lg px-3 py-2 text-foreground focus:border-primary focus:outline-none transition-colors disabled:opacity-50"
+                className="w-full bg-background border border-border rounded-lg px-3 py-2 text-foreground focus:border-primary focus:outline-hidden transition-colors disabled:opacity-50"
               />
             </div>
             <div className="mb-6">
@@ -166,7 +166,7 @@ export default function SetupPage() {
                 onChange={e => setPassword(e.target.value)}
                 required
                 disabled={accountAlreadyExists}
-                className="w-full bg-background border border-border rounded-lg px-3 py-2 text-foreground focus:border-primary focus:outline-none transition-colors disabled:opacity-50"
+                className="w-full bg-background border border-border rounded-lg px-3 py-2 text-foreground focus:border-primary focus:outline-hidden transition-colors disabled:opacity-50"
               />
             </div>
             {!accountAlreadyExists && (
