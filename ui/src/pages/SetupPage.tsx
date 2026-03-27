@@ -25,6 +25,8 @@ export default function SetupPage() {
     },
   })
 
+  const [setupComplete, setSetupComplete] = useState(false)
+
   const createUserMutation = useMutation({
     mutationFn: () => UserService.createUserUserCreatePost({ requestBody: { username, password } }),
     onSuccess: () => {
@@ -34,7 +36,7 @@ export default function SetupPage() {
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({ username, password })
-      }).then(() => window.location.href = '/')
+      }).then(() => setSetupComplete(true))
     }
   })
 
@@ -105,8 +107,23 @@ export default function SetupPage() {
           </div>
         )}
 
+        {/* Setup complete — show summary before navigating away */}
+        {setupComplete ? (
+          <div className="text-center">
+            <div className="p-4 bg-success/10 border border-success/30 rounded-lg mb-6 text-success text-sm font-semibold">
+              ✓ Account created and logged in
+            </div>
+            <button
+              onClick={() => window.location.href = '/'}
+              className="w-full bg-primary text-background hover:bg-primary-hover font-bold rounded-lg px-4 py-3 transition-colors"
+            >
+              Go to Dashboard →
+            </button>
+          </div>
+        ) : null}
+
         {/* Step 2: Create admin account — or waiting state */}
-        {waitingForAgent ? (
+        {!setupComplete && waitingForAgent ? (
           <div className="p-4 bg-muted border border-border rounded-lg text-center">
             <p className="text-sm font-semibold text-foreground mb-1">Admin account created ✓</p>
             <p className="text-sm text-muted-foreground">
@@ -119,7 +136,7 @@ export default function SetupPage() {
               Make sure your agent has the Jentic skill installed and knows this instance's URL.
             </p>
           </div>
-        ) : (
+        ) : !setupComplete ? (
           <form onSubmit={e => {
             e.preventDefault()
             if (!health?.default_key_claimed && !copiedKey && generateKeyMutation.data) {
@@ -177,7 +194,7 @@ export default function SetupPage() {
               </button>
             )}
           </form>
-        )}
+        ) : null}
       </div>
     </div>
   )
