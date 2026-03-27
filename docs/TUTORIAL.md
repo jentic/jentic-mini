@@ -1,50 +1,16 @@
-# Tutorial: From Zero to Agent-Ready in Two Examples
+# Tutorial: Gmail Drafts With Agent Permissions
 
-This tutorial walks through two real examples that show what Jentic Mini does and why it matters. By the end your agent will be calling live APIs — with credentials it never sees and permissions you control.
-
-> **Prerequisites:** You need Jentic Mini running and connected to your agent. If you haven't set that up yet, the fastest path is via the [Jentic skill on ClawHub](https://clawhub.com) — tell your OpenClaw agent *"install and set up the jentic skill from ClawHub"* and it will walk you through everything. For manual setup, see [Getting Started](../README.md#getting-started).
-
-For Part 2 you'll also need a Google account and a free [Pipedream](https://pipedream.com) account (your agent will guide you through Pipedream setup when the time comes).
-
----
-
-## Part 1: GitHub Public API (No Credentials)
-
-This shows the core search → inspect → execute flow with zero setup. The GitHub public API doesn't require authentication for read-only access, so there's nothing to configure — just ask your agent to do something.
-
-### Try it
-
-Tell your agent:
-
-> "Use Jentic to find the GitHub API for listing a user's repositories, then list the repos for the jentic org."
-
-Behind the scenes, your agent will:
-
-1. **Search** — call Jentic Mini's search endpoint to find the right GitHub operation
-2. **Inspect** — look at the operation details to understand the parameters and response format
-3. **Execute** — call the GitHub API through the broker
-
-The broker proxies the request to `api.github.com`, logs a trace, and returns the response. No credentials needed — GitHub's public API allows unauthenticated reads.
-
-### What just happened
-
-Your agent searched for an API, inspected it, and called it — all through Jentic Mini. For a public API this is straightforward, but it establishes the pattern: **every API call goes through the broker**, which means every call can be traced, credentialled, and governed.
-
-You can see the execution trace in the Jentic Mini UI at **Traces** (`http://localhost:8900/traces`), or ask your agent to show you the latest trace.
-
----
-
-## Part 2: Gmail (OAuth Credentials + Fine-Grained Permissions)
-
-This time we'll:
-
-1. Connect a Gmail account via OAuth (the agent never sees the token)
-2. Set permissions so the agent can **create drafts but not send emails**
-3. Have the agent create a draft through the broker
+This tutorial connects Gmail to Jentic Mini and sets permissions so your agent can **create drafts but not send emails**. It covers OAuth credential setup, the permission rules model, and what happens when the agent hits a boundary.
 
 Gmail's own OAuth scopes don't offer "drafts only, no send" — `gmail.compose` grants both. Jentic Mini's permission rules add that boundary at the proxy layer.
 
-### Step 1 — Connect Gmail
+> **Prerequisites:** You need Jentic Mini running and connected to your agent. If you haven't set that up yet, the fastest path is via the [Jentic skill on ClawHub](https://clawhub.com) — tell your OpenClaw agent *"install and set up the jentic skill from ClawHub"* and it will walk you through everything. For manual setup, see [Getting Started](../README.md#getting-started).
+
+You'll also need a Google account and a free [Pipedream](https://pipedream.com) account (your agent will guide you through Pipedream setup if it's your first time).
+
+---
+
+## Step 1 — Connect Gmail
 
 Tell your agent:
 
@@ -61,7 +27,7 @@ The OAuth token is stored encrypted and never returned via the API. Your agent k
 
 > **First time using OAuth?** If you haven't set up a Pipedream broker yet, your agent will guide you through it — or see the [Pipedream Connect setup guide](PIPEDREAM.md#setup-required-before-first-use). It's a one-time setup that takes about 5 minutes.
 
-### Step 2 — Set permissions: drafts yes, send no
+## Step 2 — Set permissions: drafts yes, send no
 
 By default, Jentic Mini's system safety rules **deny all write operations** (POST, PUT, PATCH, DELETE). This is intentional — write access must be explicitly granted by a human.
 
@@ -85,9 +51,9 @@ This single rule allows POST and PUT to any path containing `drafts`. The system
 
 The result: the agent can create and update drafts, read emails, but **cannot send**. `POST /gmail/v1/users/me/messages/send` doesn't match `drafts`, so it falls through to the system deny rule.
 
-### Step 3 — Agent creates a draft
+## Step 3 — Agent creates a draft
 
-Now tell your agent:
+Tell your agent:
 
 > "Draft an email to colleague@example.com with the subject 'Meeting notes' and a summary of what we discussed today."
 
@@ -102,7 +68,7 @@ The agent composes the email and calls the Gmail API through Jentic Mini's broke
 
 The draft appears in your Gmail Drafts folder. You can review and send it yourself.
 
-### Step 4 — Verify that sending is blocked
+## Step 4 — Verify that sending is blocked
 
 Try telling your agent:
 
@@ -117,23 +83,19 @@ The agent will attempt to call the Gmail send endpoint. Jentic Mini blocks it:
 }
 ```
 
-The email is never sent. The agent gets a clear error explaining why, and the denied attempt is recorded in the trace log. Your agent can explain to you what happened and suggest requesting additional permissions if needed.
+The email is never sent. The agent gets a clear error explaining why, and the denied attempt is recorded in the trace log. Your agent can explain what happened and suggest requesting additional permissions if needed.
 
 ---
 
-## What You Just Saw
+## What this demonstrated
 
-**Part 1** showed the basic flow: the agent searches for an API, inspects it, and calls it through the broker. Every call is proxied and traced — even for public APIs with no credentials.
-
-**Part 2** showed why this matters:
-
-- **Credentials never touch the agent.** The OAuth token lives in the vault. The agent calls through the broker; the broker injects the token. If the agent is compromised, the attacker gets nothing.
-- **Permissions go beyond what the API offers.** Gmail's OAuth scopes grant `gmail.compose` as a single scope — it doesn't distinguish between drafting and sending. Jentic Mini's permission rules add that boundary at the proxy layer, giving you control the upstream API doesn't provide.
+- **Credentials never touch the agent.** The OAuth token lives in the vault. The agent calls through the broker; the broker injects the token.
+- **Permissions go beyond what the API offers.** Gmail's OAuth scopes grant `gmail.compose` as a single scope — it doesn't distinguish between drafting and sending. Jentic Mini's permission rules add that boundary at the proxy layer.
 - **The human stays in control.** Credential setup is a single OAuth click. Permission changes require a human session. The agent handles the conversation; the human just approves.
 
 ---
 
-## Next Steps
+## Next steps
 
 - **Add more APIs** — ask your agent to search the Jentic catalog for any API you use, or browse at `http://localhost:8900/catalog`
 - **Connect more OAuth apps** — Slack, Google Drive, Salesforce, and 3,000+ more via [Pipedream Connect](PIPEDREAM.md)
