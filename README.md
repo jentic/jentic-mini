@@ -87,6 +87,8 @@ docker compose up -d
 
 Open `http://localhost:8900` to complete setup.
 
+**Next:** Follow the [hands-on tutorial](docs/TUTORIAL.md) to see Jentic Mini in action — from calling a public API with zero setup, to connecting Gmail with OAuth and setting permissions so your agent can draft emails but not send them.
+
 ### Configuration
 
 Optional environment variables (set in `.env` or pass to `docker compose`):
