@@ -62,7 +62,7 @@ SKIP = {
     "/", "/health",
     "/docs", "/openapi.json", "/redoc",
     "/favicon.ico", "/favicon.png", "/favicon.svg",
-    "/login",  # HTML login form page (served from main.py)
+    "/login",  # React login page (SPA route)
     "/user/login",  # API login endpoint — must be public (bug fix: was missing)
     "/user/token",  # OAuth2 password grant for Swagger UI
     "/user/create",  # One-time root account creation — must be public before account exists
