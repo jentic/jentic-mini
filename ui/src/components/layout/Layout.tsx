@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Outlet, Link, useLocation } from 'react-router-dom'
 import { JenticLogo } from '../ui/Logo'
-import { BookOpen, ExternalLink, Menu, X } from 'lucide-react'
+import { BookOpen, ExternalLink, Menu, X, LayoutDashboard, Search, GitBranch, Shield, KeyRound, Link2, Activity, Cog } from 'lucide-react'
 import { useAuth } from '../../hooks/useAuth'
 import { usePendingRequests } from '../../hooks/usePendingRequests'
 import { useUpdateCheck } from '../../hooks/useUpdateCheck'
@@ -57,27 +57,27 @@ function SidebarContents({ onClose }: { onClose?: () => void }) {
       </div>
 
       <nav className="flex-1 overflow-y-auto py-4 px-3 flex flex-col gap-1">
-        <NavLink to="/" exact icon={<span>📊</span>} label="Dashboard" onClick={onClose} />
-        <NavLink to="/search" icon={<span>🔍</span>} label="Search" onClick={onClose} />
+        <NavLink to="/" exact icon={<LayoutDashboard className="h-4 w-4" />} label="Dashboard" onClick={onClose} />
+        <NavLink to="/search" icon={<Search className="h-4 w-4" />} label="Search" onClick={onClose} />
 
         <div className="mt-4 mb-2 text-[10px] font-mono tracking-widest uppercase text-primary/60 px-4">
           Directory
         </div>
-        <NavLink to="/catalog" icon={<span>📚</span>} label="API Catalog" onClick={onClose} />
-        <NavLink to="/workflows" icon={<span>🌐</span>} label="Workflows" onClick={onClose} />
+        <NavLink to="/catalog" icon={<BookOpen className="h-4 w-4" />} label="API Catalog" onClick={onClose} />
+        <NavLink to="/workflows" icon={<GitBranch className="h-4 w-4" />} label="Workflows" onClick={onClose} />
 
         <div className="mt-4 mb-2 text-[10px] font-mono tracking-widest uppercase text-primary/60 px-4">
           Security
         </div>
-        <NavLink to="/toolkits" icon={<span>🛡️</span>} label="Toolkits" onClick={onClose} />
-        <NavLink to="/credentials" icon={<span>🔐</span>} label="Credentials" onClick={onClose} />
-        <NavLink to="/oauth-brokers" icon={<span>🔗</span>} label="OAuth Brokers" onClick={onClose} />
+        <NavLink to="/toolkits" icon={<Shield className="h-4 w-4" />} label="Toolkits" onClick={onClose} />
+        <NavLink to="/credentials" icon={<KeyRound className="h-4 w-4" />} label="Credentials" onClick={onClose} />
+        <NavLink to="/oauth-brokers" icon={<Link2 className="h-4 w-4" />} label="OAuth Brokers" onClick={onClose} />
 
         <div className="mt-4 mb-2 text-[10px] font-mono tracking-widest uppercase text-primary/60 px-4">
           Observability
         </div>
-        <NavLink to="/traces" icon={<span>📈</span>} label="Traces" onClick={onClose} />
-        <NavLink to="/jobs" icon={<span>⚙️</span>} label="Async Jobs" onClick={onClose} />
+        <NavLink to="/traces" icon={<Activity className="h-4 w-4" />} label="Traces" onClick={onClose} />
+        <NavLink to="/jobs" icon={<Cog className="h-4 w-4" />} label="Async Jobs" onClick={onClose} />
       </nav>
 
       <div className="px-3 py-3 border-t border-border shrink-0">
@@ -86,9 +86,9 @@ function SidebarContents({ onClose }: { onClose?: () => void }) {
             href={releaseUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="flex items-center gap-2 px-4 py-2 mb-1 rounded-md text-xs font-semibold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 hover:bg-amber-100 dark:hover:bg-amber-900/40 transition-colors"
+            className="flex items-center gap-2 px-4 py-2 mb-1 rounded-md text-xs font-semibold text-accent-yellow bg-accent-yellow/10 hover:bg-accent-yellow/20 transition-colors"
           >
-            <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse shrink-0" />
+            <span className="w-1.5 h-1.5 rounded-full bg-accent-yellow animate-pulse shrink-0" />
             Update available: {latestVersion}
           </a>
         )}
