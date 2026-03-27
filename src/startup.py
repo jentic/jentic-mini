@@ -10,6 +10,7 @@ Both operations are idempotent — safe to call on every startup.
 See docs/SELF-REGISTRATION.md for design rationale.
 """
 import asyncio
+import json
 import logging
 import os
 import pathlib
@@ -208,13 +209,13 @@ async def _ensure_internal_credential() -> None:
         # Register the key as a valid toolkit key in the DB (bound to default toolkit)
         async with get_db() as db:
             from src.db import DEFAULT_TOOLKIT_ID
-            from src.auth import default_allowed_ips_json
-            allowed_ips = default_allowed_ips_json()
+            from src.auth import default_allowed_ips
+            allowed_ips = json.dumps(default_allowed_ips())
             await db.execute(
                 """INSERT OR IGNORE INTO toolkit_keys
-                   (id, toolkit_id, label, allowed_ips_json, created_at)
-                   VALUES (?, ?, 'Jentic Mini Internal Key', ?, unixepoch())""",
-                (raw_key, DEFAULT_TOOLKIT_ID, allowed_ips),
+                   (id, toolkit_id, api_key, label, allowed_ips, created_at)
+                   VALUES (?, ?, ?, 'Jentic Mini Internal Key', ?, unixepoch())""",
+                ("ck_internal", DEFAULT_TOOLKIT_ID, raw_key, allowed_ips),
             )
             await db.commit()
 
