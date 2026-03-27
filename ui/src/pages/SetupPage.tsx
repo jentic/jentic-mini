@@ -23,7 +23,6 @@ export default function SetupPage() {
       if (!r.ok) throw new Error(`Key generation failed (${r.status})`)
       return r.json()
     },
-    onSuccess: () => refetchHealth(),
   })
 
   const createUserMutation = useMutation({
@@ -55,7 +54,30 @@ export default function SetupPage() {
         <h1 className="text-3xl font-bold mb-6 text-center text-foreground">Welcome to Jentic Mini</h1>
 
         {/* Step 1: Generate / show agent key */}
-        {health?.status === 'setup_required' ? (
+        {generateKeyMutation.data && !copiedKey ? (
+          /* Key generated but not yet copied — keep showing it regardless of health status */
+          <div className="mb-6">
+            <p className="mb-1 text-sm font-semibold text-foreground">Step 1 — Connect your agent</p>
+            <div className="p-4 bg-danger/10 border border-danger/30 rounded-lg">
+              <div className="text-danger font-bold text-sm mb-2 flex items-center gap-2">
+                ⚠️ This key will not be shown again
+              </div>
+              <div className="font-mono bg-background p-3 rounded text-sm mb-4 break-all text-foreground">
+                {generateKeyMutation.data.key}
+              </div>
+              <button
+                onClick={() => {
+                  navigator.clipboard.writeText(generateKeyMutation.data.key)
+                  setCopiedKey(true)
+                  refetchHealth()
+                }}
+                className="w-full bg-primary text-background hover:bg-primary-hover font-semibold py-2 rounded transition-colors"
+              >
+                Copy Key
+              </button>
+            </div>
+          </div>
+        ) : health?.status === 'setup_required' && !generateKeyMutation.data ? (
           <div className="mb-6">
             <p className="mb-1 text-sm font-semibold text-foreground">Step 1 — Connect your agent</p>
             <p className="mb-4 text-sm text-muted-foreground">
@@ -69,37 +91,13 @@ export default function SetupPage() {
             <p className="mb-4 text-sm text-muted-foreground">
               Alternatively, generate the API key now and give it to your agent manually.
             </p>
-            {!generateKeyMutation.data ? (
-              <button
-                onClick={() => generateKeyMutation.mutate()}
-                disabled={generateKeyMutation.isPending}
-                className="w-full bg-primary text-background hover:bg-primary-hover font-semibold rounded-lg px-4 py-3 transition-colors disabled:opacity-50"
-              >
-                {generateKeyMutation.isPending ? 'Generating...' : 'Generate Agent API Key'}
-              </button>
-            ) : (
-              <div className="p-4 bg-danger/10 border border-danger/30 rounded-lg">
-                <div className="text-danger font-bold text-sm mb-2 flex items-center gap-2">
-                  ⚠️ This key will not be shown again
-                </div>
-                <div className="font-mono bg-background p-3 rounded text-sm mb-4 break-all text-foreground">
-                  {generateKeyMutation.data.key}
-                </div>
-                <button
-                  onClick={() => {
-                    navigator.clipboard.writeText(generateKeyMutation.data.key)
-                    setCopiedKey(true)
-                  }}
-                  className={`w-full font-semibold py-2 rounded transition-colors ${
-                    copiedKey
-                      ? 'bg-success/20 text-success border border-success/30'
-                      : 'bg-primary text-background hover:bg-primary-hover'
-                  }`}
-                >
-                  {copiedKey ? '✓ Copied to clipboard' : 'Copy Key'}
-                </button>
-              </div>
-            )}
+            <button
+              onClick={() => generateKeyMutation.mutate()}
+              disabled={generateKeyMutation.isPending}
+              className="w-full bg-primary text-background hover:bg-primary-hover font-semibold rounded-lg px-4 py-3 transition-colors disabled:opacity-50"
+            >
+              {generateKeyMutation.isPending ? 'Generating...' : 'Generate Agent API Key'}
+            </button>
           </div>
         ) : (
           <div className="p-4 bg-success/10 border border-success/30 rounded-lg mb-6 text-success text-sm font-semibold text-center">
