@@ -61,8 +61,8 @@ Include your toolkit key on every request:
 X-Jentic-API-Key: tk_xxx
 ```
 
-Public endpoints that do not require a key: `/health`, `/docs`, `/openapi.json`,
-`/llms.txt`.
+Key public endpoints that do not require a key: `/health`, `/docs`,
+`/openapi.json`, `/llms.txt`.
 
 ## Core Workflow: Search, Inspect, Execute
 
