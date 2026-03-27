@@ -41,7 +41,7 @@ COPY src/ /app/src/
 # dev bind mount (./src:/app/src) doesn't hide them at runtime.
 COPY --from=ui-build /build/static/ /app/static/
 
-COPY --chmod=0644 LICENSE NOTICE /app/
+COPY --chmod=0644 LICENSE NOTICE llms.txt /app/
 COPY --chmod=0755 docker-entrypoint.sh /app/docker-entrypoint.sh
 
 # Run as non-root

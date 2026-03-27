@@ -1,0 +1,50 @@
+# Jentic Mini
+
+> Self-hosted API middleware for AI agents. Search APIs by intent, inspect
+> schemas, and execute requests through a broker that injects credentials
+> automatically. Credentials live in Jentic, not in the agent.
+
+Jentic Mini gives AI agents a local execution layer: BM25 search over APIs
+and workflows, authenticated request brokering (credential injection without
+exposing secrets), access policy enforcement, and execution tracing.
+
+Two-actor trust boundary: agents authenticate with `X-Jentic-API-Key: tk_xxx`
+and can search, inspect, execute, and request permissions. Humans use a
+username + password UI session to approve requests, manage credentials, and
+complete OAuth flows.
+
+Getting started:
+
+1. Human opens `/setup` in a browser to create an admin account
+2. Agent calls `GET /health` to check instance status
+3. Agent calls `POST /default-api-key/generate` to claim its API key (shown once only)
+4. Agent sets `X-Jentic-API-Key: tk_xxx` on all subsequent requests
+5. Agent uses **search** → **inspect** → **execute** workflow
+
+## Docs
+
+- [AGENTS.md](https://github.com/jentic/jentic-mini/blob/main/AGENTS.md): Agent onboarding — bootstrap, auth, search/inspect/execute, credential injection
+- [OpenAPI spec](/openapi.json): Machine-readable API specification
+- [Swagger UI](/docs): Interactive API explorer
+- [ReDoc](/redoc): Detailed schema reference
+- [ClawHub Jentic skill](https://clawhub.ai/skills/jentic): Full skill integration guide
+- [GitHub repository](https://github.com/jentic/jentic-mini): Source code and issues
+
+## Key Endpoints
+
+- [POST /default-api-key/generate](/docs#/user/generate_default_key_default_api_key_generate_post): Claim agent API key (first call, subnet-restricted)
+- [GET /search?q=TEXT](/docs#/search/search_search_get): Find APIs and workflows by intent
+- [GET /inspect/{id}](/docs#/inspect/get_capability_inspect__capability_id__get): Full capability schema, parameters, auth, errors
+- [/{host}/{path}](/docs#/execute/broker_get): Execute via broker with credential injection (supports all HTTP methods)
+- [GET /workflows](/docs#/catalog/list_workflows_workflows_get): List available workflows
+- [GET /workflows/{slug}](/docs#/catalog/get_workflow_workflows__slug__get): Inspect workflow definition and input schema
+- [GET /health](/docs#/meta/health_health_get): Instance status and bootstrap info
+- [GET /traces](/docs#/observe/list_traces_traces_get): Execution trace history
+
+## Optional
+
+- [GET /apis](/docs#/catalog/list_apis_apis_get): Browse registered API catalog
+- [GET /catalog](/docs#/catalog/list_catalog_catalog_get): Browse public Jentic API catalog
+- [GET /jobs/{id}](/docs#/observe/get_job_route_jobs__job_id__get): Poll async job status
+- [POST /toolkits/{id}/access-requests](/docs#/toolkits/create_access_request_toolkits__toolkit_id__access_requests_post): Request permission escalation
+- [GET /credentials](/docs#/credentials/list_credentials_credentials_get): List configured credentials (metadata only)
