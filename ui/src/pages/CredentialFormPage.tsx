@@ -405,7 +405,7 @@ function CredentialFields({ selectedApi, onBack, onSaved, editId, existing }: Cr
           <textarea value={value} onChange={e => setValue(e.target.value)} rows={3} required={!isEdit}
             placeholder="Paste your token or API key…"
             className="w-full bg-background border border-border rounded-lg px-3 py-2 text-foreground font-mono text-sm focus:border-primary focus:outline-hidden resize-none" />
-          <p className="text-xs text-muted-foreground mt-1">⚠️ Stored encrypted. Never shown again after saving.</p>
+          <p className="text-xs text-muted-foreground mt-1"><AlertTriangle className="inline h-3 w-3 -mt-0.5" /> Stored encrypted. Never shown again after saving.</p>
         </div>
       )}
 

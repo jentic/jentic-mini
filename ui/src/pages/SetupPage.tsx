@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useQuery, useMutation } from '@tanstack/react-query'
 import { UserService } from '../api/generated'
+import { AlertTriangle, Check } from 'lucide-react'
 
 export default function SetupPage() {
   const [username, setUsername] = useState('')
@@ -80,7 +81,7 @@ export default function SetupPage() {
             ) : (
               <div className="p-4 bg-danger/10 border border-danger/30 rounded-lg">
                 <div className="text-danger font-bold text-sm mb-2 flex items-center gap-2">
-                  ⚠️ This key will not be shown again
+                  <AlertTriangle className="h-4 w-4 shrink-0" /> This key will not be shown again
                 </div>
                 <div className="font-mono bg-background p-3 rounded text-sm mb-4 break-all text-foreground">
                   {generateKeyMutation.data.key}
@@ -96,21 +97,21 @@ export default function SetupPage() {
                       : 'bg-primary text-background hover:bg-primary-hover'
                   }`}
                 >
-                  {copiedKey ? '✓ Copied to clipboard' : 'Copy Key'}
+                  {copiedKey ? <><Check className="inline h-3.5 w-3.5 -mt-0.5 mr-1" />Copied to clipboard</> : 'Copy Key'}
                 </button>
               </div>
             )}
           </div>
         ) : (
-          <div className="p-4 bg-success/10 border border-success/30 rounded-lg mb-6 text-success text-sm font-semibold text-center">
-            Agent API key claimed ✓
+          <div className="p-4 bg-success/10 border border-success/30 rounded-lg mb-6 text-success text-sm font-semibold text-center flex items-center justify-center gap-2">
+            <Check className="h-4 w-4" /> Agent API key claimed
           </div>
         )}
 
         {/* Step 2: Create admin account — or waiting state */}
         {waitingForAgent ? (
           <div className="p-4 bg-muted border border-border rounded-lg text-center">
-            <p className="text-sm font-semibold text-foreground mb-1">Admin account created ✓</p>
+            <p className="text-sm font-semibold text-foreground mb-1 flex items-center gap-1.5">Admin account created <Check className="h-3.5 w-3.5 text-success" /></p>
             <p className="text-sm text-muted-foreground">
               Waiting for your agent to claim its API key…
             </p>

@@ -70,7 +70,7 @@ function ApiCard({ entry, defaultOpen = false }: { entry: any; defaultOpen?: boo
                 {isLocal ? 'local' : 'catalog'}
               </span>
               {entry.has_credentials && (
-                <Badge variant="success" className="text-[10px]">credentials ✓</Badge>
+                <Badge variant="success" className="text-[10px]">credentials</Badge>
               )}
             </div>
             <p className="font-medium text-foreground">{entry.name ?? entry.id}</p>
@@ -288,7 +288,7 @@ function CatalogTab({ q }: { q: string }) {
                 className={`px-2.5 py-1 rounded text-xs font-medium transition-colors ${
                   filter === f ? 'bg-primary text-background' : 'text-muted-foreground hover:text-foreground'
                 }`}>
-                {f === 'all' ? 'All' : f === 'registered' ? '✓ Registered' : 'Unregistered'}
+                {f === 'all' ? 'All' : f === 'registered' ? 'Registered' : 'Unregistered'}
               </button>
             ))}
           </div>

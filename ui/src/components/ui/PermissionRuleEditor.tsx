@@ -27,8 +27,8 @@ export function PermissionRuleEditor({ rules, onChange }: PermissionRuleEditorPr
             onChange={e => updateRule(i, { effect: e.target.value as 'allow' | 'deny' })}
             className="bg-muted border border-border rounded px-2 py-1 text-sm text-foreground focus:outline-hidden"
           >
-            <option value="allow">✅ Allow</option>
-            <option value="deny">❌ Deny</option>
+            <option value="allow">Allow</option>
+            <option value="deny">Deny</option>
           </select>
 
           {/* Path */}

@@ -380,7 +380,7 @@ export default function ToolkitDetailPage() {
             <button
               onClick={() => { killswitchMutation.mutate(!toolkit.disabled); setKillswitchConfirming(false) }}
               disabled={killswitchMutation.isPending}
-              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors disabled:opacity-50 ${toolkit.disabled ? 'bg-primary text-background hover:bg-primary/80' : 'bg-danger text-white hover:bg-danger/80'}`}>
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors disabled:opacity-50 ${toolkit.disabled ? 'bg-primary text-background hover:bg-primary/80' : 'bg-danger text-destructive-foreground hover:bg-danger/80'}`}>
               {toolkit.disabled ? 'Restore' : 'Kill Access'}
             </button>
             <button onClick={() => setKillswitchConfirming(false)}

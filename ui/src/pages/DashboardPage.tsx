@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import { usePendingRequests } from '../hooks/usePendingRequests'
 import { api } from '../api/client'
+import { AlertTriangle, KeyRound, Settings } from 'lucide-react'
 
 export default function DashboardPage() {
   const { data: pendingRequests } = usePendingRequests()
@@ -52,7 +53,7 @@ export default function DashboardPage() {
       {pendingRequests && pendingRequests.length > 0 && (
         <div className="w-full bg-warning/10 border border-warning/30 rounded-xl p-4 shadow-md">
           <div className="flex items-center gap-3 mb-3">
-            <span className="text-warning text-lg">⚠️</span>
+            <AlertTriangle className="h-5 w-5 text-warning" />
             <h2 className="text-lg font-bold text-warning">Pending Access Requests</h2>
           </div>
           <div className="flex flex-col gap-3">
@@ -61,7 +62,7 @@ export default function DashboardPage() {
                 <div className="flex flex-col gap-1">
                   <span className="font-semibold text-foreground">{req.toolkit_id}</span>
                   <span className="text-sm text-muted-foreground">
-                    {req.type === 'grant' ? '🔑 Requesting access to credential' : '⚙️ Requesting permission change'}
+                    {req.type === 'grant' ? <><KeyRound className="inline h-3.5 w-3.5 -mt-0.5 mr-1" />Requesting access to credential</> : <><Settings className="inline h-3.5 w-3.5 -mt-0.5 mr-1" />Requesting permission change</>}
                     {req.reason && <span className="ml-2 italic">— "{req.reason}"</span>}
                   </span>
                   <span className="text-xs text-muted-foreground">{timeAgo(req.created_at)}</span>

@@ -214,7 +214,7 @@ export default function ApprovalPage() {
             <div>
               <p className="text-xs font-mono uppercase tracking-widest text-primary/60 mb-1">Request Type</p>
               <Badge variant={request.type === 'grant' ? 'default' : 'warning'} className="text-sm">
-                {request.type === 'grant' ? '🔐 Credential Access' : '🔒 Permission Modification'}
+                {request.type === 'grant' ? 'Credential Access' : 'Permission Modification'}
               </Badge>
             </div>
 

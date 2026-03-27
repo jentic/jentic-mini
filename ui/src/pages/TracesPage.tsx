@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query'
 import { api } from '../api/client'
 import type { TraceOut } from '../api/generated'
 import { Badge, StatusBadge } from '../components/ui/Badge'
-import { Activity, ChevronLeft, ChevronRight, Filter } from 'lucide-react'
+import { Activity, ChevronLeft, ChevronRight, Filter, X } from 'lucide-react'
 
 function timeAgo(ts?: number | null) {
   if (!ts) return '—'
@@ -44,13 +44,13 @@ export default function TracesPage() {
           {toolkit && (
             <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-mono bg-primary/10 text-primary border border-primary/20">
               toolkit: {toolkit}
-              <button onClick={() => { const p = new URLSearchParams(searchParams); p.delete('toolkit'); setSearchParams(p) }}>✕</button>
+              <button onClick={() => { const p = new URLSearchParams(searchParams); p.delete('toolkit'); setSearchParams(p) }}><X className="h-3 w-3" /></button>
             </span>
           )}
           {workflow && (
             <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-mono bg-primary/10 text-primary border border-primary/20">
               workflow: {workflow}
-              <button onClick={() => { const p = new URLSearchParams(searchParams); p.delete('workflow'); setSearchParams(p) }}>✕</button>
+              <button onClick={() => { const p = new URLSearchParams(searchParams); p.delete('workflow'); setSearchParams(p) }}><X className="h-3 w-3" /></button>
             </span>
           )}
         </div>
