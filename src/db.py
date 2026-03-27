@@ -2,6 +2,8 @@
 import os
 
 import aiosqlite
+from alembic import command
+from alembic.config import Config
 
 from src.config import DB_PATH, DEFAULT_TOOLKIT_ID  # noqa: F401 — re-exported for consumers
 
@@ -9,12 +11,9 @@ from src.config import DB_PATH, DEFAULT_TOOLKIT_ID  # noqa: F401 — re-exported
 def run_migrations() -> None:
     """Run Alembic migrations (upgrade head) synchronously.
 
-    Called from the Docker entrypoint and the FastAPI lifespan.
+    Intended for use at application startup (e.g. from FastAPI lifespan hooks).
     Safe to call multiple times — Alembic skips already-applied migrations.
     """
-    from alembic.config import Config
-    from alembic import command
-
     # Locate alembic.ini relative to the project root
     project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     alembic_cfg = Config(os.path.join(project_root, "alembic.ini"))
