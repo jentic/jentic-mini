@@ -169,7 +169,7 @@ OpenAPI spec at `/openapi.json`.
 | Bootstrap | `GET /health` |
 | Search | `GET /search?q=TEXT` |
 | Inspect | `GET /inspect/{capability_id}` |
-| Execute | `POST /{upstream_host}/{path}` |
+| Execute | `{METHOD} /{upstream_host}/{path}` |
 | Workflows | `GET /workflows`, `POST /workflows/{slug}` |
 | Traces | `GET /traces`, `GET /traces/{trace_id}` |
 | Async jobs | `GET /jobs/{job_id}` |
