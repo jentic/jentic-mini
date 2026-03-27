@@ -66,15 +66,15 @@
   Values match @jentic/frontend-theme.
 */
 :root {
-  /* Primary scale */
-  --primary-300: hsl(192 35% 8%);     /* #0E1A1D - Darkest */
-  --primary-350: hsl(192 36% 13%);    /* #162629 - Card background */
-  --primary-400: hsl(192 38% 16%);    /* #193238 */
-  --primary-500: hsl(186 28% 26%);    /* #305256 */
-  --primary-700: hsl(185 18% 50%);    /* #689296 */
-  --primary-800: hsl(183 29% 72%);    /* #A3CACC */
-  --primary-900: hsl(189 15% 91%);    /* #E4EAEB */
-  --primary-950: hsl(180 11% 96%);    /* #F5F7F7 */
+  /* Primary scale (lower = lighter, higher = darker — standard Tailwind convention) */
+  --primary-50: hsl(180 11% 96%);     /* #F5F7F7 - Lightest */
+  --primary-100: hsl(189 15% 91%);    /* #E4EAEB */
+  --primary-300: hsl(183 29% 72%);    /* #A3CACC */
+  --primary-500: hsl(185 18% 50%);    /* #689296 */
+  --primary-700: hsl(186 28% 26%);    /* #305256 */
+  --primary-850: hsl(192 38% 16%);    /* #193238 */
+  --primary-900: hsl(192 36% 13%);    /* #162629 - Card background */
+  --primary-950: hsl(192 35% 8%);     /* #0E1A1D - Darkest */
 
   /* Accent colors */
   --accent-orange: hsl(31 97% 73%);   /* #FDBD79 */
@@ -84,25 +84,25 @@
   --accent-blue: hsl(203 78% 67%);    /* #68BAEC */
 
   /* Semantic mappings */
-  --background: var(--primary-300);
-  --background-secondary: var(--primary-400);
-  --card: var(--primary-350);
+  --background: var(--primary-950);
+  --background-secondary: var(--primary-850);
+  --card: var(--primary-900);
   --card-foreground: hsl(0 0% 100%);
-  --border: var(--primary-500);
-  --border-hover: var(--primary-700);
+  --border: var(--primary-700);
+  --border-hover: var(--primary-500);
   --foreground: hsl(0 0% 100%);
-  --foreground-lighter: var(--primary-900);
-  --muted: var(--primary-400);
-  --muted-foreground: var(--primary-900);
-  --primary: var(--primary-800);
-  --primary-hover: var(--primary-900);
-  --primary-foreground: var(--primary-300);
+  --foreground-lighter: var(--primary-100);
+  --muted: var(--primary-850);
+  --muted-foreground: var(--primary-100);
+  --primary: var(--primary-300);
+  --primary-hover: var(--primary-100);
+  --primary-foreground: var(--primary-950);
   --success: hsl(162 66% 62%);
   --warning: hsl(52 78% 75%);
   --danger: hsl(358 64% 80%);
   --destructive: hsl(13 87% 46%);     /* #DB3B0F */
   --destructive-foreground: hsl(0 0% 100%);
-  --ring: var(--primary-800);
+  --ring: var(--primary-300);
   --radius: 0.75rem;
 }
 
