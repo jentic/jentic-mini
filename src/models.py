@@ -163,6 +163,8 @@ class ToolkitOut(BaseModel):
     description: str | None = None
     created_at: float | None = None
     disabled: bool = False
+    key_count: int | None = None
+    credential_count: int | None = None
     keys: list[ToolkitKeyOut] = Field(default_factory=list)
     credentials: list[CredentialBindingOut] = Field(default_factory=list)
     permissions: list[dict] = Field(default_factory=list)

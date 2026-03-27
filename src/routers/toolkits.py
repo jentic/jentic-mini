@@ -270,19 +270,26 @@ async def list_toolkits(request: Request):
             """
             SELECT
                 t.id, t.name, t.description, t.simulate, t.disabled, t.created_at,
-                COUNT(DISTINCT tk.id) AS key_count,
-                COUNT(DISTINCT tc.rowid) AS bound_credential_count
+                COALESCE(tk.key_count, 0) AS key_count,
+                COALESCE(tc.bound_credential_count, 0) AS bound_credential_count
             FROM toolkits t
-            LEFT JOIN toolkit_keys tk ON t.id = tk.toolkit_id AND tk.revoked_at IS NULL
-            LEFT JOIN toolkit_credentials tc ON t.id = tc.toolkit_id
-            GROUP BY t.id
+            LEFT JOIN (
+                SELECT toolkit_id, COUNT(*) AS key_count
+                FROM toolkit_keys
+                WHERE revoked_at IS NULL
+                GROUP BY toolkit_id
+            ) AS tk ON t.id = tk.toolkit_id
+            LEFT JOIN (
+                SELECT toolkit_id, COUNT(*) AS bound_credential_count
+                FROM toolkit_credentials
+                GROUP BY toolkit_id
+            ) AS tc ON t.id = tc.toolkit_id
             """
         ) as cur:
             rows = await cur.fetchall()
 
         # The default toolkit implicitly sees ALL credentials, not just
         # those explicitly bound via toolkit_credentials.
-        total_cred_count = 0
         async with db.execute("SELECT COUNT(*) FROM credentials") as cur:
             total_cred_count = (await cur.fetchone())[0]
 
