@@ -36,13 +36,13 @@ You can see the execution trace in the Jentic Mini UI at **Traces** (`http://loc
 
 ## Part 2: Gmail (OAuth Credentials + Fine-Grained Permissions)
 
-Now for the real power. We're going to:
+This time we'll:
 
 1. Connect a Gmail account via OAuth (the agent never sees the token)
 2. Set permissions so the agent can **create drafts but not send emails**
 3. Have the agent create a draft through the broker
 
-This is the example that makes people go "oh, I get it" — because Gmail's own OAuth scopes don't offer "drafts only, no send." Jentic Mini's permission rules give you control that the upstream API doesn't provide natively.
+Gmail's own OAuth scopes don't offer "drafts only, no send" — `gmail.compose` grants both. Jentic Mini's permission rules add that boundary at the proxy layer.
 
 ### Step 1 — Connect Gmail
 
