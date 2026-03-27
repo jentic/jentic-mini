@@ -2,7 +2,7 @@
 
 This tutorial connects the Notion API to Jentic Mini and shows how the permissions model works in practice. Your agent will try to create a page, get blocked, request access, and then succeed — all through natural conversation.
 
-> **Prerequisites:** You need Jentic Mini running and connected to your agent. If you haven't set that up yet, the fastest path is via the [Jentic skill on ClawHub](https://clawhub.com) — tell your OpenClaw agent *"install and set up the jentic skill from ClawHub"* and it will walk you through everything. For manual setup, see [Getting Started](../README.md#getting-started).
+> **Prerequisites:** You need Jentic Mini running and connected to your agent. If you haven't set that up yet, the fastest path is via the [Jentic skill on ClawHub](https://clawhub.com) — tell your OpenClaw agent *"install and set up the jentic skill from ClawHub"* and it will walk you through everything. For manual setup, see [Getting Started](../../README.md#getting-started).
 
 You'll also need a Notion account with a [Notion integration](https://www.notion.so/my-integrations) (free to create).
 
@@ -92,16 +92,16 @@ The agent will attempt to call the Notion API with a DELETE or an archive PATCH.
 
 ## Next: Gmail with OAuth and fine-grained permissions
 
-The Notion example uses a simple API key. For APIs that require OAuth (Gmail, Slack, Google Drive, etc.), Jentic Mini integrates with [Pipedream Connect](PIPEDREAM.md) to handle the OAuth flow — your agent generates a link, you click it, and the token is stored in the vault automatically.
+The Notion example uses a simple API key. For APIs that require OAuth (Gmail, Slack, Google Drive, etc.), Jentic Mini integrates with [Pipedream Connect](../PIPEDREAM.md) to handle the OAuth flow — your agent generates a link, you click it, and the token is stored in the vault automatically.
 
-The [Gmail tutorial](TUTORIAL-GMAIL.md) walks through connecting Gmail and setting permissions so your agent can draft emails but not send them — a boundary that Gmail's own OAuth scopes don't offer.
+The [Gmail tutorial](02-gmail-oauth-permissions.md) walks through connecting Gmail and setting permissions so your agent can draft emails but not send them — a boundary that Gmail's own OAuth scopes don't offer.
 
 ---
 
 ## More next steps
 
 - **Add more APIs** — ask your agent to search the Jentic catalog for any API you use, or browse at `http://localhost:8900/catalog`
-- **Connect OAuth apps** — Slack, Google Drive, Salesforce, and 3,000+ more via [Pipedream Connect](PIPEDREAM.md)
+- **Connect OAuth apps** — Slack, Google Drive, Salesforce, and 3,000+ more via [Pipedream Connect](../PIPEDREAM.md)
 - **Create additional toolkits** — scope different agents to different APIs and permissions
-- **Explore workflows** — multi-step Arazzo workflows chain operations across APIs — see [WORKFLOWS.md](WORKFLOWS.md)
+- **Explore workflows** — multi-step Arazzo workflows chain operations across APIs — see [WORKFLOWS.md](../WORKFLOWS.md)
 - **Read the full API docs** — Swagger UI at `http://localhost:8900/docs`

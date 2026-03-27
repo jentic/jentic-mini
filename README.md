@@ -21,7 +21,7 @@ injecting credentials at runtime, and brokering the request. Secrets never touch
 
 **Just want Jentic Mini standalone?** See [Getting Started](#getting-started) below.
 
-**Already running?** Jump to the [hands-on tutorial](docs/TUTORIAL.md) — connect the Notion API, see the permissions model in action, and have your agent create pages with controlled access.
+**Already running?** Jump to the [hands-on tutorial](docs/tutorials/01-notion-permissions.md) — connect the Notion API, see the permissions model in action, and have your agent create pages with controlled access.
 
 ## What is Jentic Mini?
 
@@ -89,7 +89,7 @@ docker compose up -d
 
 Open `http://localhost:8900` to complete setup.
 
-**Next:** Follow the [hands-on tutorial](docs/TUTORIAL.md) — connect the Notion API and see the permissions model in action.
+**Next:** Follow the [hands-on tutorial](docs/tutorials/01-notion-permissions.md) — connect the Notion API and see the permissions model in action.
 
 ### Configuration
 
