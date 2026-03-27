@@ -1,7 +1,6 @@
 import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '../api/client'
-import { Card, CardBody } from '../components/ui/Card'
 import { Badge } from '../components/ui/Badge'
 import { Workflow, ChevronRight, Zap, Globe } from 'lucide-react'
 
@@ -22,54 +21,54 @@ export default function WorkflowsPage() {
 
       {isLoading ? (
         <div className="text-center py-16 text-muted-foreground">Loading workflows...</div>
-      ) : !workflows || workflows.length === 0 ? (
-        <Card>
-          <CardBody>
-            <div className="text-center py-12 text-muted-foreground">
-              <Workflow className="h-10 w-10 mx-auto mb-3 opacity-30" />
-              <p className="font-medium text-foreground">No workflows registered</p>
-              <p className="text-sm mt-1">Import an Arazzo workflow file to get started.</p>
-            </div>
-          </CardBody>
-        </Card>
+      ) : !workflows || !Array.isArray(workflows) || workflows.length === 0 ? (
+        <div className="p-12 text-center text-muted-foreground bg-muted border border-dashed border-border rounded-xl">
+          <Workflow className="h-10 w-10 mx-auto mb-3 opacity-30" />
+          <p className="font-medium text-foreground">No workflows registered</p>
+          <p className="text-sm mt-1">Import an Arazzo workflow file to get started.</p>
+        </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="space-y-2">
           {workflows.map((wf: any) => (
-            <Card
+            <div
               key={wf.slug}
-              hoverable
               onClick={() => navigate(`/workflows/${wf.slug}`)}
-              className="p-5 space-y-3"
+              className="flex items-center gap-4 px-5 py-3.5 bg-muted border border-border rounded-xl hover:border-primary/40 transition-colors cursor-pointer"
             >
-              <div className="flex items-start justify-between">
-                <div className="flex items-center gap-2">
-                  <Workflow className="h-4 w-4 text-accent-pink" />
-                  <h3 className="font-heading font-semibold text-foreground">{wf.name ?? wf.slug}</h3>
+              <div className="flex-1 min-w-0 space-y-1">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <Workflow className="h-3.5 w-3.5 text-accent-pink shrink-0" />
+                  <p className="font-medium text-foreground text-sm truncate">
+                    {wf.name ?? wf.slug}
+                  </p>
+                  <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-mono border shrink-0 ${
+                    wf.source === 'local'
+                      ? 'bg-success/10 text-success border-success/20'
+                      : 'bg-accent-yellow/10 text-accent-yellow border-accent-yellow/20'
+                  }`}>
+                    {wf.source === 'local' ? <Zap className="h-2.5 w-2.5" /> : <Globe className="h-2.5 w-2.5" />}
+                    {wf.source === 'local' ? 'local' : 'catalog'}
+                  </span>
+                  {wf.steps_count > 0 && (
+                    <Badge variant="default" className="text-[10px]">{wf.steps_count} steps</Badge>
+                  )}
                 </div>
-                <ChevronRight className="h-4 w-4 text-muted-foreground" />
-              </div>
-
-              {wf.description && (
-                <p className="text-sm text-muted-foreground line-clamp-2">{wf.description}</p>
-              )}
-
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-mono border shrink-0 ${
-                  wf.source === 'local'
-                    ? 'bg-success/10 text-success border-success/20'
-                    : 'bg-accent-yellow/10 text-accent-yellow border-accent-yellow/20'
-                }`}>
-                  {wf.source === 'local' ? <Zap className="h-2.5 w-2.5" /> : <Globe className="h-2.5 w-2.5" />}
-                  {wf.source === 'local' ? 'local' : 'catalog'}
-                </span>
-                {wf.steps_count > 0 && (
-                  <Badge variant="default">{wf.steps_count} steps</Badge>
+                {wf.description && (
+                  <p className="text-xs text-muted-foreground line-clamp-1">{wf.description}</p>
                 )}
-                {wf.involved_apis?.map((apiId: any) => (
-                  <Badge key={apiId} variant="default" className="font-mono text-[10px]">{apiId}</Badge>
-                ))}
+                {wf.involved_apis && wf.involved_apis.length > 0 && (
+                  <div className="flex items-center gap-1 flex-wrap">
+                    {wf.involved_apis.slice(0, 3).map((apiId: any) => (
+                      <Badge key={apiId} variant="default" className="font-mono text-[10px]">{apiId}</Badge>
+                    ))}
+                    {wf.involved_apis.length > 3 && (
+                      <span className="text-[10px] text-muted-foreground">+{wf.involved_apis.length - 3} more</span>
+                    )}
+                  </div>
+                )}
               </div>
-            </Card>
+              <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
+            </div>
           ))}
         </div>
       )}
