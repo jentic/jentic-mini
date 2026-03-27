@@ -16,7 +16,7 @@ import httpx
 
 from src.auth import APIKeyMiddleware
 from src.negotiate import negotiate_middleware
-from src.db import init_db, setup_state
+from src.db import run_migrations, setup_state
 from src.routers import apis as apis_router
 from src.routers import search as search_router
 from src.routers import credentials as creds_router
@@ -52,8 +52,8 @@ log = logging.getLogger("jentic")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    log.info("Jentic starting — initialising DB")
-    await init_db()
+    log.info("Jentic starting — running migrations")
+    run_migrations()
     log.info("Jentic building BM25 index")
     await rebuild_index_on_startup()
     log.info("Jentic self-registering")

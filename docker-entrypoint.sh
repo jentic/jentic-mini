@@ -5,8 +5,8 @@ set -e
 
 export PYTHONPATH=/app
 
-echo "[entrypoint] Initialising database schema..."
-python3 -c "import asyncio; from src.db import init_db; asyncio.run(init_db())"
+echo "[entrypoint] Running database migrations..."
+python3 -m alembic upgrade head
 
 echo "[entrypoint] Seeding broker app mappings..."
 python3 -c "import asyncio; from src.startup import seed_broker_apps; asyncio.run(seed_broker_apps())"
