@@ -16,12 +16,19 @@ The broker:
 Special request headers:
   X-Jentic-API-Key    — Jentic authentication (handled by auth middleware)
   X-Jentic-Simulate   — "true" to skip the upstream call and return would_send
-  X-Jentic-Credential — credential alias when multiple creds exist for same API
+  X-Jentic-Credential — credential alias; acts as a HARD OVERRIDE — the named
+                        credential is used for both policy enforcement and injection,
+                        bypassing host-matching auto-selection entirely. Required when
+                        multiple credentials share the same upstream host (e.g. multiple
+                        Google services all routing through googleapis.com).
   X-Jentic-Callback   — webhook URL for async result delivery (TODO: phase 2)
 
 Response headers added:
-  X-Jentic-Error      — "true" when the error is from Jentic, not upstream
-  X-Jentic-Execution-Id — trace ID (exec_*) for this broker call
+  X-Jentic-Error           — "true" when the error is from Jentic, not upstream
+  X-Jentic-Execution-Id    — trace ID (exec_*) for this broker call
+  X-Jentic-Credential-Used — ID of the credential actually injected (always set when
+                             a credential was used, enabling callers to detect wrong-
+                             credential selection on multi-service hosts)
 """
 import json
 import time
@@ -73,8 +80,11 @@ async def _resolve_credential_ids(host: str, toolkit_id: str | None) -> tuple[st
     api_id = None
     async with get_db() as db:
         for candidate in candidates:
+            # ORDER BY length(id) DESC ensures longest (most specific) match wins,
+            # making selection deterministic when multiple APIs share a host prefix
+            # (e.g. googleapis.com/calendar vs googleapis.com/gmail).
             async with db.execute(
-                "SELECT id FROM apis WHERE id=? OR id LIKE ?",
+                "SELECT id FROM apis WHERE id=? OR id LIKE ? ORDER BY length(id) DESC LIMIT 1",
                 (candidate, f"{candidate}%"),
             ) as cur:
                 row = await cur.fetchone()
@@ -541,18 +551,39 @@ async def broker(request: Request, target: str):
     # We resolve the api_id and credential IDs first — without decrypting —
     # so policy can be enforced before the vault is ever touched.
     # Denied requests never decrypt a credential.
+    #
+    # X-Jentic-Credential is a HARD OVERRIDE: when the caller names a specific
+    # credential, policy is checked against THAT credential — not whatever the
+    # host-matching heuristic would pick. This is critical for multi-service hosts
+    # (e.g. googleapis.com) where auto-selection would otherwise target the wrong
+    # credential (e.g. Calendar when the caller wants Gmail), causing spurious 403s
+    # with a misleading credential_id in the error body.
     _api_id_for_host: str | None = None
     _resolved_cred_ids: list[str] = []
-    try:
-        _api_id_for_host, _resolved_cred_ids = await _resolve_credential_ids(
-            host=upstream_host, toolkit_id=toolkit_id
-        )
-    except Exception:
-        pass  # resolution failure handled below in full lookup
+
+    if credential_alias and toolkit_id:
+        # Hard override: use the named credential directly for policy enforcement.
+        # Also attempt to resolve api_id for context (error messages etc.) but
+        # never let it change which credential gets checked.
+        _resolved_cred_ids = [credential_alias]
+        try:
+            _api_id_for_host, _ = await _resolve_credential_ids(
+                host=upstream_host, toolkit_id=toolkit_id
+            )
+        except Exception:
+            pass
+    else:
+        try:
+            _api_id_for_host, _resolved_cred_ids = await _resolve_credential_ids(
+                host=upstream_host, toolkit_id=toolkit_id
+            )
+        except Exception:
+            pass  # resolution failure handled below in full lookup
 
     if toolkit_id and _resolved_cred_ids:
         from src.routers.toolkits import check_credential_policy
-        # Check against the first matched credential (primary)
+        # Check against the first matched credential (primary).
+        # When credential_alias is set this is always the aliased credential.
         primary_cred_id = _resolved_cred_ids[0]
         try:
             allowed, reason = await check_credential_policy(
@@ -874,6 +905,10 @@ async def broker(request: Request, target: str):
         if k.lower() not in _HOP_BY_HOP
     }
     response_headers["X-Jentic-Execution-Id"] = execution_id
+    # Always surface which credential was injected so callers can detect
+    # silent wrong-credential selection (especially for multi-service hosts).
+    if credential_id:
+        response_headers["X-Jentic-Credential-Used"] = credential_id
 
     # ── Confirm pending overlay on first successful call ──────────────────────
     if api_id and upstream_response.status_code < 400:

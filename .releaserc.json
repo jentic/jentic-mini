@@ -1,0 +1,18 @@
+{
+  "branches": [
+    { "name": "main" }
+  ],
+  "tagFormat": "v${version}",
+  "plugins": [
+    "@semantic-release/commit-analyzer",
+    "@semantic-release/release-notes-generator",
+    ["@semantic-release/exec", {
+      "prepareCmd": "sed -i 's/^ARG APP_VERSION=.*/ARG APP_VERSION=${nextRelease.version}/' Dockerfile"
+    }],
+    ["@semantic-release/git", {
+      "assets": ["Dockerfile"],
+      "message": "chore(release): cut the ${nextRelease.version} release\n\n${nextRelease.notes}"
+    }],
+    "@semantic-release/github"
+  ]
+}

@@ -12,10 +12,11 @@ from fastapi.openapi.docs import get_redoc_html
 from fastapi.openapi.utils import get_openapi
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, HTMLResponse
+import httpx
 
 from src.auth import APIKeyMiddleware
 from src.negotiate import negotiate_middleware
-from src.db import init_db, setup_state
+from src.db import run_migrations, setup_state
 from src.routers import apis as apis_router
 from src.routers import search as search_router
 from src.routers import credentials as creds_router
@@ -37,10 +38,9 @@ from src.routers import default_key as default_key_router
 from src.routers import oauth_brokers as oauth_brokers_router
 from src.routers.apis import rebuild_index_on_startup
 from src.routers.catalog import refresh_catalog_if_stale
+from src.config import APP_VERSION
 from src.startup import self_register, seed_broker_apps
 from src.utils import build_absolute_url
-
-APP_VERSION = os.getenv("APP_VERSION", "0.1.0")
 
 logging.basicConfig(level=(os.getenv("LOG_LEVEL") or "info").upper())
 logging.getLogger("aiosqlite").setLevel(logging.WARNING)
@@ -52,8 +52,8 @@ log = logging.getLogger("jentic")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    log.info("Jentic starting — initialising DB")
-    await init_db()
+    log.info("Jentic starting — running migrations")
+    run_migrations()
     log.info("Jentic building BM25 index")
     await rebuild_index_on_startup()
     log.info("Jentic self-registering")
@@ -235,13 +235,11 @@ async def get_version():
     if os.getenv("JENTIC_TELEMETRY", "").lower() == "off":
         return {"current": APP_VERSION, "latest": None, "release_url": None}
 
-    global _version_cache
     now = time.time()
     if now - _version_cache["ts"] > _VERSION_CACHE_TTL:
         # Mark attempt immediately so concurrent requests don't pile up
         _version_cache["ts"] = now
         try:
-            import httpx
             async with httpx.AsyncClient() as client:
                 r = await client.get(
                     "https://api.github.com/repos/jentic/jentic-mini/releases/latest",
@@ -250,7 +248,8 @@ async def get_version():
                 )
                 if r.status_code == 200:
                     data = r.json()
-                    _version_cache["latest"] = data.get("tag_name")
+                    tag = data.get("tag_name") or ""
+                    _version_cache["latest"] = tag.lstrip("v") or None
                     _version_cache["release_url"] = data.get("html_url")
                 # 404 = no releases yet; 403/429 = rate limited — stay silent
         except Exception:
@@ -272,53 +271,13 @@ async def favicon():
     return FileResponse(path, media_type="image/png")
 
 
-@app.get("/login", include_in_schema=False)
-async def login_page(error: str | None = None):
-    """Human-friendly login form — POSTs to /user/login?redirect_to=/docs."""
-    from fastapi.responses import HTMLResponse
-    err_html = f'<p class="error">{error}</p>' if error else ""
-    html = f"""<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Jentic Mini — Log In</title>
-  <style>
-    * {{ box-sizing: border-box; margin: 0; padding: 0; }}
-    body {{ background: #1a1a2e; color: #e0e0e0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-           display: flex; align-items: center; justify-content: center; min-height: 100vh; }}
-    .card {{ background: #16213e; border: 1px solid #0f3460; border-radius: 12px; padding: 2.5rem; width: 100%; max-width: 380px; }}
-    h1 {{ font-size: 1.4rem; color: #a5b4fc; margin-bottom: 0.25rem; }}
-    .sub {{ font-size: 0.85rem; color: #888; margin-bottom: 1.75rem; }}
-    label {{ display: block; font-size: 0.8rem; color: #aaa; margin-bottom: 0.35rem; margin-top: 1rem; }}
-    input {{ width: 100%; padding: 0.6rem 0.8rem; background: #0f3460; border: 1px solid #334; border-radius: 6px;
-             color: #e0e0e0; font-size: 0.95rem; outline: none; }}
-    input:focus {{ border-color: #a5b4fc; }}
-    button {{ margin-top: 1.5rem; width: 100%; padding: 0.7rem; background: #6366f1; border: none; border-radius: 6px;
-              color: #fff; font-size: 1rem; cursor: pointer; font-weight: 600; }}
-    button:hover {{ background: #818cf8; }}
-    .error {{ color: #f87171; font-size: 0.85rem; margin-top: 1rem; text-align: center; }}
-    .back {{ text-align: center; margin-top: 1rem; font-size: 0.8rem; }}
-    .back a {{ color: #a5b4fc; text-decoration: none; }}
-  </style>
-</head>
-<body>
-  <div class="card">
-    <h1>Jentic Mini</h1>
-    <p class="sub">Admin login</p>
-    <form method="POST" action="/user/login?redirect_to=/docs">
-      <label for="username">Username</label>
-      <input id="username" name="username" type="text" autocomplete="username" required autofocus>
-      <label for="password">Password</label>
-      <input id="password" name="password" type="password" autocomplete="current-password" required>
-      {err_html}
-      <button type="submit">Log in →</button>
-    </form>
-    <p class="back"><a href="/docs">← Back to API docs</a></p>
-  </div>
-</body>
-</html>"""
-    return HTMLResponse(html)
+@app.get("/llms.txt", tags=["meta"], include_in_schema=False)
+async def llms_txt():
+    """Machine-readable summary for LLMs (https://llmstxt.org/)."""
+    path = Path(__file__).resolve().parent.parent / "llms.txt"
+    if path.exists():
+        return FileResponse(path, media_type="text/plain; charset=utf-8")
+    return Response(content="# Jentic Mini\n", media_type="text/plain; charset=utf-8")
 
 
 @app.get("/", tags=["meta"], include_in_schema=False)
@@ -402,7 +361,7 @@ if STATIC_DIR.exists():
 # Browsers (Accept: text/html) get the React SPA.
 _SPA_PATHS = {
     "/approve", "/search", "/catalog", "/workflows", "/toolkits",
-    "/credentials", "/traces", "/jobs", "/oauth-brokers", "/setup",
+    "/credentials", "/traces", "/jobs", "/oauth-brokers", "/setup", "/login",
 }
 
 @app.middleware("http")

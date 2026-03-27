@@ -8,7 +8,7 @@ RUN cd ui && npm ci --ignore-scripts && npm run build
 # Stage 2: Python runtime
 FROM python:3.11-slim
 
-ARG APP_VERSION=0.1.0
+ARG APP_VERSION=0.2.5
 ENV APP_VERSION=${APP_VERSION}
 
 LABEL maintainer="vladimir@jentic.com" \
@@ -37,11 +37,15 @@ RUN mkdir -p /app/data /app/src
 # Copy source into /app/src so that `from src.xxx` imports work from WORKDIR /app
 COPY src/ /app/src/
 
+# Copy Alembic migration config and scripts
+COPY alembic.ini /app/alembic.ini
+COPY alembic/ /app/alembic/
+
 # Copy built UI assets from stage 1 — placed outside /app/src/ so the
 # dev bind mount (./src:/app/src) doesn't hide them at runtime.
 COPY --from=ui-build /build/static/ /app/static/
 
-COPY --chmod=0644 LICENSE NOTICE /app/
+COPY --chmod=0644 LICENSE NOTICE llms.txt /app/
 COPY --chmod=0755 docker-entrypoint.sh /app/docker-entrypoint.sh
 
 # Run as non-root

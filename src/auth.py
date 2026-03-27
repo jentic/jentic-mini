@@ -59,10 +59,10 @@ JWT_REFRESH_AFTER = 24 * 3600      # re-issue after 1 day of age
 
 # ── Paths that never need a key ───────────────────────────────────────────────
 SKIP = {
-    "/", "/health",
+    "/", "/health", "/llms.txt",
     "/docs", "/openapi.json", "/redoc",
     "/favicon.ico", "/favicon.png", "/favicon.svg",
-    "/login",  # HTML login form page (served from main.py)
+    "/login",  # React login page (SPA route)
     "/user/login",  # API login endpoint — must be public (bug fix: was missing)
     "/user/token",  # OAuth2 password grant for Swagger UI
     "/user/create",  # One-time root account creation — must be public before account exists
