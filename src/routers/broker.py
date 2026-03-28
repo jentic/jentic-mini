@@ -31,6 +31,7 @@ Response headers added:
                              credential selection on multi-service hosts)
 """
 import json
+import logging
 import time
 import asyncio
 from typing import Optional
@@ -39,6 +40,8 @@ from urllib.parse import unquote, urlparse
 import httpx
 from fastapi import APIRouter, Request, Response, HTTPException
 from fastapi.routing import APIRoute
+
+log = logging.getLogger("jentic.broker")
 
 from src.config import JENTIC_PUBLIC_HOSTNAME
 from src.db import get_db
@@ -585,8 +588,21 @@ async def broker(request: Request, target: str):
             _api_id_for_host, _resolved_cred_ids = await _resolve_credential_ids(
                 host=upstream_host, toolkit_id=toolkit_id
             )
-        except Exception:
-            pass  # resolution failure handled below in full lookup
+        except Exception as _resolve_exc:
+            # Fail closed: if we can't resolve credentials for policy checking,
+            # don't proceed to credential injection — deny the request.
+            log.error("Credential resolution failed for %s (toolkit=%s): %s",
+                              upstream_host, toolkit_id, _resolve_exc)
+            await _write_trace("error", 500, f"Credential resolution failed: {_resolve_exc}")
+            return Response(
+                content=json.dumps({
+                    "error": "CREDENTIAL_RESOLUTION_FAILED",
+                    "message": f"Could not resolve credentials for '{upstream_host}'. Request denied (fail-closed).",
+                }),
+                status_code=500,
+                media_type="application/json",
+                headers={"X-Jentic-Error": "true", "X-Jentic-Execution-Id": execution_id},
+            )
 
     if toolkit_id and _resolved_cred_ids:
         from src.routers.toolkits import check_credential_policy
@@ -615,8 +631,23 @@ async def broker(request: Request, target: str):
                     media_type="application/json",
                     headers={"X-Jentic-Error": "true", "X-Jentic-Execution-Id": execution_id},
                 )
-        except Exception:
-            pass  # policy check failure is non-fatal
+        except Exception as _policy_exc:
+            # Fail closed: if the policy check itself errors, deny the request
+            # rather than allowing it through unchecked.
+            log.error("Policy check failed for %s %s (cred=%s): %s",
+                      request.method, upstream_path, primary_cred_id, _policy_exc)
+            await _write_trace("error", 403, f"Policy check error: {_policy_exc}")
+            return Response(
+                content=json.dumps({
+                    "error": "POLICY_CHECK_FAILED",
+                    "message": f"Policy evaluation failed for credential '{primary_cred_id}'. Request denied (fail-closed).",
+                    "credential_id": primary_cred_id,
+                    "toolkit_id": toolkit_id,
+                }),
+                status_code=403,
+                media_type="application/json",
+                headers={"X-Jentic-Error": "true", "X-Jentic-Execution-Id": execution_id},
+            )
 
     # body_bytes initialised here so the OAuthBroker fallback can read it
     # without a double-read; the main forward path reads it again below if empty.
@@ -691,8 +722,21 @@ async def broker(request: Request, target: str):
                             media_type="application/json",
                             headers={"X-Jentic-Error": "true", "X-Jentic-Execution-Id": execution_id},
                         )
-                except Exception:
-                    pass  # policy check failure is non-fatal
+                except Exception as _pd_policy_exc:
+                    log.error("Pipedream policy check failed for %s %s (cred=%s): %s",
+                              request.method, upstream_path, pd_cred_id, _pd_policy_exc)
+                    await _write_trace("error", 403, f"Policy check error: {_pd_policy_exc}")
+                    return Response(
+                        content=json.dumps({
+                            "error": "POLICY_CHECK_FAILED",
+                            "message": f"Policy evaluation failed for credential '{pd_cred_id}'. Request denied (fail-closed).",
+                            "credential_id": pd_cred_id,
+                            "toolkit_id": toolkit_id,
+                        }),
+                        status_code=403,
+                        media_type="application/json",
+                        headers={"X-Jentic-Error": "true", "X-Jentic-Execution-Id": execution_id},
+                    )
 
             # Find the Pipedream broker instance and proxy using the credential's account_id
             from src.oauth_broker import registry as _oauth_registry
