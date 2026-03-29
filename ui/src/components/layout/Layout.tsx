@@ -41,7 +41,7 @@ function NavLink({
 
 function SidebarContents({ onClose }: { onClose?: () => void }) {
   const { updateAvailable, currentVersion, latestVersion, releaseUrl, upgradeAvailable } = useUpdateCheck()
-  const [upgrading, setUpgrading] = React.useState(false)
+  const [upgrading, setUpgrading] = useState(false)
   return (
     <aside className="w-60 bg-muted border-r border-border flex flex-col h-full">
       <div className="h-16 flex items-center px-6 border-b border-border shrink-0">
