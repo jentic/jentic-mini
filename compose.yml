@@ -20,3 +20,23 @@ services:
       # The built-in defaults (10/8, 172.16/12, 192.168/16, 127/8, ::1) always apply.
       JENTIC_TRUSTED_SUBNETS: ${JENTIC_TRUSTED_SUBNETS:-}
       LOG_LEVEL: ${LOG_LEVEL:-info}
+      WATCHTOWER_API_URL: http://jentic-watchtower:8080
+      WATCHTOWER_TOKEN: ${WATCHTOWER_TOKEN:-jentic-update}
+    labels:
+      com.centurylinklabs.watchtower.scope: "jentic"
+
+  watchtower:
+    image: containrrr/watchtower:latest
+    container_name: jentic-watchtower
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      WATCHTOWER_CLEANUP: "true"
+      WATCHTOWER_POLL_INTERVAL: "86400"
+      WATCHTOWER_SCOPE: "jentic"
+      WATCHTOWER_MONITOR_ONLY: "true"
+      WATCHTOWER_HTTP_API_UPDATE: "true"
+      WATCHTOWER_HTTP_API_TOKEN: ${WATCHTOWER_TOKEN:-jentic-update}
+    labels:
+      com.centurylinklabs.watchtower.scope: "jentic"

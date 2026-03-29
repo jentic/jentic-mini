@@ -40,7 +40,8 @@ function NavLink({
 }
 
 function SidebarContents({ onClose }: { onClose?: () => void }) {
-  const { updateAvailable, latestVersion, releaseUrl } = useUpdateCheck()
+  const { updateAvailable, currentVersion, latestVersion, releaseUrl, upgradeAvailable } = useUpdateCheck()
+  const [upgrading, setUpgrading] = React.useState(false)
   return (
     <aside className="w-60 bg-muted border-r border-border flex flex-col h-full">
       <div className="h-16 flex items-center px-6 border-b border-border shrink-0">
@@ -81,16 +82,36 @@ function SidebarContents({ onClose }: { onClose?: () => void }) {
       </nav>
 
       <div className="px-3 py-3 border-t border-border shrink-0">
-        {updateAvailable && releaseUrl && (
-          <a
-            href={releaseUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center gap-2 px-4 py-2 mb-1 rounded-md text-xs font-semibold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 hover:bg-amber-100 dark:hover:bg-amber-900/40 transition-colors"
-          >
-            <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse shrink-0" />
-            Update available: {latestVersion}
-          </a>
+        {updateAvailable && (
+          <div className="px-4 py-2 mb-1 rounded-md text-xs bg-amber-50 dark:bg-amber-950/40">
+            <div className="flex items-center gap-2 font-semibold text-amber-600 dark:text-amber-400">
+              <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse shrink-0" />
+              Update available: {latestVersion}
+            </div>
+            {upgradeAvailable ? (
+              <button
+                onClick={async () => {
+                  setUpgrading(true)
+                  try {
+                    await fetch('/admin/upgrade', { method: 'POST' })
+                  } catch { /* app will go offline during restart */ }
+                }}
+                disabled={upgrading}
+                className="mt-1.5 w-full px-2 py-1 rounded text-xs font-medium text-white bg-amber-600 hover:bg-amber-700 disabled:opacity-50 transition-colors"
+              >
+                {upgrading ? 'Updating...' : 'Update now'}
+              </button>
+            ) : releaseUrl ? (
+              <a
+                href={releaseUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="block mt-1 text-[10px] text-amber-600/70 dark:text-amber-400/70 hover:underline"
+              >
+                View release notes
+              </a>
+            ) : null}
+          </div>
         )}
         <a
           href="/docs"
@@ -112,6 +133,11 @@ function SidebarContents({ onClose }: { onClose?: () => void }) {
           <ExternalLink className="h-3 w-3 shrink-0" />
           More at jentic.com
         </a>
+        {currentVersion && (
+          <div className="px-4 pt-2 text-[10px] font-mono text-muted-foreground/50">
+            v{currentVersion}
+          </div>
+        )}
       </div>
     </aside>
   )
