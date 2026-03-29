@@ -56,7 +56,9 @@ function NavLink({
 }
 
 function SidebarContents({ onClose }: { onClose?: () => void }) {
-	const { updateAvailable, latestVersion, releaseUrl } = useUpdateCheck();
+	const { updateAvailable, currentVersion, latestVersion, releaseUrl, upgradeAvailable } =
+		useUpdateCheck();
+	const [upgrading, setUpgrading] = useState(false);
 	return (
 		<aside className="bg-muted border-border flex h-full w-60 flex-col border-r">
 			<div className="border-border flex h-16 shrink-0 items-center border-b px-6">
@@ -145,14 +147,42 @@ function SidebarContents({ onClose }: { onClose?: () => void }) {
 			</nav>
 
 			<div className="border-border shrink-0 border-t px-3 py-3">
-				{updateAvailable && releaseUrl && (
-					<AppLink
-						href={releaseUrl}
-						className="text-accent-yellow bg-accent-yellow/10 hover:bg-accent-yellow/20 mb-1 flex items-center gap-2 rounded-md px-4 py-2 text-xs font-semibold transition-colors"
-					>
-						<span className="bg-accent-yellow h-1.5 w-1.5 shrink-0 animate-pulse rounded-full" />
-						Update available: {latestVersion}
-					</AppLink>
+				{updateAvailable && (
+					<div className="bg-accent-yellow/10 mb-1 rounded-md px-4 py-2 text-xs">
+						<div className="text-accent-yellow flex items-center gap-2 font-semibold">
+							<span className="bg-accent-yellow h-1.5 w-1.5 shrink-0 animate-pulse rounded-full" />
+							Update available: {latestVersion}
+						</div>
+						{upgradeAvailable ? (
+							<Button
+								type="button"
+								size="sm"
+								onClick={async () => {
+									setUpgrading(true);
+									try {
+										const res = await fetch('/admin/upgrade', {
+											method: 'POST',
+											credentials: 'include',
+										});
+										if (!res.ok) setUpgrading(false);
+									} catch {
+										/* app will go offline during restart */
+									}
+								}}
+								disabled={upgrading}
+								className="bg-accent-yellow hover:bg-accent-yellow/80 mt-1.5 w-full text-xs font-medium text-white disabled:opacity-50"
+							>
+								{upgrading ? 'Updating...' : 'Update now'}
+							</Button>
+						) : releaseUrl ? (
+							<AppLink
+								href={releaseUrl}
+								className="text-accent-yellow/70 hover:text-accent-yellow mt-1 block text-[10px] hover:underline"
+							>
+								View release notes
+							</AppLink>
+						) : null}
+					</div>
 				)}
 				<AppLink
 					href="/docs"
@@ -171,6 +201,11 @@ function SidebarContents({ onClose }: { onClose?: () => void }) {
 					<ExternalLink className="h-3 w-3 shrink-0" />
 					More at jentic.com
 				</AppLink>
+				{currentVersion && (
+					<div className="text-muted-foreground/50 px-4 pt-2 font-mono text-[10px]">
+						v{currentVersion}
+					</div>
+				)}
 			</div>
 		</aside>
 	);

@@ -150,6 +150,26 @@ See [docs/CATALOG.md](https://github.com/jentic/jentic-mini/blob/main/docs/CATAL
 
 The admin UI targets modern browsers: **Chrome 107+**, **Firefox 104+**, **Safari 16+**, **Edge 107+**.
 
+## Updating
+
+The default `compose.yml` includes [Watchtower](https://containrrr.dev/watchtower/) in monitor-only mode — it checks for new images daily but **never applies updates automatically**. When a new version is available, the UI sidebar shows an "Update now" button. Click it and the update is applied (the app restarts briefly).
+
+**Without Watchtower** (or if you prefer the command line):
+
+```bash
+./jentic-update.sh
+```
+
+Or manually:
+
+```bash
+docker compose pull jentic-mini && docker compose up -d jentic-mini
+```
+
+Database migrations run automatically on startup via Alembic, so your data is preserved across updates.
+
+To disable the update check entirely, set `JENTIC_TELEMETRY=off`.
+
 ## Development
 
 Prerequisites for local development without Docker:

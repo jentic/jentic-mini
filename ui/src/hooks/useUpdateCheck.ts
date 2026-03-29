@@ -5,6 +5,7 @@ interface UpdateStatus {
 	latestVersion: string | null;
 	updateAvailable: boolean;
 	releaseUrl: string | null;
+	upgradeAvailable: boolean;
 }
 
 function parseSemver(v: string): number[] {
@@ -35,6 +36,7 @@ export function useUpdateCheck(): UpdateStatus {
 		latestVersion: null,
 		updateAvailable: false,
 		releaseUrl: null,
+		upgradeAvailable: false,
 	});
 
 	useEffect(() => {
@@ -64,11 +66,13 @@ export function useUpdateCheck(): UpdateStatus {
 				if (!latestVersion) return;
 
 				const updateAvailable = isNewer(latestVersion, currentVersion);
+				const upgradeAvailable = updateAvailable && !!data.upgrade_available;
 				const result: UpdateStatus = {
 					currentVersion,
 					latestVersion,
 					updateAvailable,
 					releaseUrl,
+					upgradeAvailable,
 				};
 
 				try {

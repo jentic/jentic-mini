@@ -259,7 +259,45 @@ async def get_version():
         "current": APP_VERSION,
         "latest": _version_cache["latest"],
         "release_url": _version_cache["release_url"],
+        "upgrade_available": bool(os.getenv("WATCHTOWER_API_URL")),
     }
+
+
+@app.post("/admin/upgrade", tags=["meta"], include_in_schema=False)
+async def trigger_upgrade(request: Request):
+    """Trigger a one-click upgrade via Watchtower's HTTP API.
+
+    Requires a human session. Watchtower must be running in monitor-only
+    + HTTP API mode (the default compose.yml configuration).
+    """
+    if not getattr(request.state, "is_human_session", False):
+        from fastapi import HTTPException
+        raise HTTPException(403, "Upgrade requires a human session.")
+
+    watchtower_url = os.getenv("WATCHTOWER_API_URL")
+    if not watchtower_url:
+        from fastapi import HTTPException
+        raise HTTPException(
+            501,
+            "Watchtower is not configured. Set WATCHTOWER_API_URL or use "
+            "the manual upgrade command: docker compose pull && docker compose up -d",
+        )
+
+    watchtower_token = os.getenv("WATCHTOWER_TOKEN", "jentic-update")
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.post(
+                f"{watchtower_url}/v1/update",
+                headers={"Authorization": f"Bearer {watchtower_token}"},
+                timeout=10.0,
+            )
+        return {
+            "status": "update_triggered",
+            "message": "Watchtower is pulling the latest image. The app will restart shortly.",
+        }
+    except Exception as e:
+        from fastapi import HTTPException
+        raise HTTPException(502, f"Could not reach Watchtower: {e}")
 
 
 @app.get("/favicon.ico", include_in_schema=False)
