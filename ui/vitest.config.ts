@@ -5,6 +5,9 @@ import { playwright } from '@vitest/browser-playwright'
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
+  optimizeDeps: {
+    include: ['@jentic/arazzo-ui', 'react-dom/client'],
+  },
   test: {
     browser: {
       enabled: true,
@@ -15,7 +18,7 @@ export default defineConfig({
     setupFiles: ['./src/__tests__/setup.ts'],
     include: ['src/**/*.test.{ts,tsx}'],
     coverage: {
-      provider: 'v8',
+      provider: 'istanbul',
       reporter: ['text', 'html', 'lcov'],
       include: [
         'src/components/ui/**',
