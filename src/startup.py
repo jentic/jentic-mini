@@ -19,11 +19,11 @@ import uuid
 
 from src.db import get_db
 from src.brokers.pipedream import _API_ID_TO_PD_SLUG as _PIPEDREAM_APP_SEEDS
-from src.config import JENTIC_PUBLIC_HOSTNAME
+from src.config import JENTIC_PUBLIC_HOSTNAME, DATA_DIR
 
 _REGISTER_INSTALL_URL = "https://api.jentic.com/api/v1/register-install"
-_INSTALL_ID_FILE = pathlib.Path("/app/data/install-id.txt")
-_INSTALL_REGISTERED_FILE = pathlib.Path("/app/data/install-registered.txt")
+_INSTALL_ID_FILE = DATA_DIR / "install-id.txt"
+_INSTALL_REGISTERED_FILE = DATA_DIR / "install-registered.txt"
 
 log = logging.getLogger("jentic")
 
@@ -151,8 +151,9 @@ async def _ensure_spec_imported(app=None) -> None:
         spec["servers"] = [{"url": f"https://{hostname}"}]
 
         from src.routers.import_ import _register_openapi
+        from src.config import SPECS_DIR
         import json, pathlib
-        specs_dir = pathlib.Path("/app/data/specs")
+        specs_dir = SPECS_DIR
         specs_dir.mkdir(parents=True, exist_ok=True)
         saved_path = str(specs_dir / "jentic-mini.json")
         pathlib.Path(saved_path).write_text(json.dumps(spec))
