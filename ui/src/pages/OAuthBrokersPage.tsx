@@ -44,7 +44,7 @@ function AddBrokerForm({ onClose }: { onClose: () => void }) {
     setForm(f => ({ ...f, [field]: e.target.value }))
 
   const inputClass =
-    'w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-primary/50'
+    'w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-hidden focus:ring-1 focus:ring-primary/50'
 
   return (
     <div className="bg-muted border border-border rounded-xl p-4 space-y-4">
@@ -132,7 +132,7 @@ function CatalogSearch({ onSelect, mirrorValue }: { onSelect: (apiId: string) =>
   return (
     <div className="space-y-1.5">
       <input
-        className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-primary/50"
+        className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-hidden focus:ring-1 focus:ring-primary/50"
         value={q}
         onChange={e => { setQ(e.target.value); if (e.target.value === '') { setDirty(false) } else { setDirty(true) }; setSelected('') }}
         placeholder="Search catalog, e.g. gmail, slack, github"
@@ -176,7 +176,7 @@ function ConnectAccountPanel({ brokerId, externalUserId, onDone }: { brokerId: s
   })
 
   const inputClass =
-    'w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-primary/50'
+    'w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-hidden focus:ring-1 focus:ring-primary/50'
 
   if (connectLink) {
     return (

@@ -135,7 +135,7 @@ function RequestAccessDialog({ toolkitId, onClose }: { toolkitId: string; onClos
           <div>
             <label className="text-xs text-muted-foreground block mb-1">Request Type</label>
             <select value={requestType} onChange={e => setRequestType(e.target.value as any)}
-              className="w-full bg-background border border-border rounded-lg px-3 py-2 text-foreground focus:border-primary focus:outline-none">
+              className="w-full bg-background border border-border rounded-lg px-3 py-2 text-foreground focus:border-primary focus:outline-hidden">
               <option value="grant">Grant — bind a new credential to this toolkit</option>
               <option value="modify_permissions">Modify Permissions — update rules on an existing credential</option>
             </select>
@@ -144,7 +144,7 @@ function RequestAccessDialog({ toolkitId, onClose }: { toolkitId: string; onClos
           <div>
             <label className="text-xs text-muted-foreground block mb-1">Credential *</label>
             <select value={credentialId} onChange={e => setCredentialId(e.target.value)} required
-              className="w-full bg-background border border-border rounded-lg px-3 py-2 text-foreground focus:border-primary focus:outline-none">
+              className="w-full bg-background border border-border rounded-lg px-3 py-2 text-foreground focus:border-primary focus:outline-hidden">
               <option value="">Select a credential...</option>
               {credList.map((c: any) => (
                 <option key={c.id} value={c.id}>{c.label} {c.api_id ? `(${c.api_id})` : ''}</option>
@@ -161,7 +161,7 @@ function RequestAccessDialog({ toolkitId, onClose }: { toolkitId: string; onClos
             <label className="text-xs text-muted-foreground block mb-1">Reason (optional)</label>
             <textarea value={reason} onChange={e => setReason(e.target.value)} rows={2}
               placeholder="Explain why you need this access..."
-              className="w-full bg-background border border-border rounded-lg px-3 py-2 text-foreground focus:border-primary focus:outline-none resize-none" />
+              className="w-full bg-background border border-border rounded-lg px-3 py-2 text-foreground focus:border-primary focus:outline-hidden resize-none" />
           </div>
 
           {error && (
@@ -380,7 +380,7 @@ export default function ToolkitDetailPage() {
             <button
               onClick={() => { killswitchMutation.mutate(!toolkit.disabled); setKillswitchConfirming(false) }}
               disabled={killswitchMutation.isPending}
-              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors disabled:opacity-50 ${toolkit.disabled ? 'bg-primary text-background hover:bg-primary/80' : 'bg-danger text-white hover:bg-danger/80'}`}>
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors disabled:opacity-50 ${toolkit.disabled ? 'bg-primary text-background hover:bg-primary/80' : 'bg-danger text-destructive-foreground hover:bg-danger/80'}`}>
               {toolkit.disabled ? 'Restore' : 'Kill Access'}
             </button>
             <button onClick={() => setKillswitchConfirming(false)}
@@ -397,7 +397,7 @@ export default function ToolkitDetailPage() {
             <div className="p-4 bg-background rounded-lg border border-border space-y-3">
               <p className="text-sm font-semibold text-foreground">Create API Key</p>
               <input type="text" value={keyName} onChange={e => setKeyName(e.target.value)} placeholder="Key name (optional)"
-                className="w-full bg-muted border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none" />
+                className="w-full bg-muted border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-hidden" />
               <div className="flex gap-2">
                 <button onClick={() => createKeyMutation.mutate({ name: keyName || null })} disabled={createKeyMutation.isPending}
                   className="px-3 py-1.5 bg-primary text-background hover:bg-primary/80 rounded-lg text-sm disabled:opacity-50 transition-colors">
@@ -500,12 +500,12 @@ export default function ToolkitDetailPage() {
               <div>
                 <label className="text-xs text-muted-foreground block mb-1">Name</label>
                 <input type="text" value={editName} onChange={e => setEditName(e.target.value)}
-                  className="w-full bg-background border border-border rounded-lg px-3 py-2 text-foreground focus:border-primary focus:outline-none" />
+                  className="w-full bg-background border border-border rounded-lg px-3 py-2 text-foreground focus:border-primary focus:outline-hidden" />
               </div>
               <div>
                 <label className="text-xs text-muted-foreground block mb-1">Description</label>
                 <textarea value={editDesc} onChange={e => setEditDesc(e.target.value)} rows={2}
-                  className="w-full bg-background border border-border rounded-lg px-3 py-2 text-foreground focus:border-primary focus:outline-none resize-none" />
+                  className="w-full bg-background border border-border rounded-lg px-3 py-2 text-foreground focus:border-primary focus:outline-hidden resize-none" />
               </div>
               <div className="flex gap-2">
                 <button onClick={() => updateMutation.mutate()} disabled={updateMutation.isPending}

@@ -359,7 +359,7 @@ export default function SearchPage() {
           value={input}
           onChange={e => handleInput(e.target.value)}
           placeholder='e.g. "send an email" or "create a payment"'
-          className="w-full bg-muted border border-border rounded-xl pl-11 pr-10 py-3.5 text-foreground placeholder:text-muted-foreground/60 focus:border-primary focus:outline-none text-base"
+          className="w-full bg-muted border border-border rounded-xl pl-11 pr-10 py-3.5 text-foreground placeholder:text-muted-foreground/60 focus:border-primary focus:outline-hidden text-base"
         />
         {input && (
           <button

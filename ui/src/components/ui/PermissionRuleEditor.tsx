@@ -25,10 +25,10 @@ export function PermissionRuleEditor({ rules, onChange }: PermissionRuleEditorPr
           <select
             value={rule.effect}
             onChange={e => updateRule(i, { effect: e.target.value as 'allow' | 'deny' })}
-            className="bg-muted border border-border rounded px-2 py-1 text-sm text-foreground focus:outline-none"
+            className="bg-muted border border-border rounded px-2 py-1 text-sm text-foreground focus:outline-hidden"
           >
-            <option value="allow">✅ Allow</option>
-            <option value="deny">❌ Deny</option>
+            <option value="allow">Allow</option>
+            <option value="deny">Deny</option>
           </select>
 
           {/* Path */}
@@ -37,7 +37,7 @@ export function PermissionRuleEditor({ rules, onChange }: PermissionRuleEditorPr
             value={rule.path ?? ''}
             onChange={e => updateRule(i, { path: e.target.value || null })}
             placeholder="/path/prefix or *"
-            className="flex-1 bg-muted border border-border rounded px-2 py-1 text-sm text-foreground font-mono focus:border-primary focus:outline-none"
+            className="flex-1 bg-muted border border-border rounded px-2 py-1 text-sm text-foreground font-mono focus:border-primary focus:outline-hidden"
           />
 
           {/* Methods */}
@@ -48,7 +48,7 @@ export function PermissionRuleEditor({ rules, onChange }: PermissionRuleEditorPr
               methods: e.target.value ? e.target.value.split(',').map(s => s.trim().toUpperCase()).filter(Boolean) : null
             })}
             placeholder="GET, POST (blank=any)"
-            className="w-40 bg-muted border border-border rounded px-2 py-1 text-sm text-foreground font-mono focus:border-primary focus:outline-none"
+            className="w-40 bg-muted border border-border rounded px-2 py-1 text-sm text-foreground font-mono focus:border-primary focus:outline-hidden"
           />
 
           <button

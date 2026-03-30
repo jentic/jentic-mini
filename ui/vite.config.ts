@@ -1,5 +1,6 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+import tailwindcss from '@tailwindcss/vite'
 import { copyFileSync } from 'node:fs'
 import { resolve, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -35,7 +36,7 @@ const spaRoute = {
 }
 
 export default defineConfig({
-  plugins: [react(), copyApiDocsAssets()],
+  plugins: [react(), tailwindcss(), copyApiDocsAssets()],
   base: '/',
   build: { outDir: '../static', emptyOutDir: true },
   server: {

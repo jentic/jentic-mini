@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useQuery, useMutation } from '@tanstack/react-query'
 import { UserService } from '../api/generated'
+import { AlertTriangle, Check } from 'lucide-react'
 
 /**
  * Setup wizard with two steps:
@@ -94,8 +95,8 @@ export default function SetupPage() {
         {/* ── Already set up ── */}
         {alreadySetUp ? (
           <div className="text-center">
-            <div className="p-4 bg-success/10 border border-success/30 rounded-lg mb-6 text-success text-sm font-semibold">
-              ✓ Setup complete
+            <div className="p-4 bg-success/10 border border-success/30 rounded-lg mb-6 text-success text-sm font-semibold flex items-center justify-center gap-2">
+              <Check className="h-4 w-4" /> Setup complete
             </div>
             <button
               onClick={() => window.location.href = '/'}
@@ -135,7 +136,7 @@ export default function SetupPage() {
                 onChange={e => setUsername(e.target.value)}
                 required
                 disabled={accountAlreadyExists}
-                className="w-full bg-background border border-border rounded-lg px-3 py-2 text-foreground focus:border-primary focus:outline-none transition-colors disabled:opacity-50"
+                className="w-full bg-background border border-border rounded-lg px-3 py-2 text-foreground focus:border-primary focus:outline-hidden transition-colors disabled:opacity-50"
               />
             </div>
             <div className="mb-6">
@@ -146,7 +147,7 @@ export default function SetupPage() {
                 onChange={e => setPassword(e.target.value)}
                 required
                 disabled={accountAlreadyExists}
-                className="w-full bg-background border border-border rounded-lg px-3 py-2 text-foreground focus:border-primary focus:outline-none transition-colors disabled:opacity-50"
+                className="w-full bg-background border border-border rounded-lg px-3 py-2 text-foreground focus:border-primary focus:outline-hidden transition-colors disabled:opacity-50"
               />
             </div>
             {!accountAlreadyExists && (
@@ -164,15 +165,15 @@ export default function SetupPage() {
         {/* ── Step 2: Agent key ── */}
         {!alreadySetUp && step === 'key' ? (
           <div>
-            <div className="p-4 bg-success/10 border border-success/30 rounded-lg mb-6 text-success text-sm font-semibold text-center">
-              ✓ Admin account created
+            <div className="p-4 bg-success/10 border border-success/30 rounded-lg mb-6 text-success text-sm font-semibold text-center flex items-center justify-center gap-2">
+              <Check className="h-4 w-4" /> Admin account created
             </div>
 
             {/* Key generated — show it until copied */}
             {generateKeyMutation.data && !copiedKey ? (
               <div className="p-4 bg-danger/10 border border-danger/30 rounded-lg mb-4">
-                <div className="text-danger font-bold text-sm mb-2">
-                  ⚠️ This key will not be shown again
+                <div className="text-danger font-bold text-sm mb-2 flex items-center gap-2">
+                  <AlertTriangle className="h-4 w-4 shrink-0" /> This key will not be shown again
                 </div>
                 <div className="font-mono bg-background p-3 rounded text-sm mb-4 break-all text-foreground">
                   {generateKeyMutation.data.key}
@@ -195,8 +196,8 @@ export default function SetupPage() {
             /* Key copied — show confirmation + proceed */
             ) : copiedKey ? (
               <div className="text-center">
-                <div className="p-4 bg-success/10 border border-success/30 rounded-lg mb-6 text-success text-sm font-semibold">
-                  ✓ API key copied
+                <div className="p-4 bg-success/10 border border-success/30 rounded-lg mb-6 text-success text-sm font-semibold flex items-center justify-center gap-2">
+                  <Check className="h-4 w-4" /> API key copied
                 </div>
                 <button
                   onClick={() => window.location.href = '/'}
@@ -209,8 +210,8 @@ export default function SetupPage() {
             /* Agent claimed key externally */
             ) : agentClaimedKey ? (
               <div className="text-center">
-                <div className="p-4 bg-success/10 border border-success/30 rounded-lg mb-6 text-success text-sm font-semibold">
-                  ✓ Agent claimed the key automatically
+                <div className="p-4 bg-success/10 border border-success/30 rounded-lg mb-6 text-success text-sm font-semibold flex items-center justify-center gap-2">
+                  <Check className="h-4 w-4" /> Agent claimed the key automatically
                 </div>
                 <button
                   onClick={() => window.location.href = '/'}

@@ -1,13 +1,14 @@
 import type { PermissionRule } from '../../api/types'
+import { Lock, ShieldCheck, ShieldX } from 'lucide-react'
 
 function describeRule(rule: PermissionRule): string {
   const parts: string[] = []
 
   if (rule._system) {
-    return '🔒 System rule (managed automatically)'
+    return 'System rule (managed automatically)'
   }
 
-  const effect = rule.effect === 'allow' ? '✅ Allow' : '❌ Deny'
+  const effect = rule.effect === 'allow' ? 'Allow' : 'Deny'
 
   if (rule.operations && rule.operations.length > 0) {
     parts.push(`${effect} operations: ${rule.operations.join(', ')}`)
@@ -49,7 +50,7 @@ export function PermissionRuleDisplay({ rules }: PermissionRuleDisplayProps) {
             }`}
           >
             <span className="shrink-0 mt-0.5">
-              {isSystem ? '🔒' : isAllow ? '✅' : '❌'}
+              {isSystem ? <Lock className="h-4 w-4 text-muted-foreground" /> : isAllow ? <ShieldCheck className="h-4 w-4 text-success" /> : <ShieldX className="h-4 w-4 text-danger" />}
             </span>
             <span>{describeRule(rule)}</span>
           </li>

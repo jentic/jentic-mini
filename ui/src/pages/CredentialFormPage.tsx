@@ -147,7 +147,7 @@ function ApiPicker({ onSelect }: { onSelect: (api: ApiOut) => void }) {
           value={query}
           onChange={e => setQuery(e.target.value)}
           placeholder="Search APIs (GitHub, Gmail, Stripe…)"
-          className="w-full bg-background border border-border rounded-lg pl-9 pr-3 py-2.5 text-foreground focus:border-primary focus:outline-none"
+          className="w-full bg-background border border-border rounded-lg pl-9 pr-3 py-2.5 text-foreground focus:border-primary focus:outline-hidden"
         />
         {isLoading && <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground animate-spin" />}
       </div>
@@ -346,7 +346,7 @@ function CredentialFields({ selectedApi, onBack, onSaved, editId, existing }: Cr
       <div>
         <label className="text-xs text-muted-foreground block mb-1">Label</label>
         <input type="text" value={label} onChange={e => setLabel(e.target.value)} required
-          className="w-full bg-background border border-border rounded-lg px-3 py-2 text-foreground focus:border-primary focus:outline-none" />
+          className="w-full bg-background border border-border rounded-lg px-3 py-2 text-foreground focus:border-primary focus:outline-hidden" />
       </div>
 
       {/* OAuth flow */}
@@ -383,13 +383,13 @@ function CredentialFields({ selectedApi, onBack, onSaved, editId, existing }: Cr
             <label className="text-xs text-muted-foreground block mb-1">Username</label>
             <input type="text" value={identity} onChange={e => setIdentity(e.target.value)}
               placeholder="Your username"
-              className="w-full bg-background border border-border rounded-lg px-3 py-2 text-foreground focus:border-primary focus:outline-none" />
+              className="w-full bg-background border border-border rounded-lg px-3 py-2 text-foreground focus:border-primary focus:outline-hidden" />
           </div>
           <div>
             <label className="text-xs text-muted-foreground block mb-1">Password {!isEdit && '*'}</label>
             <input type="password" value={value} onChange={e => setValue(e.target.value)} required={!isEdit}
               placeholder={isEdit ? 'Leave blank to keep existing' : 'Your password'}
-              className="w-full bg-background border border-border rounded-lg px-3 py-2 text-foreground focus:border-primary focus:outline-none" />
+              className="w-full bg-background border border-border rounded-lg px-3 py-2 text-foreground focus:border-primary focus:outline-hidden" />
           </div>
         </>
       )}
@@ -404,8 +404,8 @@ function CredentialFields({ selectedApi, onBack, onSaved, editId, existing }: Cr
           </label>
           <textarea value={value} onChange={e => setValue(e.target.value)} rows={3} required={!isEdit}
             placeholder="Paste your token or API key…"
-            className="w-full bg-background border border-border rounded-lg px-3 py-2 text-foreground font-mono text-sm focus:border-primary focus:outline-none resize-none" />
-          <p className="text-xs text-muted-foreground mt-1">⚠️ Stored encrypted. Never shown again after saving.</p>
+            className="w-full bg-background border border-border rounded-lg px-3 py-2 text-foreground font-mono text-sm focus:border-primary focus:outline-hidden resize-none" />
+          <p className="text-xs text-muted-foreground mt-1"><AlertTriangle className="inline h-3 w-3 -mt-0.5" /> Stored encrypted. Never shown again after saving.</p>
         </div>
       )}
 
