@@ -30,6 +30,8 @@ function isNewer(latest: string, current: string): boolean {
 	return false;
 }
 
+const CACHE_KEY = 'jentic_update_check';
+
 export function useUpdateCheck(): UpdateStatus {
 	const [status, setStatus] = useState<UpdateStatus>({
 		currentVersion: null,
@@ -40,21 +42,8 @@ export function useUpdateCheck(): UpdateStatus {
 	});
 
 	useEffect(() => {
-		// Only check once per session
-		const cached = sessionStorage.getItem('jentic_update_check');
-		if (cached) {
-			try {
-				setStatus(JSON.parse(cached));
-				return;
-			} catch {
-				// ignore bad cache
-			}
-		}
-
 		async function check() {
 			try {
-				// Backend proxies the GitHub check with a 6h server-side cache —
-				// avoids browser hitting GitHub directly (rate limits, private repos)
 				const res = await fetch('/version');
 				if (!res.ok) return;
 				const data = await res.json();
@@ -76,13 +65,35 @@ export function useUpdateCheck(): UpdateStatus {
 				};
 
 				try {
-					sessionStorage.setItem('jentic_update_check', JSON.stringify(result));
+					sessionStorage.setItem(CACHE_KEY, JSON.stringify(result));
 				} catch {
 					/* private browsing */
 				}
 				setStatus(result);
 			} catch {
 				// Silently ignore — network errors, etc.
+			}
+		}
+
+		// Use cache only if the currentVersion still matches the running server.
+		// After an upgrade the version changes, so the stale cache is discarded.
+		const cached = sessionStorage.getItem(CACHE_KEY);
+		if (cached) {
+			try {
+				const parsed = JSON.parse(cached);
+				fetch('/health')
+					.then((r) => (r.ok ? r.json() : null))
+					.then((health) => {
+						if (health?.version && parsed.currentVersion !== health.version) {
+							sessionStorage.removeItem(CACHE_KEY);
+							check();
+						}
+					})
+					.catch(() => {});
+				setStatus(parsed);
+				return;
+			} catch {
+				// ignore bad cache
 			}
 		}
 
