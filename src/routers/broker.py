@@ -583,17 +583,19 @@ async def broker(request: Request, target: str):
             )
         except Exception:
             pass
-    else:
+    elif toolkit_id:
         try:
             _api_id_for_host, _resolved_cred_ids = await _resolve_credential_ids(
                 host=upstream_host, toolkit_id=toolkit_id
             )
-        except Exception as _resolve_exc:
+        except Exception:
             # Fail closed: if we can't resolve credentials for policy checking,
             # don't proceed to credential injection — deny the request.
-            log.error("Credential resolution failed for %s (toolkit=%s): %s",
-                              upstream_host, toolkit_id, _resolve_exc)
-            await _write_trace("error", 500, f"Credential resolution failed: {_resolve_exc}")
+            # Only applies to authenticated requests; anonymous passthrough
+            # skips credential resolution entirely.
+            log.exception("Credential resolution failed for %r (toolkit=%s)",
+                          upstream_host, toolkit_id)
+            await _write_trace("error", 500, f"Credential resolution failed for {upstream_host}")
             return Response(
                 content=json.dumps({
                     "error": "CREDENTIAL_RESOLUTION_FAILED",
@@ -631,12 +633,12 @@ async def broker(request: Request, target: str):
                     media_type="application/json",
                     headers={"X-Jentic-Error": "true", "X-Jentic-Execution-Id": execution_id},
                 )
-        except Exception as _policy_exc:
+        except Exception:
             # Fail closed: if the policy check itself errors, deny the request
             # rather than allowing it through unchecked.
-            log.error("Policy check failed for %s %s (cred=%s): %s",
-                      request.method, upstream_path, primary_cred_id, _policy_exc)
-            await _write_trace("error", 403, f"Policy check error: {_policy_exc}")
+            log.exception("Policy check failed for %s %r %r (cred=%s)",
+                          request.method, upstream_host, upstream_path, primary_cred_id)
+            await _write_trace("error", 403, f"Policy check failed for {request.method} {upstream_host}{upstream_path} (credential {primary_cred_id})")
             return Response(
                 content=json.dumps({
                     "error": "POLICY_CHECK_FAILED",
@@ -722,10 +724,10 @@ async def broker(request: Request, target: str):
                             media_type="application/json",
                             headers={"X-Jentic-Error": "true", "X-Jentic-Execution-Id": execution_id},
                         )
-                except Exception as _pd_policy_exc:
-                    log.error("Pipedream policy check failed for %s %s (cred=%s): %s",
-                              request.method, upstream_path, pd_cred_id, _pd_policy_exc)
-                    await _write_trace("error", 403, f"Policy check error: {_pd_policy_exc}")
+                except Exception:
+                    log.exception("Pipedream policy check failed for %s %r %r (cred=%s)",
+                                  request.method, upstream_host, upstream_path, pd_cred_id)
+                    await _write_trace("error", 403, f"Policy check failed for {request.method} {upstream_host}{upstream_path} (credential {pd_cred_id})")
                     return Response(
                         content=json.dumps({
                             "error": "POLICY_CHECK_FAILED",
