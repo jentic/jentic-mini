@@ -179,6 +179,7 @@ Swagger UI is available at `http://localhost:8900/docs` for interactive API expl
 - **BM25** — in-memory full-text search index over operation descriptions
 - **Fernet** — symmetric encryption for the credentials vault
 - **arazzo-runner** — Arazzo workflow execution engine
+- **@jentic/arazzo-ui** — React workflow visualization component (diagram/docs/split views) from [jentic-arazzo-tools](https://github.com/jentic/jentic-arazzo-tools)
 
 ## Telemetry & Community Contributions
 
