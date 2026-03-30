@@ -95,7 +95,7 @@
 ### 3. **Routes Added** ✅
 
 Added to `App.tsx`:
-```tsx
+```
 /credentials/new         → CredentialFormPage
 /credentials/:id/edit    → CredentialFormPage
 /workflows/:slug         → WorkflowDetailPage
@@ -110,7 +110,7 @@ All imports added correctly.
 ### 4. **API Client Methods Added** ✅
 
 Added to `api/client.ts`:
-```typescript
+```
 createAccessRequest(toolkitId, body)      // POST /toolkits/{id}/access-requests
 patchKey(toolkitId, keyId, body)          // PATCH /toolkits/{id}/keys/{key_id}
 inspectCapability(capabilityId, toolkitId?) // GET /inspect/{capability_id}

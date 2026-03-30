@@ -44,13 +44,13 @@ export default function TracesPage() {
           {toolkit && (
             <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-mono bg-primary/10 text-primary border border-primary/20">
               toolkit: {toolkit}
-              <button onClick={() => { const p = new URLSearchParams(searchParams); p.delete('toolkit'); setSearchParams(p) }}><X className="h-3 w-3" /></button>
+              <button type="button" aria-label="Clear toolkit filter" onClick={() => { const p = new URLSearchParams(searchParams); p.delete('toolkit'); setSearchParams(p) }}><X className="h-3 w-3" /></button>
             </span>
           )}
           {workflow && (
             <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-mono bg-primary/10 text-primary border border-primary/20">
               workflow: {workflow}
-              <button onClick={() => { const p = new URLSearchParams(searchParams); p.delete('workflow'); setSearchParams(p) }}><X className="h-3 w-3" /></button>
+              <button type="button" aria-label="Clear workflow filter" onClick={() => { const p = new URLSearchParams(searchParams); p.delete('workflow'); setSearchParams(p) }}><X className="h-3 w-3" /></button>
             </span>
           )}
         </div>

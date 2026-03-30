@@ -25,7 +25,7 @@ function CreateModal({ onClose, onCreated }: { onClose: () => void; onCreated: (
       <div className="relative bg-muted border border-border rounded-xl p-6 w-full max-w-md space-y-5 z-10">
         <div className="flex items-center justify-between">
           <h2 className="font-heading font-semibold text-lg text-foreground">Create Toolkit</h2>
-          <button onClick={onClose} className="text-muted-foreground hover:text-foreground"><X className="h-5 w-5" /></button>
+          <button type="button" aria-label="Close" onClick={onClose} className="text-muted-foreground hover:text-foreground"><X className="h-5 w-5" /></button>
         </div>
         <form onSubmit={e => { e.preventDefault(); setError(null); mutation.mutate({ name, description: description || null, simulate }) }} className="space-y-4">
           <div>
