@@ -37,7 +37,6 @@
     "@vitest/browser": "^4.1.2",
     "@vitest/browser-playwright": "^4.1.2",
     "@vitest/coverage-istanbul": "^4.1.2",
-    "@vitest/coverage-v8": "^4.1.2",
     "axe-core": "^4.11.1",
     "msw": "^2.12.14",
     "redoc": "^2.5.2",
