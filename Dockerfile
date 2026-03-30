@@ -8,7 +8,7 @@ RUN cd ui && npm ci --ignore-scripts && npm run build
 # Stage 2: Python runtime
 FROM python:3.11-slim
 
-ARG APP_VERSION=0.3.0
+ARG APP_VERSION=0.4.0
 ENV APP_VERSION=${APP_VERSION}
 
 LABEL maintainer="vladimir@jentic.com" \
