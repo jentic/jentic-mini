@@ -235,7 +235,10 @@ export async function mockWorkflowDetail(page: Page, slug = 'test-workflow') {
       slug,
       name: 'Test Workflow',
       description: 'A test workflow',
-      steps: [{ stepId: 'step-1', operationId: 'doSomething' }],
+      steps: [
+        { id: 'step-1', operation: 'doSomething', description: 'First step' },
+        { id: 'step-2', operation: 'doMore', description: 'Second step' },
+      ],
       inputs: [{ name: 'input1', type: 'string', required: true }],
       involved_apis: ['test-api'],
     }

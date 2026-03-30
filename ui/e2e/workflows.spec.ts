@@ -42,7 +42,7 @@ test.describe('Workflow detail page', () => {
     await navigateTo(page, '/workflows/test-workflow')
     await expect(page.getByRole('heading', { name: 'Test Workflow' })).toBeVisible()
     await expect(page.getByText(/back to workflows/i)).toBeVisible()
-    await expect(page.getByText(/steps/i).first()).toBeVisible()
+    await expect(page.getByText(/2 steps/i)).toBeVisible()
 
     expect(errors).toHaveLength(0)
   })
