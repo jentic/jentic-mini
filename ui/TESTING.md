@@ -36,11 +36,11 @@ npm run test:e2e:ui
 
 ```
 src/__tests__/
-  setup.ts                    # Global setup (jest-dom, MSW, vitest-axe)
+  setup.ts                    # Global setup (jest-dom, MSW worker lifecycle, storage cleanup)
   test-utils.tsx              # renderWithProviders helper
   mocks/
-    handlers.ts               # Shared MSW handlers (happy path)
-    server.ts                 # MSW server instance
+    handlers.ts               # Shared MSW handlers (happy path — reads + mutations)
+    browser.ts                # MSW browser worker instance
   components/                 # Unit tests for UI primitives
   hooks/                      # Unit tests for pure logic hooks
   pages/                      # Integration tests for pages
@@ -48,14 +48,13 @@ src/__tests__/
 
 ## Writing a New Integration Test
 
-1. Import `renderWithProviders` and `screen` from `../test-utils`
-2. Import `server` from `../mocks/server` for handler overrides
+1. Import `renderWithProviders`, `screen`, and `userEvent` from `../test-utils`
+2. Import `worker` from `../mocks/browser` for handler overrides
 3. Wrap assertions in `await screen.findBy*` (data loads async via React Query)
 4. Test four states: **loading**, **empty**, **populated**, **error**
 
 ```tsx
-import { screen } from '../test-utils'
-import { renderWithProviders } from '../test-utils'
+import { screen, renderWithProviders, userEvent } from '../test-utils'
 import { worker } from '../mocks/browser'
 import { http, HttpResponse } from 'msw'
 import MyPage from '../../pages/MyPage'
@@ -76,15 +75,30 @@ describe('MyPage', () => {
       http.get('/my-endpoint', () => HttpResponse.error()),
     )
     renderWithProviders(<MyPage />)
-    // Page should not crash
     expect(await screen.findByRole('heading')).toBeInTheDocument()
+  })
+
+  it('completes a mutation round-trip', async () => {
+    const user = userEvent.setup()
+    let mutationCalled = false
+
+    worker.use(
+      http.post('/my-endpoint', () => {
+        mutationCalled = true
+        return HttpResponse.json({ id: 'new', name: 'Created' })
+      }),
+    )
+
+    renderWithProviders(<MyPage />)
+    await user.click(screen.getByRole('button', { name: /create/i }))
+    // Verify the mutation was called and UI updated
   })
 })
 ```
 
 ## Adding MSW Handlers
 
-Add new handlers to `src/__tests__/mocks/handlers.ts` for the happy path. Use `worker.use()` in individual tests for error/edge cases.
+Add new handlers to `src/__tests__/mocks/handlers.ts` for the happy path. The handler set includes both read (GET) and mutation (POST/PATCH/DELETE) endpoints. Use `worker.use()` in individual tests for error/edge cases.
 
 All API calls use relative paths (e.g., `/toolkits`, `/apis`). MSW intercepts these directly.
 
@@ -99,6 +113,13 @@ renderWithProviders(<ToolkitDetailPage />, {
 })
 ```
 
+## Test Isolation
+
+Each test gets:
+- A fresh `QueryClient` with `retry: false` and `gcTime: 0` (no cache leakage)
+- MSW handlers reset to defaults via `worker.resetHandlers()`
+- `localStorage` and `sessionStorage` cleared
+
 ## Rules of Thumb
 
 1. **Mock the network, never the hooks.** Let `useQuery`/`useMutation` run for real. Mock at the `fetch()` layer via MSW.
@@ -108,5 +129,5 @@ renderWithProviders(<ToolkitDetailPage />, {
 5. **Use `screen.findBy*` (async) for data that loads via React Query.** Data arrives asynchronously — `findBy` waits; `getBy` doesn't.
 6. **Override MSW handlers per-test for edge cases.** The shared handlers define the happy path. Use `worker.use()` inside individual tests.
 7. **Keep E2E tests thin.** Playwright tests verify page-level smoke. Detailed interaction testing belongs in Vitest where it runs 10x faster.
-8. **One a11y check per critical page.** Use `vitest-axe` in integration tests to catch common violations.
+8. **One a11y check per critical page.** Use `axe-core` in integration tests to catch common violations.
 9. **Never snapshot.** Snapshot tests create false confidence and break on any render change.
