@@ -145,11 +145,15 @@ class SyncRequest(NormModel):
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 def _row_to_out(row: tuple, accounts_discovered: int = 0) -> OAuthBrokerOut:
-    broker_id, broker_type, client_id, project_id, created_at = row
+    broker_id, broker_type, client_id, project_id, default_external_user_id, created_at = row
     return OAuthBrokerOut(
         id=broker_id,
         type=broker_type,
-        config={"client_id": client_id, "project_id": project_id},
+        config={
+            "client_id": client_id,
+            "project_id": project_id,
+            "default_external_user_id": default_external_user_id or "default",
+        },
         created_at=created_at,
         accounts_discovered=accounts_discovered,
     )
@@ -249,7 +253,7 @@ async def create_oauth_broker(body: OAuthBrokerCreate):
     return OAuthBrokerOut(
         id=broker_id,
         type=body.type,
-        config={"client_id": client_id, "project_id": project_id},
+        config={"client_id": client_id, "project_id": project_id, "default_external_user_id": "default"},
         created_at=time.time(),
         accounts_discovered=accounts_discovered,
     )
@@ -267,7 +271,7 @@ async def list_oauth_brokers():
     """
     async with get_db() as db:
         async with db.execute(
-            "SELECT id, type, client_id, project_id, created_at FROM oauth_brokers"
+            "SELECT id, type, client_id, project_id, default_external_user_id, created_at FROM oauth_brokers"
         ) as cur:
             rows = await cur.fetchall()
 
@@ -282,7 +286,7 @@ async def list_oauth_brokers():
 async def get_oauth_broker(broker_id: BrokerIdPath):
     async with get_db() as db:
         async with db.execute(
-            "SELECT id, type, client_id, project_id, created_at "
+            "SELECT id, type, client_id, project_id, default_external_user_id, created_at "
             "FROM oauth_brokers WHERE id=?",
             (broker_id,),
         ) as cur:
