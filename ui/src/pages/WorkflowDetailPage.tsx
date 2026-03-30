@@ -8,9 +8,14 @@ import { ChevronLeft, Workflow, ExternalLink, Loader2, Zap, AlertTriangle } from
 import { ArazzoUI } from '@jentic/arazzo-ui'
 import '@jentic/arazzo-ui/styles.css'
 
-class ArazzoErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
+class ArazzoErrorBoundary extends Component<{ slug?: string; children: ReactNode }, { error: Error | null }> {
   state = { error: null as Error | null }
   static getDerivedStateFromError(error: Error) { return { error } }
+  componentDidUpdate(prevProps: { slug?: string }) {
+    if (prevProps.slug !== this.props.slug && this.state.error) {
+      this.setState({ error: null })
+    }
+  }
   render() {
     if (this.state.error) {
       return (
@@ -219,7 +224,7 @@ export default function WorkflowDetailPage() {
           Loading workflow visualization...
         </div>
       ) : arazzoDoc ? (
-        <ArazzoErrorBoundary>
+        <ArazzoErrorBoundary slug={slug}>
           <div className="border border-border rounded-xl overflow-hidden bg-muted" style={{ height: '800px' }}>
             <ArazzoUI
               document={arazzoDoc}

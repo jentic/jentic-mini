@@ -32,7 +32,10 @@ export default function WorkflowsPage() {
           {workflows.map((wf: any) => (
             <div
               key={wf.slug}
+              role="button"
+              tabIndex={0}
               onClick={() => navigate(`/workflows/${wf.slug}`)}
+              onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigate(`/workflows/${wf.slug}`) } }}
               className="flex items-center gap-4 px-5 py-3.5 bg-muted border border-border rounded-xl hover:border-primary/40 transition-colors cursor-pointer"
             >
               <div className="flex-1 min-w-0 space-y-1">
