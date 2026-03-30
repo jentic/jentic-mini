@@ -21,6 +21,10 @@ export const handlers = [
     HttpResponse.json({ logged_in: true, username: 'admin' }),
   ),
 
+  http.post('/user/logout', () =>
+    HttpResponse.json({ logged_out: true }),
+  ),
+
   http.get('/version', () =>
     HttpResponse.json({ current: '0.3.0', latest: '0.3.0' }),
   ),
@@ -65,6 +69,43 @@ export const handlers = [
     HttpResponse.json([]),
   ),
 
+  // ── Toolkit mutations ───────────────────────────────────────────
+  http.post('/toolkits', () =>
+    HttpResponse.json({ id: 'new-tk', name: 'New Toolkit', description: '', credentials: [] }),
+  ),
+
+  http.patch('/toolkits/:id', ({ params }) =>
+    HttpResponse.json({ id: params.id, name: 'Updated Toolkit', description: 'Updated', disabled: false, credentials: [] }),
+  ),
+
+  http.delete('/toolkits/:id', () =>
+    new HttpResponse(null, { status: 204 }),
+  ),
+
+  http.post('/toolkits/:id/keys', () =>
+    HttpResponse.json({ id: 'new-key', key: 'jntc_test_generated_key_123', prefix: 'jntc_test', label: null, created_at: Math.floor(Date.now() / 1000) }),
+  ),
+
+  http.delete('/toolkits/:id/keys/:keyId', () =>
+    new HttpResponse(null, { status: 204 }),
+  ),
+
+  http.post('/toolkits/:id/access-requests', () =>
+    HttpResponse.json({ id: 'req-new', status: 'pending', approve_url: '/approve/test-tk/req-new' }),
+  ),
+
+  http.get('/toolkits/:id/credentials/:credId/permissions', () =>
+    HttpResponse.json([]),
+  ),
+
+  http.put('/toolkits/:id/credentials/:credId/permissions', () =>
+    HttpResponse.json({ ok: true }),
+  ),
+
+  http.delete('/toolkits/:id/credentials/:credId', () =>
+    new HttpResponse(null, { status: 204 }),
+  ),
+
   // ── Credentials ─────────────────────────────────────────────────
   http.get('/credentials', () =>
     HttpResponse.json({ data: [], total: 0 }),
@@ -76,6 +117,30 @@ export const handlers = [
       label: 'Test Credential',
       api_id: 'test-api',
       auth_type: 'bearer',
+    }),
+  ),
+
+  http.post('/credentials', async ({ request }) => {
+    const body = await request.json() as Record<string, unknown>
+    return HttpResponse.json({ id: 'cred-new', ...body })
+  }),
+
+  http.patch('/credentials/:id', async ({ params, request }) => {
+    const body = await request.json() as Record<string, unknown>
+    return HttpResponse.json({ id: params.id, ...body })
+  }),
+
+  http.delete('/credentials/:id', () =>
+    new HttpResponse(null, { status: 204 }),
+  ),
+
+  // ── API detail (for credential form) ────────────────────────────
+  http.get('/apis/:id', ({ params }) =>
+    HttpResponse.json({
+      id: params.id,
+      name: 'Test API',
+      source: 'local',
+      security_schemes: { bearerAuth: { type: 'http', scheme: 'bearer' } },
     }),
   ),
 
