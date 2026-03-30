@@ -305,7 +305,10 @@ async def get_workflow(slug: str, request: Request):
 
     # Formal Arazzo media types - return raw Arazzo document
     if "application/vnd.oai.workflows+json" in accept:
-        return doc
+        return Response(
+            content=json.dumps(doc, ensure_ascii=False),
+            media_type="application/vnd.oai.workflows+json",
+        )
 
     if "application/vnd.oai.workflows+yaml" in accept:
         return Response(

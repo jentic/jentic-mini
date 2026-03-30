@@ -1,11 +1,29 @@
-import { useState } from 'react'
+import { Component, useState } from 'react'
+import type { ReactNode } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '../api/client'
 import { Badge } from '../components/ui/Badge'
-import { ChevronLeft, Workflow, ArrowRight, ExternalLink, Loader2, Zap } from 'lucide-react'
+import { ChevronLeft, Workflow, ExternalLink, Loader2, Zap, AlertTriangle } from 'lucide-react'
 import { ArazzoUI } from '@jentic/arazzo-ui'
 import '@jentic/arazzo-ui/styles.css'
+
+class ArazzoErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
+  state = { error: null as Error | null }
+  static getDerivedStateFromError(error: Error) { return { error } }
+  render() {
+    if (this.state.error) {
+      return (
+        <div className="border border-border rounded-xl p-8 text-center bg-muted">
+          <AlertTriangle className="h-8 w-8 text-warning mx-auto mb-3" />
+          <p className="text-sm font-medium text-foreground mb-1">Workflow visualization failed to render</p>
+          <p className="text-xs text-muted-foreground">{this.state.error.message}</p>
+        </div>
+      )
+    }
+    return this.props.children
+  }
+}
 
 function CatalogWorkflowFallback({ slug, navigate }: { slug: string; navigate: (path: string) => void }) {
   const queryClient = useQueryClient()
@@ -99,10 +117,11 @@ export default function WorkflowDetailPage() {
   const navigate = useNavigate()
   const [view, setView] = useState<'diagram' | 'docs' | 'split'>('docs')
 
-  const { data: workflow, isLoading } = useQuery({
+  const { data: workflow, isLoading, error } = useQuery({
     queryKey: ['workflow', slug],
     queryFn: () => api.getWorkflow(slug!),
     enabled: !!slug,
+    retry: (failureCount, err: any) => err?.status !== 404 && failureCount < 2,
   })
 
   // Fetch the raw Arazzo document
@@ -120,6 +139,18 @@ export default function WorkflowDetailPage() {
   })
 
   if (isLoading) return <div className="text-center py-16 text-muted-foreground">Loading workflow...</div>
+
+  // 404 → show catalog fallback. Other errors → show error state.
+  const is404 = (error as any)?.status === 404
+  if (error && !is404) {
+    return (
+      <div className="text-center py-16">
+        <AlertTriangle className="h-8 w-8 text-danger mx-auto mb-3" />
+        <p className="text-sm text-foreground font-medium">Failed to load workflow</p>
+        <p className="text-xs text-muted-foreground mt-1">{(error as any)?.message || 'Unknown error'}</p>
+      </div>
+    )
+  }
 
   if (!workflow) return <CatalogWorkflowFallback slug={slug!} navigate={navigate} />
 
@@ -188,13 +219,15 @@ export default function WorkflowDetailPage() {
           Loading workflow visualization...
         </div>
       ) : arazzoDoc ? (
-        <div className="border border-border rounded-xl overflow-hidden bg-muted" style={{ height: '800px' }}>
-          <ArazzoUI
-            document={arazzoDoc}
-            view={view}
-            onViewChange={setView}
-          />
-        </div>
+        <ArazzoErrorBoundary>
+          <div className="border border-border rounded-xl overflow-hidden bg-muted" style={{ height: '800px' }}>
+            <ArazzoUI
+              document={arazzoDoc}
+              view={view}
+              onViewChange={setView}
+            />
+          </div>
+        </ArazzoErrorBoundary>
       ) : (
         <div className="text-center py-16 text-muted-foreground">
           Failed to load workflow visualization.
