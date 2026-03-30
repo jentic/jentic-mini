@@ -1,4 +1,3 @@
-import { describe, it, expect, vi } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import { Card, CardHeader, CardBody, CardTitle } from '../../components/ui/Card'
 

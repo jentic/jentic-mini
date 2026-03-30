@@ -1,5 +1,3 @@
-import { describe, it, expect } from 'vitest'
-
 /**
  * These are pure functions from useUpdateCheck.ts.
  * Since they're module-private, we replicate them here for direct testing.

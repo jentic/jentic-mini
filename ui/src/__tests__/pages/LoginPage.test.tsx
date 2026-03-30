@@ -1,6 +1,4 @@
-import { describe, it, expect } from 'vitest'
-import { screen } from '../test-utils'
-import { renderWithProviders } from '../test-utils'
+import { screen, renderWithProviders, userEvent } from '../test-utils'
 import { worker } from '../mocks/browser'
 import { http, HttpResponse } from 'msw'
 import axe from 'axe-core'
@@ -16,7 +14,6 @@ describe('LoginPage', () => {
   })
 
   it('shows "Logging in..." while submitting', async () => {
-    const { userEvent } = await import('../test-utils')
     const user = userEvent.setup()
 
     worker.use(
@@ -37,8 +34,7 @@ describe('LoginPage', () => {
     expect(await screen.findByRole('button', { name: /logging in/i })).toBeDisabled()
   })
 
-  it('shows error message on failed login', async () => {
-    const { userEvent } = await import('../test-utils')
+  it('shows error message on failed login (401)', async () => {
     const user = userEvent.setup()
 
     worker.use(
@@ -56,6 +52,51 @@ describe('LoginPage', () => {
     await user.click(screen.getByRole('button', { name: /log in/i }))
 
     expect(await screen.findByText(/invalid username or password/i)).toBeInTheDocument()
+  })
+
+  it('shows error message on network error (non-401)', async () => {
+    const user = userEvent.setup()
+
+    worker.use(
+      http.post('/user/login', () =>
+        HttpResponse.json({ detail: 'internal error' }, { status: 500 }),
+      ),
+    )
+
+    renderWithProviders(<LoginPage />)
+
+    const inputs = screen.getAllByRole('textbox')
+    const passwordInput = document.querySelector('input[type="password"]')!
+    await user.type(inputs[0], 'admin')
+    await user.type(passwordInput as HTMLElement, 'password')
+    await user.click(screen.getByRole('button', { name: /log in/i }))
+
+    expect(await screen.findByText(/invalid username or password/i)).toBeInTheDocument()
+  })
+
+  it('calls the login API on form submission and enters pending state', async () => {
+    const user = userEvent.setup()
+
+    let loginCalled = false
+    worker.use(
+      http.post('/user/login', async () => {
+        loginCalled = true
+        // Keep pending to avoid window.location.href redirect breaking the test iframe
+        await new Promise(r => setTimeout(r, 2000))
+        return HttpResponse.json({ logged_in: true, username: 'admin' })
+      }),
+    )
+
+    renderWithProviders(<LoginPage />)
+
+    const inputs = screen.getAllByRole('textbox')
+    const passwordInput = document.querySelector('input[type="password"]')!
+    await user.type(inputs[0], 'admin')
+    await user.type(passwordInput as HTMLElement, 'password')
+    await user.click(screen.getByRole('button', { name: /log in/i }))
+
+    expect(await screen.findByRole('button', { name: /logging in/i })).toBeDisabled()
+    expect(loginCalled).toBe(true)
   })
 
   it('has no critical accessibility violations', async () => {

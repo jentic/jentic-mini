@@ -1,6 +1,4 @@
-import { describe, it, expect } from 'vitest'
-import { screen, waitFor } from '../test-utils'
-import { renderWithProviders } from '../test-utils'
+import { screen, waitFor, renderWithProviders } from '../test-utils'
 import { worker } from '../mocks/browser'
 import { http, HttpResponse, delay } from 'msw'
 import axe from 'axe-core'
@@ -91,6 +89,16 @@ describe('DashboardPage', () => {
 
     renderWithProviders(<DashboardPage />)
     expect(await screen.findByRole('heading', { name: /dashboard/i })).toBeInTheDocument()
+  })
+
+  it('renders quick action links', async () => {
+    renderWithProviders(<DashboardPage />)
+    await screen.findByRole('heading', { name: /dashboard/i })
+
+    expect(screen.getByText('Search Catalog')).toBeInTheDocument()
+    expect(screen.getByText('Add Credential')).toBeInTheDocument()
+    expect(screen.getByText('Create Toolkit')).toBeInTheDocument()
+    expect(screen.getByText('Import an API')).toBeInTheDocument()
   })
 
   it('has no accessibility violations', async () => {

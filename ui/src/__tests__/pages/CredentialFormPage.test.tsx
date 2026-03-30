@@ -1,6 +1,4 @@
-import { describe, it, expect } from 'vitest'
-import { screen, waitFor } from '../test-utils'
-import { renderWithProviders } from '../test-utils'
+import { screen, waitFor, renderWithProviders, userEvent } from '../test-utils'
 import { worker } from '../mocks/browser'
 import { http, HttpResponse } from 'msw'
 import axe from 'axe-core'
@@ -21,7 +19,6 @@ describe('CredentialFormPage — create mode', () => {
   })
 
   it('shows search results when user types', async () => {
-    const { userEvent } = await import('../test-utils')
     const user = userEvent.setup()
 
     worker.use(
@@ -48,7 +45,6 @@ describe('CredentialFormPage — create mode', () => {
   })
 
   it('shows "no APIs found" for empty search results', async () => {
-    const { userEvent } = await import('../test-utils')
     const user = userEvent.setup()
 
     worker.use(
@@ -63,6 +59,41 @@ describe('CredentialFormPage — create mode', () => {
     await user.type(input, 'nonexistent')
 
     expect(await screen.findByText(/no apis found/i)).toBeInTheDocument()
+  })
+
+  it('advances to credential form after selecting an API', async () => {
+    const user = userEvent.setup()
+
+    worker.use(
+      http.get('/apis', ({ request }) => {
+        const url = new URL(request.url)
+        const q = url.searchParams.get('q')
+        if (q?.includes('stripe')) {
+          return HttpResponse.json({
+            data: [{ id: 'stripe', name: 'Stripe', description: 'Payments', source: 'local' }],
+            total: 1,
+            page: 1,
+          })
+        }
+        return HttpResponse.json({ data: [], total: 0, page: 1 })
+      }),
+      http.get('/apis/:id', () =>
+        HttpResponse.json({
+          id: 'stripe', name: 'Stripe', source: 'local',
+          security_schemes: { bearerAuth: { type: 'http', scheme: 'bearer' } },
+        }),
+      ),
+    )
+
+    renderWithProviders(<CredentialFormPage />)
+
+    const input = await screen.findByPlaceholderText(/search apis/i)
+    await user.type(input, 'stripe')
+
+    const apiRow = await screen.findByText('Stripe')
+    await user.click(apiRow)
+
+    expect(await screen.findByText(/bearer token/i)).toBeInTheDocument()
   })
 
   it('has no accessibility violations', async () => {
@@ -95,5 +126,31 @@ describe('CredentialFormPage — edit mode', () => {
     })
 
     expect(await screen.findByRole('heading', { name: /edit credential/i })).toBeInTheDocument()
+  })
+
+  it('pre-fills the credential fields in edit mode', async () => {
+    worker.use(
+      http.get('/credentials/:id', () =>
+        HttpResponse.json({
+          id: 'cred-1', label: 'My Stripe Token', api_id: 'stripe', auth_type: 'bearer',
+          value: 'sk_test_xxxx',
+        }),
+      ),
+      http.get('/apis/stripe', () =>
+        HttpResponse.json({
+          id: 'stripe', name: 'Stripe', source: 'local',
+          security_schemes: { bearerAuth: { type: 'http', scheme: 'bearer' } },
+        }),
+      ),
+    )
+
+    renderWithProviders(<CredentialFormPage />, {
+      route: '/credentials/cred-1/edit',
+      path: '/credentials/:id/edit',
+    })
+
+    expect(await screen.findByRole('heading', { name: /edit credential/i })).toBeInTheDocument()
+    // The form should show the bearer token field
+    expect(await screen.findByText(/bearer token/i)).toBeInTheDocument()
   })
 })
