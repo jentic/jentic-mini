@@ -94,6 +94,12 @@
 - All emoji icons replaced with Lucide React SVG components
 - `outline-none` → `outline-hidden` for TW4 accessibility compliance
 
+**Completed (v0.4):**
+- UI testing infrastructure: Vitest browser mode (Chromium), MSW network mocking, axe-core a11y checks, `renderWithProviders` test utility
+- 86 unit + integration tests across 10 test files (4 component, 1 hook, 5 page integration)
+- Playwright E2E test suite (35 specs across 10 spec files)
+- CI pipeline: `ui-tests` job in GitHub Actions (TypeScript check, Vitest, Playwright)
+
 ### Versioning, Releases, and Updates
 
 **No single source of version truth**
@@ -146,8 +152,8 @@ Options:
 - JPE pseudo-operation: `POST /localhost/transform` that accepts `{data, filter}` and returns filtered result — agents can include this as a workflow step
 - Input preprocessing: let callers pre-filter before invoking the workflow (workaround, not a fix)
 
-**Test coverage**
-Zero automated tests. For a credential-handling proxy this is a reliability and security risk. Priorities:
+**Test coverage — backend**
+No backend automated tests yet. For a credential-handling proxy this is a reliability and security risk. Priorities:
 - Vault encryption/decryption
 - Auth middleware (key validation, IP allowlisting)
 - Broker credential injection

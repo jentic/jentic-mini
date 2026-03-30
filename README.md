@@ -164,6 +164,17 @@ Alternatively, run Vite directly on the host (requires Node.js 20+):
 cd ui && npm install && npm run dev
 ```
 
+### Testing
+
+```bash
+cd ui
+npm run test:run       # Unit + integration tests (Vitest, browser mode)
+npm run test:coverage  # With coverage report
+npm run test:e2e       # Playwright E2E tests
+```
+
+See `ui/TESTING.md` for the full contributor guide.
+
 To rebuild the production UI bundle: `cd ui && npm run build`, then `docker compose up -d --build`.
 
 > **Note:** The container runs as a non-root user. `compose.yml` defaults to uid/gid 1000 for bind mount compatibility.
