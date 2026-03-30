@@ -70,7 +70,7 @@ _HOP_BY_HOP = {
     # hostname instead of the upstream API hostname.
     "x-forwarded-for", "x-forwarded-host", "x-forwarded-port",
     "x-forwarded-proto", "x-forwarded-scheme",
-    "x-real-ip", "x-request-id", "x-scheme",
+    "x-real-ip", "x-scheme",
 }
 
 # How we detect credentials for a given API host
