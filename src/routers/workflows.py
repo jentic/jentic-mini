@@ -258,8 +258,9 @@ async def list_workflows(
 
 
 _WORKFLOW_CONTENT_TYPES = {
-    "application/json": {"schema": {"type": "object", "description": "Arazzo document as JSON"}},
-    "application/yaml": {"schema": {"type": "string", "description": "Arazzo document as YAML"}},
+    "application/json": {"schema": {"type": "object", "description": "Workflow metadata (default)"}},
+    "application/vnd.oai.workflows+json": {"schema": {"type": "object", "description": "Raw Arazzo document as JSON"}},
+    "application/vnd.oai.workflows+yaml": {"schema": {"type": "string", "description": "Raw Arazzo document as YAML"}},
     "text/markdown":    {"schema": {"type": "string", "description": "LLM-friendly prose summary"}},
     "text/html":        {"schema": {"type": "string", "description": "Human-readable HTML visualiser"}},
 }
@@ -277,10 +278,11 @@ _WORKFLOW_CONTENT_TYPES = {
 )
 async def get_workflow(slug: str, request: Request):
     """Returns the workflow definition with content negotiation:
-    - application/json (default): Arazzo document
+    - application/json (default): workflow metadata with simplified step info
+    - application/vnd.oai.workflows+json: raw Arazzo document as JSON
+    - application/vnd.oai.workflows+yaml: raw Arazzo document as YAML
     - text/markdown: compact LLM-friendly summary with input schema and steps
-    - text/html: human-readable summary
-    - application/arazzo+json: same as application/json
+    - text/html: human-readable HTML summary
     Execute via broker: POST /{jentic_host}/workflows/{slug}
     """
     accept = request.headers.get("accept", "application/json")
@@ -300,6 +302,19 @@ async def get_workflow(slug: str, request: Request):
     meta = _extract_workflow_meta(doc)
     involved_apis = json.loads(involved_apis_str) if involved_apis_str else []
     capability_id = workflow_capability_id(slug)
+
+    # Formal Arazzo media types - return raw Arazzo document
+    if "application/vnd.oai.workflows+json" in accept:
+        return Response(
+            content=json.dumps(doc, ensure_ascii=False),
+            media_type="application/vnd.oai.workflows+json",
+        )
+
+    if "application/vnd.oai.workflows+yaml" in accept:
+        return Response(
+            content=yaml.dump(doc, default_flow_style=False, allow_unicode=True),
+            media_type="application/vnd.oai.workflows+yaml",
+        )
 
     if "text/html" in accept:
         steps_html = ""
@@ -332,12 +347,6 @@ h1 span{{color:#888;font-weight:normal;font-size:.6em;margin-left:12px}}</style>
 <pre>{doc and json.dumps(doc, indent=2)[:4000]}</pre>
 </body></html>"""
         return HTMLResponse(html)
-
-    if "yaml" in accept:
-        return Response(
-            content=yaml.dump(doc, default_flow_style=False, allow_unicode=True),
-            media_type="application/yaml",
-        )
 
     if "text/markdown" in accept:
         steps_md = "\n".join(

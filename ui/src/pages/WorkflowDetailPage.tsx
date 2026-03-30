@@ -1,9 +1,34 @@
-import { useState } from 'react'
+import { Component, useState } from 'react'
+import type { ReactNode } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '../api/client'
 import { Badge } from '../components/ui/Badge'
-import { ChevronLeft, Workflow, ArrowRight, ExternalLink, Loader2, Zap } from 'lucide-react'
+import { ChevronLeft, Workflow, ExternalLink, Loader2, Zap, AlertTriangle } from 'lucide-react'
+import { ArazzoUI } from '@jentic/arazzo-ui'
+import '@jentic/arazzo-ui/styles.css'
+
+class ArazzoErrorBoundary extends Component<{ slug?: string; children: ReactNode }, { error: Error | null }> {
+  state = { error: null as Error | null }
+  static getDerivedStateFromError(error: Error) { return { error } }
+  componentDidUpdate(prevProps: { slug?: string }) {
+    if (prevProps.slug !== this.props.slug && this.state.error) {
+      this.setState({ error: null })
+    }
+  }
+  render() {
+    if (this.state.error) {
+      return (
+        <div className="border border-border rounded-xl p-8 text-center bg-muted">
+          <AlertTriangle className="h-8 w-8 text-warning mx-auto mb-3" />
+          <p className="text-sm font-medium text-foreground mb-1">Workflow visualization failed to render</p>
+          <p className="text-xs text-muted-foreground">{this.state.error.message}</p>
+        </div>
+      )
+    }
+    return this.props.children
+  }
+}
 
 function CatalogWorkflowFallback({ slug, navigate }: { slug: string; navigate: (path: string) => void }) {
   const queryClient = useQueryClient()
@@ -13,6 +38,9 @@ function CatalogWorkflowFallback({ slug, navigate }: { slug: string; navigate: (
   // Convert slug back to api_id: apideck.com~ecosystem → apideck.com/ecosystem
   const apiId = slug.replace('~', '/')
   const githubUrl = `https://github.com/jentic/jentic-public-apis/tree/main/workflows/${slug}`
+  const encodedSlug = encodeURIComponent(slug)
+  const rawArazzoUrl = `https://raw.githubusercontent.com/jentic/jentic-public-apis/refs/heads/main/workflows/${encodedSlug}/workflows.arazzo.json`
+  const arazzoUIUrl = `https://arazzo-ui.jentic.com?document=${encodeURIComponent(rawArazzoUrl)}`
 
   const handleImport = async () => {
     setImporting(true)
@@ -79,6 +107,10 @@ function CatalogWorkflowFallback({ slug, navigate }: { slug: string; navigate: (
             className="inline-flex items-center gap-1 text-sm text-primary hover:text-primary/80">
             <ExternalLink className="h-3.5 w-3.5" /> View on GitHub
           </a>
+          <a href={arazzoUIUrl} target="_blank" rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 text-sm text-primary hover:text-primary/80">
+            <ExternalLink className="h-3.5 w-3.5" /> View using Arazzo UI
+          </a>
         </div>
       </div>
     </div>
@@ -88,137 +120,122 @@ function CatalogWorkflowFallback({ slug, navigate }: { slug: string; navigate: (
 export default function WorkflowDetailPage() {
   const { slug } = useParams<{ slug: string }>()
   const navigate = useNavigate()
+  const [view, setView] = useState<'diagram' | 'docs' | 'split'>('docs')
 
-  const { data: workflow, isLoading } = useQuery({
+  const { data: workflow, isLoading, error } = useQuery({
     queryKey: ['workflow', slug],
     queryFn: () => api.getWorkflow(slug!),
     enabled: !!slug,
+    retry: (failureCount, err: any) => err?.status !== 404 && failureCount < 2,
+  })
+
+  // Fetch the raw Arazzo document
+  const { data: arazzoDoc, isLoading: isLoadingArazzo } = useQuery({
+    queryKey: ['workflow-arazzo', slug],
+    queryFn: async () => {
+      const res = await fetch(`/workflows/${slug}`, {
+        headers: { 'Accept': 'application/vnd.oai.workflows+json' },
+        credentials: 'include',
+      })
+      if (!res.ok) throw new Error('Failed to fetch Arazzo document')
+      return res.json()
+    },
+    enabled: !!slug && !!workflow,
   })
 
   if (isLoading) return <div className="text-center py-16 text-muted-foreground">Loading workflow...</div>
 
+  // 404 → show catalog fallback. Other errors → show error state.
+  const is404 = (error as any)?.status === 404
+  if (error && !is404) {
+    return (
+      <div className="text-center py-16">
+        <AlertTriangle className="h-8 w-8 text-danger mx-auto mb-3" />
+        <p className="text-sm text-foreground font-medium">Failed to load workflow</p>
+        <p className="text-xs text-muted-foreground mt-1">{(error as any)?.message || 'Unknown error'}</p>
+      </div>
+    )
+  }
+
   if (!workflow) return <CatalogWorkflowFallback slug={slug!} navigate={navigate} />
 
   const steps: any[] = workflow.steps ?? []
-  const inputs: any[] = workflow.inputs ?? []
   const involvedApis: string[] = workflow.involved_apis ?? []
 
+  // Check if description is different from name to avoid duplication
+  const showDescription = workflow.description && workflow.description !== workflow.name
+
   return (
-    <div className="space-y-6 max-w-4xl">
+    <div className="space-y-4 max-w-full">
       <button onClick={() => navigate('/workflows')}
         className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors">
         <ChevronLeft className="h-4 w-4" /> Back to Workflows
       </button>
 
-      <div className="space-y-2">
-        <p className="text-[10px] font-mono tracking-widest uppercase text-primary/60">Workflow</p>
-        <div className="flex items-start gap-3">
-          <Workflow className="h-6 w-6 text-accent-pink mt-0.5 shrink-0" />
-          <div>
-            <h1 className="font-heading text-2xl font-bold text-foreground">
+      {/* Condensed header */}
+      <div className="space-y-3">
+        <div className="space-y-1">
+          <p className="text-[10px] font-mono tracking-widest uppercase text-primary/60">Workflow</p>
+          <div className="flex items-center gap-2">
+            <Workflow className="h-5 w-5 text-accent-pink shrink-0" />
+            <h1 className="font-heading text-xl font-bold text-foreground">
               {workflow.name ?? workflow.slug}
             </h1>
-            <p className="text-xs font-mono text-muted-foreground mt-0.5">{workflow.slug}</p>
           </div>
+          <p className="text-xs font-mono text-muted-foreground">{workflow.slug}</p>
         </div>
-        {workflow.description && (
-          <p className="text-muted-foreground leading-relaxed">{workflow.description}</p>
-        )}
-      </div>
 
-      {/* Meta badges */}
-      <div className="flex items-center gap-2 flex-wrap">
-        {steps.length > 0 && (
-          <Badge variant="default">{steps.length} step{steps.length !== 1 ? 's' : ''}</Badge>
-        )}
-        {involvedApis.map((apiId: string) => (
-          <Badge key={apiId} variant="default" className="font-mono text-[10px]">{apiId}</Badge>
-        ))}
-      </div>
-
-      {/* Inputs */}
-      {inputs.length > 0 && (
-        <div className="bg-muted border border-border rounded-xl overflow-hidden">
-          <div className="px-5 py-4 border-b border-border">
-            <h3 className="font-heading font-semibold text-foreground">Inputs ({inputs.length})</h3>
+        {/* Meta badges and view toggle */}
+        <div className="flex items-center justify-between gap-4 flex-wrap">
+          <div className="flex items-center gap-2 flex-wrap">
+            {steps.length > 0 && (
+              <Badge variant="default">{steps.length} step{steps.length !== 1 ? 's' : ''}</Badge>
+            )}
+            {involvedApis.map((apiId: string) => (
+              <Badge key={apiId} variant="default" className="font-mono text-[10px]">{apiId}</Badge>
+            ))}
           </div>
-          <div className="divide-y divide-border/50">
-            {inputs.map((input: any, i: number) => (
-              <div key={i} className="px-5 py-3 flex items-baseline gap-3">
-                <code className="font-mono text-accent-teal text-sm shrink-0">{input.name}</code>
-                {input.required !== false && (
-                  <span className="text-danger text-[10px] font-mono shrink-0">required</span>
-                )}
-                {input.type && (
-                  <span className="text-muted-foreground text-xs font-mono shrink-0">{input.type}</span>
-                )}
-                {input.description && (
-                  <span className="text-muted-foreground text-sm truncate">{input.description}</span>
-                )}
-              </div>
+
+          {/* View toggle */}
+          <div className="flex items-center gap-1 bg-muted border border-border rounded-lg p-0.5">
+            {(['diagram', 'split', 'docs'] as const).map(v => (
+              <button
+                key={v}
+                onClick={() => setView(v)}
+                className={`px-3 py-1.5 rounded text-xs font-medium transition-colors ${
+                  view === v ? 'bg-primary text-background' : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                {v === 'diagram' ? 'Diagram' : v === 'split' ? 'Split' : 'Docs'}
+              </button>
             ))}
           </div>
         </div>
-      )}
 
-      {/* Steps */}
-      {steps.length > 0 && (
-        <div className="bg-muted border border-border rounded-xl overflow-hidden">
-          <div className="px-5 py-4 border-b border-border">
-            <h3 className="font-heading font-semibold text-foreground">Steps</h3>
-          </div>
-          <div className="divide-y divide-border/50">
-            {steps.map((step: any, i: number) => (
-              <div key={step.stepId ?? i} className="px-5 py-4 space-y-2">
-                <div className="flex items-center gap-3">
-                  <span className="flex items-center justify-center w-6 h-6 rounded-full bg-primary/10 text-primary text-xs font-mono font-bold shrink-0">
-                    {i + 1}
-                  </span>
-                  <span className="font-medium text-foreground">{step.stepId ?? `Step ${i + 1}`}</span>
-                  {i < steps.length - 1 && (
-                    <ArrowRight className="h-3.5 w-3.5 text-muted-foreground ml-auto" />
-                  )}
-                </div>
-                {step.description && (
-                  <p className="text-sm text-muted-foreground ml-9">{step.description}</p>
-                )}
-                {step.operationId && (
-                  <p className="text-xs font-mono text-accent-teal ml-9">{step.operationId}</p>
-                )}
-                {step.workflowId && (
-                  <p className="text-xs font-mono text-accent-blue ml-9">workflow: {step.workflowId}</p>
-                )}
-                {/* Step parameters */}
-                {step.parameters && Object.keys(step.parameters).length > 0 && (
-                  <div className="ml-9 mt-1">
-                    <p className="text-[10px] text-muted-foreground font-mono uppercase tracking-wider mb-1">Parameters</p>
-                    <div className="space-y-0.5">
-                      {Object.entries(step.parameters).slice(0, 5).map(([k, v]) => (
-                        <div key={k} className="flex items-baseline gap-2 text-xs">
-                          <code className="text-muted-foreground font-mono">{k}:</code>
-                          <span className="text-foreground font-mono truncate">{String(v)}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
+        {showDescription && (
+          <p className="text-sm text-muted-foreground">{workflow.description}</p>
+        )}
+      </div>
+
+      {/* Arazzo UI Viewer */}
+      {isLoadingArazzo ? (
+        <div className="text-center py-16 text-muted-foreground">
+          <Loader2 className="h-6 w-6 animate-spin mx-auto mb-2" />
+          Loading workflow visualization...
         </div>
-      )}
-
-      {/* Raw (fallback) */}
-      {steps.length === 0 && inputs.length === 0 && (
-        <div className="bg-muted border border-border rounded-xl overflow-hidden">
-          <div className="px-5 py-4 border-b border-border">
-            <h3 className="font-heading font-semibold text-foreground">Raw Definition</h3>
+      ) : arazzoDoc ? (
+        <ArazzoErrorBoundary slug={slug}>
+          <div className="border border-border rounded-xl overflow-hidden bg-muted" style={{ height: '800px' }}>
+            <ArazzoUI
+              document={arazzoDoc}
+              view={view}
+              onViewChange={setView}
+            />
           </div>
-          <div className="px-5 py-4">
-            <pre className="text-xs font-mono text-muted-foreground overflow-auto max-h-96">
-              {JSON.stringify(workflow, null, 2)}
-            </pre>
-          </div>
+        </ArazzoErrorBoundary>
+      ) : (
+        <div className="text-center py-16 text-muted-foreground">
+          Failed to load workflow visualization.
         </div>
       )}
     </div>
