@@ -63,6 +63,14 @@ _HOP_BY_HOP = {
     "x-jentic-credential", "x-jentic-callback",
     # Host is set from the target URL
     "host",
+    # Reverse-proxy headers injected by nginx/traefik/etc. — these describe
+    # the inbound hop to Jentic, not the outbound hop to the upstream API.
+    # Forwarding them causes failures: e.g. CloudFront returns 403
+    # "Host not permitted" when it sees x-forwarded-host with the Jentic
+    # hostname instead of the upstream API hostname.
+    "x-forwarded-for", "x-forwarded-host", "x-forwarded-port",
+    "x-forwarded-proto", "x-forwarded-scheme",
+    "x-real-ip", "x-scheme",
 }
 
 # How we detect credentials for a given API host
