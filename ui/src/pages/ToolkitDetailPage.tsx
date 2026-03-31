@@ -397,6 +397,7 @@ export default function ToolkitDetailPage() {
             <div className="p-4 bg-background rounded-lg border border-border space-y-3">
               <p className="text-sm font-semibold text-foreground">Create API Key</p>
               <input type="text" value={keyName} onChange={e => setKeyName(e.target.value)} placeholder="Key name (optional)"
+                aria-label="Key name"
                 className="w-full bg-muted border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-hidden" />
               <div className="flex gap-2">
                 <button onClick={() => createKeyMutation.mutate({ name: keyName || null })} disabled={createKeyMutation.isPending}

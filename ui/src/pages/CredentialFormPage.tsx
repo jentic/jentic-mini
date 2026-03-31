@@ -147,6 +147,7 @@ function ApiPicker({ onSelect }: { onSelect: (api: ApiOut) => void }) {
           value={query}
           onChange={e => setQuery(e.target.value)}
           placeholder="Search APIs (GitHub, Gmail, Stripe…)"
+          aria-label="Search APIs"
           className="w-full bg-background border border-border rounded-lg pl-9 pr-3 py-2.5 text-foreground focus:border-primary focus:outline-hidden"
         />
         {isLoading && <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground animate-spin" />}

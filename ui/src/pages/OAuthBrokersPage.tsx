@@ -306,6 +306,7 @@ function BrokerAccounts({ broker }: { broker: OAuthBroker }) {
                   size="sm"
                   className="text-destructive hover:text-destructive shrink-0"
                   onClick={() => setConfirmDeleteHost(acc.api_host)}
+                  aria-label="Remove account"
                 >
                   <Trash2 className="h-3.5 w-3.5" />
                 </Button>
@@ -363,6 +364,8 @@ function BrokerCard({ broker }: { broker: OAuthBroker }) {
         <button
           onClick={() => setExpanded(e => !e)}
           className="text-muted-foreground hover:text-foreground transition-colors"
+          aria-label={expanded ? "Collapse broker details" : "Expand broker details"}
+          aria-expanded={expanded}
         >
           {expanded ? <ChevronDown className="h-5 w-5" /> : <ChevronRight className="h-5 w-5" />}
         </button>
@@ -387,7 +390,7 @@ function BrokerCard({ broker }: { broker: OAuthBroker }) {
           </div>
         </div>
         <ConfirmInline onConfirm={() => deleteMutation.mutate()} message="Delete this broker?" confirmLabel="Delete">
-          <button className="inline-flex items-center gap-1 px-3 py-1.5 bg-danger/10 border border-danger/30 text-danger hover:bg-danger/20 rounded-lg text-sm transition-colors">
+          <button className="inline-flex items-center gap-1 px-3 py-1.5 bg-danger/10 border border-danger/30 text-danger hover:bg-danger/20 rounded-lg text-sm transition-colors" aria-label="Delete broker">
             <Trash2 className="h-4 w-4" />
           </button>
         </ConfirmInline>
@@ -418,6 +421,7 @@ export default function OAuthBrokersPage() {
         <button
           onClick={() => setShowAdd(s => !s)}
           className="inline-flex items-center gap-2 bg-primary text-background hover:bg-primary/80 font-medium rounded-lg px-4 py-2 transition-colors text-sm"
+          aria-expanded={showAdd}
         >
           <Plus className="h-4 w-4" /> Add Broker
         </button>
