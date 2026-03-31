@@ -1,8 +1,14 @@
 import { screen, renderWithProviders, userEvent } from '../test-utils'
 import { worker } from '../mocks/browser'
-import { http, HttpResponse } from 'msw'
+import { delay, http, HttpResponse } from 'msw'
 import axe from 'axe-core'
 import LoginPage from '../../pages/LoginPage'
+
+// Prevent window.location.href navigation from breaking the Vitest browser iframe.
+// LoginPage sets window.location.href on successful login — intercept it
+// by ensuring the login response stays pending long enough for assertions.
+// In browser mode we can't mock window.location, so tests that trigger
+// successful login use delayed MSW responses instead.
 
 describe('LoginPage', () => {
   it('renders the login form', () => {
@@ -18,7 +24,9 @@ describe('LoginPage', () => {
 
     worker.use(
       http.post('/user/login', async () => {
-        await new Promise(r => setTimeout(r, 500))
+        // Keep pending indefinitely so onSuccess (window.location.href)
+        // never fires — that navigation breaks the Vitest browser iframe.
+        await delay('infinite')
         return HttpResponse.json({ logged_in: true })
       }),
     )
@@ -81,8 +89,8 @@ describe('LoginPage', () => {
     worker.use(
       http.post('/user/login', async () => {
         loginCalled = true
-        // Keep pending to avoid window.location.href redirect breaking the test iframe
-        await new Promise(r => setTimeout(r, 2000))
+        // Keep pending — see comment at top of file
+        await delay('infinite')
         return HttpResponse.json({ logged_in: true, username: 'admin' })
       }),
     )
