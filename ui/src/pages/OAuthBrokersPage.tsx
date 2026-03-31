@@ -406,7 +406,7 @@ function BrokerCard({ broker }: { broker: OAuthBroker }) {
 export default function OAuthBrokersPage() {
   const [showAdd, setShowAdd] = useState(false)
 
-  const { data: brokers, isLoading } = useQuery({
+  const { data: brokers, isLoading, isError } = useQuery({
     queryKey: ['oauth-brokers'],
     queryFn: () => oauthBrokers.list(),
   })
@@ -436,6 +436,11 @@ export default function OAuthBrokersPage() {
 
       {isLoading ? (
         <div className="text-center py-16 text-muted-foreground">Loading brokers...</div>
+      ) : isError ? (
+        <div className="p-12 text-center bg-muted border border-border rounded-xl">
+          <p className="text-danger font-medium">Failed to load OAuth brokers</p>
+          <p className="text-sm text-muted-foreground mt-1">Please try refreshing the page.</p>
+        </div>
       ) : !brokers || brokers.length === 0 ? (
         <div className="p-12 text-center text-muted-foreground bg-muted border border-dashed border-border rounded-xl">
           <Link2 className="h-10 w-10 mx-auto mb-3 opacity-30" />

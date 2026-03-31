@@ -29,7 +29,7 @@ export default function JobsPage() {
   const [page, setPage] = useState(1)
   const statusFilter = searchParams.get('status') || undefined
 
-  const { data: jobsPage, isLoading } = useQuery({
+  const { data: jobsPage, isLoading, isError } = useQuery({
     queryKey: ['jobs', page, statusFilter],
     queryFn: () => api.listJobs({ page, status: statusFilter }),
   })
@@ -63,6 +63,11 @@ export default function JobsPage() {
 
       {isLoading ? (
         <div className="text-center py-16 text-muted-foreground">Loading jobs...</div>
+      ) : isError ? (
+        <div className="p-12 text-center bg-muted border border-border rounded-xl">
+          <p className="text-danger font-medium">Failed to load jobs</p>
+          <p className="text-sm text-muted-foreground mt-1">Please try refreshing the page.</p>
+        </div>
       ) : jobs.length === 0 ? (
         <div className="p-12 text-center bg-muted border border-border rounded-xl text-muted-foreground">
           <Briefcase className="h-10 w-10 mx-auto mb-3 opacity-30" />

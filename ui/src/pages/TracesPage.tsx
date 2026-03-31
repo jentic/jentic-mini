@@ -22,7 +22,7 @@ export default function TracesPage() {
   const toolkit = searchParams.get('toolkit') || undefined
   const workflow = searchParams.get('workflow') || undefined
 
-  const { data: tracesPage, isLoading } = useQuery({
+  const { data: tracesPage, isLoading, isError } = useQuery({
     queryKey: ['traces', page, toolkit, workflow],
     queryFn: () => api.listTraces({ page, limit: 20, toolkit, workflow }),
   })
@@ -58,6 +58,11 @@ export default function TracesPage() {
 
       {isLoading ? (
         <div className="text-center py-16 text-muted-foreground">Loading traces...</div>
+      ) : isError ? (
+        <div className="p-12 text-center bg-muted border border-border rounded-xl">
+          <p className="text-danger font-medium">Failed to load traces</p>
+          <p className="text-sm text-muted-foreground mt-1">Please try refreshing the page.</p>
+        </div>
       ) : traces.length === 0 ? (
         <div className="p-12 text-center bg-muted border border-border rounded-xl text-muted-foreground">
           <Activity className="h-10 w-10 mx-auto mb-3 opacity-30" />

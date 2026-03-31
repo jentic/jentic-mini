@@ -7,7 +7,7 @@ import { Workflow, ChevronRight, Zap, Globe } from 'lucide-react'
 export default function WorkflowsPage() {
   const navigate = useNavigate()
 
-  const { data: workflows, isLoading } = useQuery({
+  const { data: workflows, isLoading, isError } = useQuery({
     queryKey: ['workflows'],
     queryFn: api.listWorkflows,
   })
@@ -21,6 +21,11 @@ export default function WorkflowsPage() {
 
       {isLoading ? (
         <div className="text-center py-16 text-muted-foreground">Loading workflows...</div>
+      ) : isError ? (
+        <div className="p-12 text-center bg-muted border border-border rounded-xl">
+          <p className="text-danger font-medium">Failed to load workflows</p>
+          <p className="text-sm text-muted-foreground mt-1">Please try refreshing the page.</p>
+        </div>
       ) : !workflows || !Array.isArray(workflows) || workflows.length === 0 ? (
         <div className="p-12 text-center text-muted-foreground bg-muted border border-dashed border-border rounded-xl">
           <Workflow className="h-10 w-10 mx-auto mb-3 opacity-30" />
