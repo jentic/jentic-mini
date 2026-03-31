@@ -129,8 +129,9 @@ export default function SetupPage() {
             )}
 
             <div className="mb-4">
-              <label className="block text-sm font-bold mb-2 text-muted-foreground">Username</label>
+              <label htmlFor="setup-username" className="block text-sm font-bold mb-2 text-muted-foreground">Username</label>
               <input
+                id="setup-username"
                 type="text"
                 value={username}
                 onChange={e => setUsername(e.target.value)}
@@ -140,8 +141,9 @@ export default function SetupPage() {
               />
             </div>
             <div className="mb-6">
-              <label className="block text-sm font-bold mb-2 text-muted-foreground">Password</label>
+              <label htmlFor="setup-password" className="block text-sm font-bold mb-2 text-muted-foreground">Password</label>
               <input
+                id="setup-password"
                 type="password"
                 value={password}
                 onChange={e => setPassword(e.target.value)}

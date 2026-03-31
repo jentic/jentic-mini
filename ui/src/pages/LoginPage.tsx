@@ -40,8 +40,9 @@ export default function LoginPage() {
           )}
           
           <div className="mb-4">
-            <label className="block text-sm font-bold mb-2 text-muted-foreground">Username</label>
+            <label htmlFor="login-username" className="block text-sm font-bold mb-2 text-muted-foreground">Username</label>
             <input 
+              id="login-username"
               type="text" 
               value={username} 
               onChange={e => setUsername(e.target.value)} 
@@ -51,8 +52,9 @@ export default function LoginPage() {
           </div>
           
           <div className="mb-8">
-            <label className="block text-sm font-bold mb-2 text-muted-foreground">Password</label>
+            <label htmlFor="login-password" className="block text-sm font-bold mb-2 text-muted-foreground">Password</label>
             <input 
+              id="login-password"
               type="password" 
               value={password} 
               onChange={e => setPassword(e.target.value)} 

@@ -52,34 +52,34 @@ function AddBrokerForm({ onClose }: { onClose: () => void }) {
 
       <div className="grid grid-cols-2 gap-3">
         <div>
-          <label className="block text-xs text-muted-foreground mb-1">Broker ID</label>
-          <input className={inputClass} value={form.id} onChange={set('id')} placeholder="e.g. pipedream" />
+          <label htmlFor="broker-id" className="block text-xs text-muted-foreground mb-1">Broker ID</label>
+          <input id="broker-id" className={inputClass} value={form.id} onChange={set('id')} placeholder="e.g. pipedream" />
         </div>
         <div>
-          <label className="block text-xs text-muted-foreground mb-1">Type</label>
-          <select className={inputClass} value={form.type} onChange={set('type')}>
+          <label htmlFor="broker-type" className="block text-xs text-muted-foreground mb-1">Type</label>
+          <select id="broker-type" className={inputClass} value={form.type} onChange={set('type')}>
             <option value="pipedream">pipedream</option>
           </select>
         </div>
         <div>
-          <label className="block text-xs text-muted-foreground mb-1">Client ID</label>
-          <input className={inputClass} value={form.client_id} onChange={set('client_id')} placeholder="OAuth client ID" />
+          <label htmlFor="broker-client-id" className="block text-xs text-muted-foreground mb-1">Client ID</label>
+          <input id="broker-client-id" className={inputClass} value={form.client_id} onChange={set('client_id')} placeholder="OAuth client ID" />
         </div>
         <div>
-          <label className="block text-xs text-muted-foreground mb-1">Client Secret</label>
-          <input className={inputClass} type="password" value={form.client_secret} onChange={set('client_secret')} placeholder="OAuth client secret" />
+          <label htmlFor="broker-client-secret" className="block text-xs text-muted-foreground mb-1">Client Secret</label>
+          <input id="broker-client-secret" className={inputClass} type="password" value={form.client_secret} onChange={set('client_secret')} placeholder="OAuth client secret" />
         </div>
         <div>
-          <label className="block text-xs text-muted-foreground mb-1">Project ID</label>
-          <input className={inputClass} value={form.project_id} onChange={set('project_id')} placeholder="Pipedream project ID" />
+          <label htmlFor="broker-project-id" className="block text-xs text-muted-foreground mb-1">Project ID</label>
+          <input id="broker-project-id" className={inputClass} value={form.project_id} onChange={set('project_id')} placeholder="Pipedream project ID" />
         </div>
         <div>
-          <label className="block text-xs text-muted-foreground mb-1">Environment</label>
-          <input className={inputClass} value={form.environment} onChange={set('environment')} />
+          <label htmlFor="broker-environment" className="block text-xs text-muted-foreground mb-1">Environment</label>
+          <input id="broker-environment" className={inputClass} value={form.environment} onChange={set('environment')} />
         </div>
         <div className="col-span-2">
-          <label className="block text-xs text-muted-foreground mb-1">Default External User ID</label>
-          <input className={inputClass} value={form.default_external_user_id} onChange={set('default_external_user_id')} />
+          <label htmlFor="broker-ext-user-id" className="block text-xs text-muted-foreground mb-1">Default External User ID</label>
+          <input id="broker-ext-user-id" className={inputClass} value={form.default_external_user_id} onChange={set('default_external_user_id')} />
         </div>
       </div>
 
@@ -132,6 +132,7 @@ function CatalogSearch({ onSelect, mirrorValue }: { onSelect: (apiId: string) =>
   return (
     <div className="space-y-1.5">
       <input
+        id="broker-catalog-api"
         className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-hidden focus:ring-1 focus:ring-primary/50"
         value={q}
         onChange={e => { setQ(e.target.value); if (e.target.value === '') { setDirty(false) } else { setDirty(true) }; setSelected('') }}
@@ -204,16 +205,16 @@ function ConnectAccountPanel({ brokerId, externalUserId, onDone }: { brokerId: s
       <p className="text-sm font-medium text-foreground">Connect a new account</p>
       <div className="grid grid-cols-2 gap-3">
         <div>
-          <label className="block text-xs text-muted-foreground mb-1">App Slug</label>
-          <input className={inputClass} value={appSlug} onChange={e => setAppSlug(e.target.value)} placeholder="e.g. gmail, slack, github" />
+          <label htmlFor="broker-app-slug" className="block text-xs text-muted-foreground mb-1">App Slug</label>
+          <input id="broker-app-slug" className={inputClass} value={appSlug} onChange={e => setAppSlug(e.target.value)} placeholder="e.g. gmail, slack, github" />
         </div>
         <div>
-          <label className="block text-xs text-muted-foreground mb-1">Label (optional)</label>
-          <input className={inputClass} value={label} onChange={e => setLabel(e.target.value)} placeholder="e.g. My Gmail" />
+          <label htmlFor="broker-label" className="block text-xs text-muted-foreground mb-1">Label (optional)</label>
+          <input id="broker-label" className={inputClass} value={label} onChange={e => setLabel(e.target.value)} placeholder="e.g. My Gmail" />
         </div>
       </div>
       <div>
-        <label className="block text-xs text-muted-foreground mb-1">Catalog API <span className="text-danger">*</span></label>
+        <label htmlFor="broker-catalog-api" className="block text-xs text-muted-foreground mb-1">Catalog API <span className="text-danger">*</span></label>
         <CatalogSearch onSelect={setApiId} mirrorValue={appSlug} />
       </div>
       {linkMutation.isError && (
