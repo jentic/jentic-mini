@@ -127,6 +127,20 @@ All theming is in `ui/src/index.css`. To add a new semantic color:
 3. Map it in `@theme inline` (e.g. `--color-info: var(--info)`)
 4. Use it in components as `bg-info`, `text-info`, etc.
 
+## Testing
+
+See `ui/TESTING.md` for the full contributor guide.
+
+```bash
+cd ui
+npm test            # Vitest watch mode (browser mode via Playwright)
+npm run test:run    # Single CI run
+npm run test:coverage  # Istanbul coverage report
+npm run test:e2e    # Playwright E2E tests
+```
+
+Stack: Vitest browser mode + MSW (`msw/browser`) + axe-core + Testing Library. CI job: `ui-tests` in `.github/workflows/ci.yml`.
+
 ## Data directory (all gitignored)
 - `data/jentic-mini.db` — SQLite database
 - `data/vault.key` — Fernet encryption key (auto-generated)

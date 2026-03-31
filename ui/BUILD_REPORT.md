@@ -175,6 +175,10 @@ Import for `InspectService` added.
 ✓ Vite build succeeded
 ✓ TailwindCSS 4 via @tailwindcss/vite plugin (no PostCSS)
 ✓ Zero hardcoded colors, zero emoji icons
+✓ 86 unit + integration tests passing (Vitest browser mode)
+✓ 35 Playwright E2E specs
+✓ Automated a11y checks via axe-core on all critical pages
+✓ CI pipeline: ui-tests job in GitHub Actions
 ```
 
 **Fixed issues:**
