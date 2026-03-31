@@ -1,6 +1,6 @@
 import { screen, renderWithProviders, userEvent } from '../test-utils'
 import { worker } from '../mocks/browser'
-import { http, HttpResponse } from 'msw'
+import { delay, http, HttpResponse } from 'msw'
 import axe from 'axe-core'
 import LoginPage from '../../pages/LoginPage'
 
@@ -17,7 +17,7 @@ describe('LoginPage', () => {
 
     worker.use(
       http.post('/user/login', async () => {
-        await new Promise(r => setTimeout(r, 500))
+        await delay('infinite')
         return HttpResponse.json({ logged_in: true })
       }),
     )
@@ -74,8 +74,7 @@ describe('LoginPage', () => {
     worker.use(
       http.post('/user/login', async () => {
         loginCalled = true
-        // Keep pending to avoid window.location.href redirect breaking the test iframe
-        await new Promise(r => setTimeout(r, 2000))
+        await delay('infinite')
         return HttpResponse.json({ logged_in: true, username: 'admin' })
       }),
     )

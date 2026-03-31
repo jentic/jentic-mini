@@ -129,9 +129,8 @@
 - Docker images published compatible with amd64 and arm64 architectures
 - Unstable builds: pushes to `main` branch create `:unstable` tag (not `latest`) for testing
 - Database migrations: Alembic-based schema versioning with backward-compatible migrations; breaking changes communicated via GitHub release changelogs
+- Automated dependency updates — `requirements.txt`, `package.json`, GitHub Actions are uptoupdated by Dependabot
 
-**Gaps remaining:**
-- No automated dependency updates — `requirements.txt` and `package.json` are pinned but no Dependabot or Renovate config to surface new versions; security patches go unnoticed
 
 ### Local and Self-Hosted Services
 
@@ -192,8 +191,7 @@ OAuth2 APIs (Spotify, Google, Slack user tokens, etc.) require multi-step human 
 **Schema samples**
 `POST /samples` endpoint: given an operation/workflow ID, return example request bodies and response shapes. Useful for simulate mode grounding (agents can see realistic mock data structures).
 
-**llms.txt**
-Standard `GET /llms.txt` endpoint for LLM discovery. Returns a structured description of what JPE provides and how to use it. Follows emerging convention from llmstxt.org.
+**~~llms.txt~~** ✅ Completed — `GET /llms.txt` endpoint and `AGENTS.md` added in v0.4.
 
 **Agent-contributed catalog (workflow authorship flywheel)**
 - Agents can submit workflows via `POST /import` — initially private to their toolkit

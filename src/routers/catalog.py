@@ -15,19 +15,20 @@ import re
 import time
 import urllib.request
 import urllib.error
-from pathlib import Path
+
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from src.db import get_db
+from src.config import DATA_DIR
 
 log = logging.getLogger("jentic.catalog")
 
 router = APIRouter()
 
-CATALOG_MANIFEST_PATH = Path("/app/data/catalog_manifest.json")
-WORKFLOW_MANIFEST_PATH = Path("/app/data/workflow_manifest.json")
+CATALOG_MANIFEST_PATH = DATA_DIR / "catalog_manifest.json"
+WORKFLOW_MANIFEST_PATH = DATA_DIR / "workflow_manifest.json"
 GITHUB_REPO = "jentic/jentic-public-apis"
 GITHUB_API_BASE = "https://api.github.com"
 CATALOG_PATH = "apis/openapi"
