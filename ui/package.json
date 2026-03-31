@@ -20,7 +20,7 @@
     "clsx": "^2.1.1",
     "lucide-react": "^0.363.0",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1",
+    "react-dom": "^19.2.4",
     "react-router-dom": "^6.30.3",
     "tailwind-merge": "^3.5.0"
   },
@@ -32,7 +32,7 @@
     "@testing-library/user-event": "^14.6.1",
     "@types/node": "^25.5.0",
     "@types/react": "^18.3.28",
-    "@types/react-dom": "^18.3.7",
+    "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^4.7.0",
     "@vitest/browser": "^4.1.2",
     "@vitest/browser-playwright": "^4.1.2",
