@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useMutation } from '@tanstack/react-query'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useSearchParams, useNavigate } from 'react-router-dom'
 import { JenticLogo } from '../components/ui/Logo'
 
@@ -8,6 +8,7 @@ export default function LoginPage() {
   const [password, setPassword] = useState('')
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
   const next = searchParams.get('next') || '/'
   
   const loginMutation = useMutation({
@@ -21,7 +22,8 @@ export default function LoginPage() {
       if (!res.ok) throw new Error('Login failed')
       return res.json()
     },
-    onSuccess: () => {
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['user', 'me'] })
       navigate(next, { replace: true })
     }
   })
