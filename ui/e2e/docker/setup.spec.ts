@@ -13,7 +13,14 @@ test.describe('Setup flow', () => {
     const health = await healthRes.json()
 
     if (health.status === 'ok') {
-      test.skip(true, 'Setup already completed — skipping setup flow')
+      const keyRes = await request.post('/default-api-key/generate')
+      if (keyRes.ok()) {
+        const body = await keyRes.json()
+        if (body.key) {
+          fs.writeFileSync(SHARED_STATE_PATH, JSON.stringify({ apiKey: body.key }))
+        }
+      }
+      test.skip(true, 'Setup already completed — ensured shared state if key available')
       return
     }
 
@@ -37,8 +44,7 @@ test.describe('Setup flow', () => {
       return match ? match[0] : null
     })
 
-    if (keyText) {
-      fs.writeFileSync(SHARED_STATE_PATH, JSON.stringify({ apiKey: keyText }))
-    }
+    expect(keyText, 'Expected to find generated API key (tk_...) in page text').toBeTruthy()
+    fs.writeFileSync(SHARED_STATE_PATH, JSON.stringify({ apiKey: keyText }))
   })
 })

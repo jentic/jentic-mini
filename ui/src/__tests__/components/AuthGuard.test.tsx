@@ -1,6 +1,6 @@
 import { screen, renderWithProviders } from '../test-utils'
 import { worker } from '../mocks/browser'
-import { http, HttpResponse } from 'msw'
+import { delay, http, HttpResponse } from 'msw'
 import { AuthGuard } from '../../components/AuthGuard'
 import { Routes, Route } from 'react-router-dom'
 
@@ -22,7 +22,7 @@ describe('AuthGuard', () => {
   it('shows loading state while checking auth', () => {
     worker.use(
       http.get('/health', async () => {
-        await new Promise(r => setTimeout(r, 5000))
+        await delay('infinite')
         return HttpResponse.json({ status: 'ok' })
       }),
     )

@@ -33,14 +33,10 @@ test.describe('Auth cycle', () => {
 test.describe('Search API', () => {
   test('searches using the key generated during setup', async ({ request }) => {
     const { apiKey } = loadSharedState()
-
-    if (!apiKey) {
-      test.skip(true, 'No API key available from setup — was setup skipped?')
-      return
-    }
+    expect(apiKey, 'Shared state file missing or has no apiKey — setup spec must run first').toBeTruthy()
 
     const searchRes = await request.get('/search?q=test', {
-      headers: { 'X-Jentic-API-Key': apiKey },
+      headers: { 'X-Jentic-API-Key': apiKey! },
     })
     expect(searchRes.ok()).toBeTruthy()
 

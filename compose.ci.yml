@@ -2,7 +2,7 @@
 # Usage: docker compose -f compose.yml -f compose.ci.yml up -d --build
 services:
   jentic-mini:
-    user: ""
+    user: "0:0"
     volumes: !override
       - jentic-ci-data:/app/data
     environment:

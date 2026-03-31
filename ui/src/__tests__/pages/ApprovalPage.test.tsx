@@ -78,16 +78,17 @@ describe('ApprovalPage', () => {
     )
 
     vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      renderWithProviders(<ApprovalPage />, { route: ROUTE, path: PATH })
 
-    renderWithProviders(<ApprovalPage />, { route: ROUTE, path: PATH })
+      const approveBtn = await screen.findByText('Approve Request')
+      await user.click(approveBtn)
 
-    const approveBtn = await screen.findByText('Approve Request')
-    await user.click(approveBtn)
-
-    expect(await screen.findByText('Request Approved')).toBeInTheDocument()
-    expect(screen.getByText(/Redirecting to toolkits/)).toBeInTheDocument()
-
-    vi.useRealTimers()
+      expect(await screen.findByText('Request Approved')).toBeInTheDocument()
+      expect(screen.getByText(/Redirecting to toolkits/)).toBeInTheDocument()
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('denies request and shows denied message', async () => {
@@ -111,16 +112,17 @@ describe('ApprovalPage', () => {
     )
 
     vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      renderWithProviders(<ApprovalPage />, { route: ROUTE, path: PATH })
 
-    renderWithProviders(<ApprovalPage />, { route: ROUTE, path: PATH })
+      const denyBtn = await screen.findByText('Deny Request')
+      await user.click(denyBtn)
 
-    const denyBtn = await screen.findByText('Deny Request')
-    await user.click(denyBtn)
-
-    expect(await screen.findByText('Request Denied')).toBeInTheDocument()
-    expect(screen.getByText(/Redirecting to toolkits/)).toBeInTheDocument()
-
-    vi.useRealTimers()
+      expect(await screen.findByText('Request Denied')).toBeInTheDocument()
+      expect(screen.getByText(/Redirecting to toolkits/)).toBeInTheDocument()
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('shows not-found state when request returns 404', async () => {
