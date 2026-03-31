@@ -19,7 +19,7 @@ import uuid
 
 from src.db import get_db
 from src.brokers.pipedream import _API_ID_TO_PD_SLUG as _PIPEDREAM_APP_SEEDS
-from src.config import JENTIC_PUBLIC_HOSTNAME, DATA_DIR
+from src.config import JENTIC_PUBLIC_HOSTNAME, DATA_DIR, SPECS_DIR
 
 _REGISTER_INSTALL_URL = "https://api.jentic.com/api/v1/register-install"
 _INSTALL_ID_FILE = DATA_DIR / "install-id.txt"
@@ -52,8 +52,8 @@ async def self_register(app=None) -> None:
 async def register_install() -> None:
     """On first startup, generate a random install ID and register it with Jentic.
 
-    The install ID is a random UUID stored in /app/data/install-id.txt. A second
-    local marker file, /app/data/install-registered.txt, is written after a
+    The install ID is a random UUID stored in DATA_DIR/install-id.txt. A second
+    local marker file, DATA_DIR/install-registered.txt, is written after a
     successful registration so that future startups can skip the network call.
 
     The JSON payload sent to Jentic contains only this UUID ({"id": "<uuid>"}).
@@ -151,7 +151,6 @@ async def _ensure_spec_imported(app=None) -> None:
         spec["servers"] = [{"url": f"https://{hostname}"}]
 
         from src.routers.import_ import _register_openapi
-        from src.config import SPECS_DIR
         import json, pathlib
         specs_dir = SPECS_DIR
         specs_dir.mkdir(parents=True, exist_ok=True)
