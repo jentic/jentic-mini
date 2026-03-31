@@ -15,6 +15,9 @@ cleanup() {
 }
 trap cleanup EXIT
 
+echo "==> Cleaning up any previous run..."
+$COMPOSE down -v 2>/dev/null || true
+
 echo "==> Building and starting containers..."
 $COMPOSE up -d --build
 
@@ -33,5 +36,6 @@ done
 
 echo "==> Running Docker E2E tests..."
 cd ui
+rm -f e2e/docker/.docker-e2e-state.json
 npx playwright test --config=playwright.docker.config.ts
 echo "==> All Docker E2E tests passed"

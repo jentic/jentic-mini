@@ -1,4 +1,19 @@
 import { test, expect } from '@playwright/test'
+import * as fs from 'fs'
+import { fileURLToPath } from 'url'
+import { dirname, join } from 'path'
+
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = dirname(__filename)
+const SHARED_STATE_PATH = join(__dirname, '.docker-e2e-state.json')
+
+function loadSharedState(): { apiKey?: string } {
+  try {
+    return JSON.parse(fs.readFileSync(SHARED_STATE_PATH, 'utf-8'))
+  } catch {
+    return {}
+  }
+}
 
 test.describe('Auth cycle', () => {
   test('logs in via UI and navigates to dashboard', async ({ page }) => {
@@ -16,22 +31,16 @@ test.describe('Auth cycle', () => {
 })
 
 test.describe('Search API', () => {
-  test('searches via API key', async ({ request }) => {
-    const loginRes = await request.post('/user/login', {
-      data: { username: 'admin', password: 'admin123' },
-    })
-    expect(loginRes.ok()).toBeTruthy()
+  test('searches using the key generated during setup', async ({ request }) => {
+    const { apiKey } = loadSharedState()
 
-    const keyRes = await request.post('/default-api-key/generate')
-    const keyBody = await keyRes.json()
-
-    if (!keyBody.key) {
-      test.skip(true, 'Key already claimed — skipping search test')
+    if (!apiKey) {
+      test.skip(true, 'No API key available from setup — was setup skipped?')
       return
     }
 
     const searchRes = await request.get('/search?q=test', {
-      headers: { 'X-Jentic-API-Key': keyBody.key },
+      headers: { 'X-Jentic-API-Key': apiKey },
     })
     expect(searchRes.ok()).toBeTruthy()
 
