@@ -7,9 +7,8 @@ import LoginPage from '../../pages/LoginPage'
 describe('LoginPage', () => {
   it('renders the login form', () => {
     renderWithProviders(<LoginPage />)
-    expect(screen.getByText('Username')).toBeInTheDocument()
-    expect(document.querySelector('input[type="text"]')).toBeInTheDocument()
-    expect(document.querySelector('input[type="password"]')).toBeInTheDocument()
+    expect(screen.getByLabelText('Username')).toBeInTheDocument()
+    expect(screen.getByLabelText('Password')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /log in/i })).toBeInTheDocument()
   })
 
@@ -25,10 +24,8 @@ describe('LoginPage', () => {
 
     renderWithProviders(<LoginPage />)
 
-    const inputs = screen.getAllByRole('textbox')
-    const passwordInput = document.querySelector('input[type="password"]')!
-    await user.type(inputs[0], 'admin')
-    await user.type(passwordInput as HTMLElement, 'password')
+    await user.type(screen.getByLabelText('Username'), 'admin')
+    await user.type(screen.getByLabelText('Password'), 'password')
     await user.click(screen.getByRole('button', { name: /log in/i }))
 
     expect(await screen.findByRole('button', { name: /logging in/i })).toBeDisabled()
@@ -45,10 +42,8 @@ describe('LoginPage', () => {
 
     renderWithProviders(<LoginPage />)
 
-    const inputs = screen.getAllByRole('textbox')
-    const passwordInput = document.querySelector('input[type="password"]')!
-    await user.type(inputs[0], 'admin')
-    await user.type(passwordInput as HTMLElement, 'wrong')
+    await user.type(screen.getByLabelText('Username'), 'admin')
+    await user.type(screen.getByLabelText('Password'), 'wrong')
     await user.click(screen.getByRole('button', { name: /log in/i }))
 
     expect(await screen.findByText(/invalid username or password/i)).toBeInTheDocument()
@@ -65,10 +60,8 @@ describe('LoginPage', () => {
 
     renderWithProviders(<LoginPage />)
 
-    const inputs = screen.getAllByRole('textbox')
-    const passwordInput = document.querySelector('input[type="password"]')!
-    await user.type(inputs[0], 'admin')
-    await user.type(passwordInput as HTMLElement, 'password')
+    await user.type(screen.getByLabelText('Username'), 'admin')
+    await user.type(screen.getByLabelText('Password'), 'password')
     await user.click(screen.getByRole('button', { name: /log in/i }))
 
     expect(await screen.findByText(/invalid username or password/i)).toBeInTheDocument()
@@ -89,10 +82,8 @@ describe('LoginPage', () => {
 
     renderWithProviders(<LoginPage />)
 
-    const inputs = screen.getAllByRole('textbox')
-    const passwordInput = document.querySelector('input[type="password"]')!
-    await user.type(inputs[0], 'admin')
-    await user.type(passwordInput as HTMLElement, 'password')
+    await user.type(screen.getByLabelText('Username'), 'admin')
+    await user.type(screen.getByLabelText('Password'), 'password')
     await user.click(screen.getByRole('button', { name: /log in/i }))
 
     expect(await screen.findByRole('button', { name: /logging in/i })).toBeDisabled()
@@ -101,8 +92,7 @@ describe('LoginPage', () => {
 
   it('has no critical accessibility violations', async () => {
     const { container } = renderWithProviders(<LoginPage />)
-    // 'label' excluded: inputs use adjacent <label> without htmlFor — tracked as a known a11y debt
-    const results = await axe.run(container, { rules: { label: { enabled: false } } })
+    const results = await axe.run(container)
     const critical = results.violations.filter(v => v.impact === 'critical' || v.impact === 'serious')
     expect(critical).toEqual([])
   })
