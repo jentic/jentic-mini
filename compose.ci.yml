@@ -1,0 +1,11 @@
+# compose.ci.yml — overrides for CI / Docker E2E
+# Usage: docker compose -f compose.yml -f compose.ci.yml up -d --build
+services:
+  jentic-mini:
+    volumes: !override
+      - jentic-ci-data:/app/data
+    environment:
+      JENTIC_TELEMETRY: "off"
+
+volumes:
+  jentic-ci-data:
