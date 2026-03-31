@@ -97,7 +97,8 @@ export async function navigateTo(page: Page, path: string) {
     window.history.pushState({}, '', p)
     window.dispatchEvent(new PopStateEvent('popstate'))
   }, path)
-  await page.waitForTimeout(500)
+  await page.getByRole('heading').first().waitFor({ timeout: 5000 })
+    .catch(() => page.waitForLoadState('domcontentloaded'))
 }
 
 // ---------------------------------------------------------------------------
