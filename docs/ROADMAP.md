@@ -102,13 +102,12 @@
 - Version source of truth: `APP_VERSION` flows from Docker build arg (set by CI from git tag via semantic-release)
 - Versioned Docker tags: publish workflow creates full version (e.g. `0.4.1`), minor version (e.g. `0.4`), and `latest` tags for releases
 - Release process: `semantic-release` workflow creates git tags, GitHub Releases with auto-generated changelogs, and triggers Docker publish
-- Update detection: `GET /version` endpoint compares running version against latest GitHub release (cached 6h); admin UI can check for updates
+- Update detection: `GET /version` endpoint compares running version against latest GitHub release (cached 6h); admin UI shows "update available" banner when new version detected
 - Docker images published compatible with amd64 and arm64 architectures
 - Unstable builds: pushes to `main` branch create `:unstable` tag (not `latest`) for testing
+- Database migrations: Alembic-based schema versioning with backward-compatible migrations; breaking changes communicated via GitHub release changelogs
 
 **Gaps remaining:**
-- No in-product "update available" banner in the admin UI (API endpoint exists but UI doesn't consume it yet)
-- No upgrade/migration guide — DB schema migrations run automatically at startup (via `db.py`) but no per-version changelog explains breaking changes or when backups are advisable before upgrading
 - No automated dependency updates — `requirements.txt` and `package.json` are pinned but no Dependabot or Renovate config to surface new versions; security patches go unnoticed
 
 ### Local and Self-Hosted Services
