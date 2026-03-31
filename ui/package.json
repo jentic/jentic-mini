@@ -42,7 +42,7 @@
     "redoc": "^2.5.2",
     "swagger-ui-dist": "^5.32.1",
     "tailwindcss": "^4.1.0",
-    "typescript": "^5.9.3",
+    "typescript": "^6.0.2",
     "vite": "^5.4.21",
     "vitest": "^4.1.2"
   },
