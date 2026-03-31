@@ -1,12 +1,13 @@
 import { useState } from 'react'
 import { useMutation } from '@tanstack/react-query'
-import { useSearchParams } from 'react-router-dom'
+import { useSearchParams, useNavigate } from 'react-router-dom'
 import { JenticLogo } from '../components/ui/Logo'
 
 export default function LoginPage() {
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [searchParams] = useSearchParams()
+  const navigate = useNavigate()
   const next = searchParams.get('next') || '/'
   
   const loginMutation = useMutation({
@@ -21,7 +22,7 @@ export default function LoginPage() {
       return res.json()
     },
     onSuccess: () => {
-      window.location.href = next
+      navigate(next, { replace: true })
     }
   })
 
