@@ -22,8 +22,8 @@ test.describe('Auth cycle', () => {
     const loginButton = page.getByRole('button', { name: /log in/i })
     await loginButton.waitFor({ state: 'visible', timeout: 15_000 })
 
-    await page.locator('#login-username').fill('admin')
-    await page.locator('#login-password').fill('admin123')
+    await page.getByLabel('Username').fill('admin')
+    await page.getByLabel('Password').fill('admin123')
     await loginButton.click()
 
     await expect(page.getByRole('heading', { name: /dashboard/i })).toBeVisible({ timeout: 15_000 })

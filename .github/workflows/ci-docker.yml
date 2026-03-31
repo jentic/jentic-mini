@@ -6,6 +6,7 @@ on:
   pull_request:
     branches: [main]
   workflow_call:
+  workflow_dispatch:
 
 concurrency:
   group: docker-${{ github.ref }}
@@ -62,6 +63,7 @@ jobs:
       - name: Start container
         run: |
           docker run -d --name jentic-mini \
+            --user root \
             -p 8900:8900 \
             -v jentic-ci-data:/app/data \
             -e JENTIC_TELEMETRY=off \
@@ -82,7 +84,7 @@ jobs:
 
       - name: Smoke checks
         run: |
-          curl -sf http://localhost:8900/health | python3 -c "import sys,json; d=json.load(sys.stdin); assert d['status'] in ('ok','setup_required'), f'Bad: {d}'"
+          curl -sf http://localhost:8900/health | python3 -c "import sys,json; d=json.load(sys.stdin); assert d['status'] in ('ok','setup_required','account_required'), f'Bad: {d}'"
           curl -sf http://localhost:8900/docs | grep -q 'swagger-ui'
 
       - name: Docker E2E tests

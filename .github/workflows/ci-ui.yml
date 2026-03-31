@@ -59,7 +59,7 @@ jobs:
         run: npx tsc --noEmit
 
       - name: Unit & integration tests
-        run: npm run test:run
+        run: npm run test:coverage
 
       - name: E2E tests
         run: npm run test:e2e

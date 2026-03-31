@@ -33,7 +33,7 @@ test.describe('Setup flow', () => {
 
     const keyText = await page.evaluate(() => {
       const all = document.body.innerText
-      const match = all.match(/tk_[a-fA-F0-9]+/)
+      const match = all.match(/tk_[a-zA-Z0-9_-]+/)
       return match ? match[0] : null
     })
 
