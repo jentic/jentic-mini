@@ -19,6 +19,9 @@ npm run test:e2e
 
 # E2E with interactive UI
 npm run test:e2e:ui
+
+# Docker E2E (real backend)
+npm run test:e2e:docker  # requires Docker running
 ```
 
 ## Test Layers
@@ -28,7 +31,8 @@ npm run test:e2e:ui
 | Static | TypeScript + ESLint | Types, imports, syntax |
 | Unit | Vitest + Testing Library | Pure logic, UI primitives |
 | Integration | Vitest + MSW | Full pages with network mocking |
-| E2E | Playwright | Critical user journeys |
+| E2E (mocked) | Playwright | Critical user journeys with mocked API |
+| E2E (Docker) | Playwright | Critical paths against real backend |
 
 **Integration tests are the core.** They render real components with real React Query, real Router, and real DOM — mocking only the network layer via MSW.
 
@@ -37,13 +41,16 @@ npm run test:e2e:ui
 ```
 src/__tests__/
   setup.ts                    # Global setup (jest-dom, MSW worker lifecycle, storage cleanup)
-  test-utils.tsx              # renderWithProviders helper
+  test-utils.tsx              # renderWithProviders + createErrorHandler helpers
   mocks/
     handlers.ts               # Shared MSW handlers (happy path — reads + mutations)
     browser.ts                # MSW browser worker instance
-  components/                 # Unit tests for UI primitives
+  components/                 # Unit tests for UI primitives + AuthGuard
   hooks/                      # Unit tests for pure logic hooks
-  pages/                      # Integration tests for pages
+  pages/                      # Integration tests for all pages
+
+e2e/                          # Playwright mocked E2E tests
+e2e/docker/                   # Playwright Docker E2E tests (real backend)
 ```
 
 ## Writing a New Integration Test

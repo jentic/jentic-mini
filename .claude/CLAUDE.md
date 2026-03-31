@@ -136,10 +136,11 @@ cd ui
 npm test            # Vitest watch mode (browser mode via Playwright)
 npm run test:run    # Single CI run
 npm run test:coverage  # Istanbul coverage report
-npm run test:e2e    # Playwright E2E tests
+npm run test:e2e    # Playwright E2E tests (mocked)
+npm run test:e2e:docker  # Docker E2E (real backend)
 ```
 
-Stack: Vitest browser mode + MSW (`msw/browser`) + axe-core + Testing Library. CI job: `ui-tests` in `.github/workflows/ci.yml`.
+Stack: Vitest browser mode + MSW (`msw/browser`) + axe-core + Testing Library. CI: `ci-ui.yml` (path-filtered) + `ci-docker.yml` (always runs).
 
 ## Data directory (all gitignored)
 - `data/jentic-mini.db` — SQLite database
