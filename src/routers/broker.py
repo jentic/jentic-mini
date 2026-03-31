@@ -132,7 +132,6 @@ async def _find_credential_for_host(
         candidates.append(".".join(parts[1:]))
 
     api_id = None
-    cred_host = None  # real hostname for credential lookup (may differ from api_id)
     async with get_db() as db:
         for candidate in candidates:
             # For subdomain-style hosts (e.g. calendar.googleapis.com), also try
@@ -142,13 +141,13 @@ async def _find_credential_for_host(
             row = None
 
             # 1. Exact match
-            async with db.execute("SELECT id, base_url FROM apis WHERE id=?", (candidate,)) as cur:
+            async with db.execute("SELECT id FROM apis WHERE id=?", (candidate,)) as cur:
                 row = await cur.fetchone()
 
             # 2. Subdomain-hinted prefix match (e.g. googleapis.com/calendar)
             if not row and sub_hint:
                 async with db.execute(
-                    "SELECT id, base_url FROM apis WHERE id LIKE ? ORDER BY length(id) DESC LIMIT 1",
+                    "SELECT id FROM apis WHERE id LIKE ? ORDER BY length(id) DESC LIMIT 1",
                     (f"{candidate}/{sub_hint}%",),
                 ) as cur:
                     row = await cur.fetchone()
@@ -156,36 +155,35 @@ async def _find_credential_for_host(
             # 3. General longest-prefix match (fallback)
             if not row:
                 async with db.execute(
-                    "SELECT id, base_url FROM apis WHERE id LIKE ? ORDER BY length(id) DESC LIMIT 1",
+                    "SELECT id FROM apis WHERE id LIKE ? ORDER BY length(id) DESC LIMIT 1",
                     (f"{candidate}%",),
                 ) as cur:
                     row = await cur.fetchone()
 
             if row:
                 api_id = row[0]
-                # Credentials are stored under the real HTTP host, not the catalog api_id
-                # (which may be a normalised form like googleapis.com/gmail vs gmail.googleapis.com)
-                if row[1]:
-                    from urllib.parse import urlparse as _up
-                    _h = _up(row[1]).hostname
-                    if _h:
-                        cred_host = _h
                 break
 
-    cred_lookup_key = cred_host or api_id  # use real hostname for credential lookup
-
-    _broker_log.debug("CRED LOOKUP: host=%r → api_id=%r cred_host=%r (toolkit=%r alias=%r)", host, api_id, cred_host, toolkit_id, alias)
+    # Credentials are always stored under api_id (the canonical ID from the apis
+    # table), which matches how POST /credentials stores them and how
+    # _resolve_credential_ids (the policy check path) looks them up.
+    _broker_log.debug("CRED LOOKUP: host=%r → api_id=%r (toolkit=%r alias=%r)", host, api_id, toolkit_id, alias)
 
     if not api_id:
         return {}, None, None
 
-    # Get credentials bound to this toolkit + api (use real hostname as lookup key)
-    creds = await vault.get_credentials_for_api(toolkit_id, cred_lookup_key)
-    _broker_log.debug("CRED LOOKUP: %d cred(s) for cred_lookup_key=%r: %s", len(creds), cred_lookup_key, [c.get("id") for c in creds])
+    # Get credentials bound to this toolkit + api
+    creds = await vault.get_credentials_for_api(toolkit_id, api_id)
+    # TODO: remove hostname fallback once Pipedream credential storage is
+    # updated to use catalog api_id instead of HTTP hostname (see #79).
+    if not creds and host != api_id:
+        creds = await vault.get_credentials_for_api(toolkit_id, host)
+    _broker_log.debug("CRED LOOKUP: %d cred(s) for api_id=%r host=%r: %s", len(creds), api_id, host, [c.get("id") for c in creds])
 
     if not creds and toolkit_id:
         raise ValueError(
-            f"No credentials found for '{cred_lookup_key}' in toolkit '{toolkit_id}'. "
+            f"No credentials found for host '{host}' (resolved api_id '{api_id}') "
+            f"in toolkit '{toolkit_id}'. "
             f"Use POST /toolkits/{toolkit_id}/access-requests to request access."
         )
 
