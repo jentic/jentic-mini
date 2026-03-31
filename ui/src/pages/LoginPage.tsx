@@ -34,7 +34,7 @@ export default function LoginPage() {
         
         <form onSubmit={e => { e.preventDefault(); loginMutation.mutate() }}>
           {loginMutation.isError && (
-            <div className="p-3 bg-danger/10 text-danger border border-danger/30 rounded-lg mb-4 text-sm font-semibold">
+            <div role="alert" className="p-3 bg-danger/10 text-danger border border-danger/30 rounded-lg mb-4 text-sm font-semibold">
               Invalid username or password.
             </div>
           )}

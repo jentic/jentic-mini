@@ -411,7 +411,7 @@ function CredentialFields({ selectedApi, onBack, onSaved, editId, existing }: Cr
       )}
 
       {error && (
-        <div className="flex items-center gap-2 text-sm text-danger bg-danger/10 border border-danger/30 rounded-lg p-3">
+        <div role="alert" className="flex items-center gap-2 text-sm text-danger bg-danger/10 border border-danger/30 rounded-lg p-3">
           <AlertTriangle className="h-4 w-4 shrink-0" />{error}
         </div>
       )}

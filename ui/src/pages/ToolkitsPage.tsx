@@ -112,7 +112,7 @@ export default function ToolkitsPage({ createNew = false }: ToolkitsPageProps) {
                 <div className="flex items-start justify-between gap-2">
                   <div>
                     <div className="flex items-center gap-2 flex-wrap">
-                      <h3 className="font-heading font-semibold text-foreground">{toolkit.name}</h3>
+                      <h2 className="font-heading font-semibold text-foreground">{toolkit.name}</h2>
                       {toolkit.disabled && (
                         <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-mono bg-danger/10 text-danger border border-danger/30">
                           <Ban className="h-3 w-3" />SUSPENDED

@@ -36,7 +36,7 @@ export default function TraceDetailPage() {
 
       {/* Summary */}
       <div className="bg-muted border border-border rounded-xl p-5 space-y-4">
-        <h3 className="font-heading font-semibold text-foreground border-b border-border pb-3">Summary</h3>
+        <h2 className="font-heading font-semibold text-foreground border-b border-border pb-3">Summary</h2>
         <div className="grid grid-cols-2 gap-4">
           <div><p className="text-xs text-muted-foreground mb-1">Toolkit</p><p className="text-foreground font-medium">{trace.toolkit_id ?? '—'}</p></div>
           <div><p className="text-xs text-muted-foreground mb-1">Status</p>
@@ -72,7 +72,7 @@ export default function TraceDetailPage() {
       {/* Steps */}
       {trace.steps && trace.steps.length > 0 && (
         <div className="bg-muted border border-border rounded-xl overflow-hidden">
-          <div className="px-5 py-4 border-b border-border"><h3 className="font-heading font-semibold text-foreground">Steps ({trace.steps.length})</h3></div>
+          <div className="px-5 py-4 border-b border-border"><h2 className="font-heading font-semibold text-foreground">Steps ({trace.steps.length})</h2></div>
           <div className="px-5 py-4 space-y-2">
             {trace.steps.map((step: any, i: number) => (
               <div key={i} className="flex gap-3 p-3 bg-background rounded-lg border border-border">
@@ -95,7 +95,7 @@ export default function TraceDetailPage() {
       {/* Request / Response */}
       {trace.request && (
         <div className="bg-muted border border-border rounded-xl overflow-hidden">
-          <div className="px-5 py-4 border-b border-border"><h3 className="font-heading font-semibold text-foreground">Request</h3></div>
+          <div className="px-5 py-4 border-b border-border"><h2 className="font-heading font-semibold text-foreground">Request</h2></div>
           <div className="px-5 py-4">
             <pre className="bg-background border border-border rounded-lg p-4 text-xs font-mono text-foreground overflow-auto max-h-64">{JSON.stringify(trace.request, null, 2)}</pre>
           </div>
@@ -103,7 +103,7 @@ export default function TraceDetailPage() {
       )}
       {trace.response && (
         <div className="bg-muted border border-border rounded-xl overflow-hidden">
-          <div className="px-5 py-4 border-b border-border"><h3 className="font-heading font-semibold text-foreground">Response</h3></div>
+          <div className="px-5 py-4 border-b border-border"><h2 className="font-heading font-semibold text-foreground">Response</h2></div>
           <div className="px-5 py-4">
             <pre className="bg-background border border-border rounded-lg p-4 text-xs font-mono text-foreground overflow-auto max-h-64">{JSON.stringify(trace.response, null, 2)}</pre>
           </div>

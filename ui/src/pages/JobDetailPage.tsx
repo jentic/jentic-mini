@@ -63,7 +63,7 @@ export default function JobDetailPage() {
 
       {/* Summary */}
       <div className="bg-muted border border-border rounded-xl p-5 space-y-4">
-        <h3 className="font-heading font-semibold text-foreground border-b border-border pb-3">Summary</h3>
+        <h2 className="font-heading font-semibold text-foreground border-b border-border pb-3">Summary</h2>
         <div className="grid grid-cols-2 gap-4">
           <div><p className="text-xs text-muted-foreground mb-1">Status</p><Badge variant={statusVariant(job.status)} className="text-sm">{job.status ?? 'unknown'}</Badge></div>
           <div><p className="text-xs text-muted-foreground mb-1">Kind</p><p className="text-foreground font-medium">{job.kind ?? '—'}</p></div>
@@ -83,7 +83,7 @@ export default function JobDetailPage() {
 
       {job.result && (
         <div className="bg-muted border border-border rounded-xl overflow-hidden">
-          <div className="px-5 py-4 border-b border-border"><h3 className="font-heading font-semibold text-foreground">Result</h3></div>
+          <div className="px-5 py-4 border-b border-border"><h2 className="font-heading font-semibold text-foreground">Result</h2></div>
           <div className="px-5 py-4">
             <pre className="bg-background border border-border rounded-lg p-4 text-xs font-mono text-foreground overflow-auto max-h-96">
               {typeof job.result === 'string' ? job.result : JSON.stringify(job.result, null, 2)}
@@ -93,7 +93,7 @@ export default function JobDetailPage() {
       )}
       {job.error && (
         <div className="bg-muted border border-danger/30 rounded-xl overflow-hidden">
-          <div className="px-5 py-4 border-b border-danger/30"><h3 className="font-heading font-semibold text-danger">Error</h3></div>
+          <div className="px-5 py-4 border-b border-danger/30"><h2 className="font-heading font-semibold text-danger">Error</h2></div>
           <div className="px-5 py-4">
             <pre className="bg-danger/10 border border-danger/30 rounded-lg p-4 text-xs font-mono text-danger overflow-auto">{job.error}</pre>
           </div>

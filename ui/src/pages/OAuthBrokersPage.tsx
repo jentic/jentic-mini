@@ -48,7 +48,7 @@ function AddBrokerForm({ onClose }: { onClose: () => void }) {
 
   return (
     <div className="bg-muted border border-border rounded-xl p-4 space-y-4">
-      <h3 className="text-sm font-medium text-foreground">Add OAuth Broker</h3>
+      <h2 className="text-sm font-medium text-foreground">Add OAuth Broker</h2>
 
       <div className="grid grid-cols-2 gap-3">
         <div>
@@ -84,7 +84,7 @@ function AddBrokerForm({ onClose }: { onClose: () => void }) {
       </div>
 
       {createMutation.isError && (
-        <p className="text-xs text-danger">{(createMutation.error as Error).message}</p>
+        <p role="alert" className="text-xs text-danger">{(createMutation.error as Error).message}</p>
       )}
 
       <div className="flex items-center gap-2">
@@ -258,7 +258,7 @@ function BrokerAccounts({ broker }: { broker: OAuthBroker }) {
   return (
     <div className="space-y-3 mt-3 pl-8">
       <div className="flex items-center gap-2">
-        <h4 className="text-xs font-mono tracking-widest uppercase text-muted-foreground">Connected Accounts</h4>
+        <h3 className="text-xs font-mono tracking-widest uppercase text-muted-foreground">Connected Accounts</h3>
         <Button variant="secondary" size="sm" onClick={() => syncMutation.mutate()} loading={syncMutation.isPending}>
           <RefreshCw className="h-3.5 w-3.5" /> Sync
         </Button>
