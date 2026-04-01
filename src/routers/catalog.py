@@ -302,6 +302,7 @@ async def lazy_import_catalog_workflows(api_id: str) -> list[str]:
     # Import each workflow as a separate single-workflow arazzo file
     safe_id = re.sub(r"[^a-z0-9_-]", "_", source_id.lower())
     imported_slugs: list[str] = []
+    workflows_root = WORKFLOWS_DIR.resolve()
 
     for wf in doc.get("workflows", []):
         workflow_id = wf.get("workflowId", "")
@@ -313,7 +314,13 @@ async def lazy_import_catalog_workflows(api_id: str) -> list[str]:
 
         # Save as a single-workflow arazzo file so execution always picks the right one
         single_doc = {**doc, "workflows": [wf]}
-        arazzo_path = str(WORKFLOWS_DIR / f"catalog_{safe_id}_{slug}.json")
+        arazzo_file = (WORKFLOWS_DIR / f"catalog_{safe_id}_{slug}.json").resolve()
+        try:
+            arazzo_file.relative_to(workflows_root)
+        except ValueError:
+            log.warning("Path traversal blocked for workflow '%s'", workflow_id)
+            continue
+        arazzo_path = str(arazzo_file)
         with open(arazzo_path, "w") as f:
             json.dump(single_doc, f, indent=2)
 
