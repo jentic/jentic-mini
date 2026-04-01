@@ -116,21 +116,22 @@ export default function SetupPage() {
             <h2 className="text-xl font-semibold mb-4 text-foreground">Create Admin Account</h2>
 
             {accountAlreadyExists && (
-              <div className="mb-4 p-3 bg-warning/10 border border-warning/30 rounded-lg text-warning text-sm">
+              <div role="alert" className="mb-4 p-3 bg-warning/10 border border-warning/30 rounded-lg text-warning text-sm">
                 An admin account already exists.{' '}
                 <a href="/login" className="underline font-semibold">Log in instead →</a>
               </div>
             )}
 
             {createUserMutation.isError && !accountAlreadyExists && (
-              <div className="mb-4 p-3 bg-danger/10 border border-danger/30 rounded-lg text-danger text-sm">
+              <div role="alert" className="mb-4 p-3 bg-danger/10 border border-danger/30 rounded-lg text-danger text-sm">
                 Something went wrong. Please try again.
               </div>
             )}
 
             <div className="mb-4">
-              <label className="block text-sm font-bold mb-2 text-muted-foreground">Username</label>
+              <label htmlFor="setup-username" className="block text-sm font-bold mb-2 text-muted-foreground">Username</label>
               <input
+                id="setup-username"
                 type="text"
                 value={username}
                 onChange={e => setUsername(e.target.value)}
@@ -140,8 +141,9 @@ export default function SetupPage() {
               />
             </div>
             <div className="mb-6">
-              <label className="block text-sm font-bold mb-2 text-muted-foreground">Password</label>
+              <label htmlFor="setup-password" className="block text-sm font-bold mb-2 text-muted-foreground">Password</label>
               <input
+                id="setup-password"
                 type="password"
                 value={password}
                 onChange={e => setPassword(e.target.value)}

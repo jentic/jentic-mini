@@ -1,0 +1,115 @@
+name: Docker Build & E2E
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_call:
+  workflow_dispatch:
+
+concurrency:
+  group: docker-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  docker-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: ui/package-lock.json
+
+      - name: Install UI dependencies
+        run: cd ui && npm ci
+
+      - name: Get Playwright version
+        id: playwright-version
+        run: echo "version=$(node -e "console.log(require('@playwright/test/package.json').version)")" >> $GITHUB_OUTPUT
+        working-directory: ui
+
+      - name: Cache Playwright browsers
+        id: cache-playwright
+        uses: actions/cache@v5
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ steps.playwright-version.outputs.version }}
+
+      - name: Install Playwright browsers
+        if: steps.cache-playwright.outputs.cache-hit != 'true'
+        run: cd ui && npx playwright install --with-deps chromium
+
+      - name: Install Playwright system deps
+        if: steps.cache-playwright.outputs.cache-hit == 'true'
+        run: cd ui && npx playwright install-deps chromium
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Build Docker image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          load: true
+          tags: jentic-mini:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Start container
+        run: |
+          docker run -d --name jentic-mini \
+            --user root \
+            -p 8900:8900 \
+            -v jentic-ci-data:/app/data \
+            -e JENTIC_TELEMETRY=off \
+            jentic-mini:latest
+
+      - name: Wait for server
+        run: |
+          for i in $(seq 1 60); do
+            if curl -sf http://localhost:8900/health > /dev/null 2>&1; then
+              echo "Server ready after ${i}s"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "Server failed to start"
+          docker logs jentic-mini
+          exit 1
+
+      - name: Smoke checks
+        run: |
+          curl -sf http://localhost:8900/health | python3 -c "import sys,json; d=json.load(sys.stdin); assert d['status'] in ('ok','setup_required','account_required'), f'Bad: {d}'"
+          curl -sf http://localhost:8900/docs | grep -q 'swagger-ui'
+
+      - name: Docker E2E tests
+        run: cd ui && npm run test:e2e:docker
+
+      - name: Upload Docker E2E report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: docker-e2e-report
+          path: ui/playwright-report/
+          retention-days: 7
+
+      - name: Dump logs on failure
+        if: failure()
+        run: docker logs jentic-mini > docker-logs.txt 2>&1
+
+      - name: Upload docker logs
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: docker-logs
+          path: docker-logs.txt
+          retention-days: 7
+
+      - name: Stop container
+        if: always()
+        run: docker rm -f jentic-mini && docker volume rm -f jentic-ci-data || true

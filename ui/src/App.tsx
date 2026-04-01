@@ -1,5 +1,6 @@
-import { createBrowserRouter, RouterProvider, Outlet, Navigate, useLocation } from 'react-router-dom'
+import { createBrowserRouter, RouterProvider } from 'react-router-dom'
 import { Layout } from './components/layout/Layout'
+import { AuthGuard } from './components/AuthGuard'
 import SetupPage from './pages/SetupPage'
 import LoginPage from './pages/LoginPage'
 import DashboardPage from './pages/DashboardPage'
@@ -17,38 +18,6 @@ import JobsPage from './pages/JobsPage'
 import JobDetailPage from './pages/JobDetailPage'
 import TraceDetailPage from './pages/TraceDetailPage'
 import ApprovalPage from './pages/ApprovalPage'
-import { useAuth } from './hooks/useAuth'
-
-function AuthGuard() {
-  const { user, isLoading, isSetupOrAccountRequired } = useAuth()
-  const location = useLocation()
-
-  if (isLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <div className="text-muted-foreground text-sm">Loading...</div>
-      </div>
-    )
-  }
-
-  if (isSetupOrAccountRequired) {
-    if (location.pathname !== '/setup') return <Navigate to="/setup" replace />
-    return <Outlet />
-  }
-
-  if (!user?.logged_in) {
-    if (location.pathname !== '/login') {
-      return <Navigate to={`/login?next=${encodeURIComponent(location.pathname)}`} replace />
-    }
-    return <Outlet />
-  }
-
-  if (location.pathname === '/login' || location.pathname === '/setup') {
-    return <Navigate to="/" replace />
-  }
-
-  return <Outlet />
-}
 
 const router = createBrowserRouter([
   {

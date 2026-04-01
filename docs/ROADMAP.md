@@ -89,6 +89,13 @@
 - Limited error boundaries — Arazzo UI component has one; general page-level boundaries still needed to prevent unhandled errors crashing the whole UI.
 - No accessibility (a11y) audit has been done.
 
+**Remaining a11y debt (deferred):**
+- Focus traps for modals/overlays
+- ConfirmInline focus management
+- `aria-live` for async status messages
+- Skip-to-content link
+- ARIA combobox pattern for search inputs
+
 **Completed (v0.3):**
 - TailwindCSS 3 → 4 upgrade with `@tailwindcss/vite` plugin (PostCSS and JS config removed)
 - Design token system: single-file theme in `index.css` using shadcn/TW4-native `@theme inline` pattern; full HSL palette matching `@jentic/frontend-theme`
@@ -101,6 +108,16 @@
 - 86 unit + integration tests across 10 test files (4 component, 1 hook, 5 page integration)
 - Playwright E2E test suite (35 specs across 10 spec files)
 - CI pipeline: `ui-tests` job in GitHub Actions (TypeScript check, Vitest, Playwright)
+
+**Completed (v0.5):**
+- Full page coverage: 143+ integration tests across 19 test files (all pages covered)
+- AuthGuard redirect tests (7 tests)
+- Mutation error tests with `createErrorHandler` utility
+- Docker E2E: true end-to-end tests against real backend (setup flow, auth cycle, search)
+- Accessibility fixes: htmlFor/id labels, aria-label on search inputs and icon buttons, aria-expanded on toggles, heading level corrections, role="alert" on error containers
+- isError handling added to 5 pages (TracesPage, JobsPage, WorkflowsPage, OAuthBrokersPage, CatalogPage)
+- Extracted AuthGuard component, replaced window.location.href with navigate()
+- CI split: `ci-ui.yml` (path-filtered, fast feedback) + `ci-docker.yml` (always runs, Docker layer caching)
 
 ### Versioning, Releases, and Updates
 

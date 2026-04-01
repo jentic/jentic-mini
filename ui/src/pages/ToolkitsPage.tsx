@@ -29,13 +29,13 @@ function CreateModal({ onClose, onCreated }: { onClose: () => void; onCreated: (
         </div>
         <form onSubmit={e => { e.preventDefault(); setError(null); mutation.mutate({ name, description: description || null, simulate }) }} className="space-y-4">
           <div>
-            <label className="text-xs text-muted-foreground block mb-1">Name *</label>
-            <input type="text" value={name} onChange={e => setName(e.target.value)} required autoFocus
+            <label htmlFor="tk-create-name" className="text-xs text-muted-foreground block mb-1">Name *</label>
+            <input id="tk-create-name" type="text" value={name} onChange={e => setName(e.target.value)} required autoFocus
               className="w-full bg-background border border-border rounded-lg px-3 py-2 text-foreground focus:border-primary focus:outline-hidden" />
           </div>
           <div>
-            <label className="text-xs text-muted-foreground block mb-1">Description</label>
-            <textarea value={description} onChange={e => setDescription(e.target.value)} rows={2}
+            <label htmlFor="tk-create-description" className="text-xs text-muted-foreground block mb-1">Description</label>
+            <textarea id="tk-create-description" value={description} onChange={e => setDescription(e.target.value)} rows={2}
               className="w-full bg-background border border-border rounded-lg px-3 py-2 text-foreground focus:border-primary focus:outline-hidden resize-none" />
           </div>
           <label className="flex items-center gap-3 cursor-pointer">
@@ -112,7 +112,7 @@ export default function ToolkitsPage({ createNew = false }: ToolkitsPageProps) {
                 <div className="flex items-start justify-between gap-2">
                   <div>
                     <div className="flex items-center gap-2 flex-wrap">
-                      <h3 className="font-heading font-semibold text-foreground">{toolkit.name}</h3>
+                      <h2 className="font-heading font-semibold text-foreground">{toolkit.name}</h2>
                       {toolkit.disabled && (
                         <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-mono bg-danger/10 text-danger border border-danger/30">
                           <Ban className="h-3 w-3" />SUSPENDED

@@ -1,4 +1,4 @@
-import { screen, waitFor, renderWithProviders, userEvent } from '../test-utils'
+import { screen, waitFor, renderWithProviders, userEvent, createErrorHandler } from '../test-utils'
 import { worker } from '../mocks/browser'
 import { http, HttpResponse, delay } from 'msw'
 import axe from 'axe-core'
@@ -261,5 +261,73 @@ describe('ToolkitDetailPage — unbind credential', () => {
     await user.click(confirmBtn)
 
     await waitFor(() => expect(unbound).toBe(true))
+  })
+})
+
+describe('ToolkitDetailPage — mutation errors', () => {
+  it('reverts kill switch toggle on server error', async () => {
+    const user = userEvent.setup()
+
+    worker.use(
+      createErrorHandler('patch', '/toolkits/:id', { status: 500 }),
+    )
+
+    renderToolkit()
+    await screen.findByText('Test Toolkit')
+
+    await user.click(screen.getByRole('button', { name: /kill switch/i }))
+    expect(screen.getByText(/block all api access/i)).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: /kill access/i }))
+
+    await waitFor(() => {
+      expect(screen.queryByText(/toolkit suspended/i)).not.toBeInTheDocument()
+    })
+  })
+
+  it('shows error when creating a key fails with 500', async () => {
+    const user = userEvent.setup()
+
+    worker.use(
+      createErrorHandler('post', '/toolkits/:id/keys', { status: 500 }),
+    )
+
+    renderToolkit()
+    await screen.findByText('Test Toolkit')
+
+    await user.click(screen.getByRole('button', { name: /create key/i }))
+    expect(screen.getByText(/create api key/i)).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: /generate/i }))
+
+    await waitFor(() => {
+      expect(screen.queryByText(/new api key created/i)).not.toBeInTheDocument()
+    })
+  })
+
+  it('does not navigate away when deleting a toolkit fails with 500', async () => {
+    const user = userEvent.setup()
+
+    worker.use(
+      createErrorHandler('delete', '/toolkits/:id', { status: 500 }),
+    )
+
+    renderToolkit()
+    await screen.findByText('Test Toolkit')
+
+    await user.click(screen.getByRole('button', { name: /settings/i }))
+    expect(await screen.findByText(/toolkit settings/i)).toBeInTheDocument()
+
+    const deleteButton = screen.getByRole('button', { name: /delete toolkit/i })
+    await user.click(deleteButton)
+
+    expect(screen.getByText(/permanently delete/i)).toBeInTheDocument()
+
+    const confirmButton = screen.getAllByRole('button', { name: /delete forever/i })[0]
+    await user.click(confirmButton)
+
+    await waitFor(() => {
+      expect(screen.getByText('Test Toolkit')).toBeInTheDocument()
+    })
   })
 })

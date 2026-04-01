@@ -48,43 +48,43 @@ function AddBrokerForm({ onClose }: { onClose: () => void }) {
 
   return (
     <div className="bg-muted border border-border rounded-xl p-4 space-y-4">
-      <h3 className="text-sm font-medium text-foreground">Add OAuth Broker</h3>
+      <h2 className="text-sm font-medium text-foreground">Add OAuth Broker</h2>
 
       <div className="grid grid-cols-2 gap-3">
         <div>
-          <label className="block text-xs text-muted-foreground mb-1">Broker ID</label>
-          <input className={inputClass} value={form.id} onChange={set('id')} placeholder="e.g. pipedream" />
+          <label htmlFor="broker-id" className="block text-xs text-muted-foreground mb-1">Broker ID</label>
+          <input id="broker-id" className={inputClass} value={form.id} onChange={set('id')} placeholder="e.g. pipedream" />
         </div>
         <div>
-          <label className="block text-xs text-muted-foreground mb-1">Type</label>
-          <select className={inputClass} value={form.type} onChange={set('type')}>
+          <label htmlFor="broker-type" className="block text-xs text-muted-foreground mb-1">Type</label>
+          <select id="broker-type" className={inputClass} value={form.type} onChange={set('type')}>
             <option value="pipedream">pipedream</option>
           </select>
         </div>
         <div>
-          <label className="block text-xs text-muted-foreground mb-1">Client ID</label>
-          <input className={inputClass} value={form.client_id} onChange={set('client_id')} placeholder="OAuth client ID" />
+          <label htmlFor="broker-client-id" className="block text-xs text-muted-foreground mb-1">Client ID</label>
+          <input id="broker-client-id" className={inputClass} value={form.client_id} onChange={set('client_id')} placeholder="OAuth client ID" />
         </div>
         <div>
-          <label className="block text-xs text-muted-foreground mb-1">Client Secret</label>
-          <input className={inputClass} type="password" value={form.client_secret} onChange={set('client_secret')} placeholder="OAuth client secret" />
+          <label htmlFor="broker-client-secret" className="block text-xs text-muted-foreground mb-1">Client Secret</label>
+          <input id="broker-client-secret" className={inputClass} type="password" value={form.client_secret} onChange={set('client_secret')} placeholder="OAuth client secret" />
         </div>
         <div>
-          <label className="block text-xs text-muted-foreground mb-1">Project ID</label>
-          <input className={inputClass} value={form.project_id} onChange={set('project_id')} placeholder="Pipedream project ID" />
+          <label htmlFor="broker-project-id" className="block text-xs text-muted-foreground mb-1">Project ID</label>
+          <input id="broker-project-id" className={inputClass} value={form.project_id} onChange={set('project_id')} placeholder="Pipedream project ID" />
         </div>
         <div>
-          <label className="block text-xs text-muted-foreground mb-1">Environment</label>
-          <input className={inputClass} value={form.environment} onChange={set('environment')} />
+          <label htmlFor="broker-environment" className="block text-xs text-muted-foreground mb-1">Environment</label>
+          <input id="broker-environment" className={inputClass} value={form.environment} onChange={set('environment')} />
         </div>
         <div className="col-span-2">
-          <label className="block text-xs text-muted-foreground mb-1">Default External User ID</label>
-          <input className={inputClass} value={form.default_external_user_id} onChange={set('default_external_user_id')} />
+          <label htmlFor="broker-ext-user-id" className="block text-xs text-muted-foreground mb-1">Default External User ID</label>
+          <input id="broker-ext-user-id" className={inputClass} value={form.default_external_user_id} onChange={set('default_external_user_id')} />
         </div>
       </div>
 
       {createMutation.isError && (
-        <p className="text-xs text-danger">{(createMutation.error as Error).message}</p>
+        <p role="alert" className="text-xs text-danger">{(createMutation.error as Error).message}</p>
       )}
 
       <div className="flex items-center gap-2">
@@ -132,6 +132,7 @@ function CatalogSearch({ onSelect, mirrorValue }: { onSelect: (apiId: string) =>
   return (
     <div className="space-y-1.5">
       <input
+        id="broker-catalog-api"
         className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-hidden focus:ring-1 focus:ring-primary/50"
         value={q}
         onChange={e => { setQ(e.target.value); if (e.target.value === '') { setDirty(false) } else { setDirty(true) }; setSelected('') }}
@@ -204,16 +205,16 @@ function ConnectAccountPanel({ brokerId, externalUserId, onDone }: { brokerId: s
       <p className="text-sm font-medium text-foreground">Connect a new account</p>
       <div className="grid grid-cols-2 gap-3">
         <div>
-          <label className="block text-xs text-muted-foreground mb-1">App Slug</label>
-          <input className={inputClass} value={appSlug} onChange={e => setAppSlug(e.target.value)} placeholder="e.g. gmail, slack, github" />
+          <label htmlFor="broker-app-slug" className="block text-xs text-muted-foreground mb-1">App Slug</label>
+          <input id="broker-app-slug" className={inputClass} value={appSlug} onChange={e => setAppSlug(e.target.value)} placeholder="e.g. gmail, slack, github" />
         </div>
         <div>
-          <label className="block text-xs text-muted-foreground mb-1">Label (optional)</label>
-          <input className={inputClass} value={label} onChange={e => setLabel(e.target.value)} placeholder="e.g. My Gmail" />
+          <label htmlFor="broker-label" className="block text-xs text-muted-foreground mb-1">Label (optional)</label>
+          <input id="broker-label" className={inputClass} value={label} onChange={e => setLabel(e.target.value)} placeholder="e.g. My Gmail" />
         </div>
       </div>
       <div>
-        <label className="block text-xs text-muted-foreground mb-1">Catalog API <span className="text-danger">*</span></label>
+        <label htmlFor="broker-catalog-api" className="block text-xs text-muted-foreground mb-1">Catalog API <span className="text-danger">*</span></label>
         <CatalogSearch onSelect={setApiId} mirrorValue={appSlug} />
       </div>
       {linkMutation.isError && (
@@ -257,7 +258,7 @@ function BrokerAccounts({ broker }: { broker: OAuthBroker }) {
   return (
     <div className="space-y-3 mt-3 pl-8">
       <div className="flex items-center gap-2">
-        <h4 className="text-xs font-mono tracking-widest uppercase text-muted-foreground">Connected Accounts</h4>
+        <h3 className="text-xs font-mono tracking-widest uppercase text-muted-foreground">Connected Accounts</h3>
         <Button variant="secondary" size="sm" onClick={() => syncMutation.mutate()} loading={syncMutation.isPending}>
           <RefreshCw className="h-3.5 w-3.5" /> Sync
         </Button>
@@ -305,6 +306,7 @@ function BrokerAccounts({ broker }: { broker: OAuthBroker }) {
                   size="sm"
                   className="text-destructive hover:text-destructive shrink-0"
                   onClick={() => setConfirmDeleteHost(acc.api_host)}
+                  aria-label="Remove account"
                 >
                   <Trash2 className="h-3.5 w-3.5" />
                 </Button>
@@ -362,6 +364,8 @@ function BrokerCard({ broker }: { broker: OAuthBroker }) {
         <button
           onClick={() => setExpanded(e => !e)}
           className="text-muted-foreground hover:text-foreground transition-colors"
+          aria-label={expanded ? "Collapse broker details" : "Expand broker details"}
+          aria-expanded={expanded}
         >
           {expanded ? <ChevronDown className="h-5 w-5" /> : <ChevronRight className="h-5 w-5" />}
         </button>
@@ -386,7 +390,7 @@ function BrokerCard({ broker }: { broker: OAuthBroker }) {
           </div>
         </div>
         <ConfirmInline onConfirm={() => deleteMutation.mutate()} message="Delete this broker?" confirmLabel="Delete">
-          <button className="inline-flex items-center gap-1 px-3 py-1.5 bg-danger/10 border border-danger/30 text-danger hover:bg-danger/20 rounded-lg text-sm transition-colors">
+          <button className="inline-flex items-center gap-1 px-3 py-1.5 bg-danger/10 border border-danger/30 text-danger hover:bg-danger/20 rounded-lg text-sm transition-colors" aria-label="Delete broker">
             <Trash2 className="h-4 w-4" />
           </button>
         </ConfirmInline>
@@ -402,7 +406,7 @@ function BrokerCard({ broker }: { broker: OAuthBroker }) {
 export default function OAuthBrokersPage() {
   const [showAdd, setShowAdd] = useState(false)
 
-  const { data: brokers, isLoading } = useQuery({
+  const { data: brokers, isLoading, isError } = useQuery({
     queryKey: ['oauth-brokers'],
     queryFn: () => oauthBrokers.list(),
   })
@@ -417,6 +421,7 @@ export default function OAuthBrokersPage() {
         <button
           onClick={() => setShowAdd(s => !s)}
           className="inline-flex items-center gap-2 bg-primary text-background hover:bg-primary/80 font-medium rounded-lg px-4 py-2 transition-colors text-sm"
+          aria-expanded={showAdd}
         >
           <Plus className="h-4 w-4" /> Add Broker
         </button>
@@ -431,6 +436,11 @@ export default function OAuthBrokersPage() {
 
       {isLoading ? (
         <div className="text-center py-16 text-muted-foreground">Loading brokers...</div>
+      ) : isError ? (
+        <div className="p-12 text-center bg-muted border border-border rounded-xl">
+          <p className="text-danger font-medium">Failed to load OAuth brokers</p>
+          <p className="text-sm text-muted-foreground mt-1">Please try refreshing the page.</p>
+        </div>
       ) : !brokers || brokers.length === 0 ? (
         <div className="p-12 text-center text-muted-foreground bg-muted border border-dashed border-border rounded-xl">
           <Link2 className="h-10 w-10 mx-auto mb-3 opacity-30" />

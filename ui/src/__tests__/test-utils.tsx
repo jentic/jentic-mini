@@ -39,3 +39,22 @@ export function renderWithProviders(ui: ReactElement, options: Options = {}) {
 
 export * from '@testing-library/react'
 export { default as userEvent } from '@testing-library/user-event'
+
+// ---------------------------------------------------------------------------
+// MSW error handler factory
+// ---------------------------------------------------------------------------
+
+import { http, HttpResponse } from 'msw'
+
+export function createErrorHandler(
+  method: 'get' | 'post' | 'patch' | 'put' | 'delete',
+  path: string,
+  options: { status?: number; body?: unknown; networkError?: boolean } = {}
+) {
+  const { status = 500, body, networkError = false } = options
+  return http[method](path, () =>
+    networkError
+      ? HttpResponse.error()
+      : HttpResponse.json(body ?? { detail: 'Server error' }, { status })
+  )
+}

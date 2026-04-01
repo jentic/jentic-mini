@@ -187,8 +187,11 @@ export interface TraceOut {
   id: string
   toolkit_id?: string | null
   toolkit_name?: string | null
+  operation_id?: string | null
+  workflow_id?: string | null
   capability_id?: string | null
   workflow_slug?: string | null
+  spec_path?: string | null
   status?: string | null
   http_status?: number | null
   duration_ms?: number | null
@@ -211,7 +214,7 @@ export interface TraceStepOut {
 }
 
 export interface TraceListPage {
-  items: TraceOut[]
+  traces: TraceOut[]
   total?: number | null
   page?: number | null
   size?: number | null

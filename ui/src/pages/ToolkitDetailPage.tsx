@@ -133,8 +133,8 @@ function RequestAccessDialog({ toolkitId, onClose }: { toolkitId: string; onClos
 
         <div className="space-y-4">
           <div>
-            <label className="text-xs text-muted-foreground block mb-1">Request Type</label>
-            <select value={requestType} onChange={e => setRequestType(e.target.value as any)}
+            <label htmlFor="tk-request-type" className="text-xs text-muted-foreground block mb-1">Request Type</label>
+            <select id="tk-request-type" value={requestType} onChange={e => setRequestType(e.target.value as any)}
               className="w-full bg-background border border-border rounded-lg px-3 py-2 text-foreground focus:border-primary focus:outline-hidden">
               <option value="grant">Grant — bind a new credential to this toolkit</option>
               <option value="modify_permissions">Modify Permissions — update rules on an existing credential</option>
@@ -142,8 +142,8 @@ function RequestAccessDialog({ toolkitId, onClose }: { toolkitId: string; onClos
           </div>
 
           <div>
-            <label className="text-xs text-muted-foreground block mb-1">Credential *</label>
-            <select value={credentialId} onChange={e => setCredentialId(e.target.value)} required
+            <label htmlFor="tk-request-credential" className="text-xs text-muted-foreground block mb-1">Credential *</label>
+            <select id="tk-request-credential" value={credentialId} onChange={e => setCredentialId(e.target.value)} required
               className="w-full bg-background border border-border rounded-lg px-3 py-2 text-foreground focus:border-primary focus:outline-hidden">
               <option value="">Select a credential...</option>
               {credList.map((c: any) => (
@@ -158,8 +158,8 @@ function RequestAccessDialog({ toolkitId, onClose }: { toolkitId: string; onClos
           </div>
 
           <div>
-            <label className="text-xs text-muted-foreground block mb-1">Reason (optional)</label>
-            <textarea value={reason} onChange={e => setReason(e.target.value)} rows={2}
+            <label htmlFor="tk-request-reason" className="text-xs text-muted-foreground block mb-1">Reason (optional)</label>
+            <textarea id="tk-request-reason" value={reason} onChange={e => setReason(e.target.value)} rows={2}
               placeholder="Explain why you need this access..."
               className="w-full bg-background border border-border rounded-lg px-3 py-2 text-foreground focus:border-primary focus:outline-hidden resize-none" />
           </div>
@@ -397,6 +397,7 @@ export default function ToolkitDetailPage() {
             <div className="p-4 bg-background rounded-lg border border-border space-y-3">
               <p className="text-sm font-semibold text-foreground">Create API Key</p>
               <input type="text" value={keyName} onChange={e => setKeyName(e.target.value)} placeholder="Key name (optional)"
+                aria-label="Key name"
                 className="w-full bg-muted border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-hidden" />
               <div className="flex gap-2">
                 <button onClick={() => createKeyMutation.mutate({ name: keyName || null })} disabled={createKeyMutation.isPending}
@@ -498,13 +499,13 @@ export default function ToolkitDetailPage() {
             </div>
             <div className="space-y-4">
               <div>
-                <label className="text-xs text-muted-foreground block mb-1">Name</label>
-                <input type="text" value={editName} onChange={e => setEditName(e.target.value)}
+                <label htmlFor="tk-settings-name" className="text-xs text-muted-foreground block mb-1">Name</label>
+                <input id="tk-settings-name" type="text" value={editName} onChange={e => setEditName(e.target.value)}
                   className="w-full bg-background border border-border rounded-lg px-3 py-2 text-foreground focus:border-primary focus:outline-hidden" />
               </div>
               <div>
-                <label className="text-xs text-muted-foreground block mb-1">Description</label>
-                <textarea value={editDesc} onChange={e => setEditDesc(e.target.value)} rows={2}
+                <label htmlFor="tk-settings-description" className="text-xs text-muted-foreground block mb-1">Description</label>
+                <textarea id="tk-settings-description" value={editDesc} onChange={e => setEditDesc(e.target.value)} rows={2}
                   className="w-full bg-background border border-border rounded-lg px-3 py-2 text-foreground focus:border-primary focus:outline-hidden resize-none" />
               </div>
               <div className="flex gap-2">

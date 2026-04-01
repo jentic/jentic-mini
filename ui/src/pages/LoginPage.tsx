@@ -1,12 +1,14 @@
 import { useState } from 'react'
-import { useMutation } from '@tanstack/react-query'
-import { useSearchParams } from 'react-router-dom'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useSearchParams, useNavigate } from 'react-router-dom'
 import { JenticLogo } from '../components/ui/Logo'
 
 export default function LoginPage() {
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [searchParams] = useSearchParams()
+  const navigate = useNavigate()
+  const queryClient = useQueryClient()
   const next = searchParams.get('next') || '/'
   
   const loginMutation = useMutation({
@@ -20,8 +22,9 @@ export default function LoginPage() {
       if (!res.ok) throw new Error('Login failed')
       return res.json()
     },
-    onSuccess: () => {
-      window.location.href = next
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['user', 'me'] })
+      navigate(next, { replace: true })
     }
   })
 
@@ -34,14 +37,15 @@ export default function LoginPage() {
         
         <form onSubmit={e => { e.preventDefault(); loginMutation.mutate() }}>
           {loginMutation.isError && (
-            <div className="p-3 bg-danger/10 text-danger border border-danger/30 rounded-lg mb-4 text-sm font-semibold">
+            <div role="alert" className="p-3 bg-danger/10 text-danger border border-danger/30 rounded-lg mb-4 text-sm font-semibold">
               Invalid username or password.
             </div>
           )}
           
           <div className="mb-4">
-            <label className="block text-sm font-bold mb-2 text-muted-foreground">Username</label>
+            <label htmlFor="login-username" className="block text-sm font-bold mb-2 text-muted-foreground">Username</label>
             <input 
+              id="login-username"
               type="text" 
               value={username} 
               onChange={e => setUsername(e.target.value)} 
@@ -51,8 +55,9 @@ export default function LoginPage() {
           </div>
           
           <div className="mb-8">
-            <label className="block text-sm font-bold mb-2 text-muted-foreground">Password</label>
+            <label htmlFor="login-password" className="block text-sm font-bold mb-2 text-muted-foreground">Password</label>
             <input 
+              id="login-password"
               type="password" 
               value={password} 
               onChange={e => setPassword(e.target.value)} 

@@ -147,6 +147,7 @@ function ApiPicker({ onSelect }: { onSelect: (api: ApiOut) => void }) {
           value={query}
           onChange={e => setQuery(e.target.value)}
           placeholder="Search APIs (GitHub, Gmail, Stripe…)"
+          aria-label="Search APIs"
           className="w-full bg-background border border-border rounded-lg pl-9 pr-3 py-2.5 text-foreground focus:border-primary focus:outline-hidden"
         />
         {isLoading && <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground animate-spin" />}
@@ -344,8 +345,8 @@ function CredentialFields({ selectedApi, onBack, onSaved, editId, existing }: Cr
 
       {/* Label */}
       <div>
-        <label className="text-xs text-muted-foreground block mb-1">Label</label>
-        <input type="text" value={label} onChange={e => setLabel(e.target.value)} required
+        <label htmlFor="cred-label" className="text-xs text-muted-foreground block mb-1">Label</label>
+        <input id="cred-label" type="text" value={label} onChange={e => setLabel(e.target.value)} required
           className="w-full bg-background border border-border rounded-lg px-3 py-2 text-foreground focus:border-primary focus:outline-hidden" />
       </div>
 
@@ -380,14 +381,14 @@ function CredentialFields({ selectedApi, onBack, onSaved, editId, existing }: Cr
       {schemeType === 'basic' && (
         <>
           <div>
-            <label className="text-xs text-muted-foreground block mb-1">Username</label>
-            <input type="text" value={identity} onChange={e => setIdentity(e.target.value)}
+            <label htmlFor="cred-username" className="text-xs text-muted-foreground block mb-1">Username</label>
+            <input id="cred-username" type="text" value={identity} onChange={e => setIdentity(e.target.value)}
               placeholder="Your username"
               className="w-full bg-background border border-border rounded-lg px-3 py-2 text-foreground focus:border-primary focus:outline-hidden" />
           </div>
           <div>
-            <label className="text-xs text-muted-foreground block mb-1">Password {!isEdit && '*'}</label>
-            <input type="password" value={value} onChange={e => setValue(e.target.value)} required={!isEdit}
+            <label htmlFor="cred-password" className="text-xs text-muted-foreground block mb-1">Password {!isEdit && '*'}</label>
+            <input id="cred-password" type="password" value={value} onChange={e => setValue(e.target.value)} required={!isEdit}
               placeholder={isEdit ? 'Leave blank to keep existing' : 'Your password'}
               className="w-full bg-background border border-border rounded-lg px-3 py-2 text-foreground focus:border-primary focus:outline-hidden" />
           </div>
@@ -397,12 +398,12 @@ function CredentialFields({ selectedApi, onBack, onSaved, editId, existing }: Cr
       {/* Bearer / apiKey / unknown: single token field */}
       {(schemeType === 'bearer' || schemeType === 'apiKey' || schemeType === 'unknown') && (
         <div>
-          <label className="text-xs text-muted-foreground block mb-1">
+          <label htmlFor="cred-token" className="text-xs text-muted-foreground block mb-1">
             {schemeType === 'bearer' ? 'Bearer Token' : schemeType === 'apiKey' ? 'API Key' : 'Credential Value'}
             {!isEdit && ' *'}
             {isEdit && <span className="text-muted-foreground/60"> (leave blank to keep existing)</span>}
           </label>
-          <textarea value={value} onChange={e => setValue(e.target.value)} rows={3} required={!isEdit}
+          <textarea id="cred-token" value={value} onChange={e => setValue(e.target.value)} rows={3} required={!isEdit}
             placeholder="Paste your token or API key…"
             className="w-full bg-background border border-border rounded-lg px-3 py-2 text-foreground font-mono text-sm focus:border-primary focus:outline-hidden resize-none" />
           <p className="text-xs text-muted-foreground mt-1"><AlertTriangle className="inline h-3 w-3 -mt-0.5" /> Stored encrypted. Never shown again after saving.</p>
@@ -410,7 +411,7 @@ function CredentialFields({ selectedApi, onBack, onSaved, editId, existing }: Cr
       )}
 
       {error && (
-        <div className="flex items-center gap-2 text-sm text-danger bg-danger/10 border border-danger/30 rounded-lg p-3">
+        <div role="alert" className="flex items-center gap-2 text-sm text-danger bg-danger/10 border border-danger/30 rounded-lg p-3">
           <AlertTriangle className="h-4 w-4 shrink-0" />{error}
         </div>
       )}

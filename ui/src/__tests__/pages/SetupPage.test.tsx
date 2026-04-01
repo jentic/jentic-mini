@@ -50,9 +50,8 @@ describe('SetupPage — Step 1: Account creation', () => {
     renderWithProviders(<SetupPage />)
 
     await screen.findByText(/create admin account/i)
-    const inputs = document.querySelectorAll('input')
-    await user.type(inputs[0], 'admin')
-    await user.type(inputs[1], 'password123')
+    await user.type(screen.getByLabelText('Username'), 'admin')
+    await user.type(screen.getByLabelText('Password'), 'password123')
     await user.click(screen.getByRole('button', { name: /create account/i }))
 
     expect(await screen.findByText(/admin account created/i)).toBeInTheDocument()
@@ -74,9 +73,8 @@ describe('SetupPage — Step 1: Account creation', () => {
     renderWithProviders(<SetupPage />)
 
     await screen.findByText(/create admin account/i)
-    const inputs = document.querySelectorAll('input')
-    await user.type(inputs[0], 'admin')
-    await user.type(inputs[1], 'password123')
+    await user.type(screen.getByLabelText('Username'), 'admin')
+    await user.type(screen.getByLabelText('Password'), 'password123')
     await user.click(screen.getByRole('button', { name: /create account/i }))
 
     expect(await screen.findByRole('button', { name: /creating/i })).toBeDisabled()
@@ -97,9 +95,8 @@ describe('SetupPage — Step 1: Account creation', () => {
     renderWithProviders(<SetupPage />)
 
     await screen.findByText(/create admin account/i)
-    const inputs = document.querySelectorAll('input')
-    await user.type(inputs[0], 'admin')
-    await user.type(inputs[1], 'pass')
+    await user.type(screen.getByLabelText('Username'), 'admin')
+    await user.type(screen.getByLabelText('Password'), 'pass')
     await user.click(screen.getByRole('button', { name: /create account/i }))
 
     expect(await screen.findByText(/already exists/i)).toBeInTheDocument()
@@ -120,9 +117,8 @@ describe('SetupPage — Step 1: Account creation', () => {
     renderWithProviders(<SetupPage />)
 
     await screen.findByText(/create admin account/i)
-    const inputs = document.querySelectorAll('input')
-    await user.type(inputs[0], 'admin')
-    await user.type(inputs[1], 'pass')
+    await user.type(screen.getByLabelText('Username'), 'admin')
+    await user.type(screen.getByLabelText('Password'), 'pass')
     await user.click(screen.getByRole('button', { name: /create account/i }))
 
     expect(await screen.findByText(/something went wrong/i)).toBeInTheDocument()
@@ -137,7 +133,7 @@ describe('SetupPage — Step 1: Account creation', () => {
 
     const { container } = renderWithProviders(<SetupPage />)
     await screen.findByText(/create admin account/i)
-    const results = await axe.run(container, { rules: { label: { enabled: false } } })
+    const results = await axe.run(container)
     const critical = results.violations.filter(v => v.impact === 'critical' || v.impact === 'serious')
     expect(critical).toEqual([])
   })
@@ -162,9 +158,8 @@ describe('SetupPage — Step 2: Key generation', () => {
     const result = renderWithProviders(<SetupPage />)
 
     await screen.findByText(/create admin account/i)
-    const inputs = document.querySelectorAll('input')
-    await user.type(inputs[0], 'admin')
-    await user.type(inputs[1], 'password123')
+    await user.type(screen.getByLabelText('Username'), 'admin')
+    await user.type(screen.getByLabelText('Password'), 'password123')
     await user.click(screen.getByRole('button', { name: /create account/i }))
 
     await screen.findByText(/admin account created/i)

@@ -48,11 +48,9 @@ export const handlers = [
       id: params.id,
       name: 'Test Toolkit',
       description: 'A test toolkit',
-      suspended: false,
       simulate: false,
       disabled: false,
-      credential_count: 0,
-      key_count: 0,
+      keys: [],
       credentials: [],
     }),
   ),
@@ -144,13 +142,61 @@ export const handlers = [
     }),
   ),
 
-  // ── Search ──────────────────────────────────────────────────────
+  // ── Search & inspect ──────────────────────────────────────────
   http.get('/search', () => HttpResponse.json([])),
+  http.get('/inspect/:id', () =>
+    HttpResponse.json({ capability_id: 'test-cap', method: 'GET', path: '/test', summary: 'Test operation' }),
+  ),
 
   // ── Catalog ─────────────────────────────────────────────────────
   http.get('/catalog', () => HttpResponse.json([])),
   http.get('/catalog/:id', () =>
-    HttpResponse.json({ id: 'test-api', name: 'Test API' }),
+    HttpResponse.json({ id: 'test-api', name: 'Test API', spec_url: 'https://example.com/openapi.json' }),
+  ),
+  http.post('/catalog/refresh', () =>
+    HttpResponse.json({ status: 'ok' }),
+  ),
+  http.post('/import', () =>
+    HttpResponse.json({ id: 'import-1', status: 'ok' }),
+  ),
+
+  // ── Approval ──────────────────────────────────────────────────
+  http.get('/toolkits/:id/access-requests/:reqId', ({ params }) =>
+    HttpResponse.json({
+      id: params.reqId,
+      toolkit_id: params.id,
+      type: 'grant',
+      status: 'pending',
+      reason: 'Need access',
+      created_at: Math.floor(Date.now() / 1000),
+      payload: { credential_id: 'cred-1', api_id: 'test-api', rules: [] },
+    }),
+  ),
+  http.post('/toolkits/:id/access-requests/:reqId/approve', () =>
+    HttpResponse.json({ status: 'approved' }),
+  ),
+  http.post('/toolkits/:id/access-requests/:reqId/deny', () =>
+    HttpResponse.json({ status: 'denied' }),
+  ),
+
+  // ── Jobs ──────────────────────────────────────────────────────
+  http.get('/jobs', () =>
+    HttpResponse.json({ items: [], total: 0 }),
+  ),
+  http.delete('/jobs/:id', () =>
+    new HttpResponse(null, { status: 204 }),
+  ),
+
+  // ── OAuth brokers ─────────────────────────────────────────────
+  http.get('/oauth-brokers', () => HttpResponse.json([])),
+  http.post('/oauth-brokers', async ({ request }) => {
+    const body = await request.json() as Record<string, unknown>
+    return HttpResponse.json({ id: 'broker-new', ...body })
+  }),
+
+  // ── API operations ────────────────────────────────────────────
+  http.get('/apis/:id/operations', () =>
+    HttpResponse.json({ items: [], total: 0 }),
   ),
 
   // ── Default API key ─────────────────────────────────────────────

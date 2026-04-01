@@ -112,7 +112,7 @@ function RegisteredTab({ q }: { q: string }) {
   const [page, setPage] = useState(1)
   const LIMIT = 20
 
-  const { data: apisPage, isLoading } = useQuery({
+  const { data: apisPage, isLoading, isError } = useQuery({
     queryKey: ['apis', 'local', page, q],
     queryFn: () => api.listApis(page, LIMIT, 'local', q || undefined),
     staleTime: 30000,
@@ -123,6 +123,13 @@ function RegisteredTab({ q }: { q: string }) {
   const totalPages: number = (apisPage as any)?.total_pages ?? 1
 
   if (isLoading) return <div className="text-center py-16 text-muted-foreground">Loading APIs...</div>
+
+  if (isError) return (
+    <div className="p-12 text-center bg-muted border border-border rounded-xl">
+      <p className="text-danger font-medium">Failed to load registered APIs</p>
+      <p className="text-sm text-muted-foreground mt-1">Please try refreshing the page.</p>
+    </div>
+  )
 
   if (apis.length === 0) return (
     <div className="p-12 text-center text-muted-foreground bg-muted border border-dashed border-border rounded-xl">
@@ -399,6 +406,7 @@ export default function CatalogPage() {
             value={q}
             onChange={e => setQ(e.target.value)}
             placeholder="Filter by name or API ID..."
+            aria-label="Filter APIs"
             className="w-full bg-muted border border-border rounded-lg pl-8 pr-3 py-1.5 text-sm text-foreground placeholder:text-muted-foreground/60 focus:border-primary focus:outline-hidden"
           />
         </div>

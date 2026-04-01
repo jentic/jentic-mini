@@ -1,5 +1,62 @@
 import { type Page, type Route } from '@playwright/test'
-import type { ToolkitOut, WorkflowOut, JobOut, TraceOut } from '../src/api/types'
+
+// ---------------------------------------------------------------------------
+// Strict local fixture types — no index signatures, no Partial<>.
+// These match what the page components actually read, not the generated types.
+// ---------------------------------------------------------------------------
+
+interface FixtureToolkit {
+  id: string
+  name: string
+  description: string
+  disabled: boolean
+  simulate: boolean
+  keys: { id: string; prefix: string; created_at: number }[]
+  credentials: { credential_id: string; label: string; api_id: string }[]
+}
+
+interface FixtureTrace {
+  id: string
+  toolkit_id: string
+  operation_id: string | null
+  workflow_id: string | null
+  status: string
+  http_status: number
+  duration_ms: number
+  created_at: number
+}
+
+interface FixtureWorkflow {
+  slug: string
+  name: string
+  description: string
+  steps: { id: string; operation: string; description: string }[]
+  inputs: Record<string, unknown>
+  involved_apis: string[]
+}
+
+interface FixtureJob {
+  id: string
+  kind: string
+  status: string
+  toolkit_id: string
+  created_at: number
+  result: unknown
+}
+
+interface FixtureAccessRequest {
+  id: string
+  toolkit_id: string
+  type: string
+  status: string
+  reason: string
+  created_at: number
+  payload: {
+    credential_id?: string
+    api_id?: string
+    rules?: { effect: string; methods?: string[]; path?: string }[]
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Console error capture
@@ -40,7 +97,8 @@ export async function navigateTo(page: Page, path: string) {
     window.history.pushState({}, '', p)
     window.dispatchEvent(new PopStateEvent('popstate'))
   }, path)
-  await page.waitForTimeout(500)
+  await page.getByRole('heading').first().waitFor({ timeout: 5000 })
+    .catch(() => page.waitForLoadState('domcontentloaded'))
 }
 
 // ---------------------------------------------------------------------------
@@ -108,7 +166,7 @@ export async function mockDashboard(page: Page) {
   })
   await page.route('**/traces?*', (route) => {
     if (!isApiRequest(route)) return route.continue()
-    return route.fulfill({ json: { items: [], total: 0 } })
+    return route.fulfill({ json: { traces: [], total: 0 } })
   })
 }
 
@@ -144,14 +202,14 @@ export async function mockToolkits(page: Page) {
 export async function mockToolkitDetail(page: Page, id = 'test-tk') {
   await page.route(`**/toolkits/${id}`, (route) => {
     if (!isApiRequest(route)) return route.continue()
-    const data: Partial<ToolkitOut> = {
+    const data: FixtureToolkit = {
       id,
       name: 'Test Toolkit',
       description: 'A test toolkit',
-      suspended: false,
+      disabled: false,
       simulate: false,
-      credential_count: 0,
-      key_count: 0,
+      keys: [],
+      credentials: [],
     }
     return route.fulfill({ json: data })
   })
@@ -197,21 +255,22 @@ export async function mockOAuthBrokers(page: Page) {
 export async function mockTraces(page: Page) {
   await page.route('**/traces?*', (route) => {
     if (!isApiRequest(route)) return route.continue()
-    return route.fulfill({ json: { items: [], total: 0 } })
+    return route.fulfill({ json: { traces: [], total: 0 } })
   })
   await page.route('**/traces', (route) => {
     if (!isApiRequest(route)) return route.continue()
-    return route.fulfill({ json: { items: [], total: 0 } })
+    return route.fulfill({ json: { traces: [], total: 0 } })
   })
 }
 
 export async function mockTraceDetail(page: Page, id = 'trace-1') {
   await page.route(`**/traces/${id}`, (route) => {
     if (!isApiRequest(route)) return route.continue()
-    const data: Partial<TraceOut> = {
+    const data: FixtureTrace = {
       id,
       toolkit_id: 'test-tk',
       operation_id: 'listUsers',
+      workflow_id: null,
       status: 'ok',
       http_status: 200,
       duration_ms: 120,
@@ -231,7 +290,7 @@ export async function mockWorkflows(page: Page) {
 export async function mockWorkflowDetail(page: Page, slug = 'test-workflow') {
   await page.route(`**/workflows/${slug}`, (route) => {
     if (!isApiRequest(route)) return route.continue()
-    const data: Partial<WorkflowOut> = {
+    const data: FixtureWorkflow = {
       slug,
       name: 'Test Workflow',
       description: 'A test workflow',
@@ -239,7 +298,7 @@ export async function mockWorkflowDetail(page: Page, slug = 'test-workflow') {
         { id: 'step-1', operation: 'doSomething', description: 'First step' },
         { id: 'step-2', operation: 'doMore', description: 'Second step' },
       ],
-      inputs: [{ name: 'input1', type: 'string', required: true }],
+      inputs: { input1: { type: 'string', required: true } },
       involved_apis: ['test-api'],
     }
     return route.fulfill({ json: data })
@@ -260,7 +319,7 @@ export async function mockJobs(page: Page) {
 export async function mockJobDetail(page: Page, id = 'job-1') {
   await page.route(`**/jobs/${id}`, (route) => {
     if (!isApiRequest(route)) return route.continue()
-    const data: Partial<JobOut> = {
+    const data: FixtureJob = {
       id,
       kind: 'execute',
       status: 'complete',
@@ -281,18 +340,19 @@ export async function mockApproval(page: Page, toolkitId = 'tk-1', reqId = 'req-
   })
   await page.route(`**/toolkits/${toolkitId}/access-requests/${reqId}`, (route) => {
     if (!isApiRequest(route)) return route.continue()
-    return route.fulfill({
-      json: {
-        id: reqId,
-        toolkit_id: toolkitId,
-        type: 'grant',
-        status: 'pending',
-        reason: 'Need access for testing',
-        requested_credential_id: 'cred-1',
-        requested_api_id: 'github.com',
-        permission_rules: [],
-        created_at: Math.floor(Date.now() / 1000) - 120,
+    const data: FixtureAccessRequest = {
+      id: reqId,
+      toolkit_id: toolkitId,
+      type: 'grant',
+      status: 'pending',
+      reason: 'Need access for testing',
+      created_at: Math.floor(Date.now() / 1000) - 120,
+      payload: {
+        credential_id: 'cred-1',
+        api_id: 'github.com',
+        rules: [],
       },
-    })
+    }
+    return route.fulfill({ json: data })
   })
 }
