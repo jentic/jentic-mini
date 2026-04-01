@@ -113,6 +113,18 @@ The `ui/` directory contains a React 18 + Vite 5 admin frontend.
 - **Icons**: Lucide React (SVG components, no emoji)
 - **Fonts**: Sora (body), Nunito Sans (headings), Geist Mono (code) — loaded via Google Fonts in `index.html`
 
+### UI Component Library
+Shadcn-style owned components in `ui/src/components/ui/`. All components use `cn()` for class merging, semantic design tokens, and `forwardRef` where appropriate.
+
+- **Primitives**: `Button`, `Input`, `Label`, `Textarea`, `Select` — extend native HTML props, support error states and accessibility
+- **Layout**: `Dialog` (native `<dialog>`, zero deps), `EmptyState`, `PageHeader`, `ErrorAlert`, `LoadingState`, `BackButton`, `CopyButton`
+- **Data**: `DataTable` (generic typed columns), `Pagination`
+- **Shared hooks**: `useCopyToClipboard` in `ui/src/hooks/`
+- **Shared utilities**: `timeAgo`, `formatTimestamp`, `statusVariant`, `statusColor` in `ui/src/lib/`
+- **Barrel export**: `ui/src/components/ui/index.ts`
+- **ESLint guardrails**: `no-restricted-syntax` errors prevent raw `<button>`, `<input>`, `<select>`, `<textarea>` in `src/pages/`
+- **Convention**: New page code must use UI library components, not raw HTML elements
+
 ### Build
 - **Build output**: `static/` at project root (gitignored, generated at build time)
 - **Static path resolution**: `src/main.py` resolves `STATIC_DIR` to `<project_root>/static/`. In Docker this is `/app/static/` (outside the `./src:/app/src` bind mount, so dev mounts don't hide built assets).

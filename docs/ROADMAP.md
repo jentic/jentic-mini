@@ -119,6 +119,15 @@
 - Extracted AuthGuard component, replaced window.location.href with navigate()
 - CI split: `ci-ui.yml` (path-filtered, fast feedback) + `ci-docker.yml` (always runs, Docker layer caching)
 
+**Completed (v0.6):**
+- UI component library: shadcn-style owned components (`Button`, `Input`, `Label`, `Textarea`, `Select`, `Dialog`, `EmptyState`, `PageHeader`, `ErrorAlert`, `LoadingState`, `BackButton`, `CopyButton`, `DataTable`, `Pagination`)
+- `cn()` utility (clsx + tailwind-merge), shared `timeAgo`/`formatTimestamp`/`statusVariant`/`statusColor` utilities, `useCopyToClipboard` hook
+- Native `<dialog>` for modals (zero new dependencies, browser-native accessibility)
+- All 21 pages migrated: zero raw `<button>`, `<input>`, `<select>`, `<textarea>` elements in pages
+- ESLint guardrails enforce UI library usage (`no-restricted-syntax` as errors in `src/pages/`)
+- Deleted dead code (`TopBar.tsx`), removed duplicate utility functions across 6 files
+- Barrel exports at `src/components/ui/index.ts`
+
 ### Versioning, Releases, and Updates
 
 **✅ Completed:**
