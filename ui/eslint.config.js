@@ -125,6 +125,38 @@ export default defineConfig(
 		},
 	},
 
+	// ─── Page files — enforce UI component library usage ────────────────
+	{
+		files: ['src/pages/**/*.{ts,tsx}'],
+		rules: {
+			'no-restricted-syntax': [
+				'error',
+				{
+					selector:
+						"JSXOpeningElement[name.name='a'][attributes] JSXAttribute[name.name='href'][value.value=/^\\/[^/]/]",
+					message:
+						'Use <Link> from react-router-dom for internal navigation instead of <a>.',
+				},
+				{
+					selector: "JSXOpeningElement[name.name='button']",
+					message: 'Use <Button> from @/components/ui instead of raw <button>.',
+				},
+				{
+					selector: "JSXOpeningElement[name.name='input']",
+					message: 'Use <Input> from @/components/ui instead of raw <input>.',
+				},
+				{
+					selector: "JSXOpeningElement[name.name='select']",
+					message: 'Use <Select> from @/components/ui instead of raw <select>.',
+				},
+				{
+					selector: "JSXOpeningElement[name.name='textarea']",
+					message: 'Use <Textarea> from @/components/ui instead of raw <textarea>.',
+				},
+			],
+		},
+	},
+
 	// ─── Test files — relaxed rules ──────────────────────────────────────
 	{
 		files: ['**/__tests__/**', '**/*.test.{ts,tsx}', '**/*.spec.{ts,tsx}'],
