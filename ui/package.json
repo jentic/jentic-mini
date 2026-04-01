@@ -17,7 +17,7 @@
 		"test:e2e": "playwright test",
 		"test:e2e:ui": "playwright test --ui",
 		"test:e2e:docker": "playwright test --config=playwright.docker.config.ts",
-		"prepare": "cd .. && husky"
+		"prepare": "cd .. && husky || true"
 	},
 	"dependencies": {
 		"@jentic/arazzo-ui": "^1.0.0-alpha.29",
