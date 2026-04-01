@@ -26,13 +26,13 @@ npm run test:e2e:docker  # requires Docker running
 
 ## Test Layers
 
-| Layer | Tool | What to test |
-|-------|------|-------------|
-| Static | TypeScript + ESLint | Types, imports, syntax |
-| Unit | Vitest + Testing Library | Pure logic, UI primitives |
-| Integration | Vitest + MSW | Full pages with network mocking |
-| E2E (mocked) | Playwright | Critical user journeys with mocked API |
-| E2E (Docker) | Playwright | Critical paths against real backend |
+| Layer        | Tool                     | What to test                           |
+| ------------ | ------------------------ | -------------------------------------- |
+| Static       | TypeScript + ESLint      | Types, imports, syntax                 |
+| Unit         | Vitest + Testing Library | Pure logic, UI primitives              |
+| Integration  | Vitest + MSW             | Full pages with network mocking        |
+| E2E (mocked) | Playwright               | Critical user journeys with mocked API |
+| E2E (Docker) | Playwright               | Critical paths against real backend    |
 
 **Integration tests are the core.** They render real components with real React Query, real Router, and real DOM — mocking only the network layer via MSW.
 
@@ -61,46 +61,40 @@ e2e/docker/                   # Playwright Docker E2E tests (real backend)
 4. Test four states: **loading**, **empty**, **populated**, **error**
 
 ```tsx
-import { screen, renderWithProviders, userEvent } from '../test-utils'
-import { worker } from '../mocks/browser'
-import { http, HttpResponse } from 'msw'
-import MyPage from '../../pages/MyPage'
+import { screen, renderWithProviders, userEvent } from '../test-utils';
+import { worker } from '../mocks/browser';
+import { http, HttpResponse } from 'msw';
+import MyPage from '../../pages/MyPage';
 
 describe('MyPage', () => {
-  it('renders with populated data', async () => {
-    worker.use(
-      http.get('/my-endpoint', () =>
-        HttpResponse.json([{ id: '1', name: 'Item' }]),
-      ),
-    )
-    renderWithProviders(<MyPage />)
-    expect(await screen.findByText('Item')).toBeInTheDocument()
-  })
+	it('renders with populated data', async () => {
+		worker.use(http.get('/my-endpoint', () => HttpResponse.json([{ id: '1', name: 'Item' }])));
+		renderWithProviders(<MyPage />);
+		expect(await screen.findByText('Item')).toBeInTheDocument();
+	});
 
-  it('handles error gracefully', async () => {
-    worker.use(
-      http.get('/my-endpoint', () => HttpResponse.error()),
-    )
-    renderWithProviders(<MyPage />)
-    expect(await screen.findByRole('heading')).toBeInTheDocument()
-  })
+	it('handles error gracefully', async () => {
+		worker.use(http.get('/my-endpoint', () => HttpResponse.error()));
+		renderWithProviders(<MyPage />);
+		expect(await screen.findByRole('heading')).toBeInTheDocument();
+	});
 
-  it('completes a mutation round-trip', async () => {
-    const user = userEvent.setup()
-    let mutationCalled = false
+	it('completes a mutation round-trip', async () => {
+		const user = userEvent.setup();
+		let mutationCalled = false;
 
-    worker.use(
-      http.post('/my-endpoint', () => {
-        mutationCalled = true
-        return HttpResponse.json({ id: 'new', name: 'Created' })
-      }),
-    )
+		worker.use(
+			http.post('/my-endpoint', () => {
+				mutationCalled = true;
+				return HttpResponse.json({ id: 'new', name: 'Created' });
+			}),
+		);
 
-    renderWithProviders(<MyPage />)
-    await user.click(screen.getByRole('button', { name: /create/i }))
-    // Verify the mutation was called and UI updated
-  })
-})
+		renderWithProviders(<MyPage />);
+		await user.click(screen.getByRole('button', { name: /create/i }));
+		// Verify the mutation was called and UI updated
+	});
+});
 ```
 
 ## Adding MSW Handlers
@@ -115,14 +109,15 @@ For pages that use `useParams()`:
 
 ```tsx
 renderWithProviders(<ToolkitDetailPage />, {
-  route: '/toolkits/tk-1',
-  path: '/toolkits/:id',
-})
+	route: '/toolkits/tk-1',
+	path: '/toolkits/:id',
+});
 ```
 
 ## Test Isolation
 
 Each test gets:
+
 - A fresh `QueryClient` with `retry: false` and `gcTime: 0` (no cache leakage)
 - MSW handlers reset to defaults via `worker.resetHandlers()`
 - `localStorage` and `sessionStorage` cleared
