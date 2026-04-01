@@ -7,9 +7,15 @@ type LabelProps = React.ComponentProps<'label'> & {
 
 export function Label({ required, children, className, ...props }: LabelProps) {
 	return (
-		<label className={cn('text-foreground text-sm font-medium', className)} {...props}>
+		<label
+			className={cn(
+				'text-foreground text-sm font-medium',
+				required && "after:text-danger after:ml-1 after:content-['*']",
+				className,
+			)}
+			{...props}
+		>
 			{children}
-			{required && <span className="text-danger ml-1">*</span>}
 		</label>
 	);
 }
