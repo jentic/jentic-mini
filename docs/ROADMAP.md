@@ -133,7 +133,7 @@ Use cases: home automation (Home Assistant, etc.), internal APIs behind a firewa
 ### High Priority
 
 **API alignment with Jentic standards**
-Jentic Mini's API surface developed rapidly and should be aligned with Jentic's extensive opinion on AI-enabled APIs in some areas (endpoint paths, request/response formats, error structures). Aligning to a common standard improves:
+Jentic Mini's API surface has evolved rapidly and should be aligned with Jentic's strong opinions on AI-enabled APIs in some areas (endpoint paths, request/response formats, error structures). Aligning to a common standard improves:
 - Cross-edition compatibility for agents and client libraries
 - Consistency for users migrating between self-hosted and hosted deployments
 - Shared documentation and tooling
