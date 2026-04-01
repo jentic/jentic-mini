@@ -2,6 +2,8 @@
   <a href="https://jentic.com/mini"><img src="https://raw.githubusercontent.com/jentic/jentic-mini/main/assets/jentic-mini-logo.svg" alt="Jentic Mini" width="400"></a>
 </p>
 
+<a href="https://www.producthunt.com/products/jentic-mini?embed=true&utm_source=badge-featured&utm_medium=badge&utm_campaign=badge-jentic-mini" target="_blank"><img src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1107386&theme=light&t=1775041287603" alt="Jentic&#0032;Mini - Give&#0032;your&#0032;AI&#0032;agents&#0032;safe&#0032;access&#0032;to&#0032;10&#0044;000&#0043;&#0032;APIs | Product Hunt" style="width: 250px; height: 54px;" width="250" height="54" /></a>
+
 Give your AI agents access to **10,000+ APIs** — without leaking a single credential.
 Building agents that call real APIs is painful. You end up hardcoding auth, juggling secrets in prompts,
 writing bespoke glue code for every service, and praying nothing leaks. Jentic Mini fixes this.
