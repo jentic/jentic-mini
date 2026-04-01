@@ -143,6 +143,10 @@ GET /workflows?source=local&q=slack
 
 See [docs/CATALOG.md](https://github.com/jentic/jentic-mini/blob/main/docs/CATALOG.md) for full details.
 
+## Browser Requirements
+
+The admin UI targets modern browsers: **Chrome 107+**, **Firefox 104+**, **Safari 16+**, **Edge 107+**.
+
 ## Development
 
 Prerequisites for local development without Docker:
