@@ -55,6 +55,9 @@ jobs:
         if: steps.cache-playwright.outputs.cache-hit == 'true'
         run: npx playwright install-deps chromium
 
+      - name: Lint & format check
+        run: npm run lint
+
       - name: TypeScript check
         run: npx tsc --noEmit
 

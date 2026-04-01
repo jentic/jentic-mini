@@ -1,16 +1,16 @@
-import '@testing-library/jest-dom/vitest'
-import { worker } from './mocks/browser'
+import '@testing-library/jest-dom/vitest';
+import { worker } from './mocks/browser';
 
 beforeAll(async () => {
-  await worker.start({ onUnhandledRequest: 'warn' })
-})
+	await worker.start({ onUnhandledRequest: 'warn' });
+});
 
 afterEach(() => {
-  worker.resetHandlers()
-  window.localStorage.clear()
-  window.sessionStorage.clear()
-})
+	worker.resetHandlers();
+	window.localStorage.clear();
+	window.sessionStorage.clear();
+});
 
 afterAll(() => {
-  worker.stop()
-})
+	worker.stop();
+});
