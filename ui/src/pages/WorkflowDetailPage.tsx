@@ -2,10 +2,13 @@ import { Component, useState } from 'react';
 import type { ReactNode } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ChevronLeft, Workflow, ExternalLink, Loader2, Zap, AlertTriangle } from 'lucide-react';
+import { Workflow, ExternalLink, Zap, AlertTriangle } from 'lucide-react';
 import { ArazzoUI } from '@jentic/arazzo-ui';
 import { api } from '@/api/client';
 import { Badge } from '@/components/ui/Badge';
+import { Button } from '@/components/ui/Button';
+import { BackButton } from '@/components/ui/BackButton';
+import { LoadingState } from '@/components/ui/LoadingState';
 import '@jentic/arazzo-ui/styles.css';
 
 class ArazzoErrorBoundary extends Component<
@@ -48,7 +51,6 @@ function CatalogWorkflowFallback({
 	const [importing, setImporting] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 
-	// Convert slug back to api_id: apideck.com~ecosystem → apideck.com/ecosystem
 	const apiId = slug.replace('~', '/');
 	const githubUrl = `https://github.com/jentic/jentic-public-apis/tree/main/workflows/${slug}`;
 	const encodedSlug = encodeURIComponent(slug);
@@ -96,13 +98,7 @@ function CatalogWorkflowFallback({
 
 	return (
 		<div className="max-w-4xl space-y-6">
-			<button
-				type="button"
-				onClick={() => navigate('/workflows')}
-				className="text-muted-foreground hover:text-foreground flex items-center gap-1.5 text-sm transition-colors"
-			>
-				<ChevronLeft className="h-4 w-4" /> Back to Workflows
-			</button>
+			<BackButton to="/workflows" label="Back to Workflows" />
 			<div className="bg-muted border-border space-y-4 rounded-xl border p-6">
 				<div className="flex items-start gap-3">
 					<Workflow className="text-accent-pink mt-0.5 h-6 w-6 shrink-0" />
@@ -117,19 +113,16 @@ function CatalogWorkflowFallback({
 				</p>
 				{error && <p className="text-danger text-xs">{error}</p>}
 				<div className="flex items-center gap-3">
-					<button
-						type="button"
+					<Button
+						variant="ghost"
+						size="sm"
 						onClick={handleImport}
-						disabled={importing}
-						className="text-accent-teal hover:text-accent-teal/80 inline-flex items-center gap-1.5 text-sm disabled:opacity-50"
+						loading={importing}
+						className="text-accent-teal hover:text-accent-teal/80"
 					>
-						{importing ? (
-							<Loader2 className="h-4 w-4 animate-spin" />
-						) : (
-							<Zap className="h-4 w-4" />
-						)}
+						<Zap className="h-4 w-4" />
 						{importing ? 'Importing...' : 'Import this workflow'}
-					</button>
+					</Button>
 					<a
 						href={githubUrl}
 						target="_blank"
@@ -168,7 +161,6 @@ export default function WorkflowDetailPage() {
 		retry: (failureCount, err: any) => err?.status !== 404 && failureCount < 2,
 	});
 
-	// Fetch the raw Arazzo document
 	const { data: arazzoDoc, isLoading: isLoadingArazzo } = useQuery({
 		queryKey: ['workflow-arazzo', slug],
 		queryFn: async () => {
@@ -182,10 +174,8 @@ export default function WorkflowDetailPage() {
 		enabled: !!slug && !!workflow,
 	});
 
-	if (isLoading)
-		return <div className="text-muted-foreground py-16 text-center">Loading workflow...</div>;
+	if (isLoading) return <LoadingState message="Loading workflow..." />;
 
-	// 404 → show catalog fallback. Other errors → show error state.
 	const is404 = (error as any)?.status === 404;
 	if (error && !is404) {
 		return (
@@ -203,21 +193,12 @@ export default function WorkflowDetailPage() {
 
 	const steps: any[] = workflow.steps ?? [];
 	const involvedApis: string[] = workflow.involved_apis ?? [];
-
-	// Check if description is different from name to avoid duplication
 	const showDescription = workflow.description && workflow.description !== workflow.name;
 
 	return (
 		<div className="max-w-full space-y-4">
-			<button
-				type="button"
-				onClick={() => navigate('/workflows')}
-				className="text-muted-foreground hover:text-foreground flex items-center gap-1.5 text-sm transition-colors"
-			>
-				<ChevronLeft className="h-4 w-4" /> Back to Workflows
-			</button>
+			<BackButton to="/workflows" label="Back to Workflows" />
 
-			{/* Condensed header */}
 			<div className="space-y-3">
 				<div className="space-y-1">
 					<p className="text-primary/60 font-mono text-[10px] tracking-widest uppercase">
@@ -232,7 +213,6 @@ export default function WorkflowDetailPage() {
 					<p className="text-muted-foreground font-mono text-xs">{workflow.slug}</p>
 				</div>
 
-				{/* Meta badges and view toggle */}
 				<div className="flex flex-wrap items-center justify-between gap-4">
 					<div className="flex flex-wrap items-center gap-2">
 						{steps.length > 0 && (
@@ -247,21 +227,17 @@ export default function WorkflowDetailPage() {
 						))}
 					</div>
 
-					{/* View toggle */}
 					<div className="bg-muted border-border flex items-center gap-1 rounded-lg border p-0.5">
 						{(['diagram', 'split', 'docs'] as const).map((v) => (
-							<button
-								type="button"
+							<Button
 								key={v}
+								variant={view === v ? 'primary' : 'ghost'}
+								size="sm"
 								onClick={() => setView(v)}
-								className={`rounded px-3 py-1.5 text-xs font-medium transition-colors ${
-									view === v
-										? 'bg-primary text-background'
-										: 'text-muted-foreground hover:text-foreground'
-								}`}
+								className="rounded px-3 py-1.5 text-xs"
 							>
 								{v === 'diagram' ? 'Diagram' : v === 'split' ? 'Split' : 'Docs'}
-							</button>
+							</Button>
 						))}
 					</div>
 				</div>
@@ -271,12 +247,8 @@ export default function WorkflowDetailPage() {
 				)}
 			</div>
 
-			{/* Arazzo UI Viewer */}
 			{isLoadingArazzo ? (
-				<div className="text-muted-foreground py-16 text-center">
-					<Loader2 className="mx-auto mb-2 h-6 w-6 animate-spin" />
-					Loading workflow visualization...
-				</div>
+				<LoadingState message="Loading workflow visualization..." />
 			) : arazzoDoc ? (
 				<ArazzoErrorBoundary slug={slug}>
 					<div

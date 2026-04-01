@@ -3,6 +3,8 @@ import { Link } from 'react-router-dom';
 import { AlertTriangle, KeyRound, Settings } from 'lucide-react';
 import { usePendingRequests } from '@/hooks/usePendingRequests';
 import { api } from '@/api/client';
+import { timeAgo } from '@/lib/time';
+import { statusColor } from '@/lib/status';
 
 export default function DashboardPage() {
 	const { data: pendingRequests } = usePendingRequests();
@@ -29,27 +31,10 @@ export default function DashboardPage() {
 
 	const traces = (tracesPage as any)?.traces ?? [];
 
-	function timeAgo(ts: number | null | undefined) {
-		if (!ts) return '';
-		const secs = Math.floor(Date.now() / 1000 - ts);
-		if (secs < 60) return `${secs}s ago`;
-		if (secs < 3600) return `${Math.floor(secs / 60)}m ago`;
-		if (secs < 86400) return `${Math.floor(secs / 3600)}h ago`;
-		return `${Math.floor(secs / 86400)}d ago`;
-	}
-
-	function statusColor(status: number | null | undefined) {
-		if (!status) return 'text-muted-foreground';
-		if (status < 300) return 'text-success';
-		if (status < 400) return 'text-accent-yellow';
-		return 'text-danger';
-	}
-
 	return (
 		<div className="space-y-6">
 			<h1 className="text-foreground text-3xl font-bold">Dashboard</h1>
 
-			{/* CRITICAL: Pending requests alert banner */}
 			{pendingRequests && pendingRequests.length > 0 && (
 				<div className="bg-warning/10 border-warning/30 w-full rounded-xl border p-4 shadow-md">
 					<div className="mb-3 flex items-center gap-3">
@@ -100,76 +85,47 @@ export default function DashboardPage() {
 				</div>
 			)}
 
-			{/* Stats */}
 			<div className="grid grid-cols-2 gap-4 md:grid-cols-4">
-				<div className="bg-muted border-border rounded-xl border p-4">
-					<div className="text-primary/60 mb-1 font-mono text-xs tracking-wider uppercase">
-						APIs Registered
+				{[
+					{ label: 'APIs Registered', value: (apisPage as any)?.total ?? '—' },
+					{ label: 'Active Toolkits', value: toolkits?.length ?? '—' },
+					{
+						label: 'Workflows',
+						value: Array.isArray(workflows) ? workflows.length : '—',
+					},
+					{ label: 'Recent Traces', value: (tracesPage as any)?.total ?? '—' },
+				].map((stat) => (
+					<div key={stat.label} className="bg-muted border-border rounded-xl border p-4">
+						<div className="text-primary/60 mb-1 font-mono text-xs tracking-wider uppercase">
+							{stat.label}
+						</div>
+						<div className="text-foreground text-3xl font-bold">{stat.value}</div>
 					</div>
-					<div className="text-foreground text-3xl font-bold">
-						{(apisPage as any)?.total ?? '—'}
-					</div>
-				</div>
-				<div className="bg-muted border-border rounded-xl border p-4">
-					<div className="text-primary/60 mb-1 font-mono text-xs tracking-wider uppercase">
-						Active Toolkits
-					</div>
-					<div className="text-foreground text-3xl font-bold">
-						{toolkits?.length ?? '—'}
-					</div>
-				</div>
-				<div className="bg-muted border-border rounded-xl border p-4">
-					<div className="text-primary/60 mb-1 font-mono text-xs tracking-wider uppercase">
-						Workflows
-					</div>
-					<div className="text-foreground text-3xl font-bold">
-						{Array.isArray(workflows) ? workflows.length : '—'}
-					</div>
-				</div>
-				<div className="bg-muted border-border rounded-xl border p-4">
-					<div className="text-primary/60 mb-1 font-mono text-xs tracking-wider uppercase">
-						Recent Traces
-					</div>
-					<div className="text-foreground text-3xl font-bold">
-						{(tracesPage as any)?.total ?? '—'}
-					</div>
-				</div>
+				))}
 			</div>
 
-			{/* Quick actions */}
 			<div>
 				<h2 className="text-muted-foreground mb-3 font-mono text-sm tracking-wider uppercase">
 					Quick Actions
 				</h2>
 				<div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-					<Link
-						to="/search"
-						className="bg-muted border-border text-foreground hover:border-primary hover:text-primary flex items-center justify-center gap-2 rounded-lg border px-4 py-3 text-sm font-medium transition-colors"
-					>
-						Search Catalog
-					</Link>
-					<Link
-						to="/credentials"
-						className="bg-muted border-border text-foreground hover:border-primary hover:text-primary flex items-center justify-center gap-2 rounded-lg border px-4 py-3 text-sm font-medium transition-colors"
-					>
-						Add Credential
-					</Link>
-					<Link
-						to="/toolkits"
-						className="bg-muted border-border text-foreground hover:border-primary hover:text-primary flex items-center justify-center gap-2 rounded-lg border px-4 py-3 text-sm font-medium transition-colors"
-					>
-						Create Toolkit
-					</Link>
-					<Link
-						to="/catalog"
-						className="bg-muted border-border text-foreground hover:border-primary hover:text-primary flex items-center justify-center gap-2 rounded-lg border px-4 py-3 text-sm font-medium transition-colors"
-					>
-						Import an API
-					</Link>
+					{[
+						{ to: '/search', label: 'Search Catalog' },
+						{ to: '/credentials', label: 'Add Credential' },
+						{ to: '/toolkits', label: 'Create Toolkit' },
+						{ to: '/catalog', label: 'Import an API' },
+					].map((action) => (
+						<Link
+							key={action.to}
+							to={action.to}
+							className="bg-muted border-border text-foreground hover:border-primary hover:text-primary flex items-center justify-center gap-2 rounded-lg border px-4 py-3 text-sm font-medium transition-colors"
+						>
+							{action.label}
+						</Link>
+					))}
 				</div>
 			</div>
 
-			{/* Recent executions */}
 			<div>
 				<h2 className="text-muted-foreground mb-3 font-mono text-sm tracking-wider uppercase">
 					Recent Executions

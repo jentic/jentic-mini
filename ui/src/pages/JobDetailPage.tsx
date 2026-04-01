@@ -1,17 +1,14 @@
-import React from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { ChevronLeft, Clock, ExternalLink, X } from 'lucide-react';
+import { Clock, ExternalLink, X } from 'lucide-react';
 import { api } from '@/api/client';
 import { Badge } from '@/components/ui/Badge';
-
-type StatusVariant = 'success' | 'danger' | 'warning' | 'default';
-function statusVariant(s?: string | null): StatusVariant {
-	if (s === 'complete') return 'success';
-	if (s === 'failed') return 'danger';
-	if (s === 'running') return 'warning';
-	return 'default';
-}
+import { Button } from '@/components/ui/Button';
+import { BackButton } from '@/components/ui/BackButton';
+import { LoadingState } from '@/components/ui/LoadingState';
+import { Card, CardHeader, CardBody } from '@/components/ui/Card';
+import { statusVariant } from '@/lib/status';
+import { formatTimestamp } from '@/lib/time';
 
 export default function JobDetailPage() {
 	const { id } = useParams<{ id: string }>();
@@ -34,31 +31,25 @@ export default function JobDetailPage() {
 		onSuccess: () => queryClient.invalidateQueries({ queryKey: ['job', id] }),
 	});
 
-	if (isLoading)
-		return <div className="text-muted-foreground py-16 text-center">Loading job...</div>;
+	if (isLoading) return <LoadingState message="Loading job..." />;
 	if (!job)
 		return (
 			<div className="text-muted-foreground py-16 text-center">
 				<p>Job not found.</p>
-				<button
-					type="button"
+				<Button
+					variant="secondary"
+					size="sm"
 					onClick={() => navigate('/jobs')}
-					className="bg-muted border-border mt-4 rounded-lg border px-4 py-2 text-sm"
+					className="mt-4"
 				>
 					Back to Jobs
-				</button>
+				</Button>
 			</div>
 		);
 
 	return (
 		<div className="max-w-4xl space-y-6">
-			<button
-				type="button"
-				onClick={() => navigate('/jobs')}
-				className="text-muted-foreground hover:text-foreground flex items-center gap-1.5 text-sm transition-colors"
-			>
-				<ChevronLeft className="h-4 w-4" /> Back to Jobs
-			</button>
+			<BackButton to="/jobs" label="Back to Jobs" />
 
 			<div className="flex items-start justify-between gap-4">
 				<div>
@@ -70,95 +61,94 @@ export default function JobDetailPage() {
 					</h1>
 				</div>
 				{(job.status === 'pending' || job.status === 'running') && (
-					<button
-						type="button"
+					<Button
+						variant="danger"
+						size="sm"
 						onClick={() => cancelMutation.mutate()}
-						disabled={cancelMutation.isPending}
-						className="bg-danger/10 border-danger/30 text-danger hover:bg-danger/20 inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm transition-colors disabled:opacity-50"
+						loading={cancelMutation.isPending}
 					>
-						<X className="h-4 w-4" />{' '}
+						<X className="h-4 w-4" />
 						{cancelMutation.isPending ? 'Cancelling...' : 'Cancel Job'}
-					</button>
+					</Button>
 				)}
 			</div>
 
-			{/* Summary */}
-			<div className="bg-muted border-border space-y-4 rounded-xl border p-5">
-				<h2 className="font-heading text-foreground border-border border-b pb-3 font-semibold">
-					Summary
-				</h2>
-				<div className="grid grid-cols-2 gap-4">
-					<div>
-						<p className="text-muted-foreground mb-1 text-xs">Status</p>
-						<Badge variant={statusVariant(job.status)} className="text-sm">
-							{job.status ?? 'unknown'}
-						</Badge>
-					</div>
-					<div>
-						<p className="text-muted-foreground mb-1 text-xs">Kind</p>
-						<p className="text-foreground font-medium">{job.kind ?? '—'}</p>
-					</div>
-					{job.toolkit_id && (
+			<Card>
+				<CardHeader>
+					<h2 className="font-heading text-foreground font-semibold">Summary</h2>
+				</CardHeader>
+				<CardBody>
+					<div className="grid grid-cols-2 gap-4">
 						<div>
-							<p className="text-muted-foreground mb-1 text-xs">Toolkit</p>
-							<code className="text-accent-teal font-mono text-sm">
-								{job.toolkit_id}
-							</code>
+							<p className="text-muted-foreground mb-1 text-xs">Status</p>
+							<Badge variant={statusVariant(job.status)} className="text-sm">
+								{job.status ?? 'unknown'}
+							</Badge>
 						</div>
-					)}
-					<div>
-						<p className="text-muted-foreground mb-1 text-xs">Created</p>
-						<div className="flex items-center gap-1.5">
-							<Clock className="text-muted-foreground h-4 w-4" />
-							<span className="text-foreground text-sm">
-								{job.created_at
-									? new Date(job.created_at * 1000).toLocaleString()
-									: '—'}
-							</span>
+						<div>
+							<p className="text-muted-foreground mb-1 text-xs">Kind</p>
+							<p className="text-foreground font-medium">{job.kind ?? '—'}</p>
 						</div>
+						{job.toolkit_id && (
+							<div>
+								<p className="text-muted-foreground mb-1 text-xs">Toolkit</p>
+								<code className="text-accent-teal font-mono text-sm">
+									{job.toolkit_id}
+								</code>
+							</div>
+						)}
+						<div>
+							<p className="text-muted-foreground mb-1 text-xs">Created</p>
+							<div className="flex items-center gap-1.5">
+								<Clock className="text-muted-foreground h-4 w-4" />
+								<span className="text-foreground text-sm">
+									{job.created_at ? formatTimestamp(job.created_at) : '—'}
+								</span>
+							</div>
+						</div>
+						{job.upstream_job_url && (
+							<div className="col-span-2">
+								<p className="text-muted-foreground mb-1 text-xs">Upstream Job</p>
+								<a
+									href={job.upstream_job_url}
+									target="_blank"
+									rel="noopener noreferrer"
+									className="text-primary hover:text-primary/80 flex items-center gap-1 text-sm"
+								>
+									{job.upstream_job_url}
+									<ExternalLink className="h-3 w-3" />
+								</a>
+							</div>
+						)}
 					</div>
-					{job.upstream_job_url && (
-						<div className="col-span-2">
-							<p className="text-muted-foreground mb-1 text-xs">Upstream Job</p>
-							<a
-								href={job.upstream_job_url}
-								target="_blank"
-								rel="noopener noreferrer"
-								className="text-primary hover:text-primary/80 flex items-center gap-1 text-sm"
-							>
-								{job.upstream_job_url}
-								<ExternalLink className="h-3 w-3" />
-							</a>
-						</div>
-					)}
-				</div>
-			</div>
+				</CardBody>
+			</Card>
 
 			{job.result && (
-				<div className="bg-muted border-border overflow-hidden rounded-xl border">
-					<div className="border-border border-b px-5 py-4">
+				<Card>
+					<CardHeader>
 						<h2 className="font-heading text-foreground font-semibold">Result</h2>
-					</div>
-					<div className="px-5 py-4">
+					</CardHeader>
+					<CardBody>
 						<pre className="bg-background border-border text-foreground max-h-96 overflow-auto rounded-lg border p-4 font-mono text-xs">
 							{typeof job.result === 'string'
 								? job.result
 								: JSON.stringify(job.result, null, 2)}
 						</pre>
-					</div>
-				</div>
+					</CardBody>
+				</Card>
 			)}
 			{job.error && (
-				<div className="bg-muted border-danger/30 overflow-hidden rounded-xl border">
-					<div className="border-danger/30 border-b px-5 py-4">
+				<Card className="border-danger/30">
+					<CardHeader className="border-danger/30">
 						<h2 className="font-heading text-danger font-semibold">Error</h2>
-					</div>
-					<div className="px-5 py-4">
+					</CardHeader>
+					<CardBody>
 						<pre className="bg-danger/10 border-danger/30 text-danger overflow-auto rounded-lg border p-4 font-mono text-xs">
 							{job.error}
 						</pre>
-					</div>
-				</div>
+					</CardBody>
+				</Card>
 			)}
 		</div>
 	);

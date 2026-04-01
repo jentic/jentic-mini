@@ -1,19 +1,17 @@
 import { useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { Activity, ChevronLeft, ChevronRight, Filter, X } from 'lucide-react';
+import { Activity, Filter, X } from 'lucide-react';
 import { api } from '@/api/client';
 import type { TraceOut } from '@/api/generated';
 import { Badge, StatusBadge } from '@/components/ui/Badge';
-
-function timeAgo(ts?: number | null) {
-	if (!ts) return '—';
-	const s = Math.floor(Date.now() / 1000 - ts);
-	if (s < 60) return 'just now';
-	if (s < 3600) return `${Math.floor(s / 60)}m ago`;
-	if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
-	return `${Math.floor(s / 86400)}d ago`;
-}
+import { Button } from '@/components/ui/Button';
+import { PageHeader } from '@/components/ui/PageHeader';
+import { LoadingState } from '@/components/ui/LoadingState';
+import { EmptyState } from '@/components/ui/EmptyState';
+import { ErrorAlert } from '@/components/ui/ErrorAlert';
+import { Pagination } from '@/components/ui/Pagination';
+import { timeAgo } from '@/lib/time';
 
 export default function TracesPage() {
 	const navigate = useNavigate();
@@ -37,14 +35,7 @@ export default function TracesPage() {
 
 	return (
 		<div className="max-w-6xl space-y-5">
-			<div>
-				<p className="text-primary/60 font-mono text-[10px] tracking-widest uppercase">
-					Observability
-				</p>
-				<h1 className="font-heading text-foreground mt-1 text-2xl font-bold">
-					Execution Traces
-				</h1>
-			</div>
+			<PageHeader category="Observability" title="Execution Traces" />
 
 			{(toolkit || workflow) && (
 				<div className="flex flex-wrap items-center gap-2">
@@ -52,9 +43,11 @@ export default function TracesPage() {
 					{toolkit && (
 						<span className="bg-primary/10 text-primary border-primary/20 inline-flex items-center gap-1 rounded-full border px-2 py-0.5 font-mono text-xs">
 							toolkit: {toolkit}
-							<button
-								type="button"
+							<Button
+								variant="ghost"
+								size="icon"
 								aria-label="Clear toolkit filter"
+								className="h-4 w-4 p-0"
 								onClick={() => {
 									const p = new URLSearchParams(searchParams);
 									p.delete('toolkit');
@@ -62,15 +55,17 @@ export default function TracesPage() {
 								}}
 							>
 								<X className="h-3 w-3" />
-							</button>
+							</Button>
 						</span>
 					)}
 					{workflow && (
 						<span className="bg-primary/10 text-primary border-primary/20 inline-flex items-center gap-1 rounded-full border px-2 py-0.5 font-mono text-xs">
 							workflow: {workflow}
-							<button
-								type="button"
+							<Button
+								variant="ghost"
+								size="icon"
 								aria-label="Clear workflow filter"
+								className="h-4 w-4 p-0"
 								onClick={() => {
 									const p = new URLSearchParams(searchParams);
 									p.delete('workflow');
@@ -78,27 +73,27 @@ export default function TracesPage() {
 								}}
 							>
 								<X className="h-3 w-3" />
-							</button>
+							</Button>
 						</span>
 					)}
 				</div>
 			)}
 
 			{isLoading ? (
-				<div className="text-muted-foreground py-16 text-center">Loading traces...</div>
+				<LoadingState message="Loading traces..." />
 			) : isError ? (
 				<div className="bg-muted border-border rounded-xl border p-12 text-center">
-					<p className="text-danger font-medium">Failed to load traces</p>
-					<p className="text-muted-foreground mt-1 text-sm">
+					<ErrorAlert message="Failed to load traces" />
+					<p className="text-muted-foreground mt-2 text-sm">
 						Please try refreshing the page.
 					</p>
 				</div>
 			) : traces.length === 0 ? (
-				<div className="bg-muted border-border text-muted-foreground rounded-xl border p-12 text-center">
-					<Activity className="mx-auto mb-3 h-10 w-10 opacity-30" />
-					<p className="text-foreground font-medium">No traces found</p>
-					<p className="mt-1 text-sm">Traces appear here when agents call the broker.</p>
-				</div>
+				<EmptyState
+					icon={<Activity className="h-10 w-10 opacity-30" />}
+					title="No traces found"
+					description="Traces appear here when agents call the broker."
+				/>
 			) : (
 				<>
 					<div className="bg-muted border-border overflow-hidden rounded-xl border">
@@ -170,27 +165,12 @@ export default function TracesPage() {
 						</div>
 					</div>
 					{totalPages > 1 && (
-						<div className="flex items-center justify-center gap-3">
-							<button
-								type="button"
-								disabled={page <= 1}
-								onClick={() => setPage((p) => p - 1)}
-								className="bg-muted border-border hover:bg-muted/60 rounded-lg border px-3 py-1.5 text-sm transition-colors disabled:opacity-40"
-							>
-								<ChevronLeft className="h-4 w-4" />
-							</button>
-							<span className="text-muted-foreground text-sm">
-								Page {page} of {totalPages}
-							</span>
-							<button
-								type="button"
-								disabled={page >= totalPages}
-								onClick={() => setPage((p) => p + 1)}
-								className="bg-muted border-border hover:bg-muted/60 rounded-lg border px-3 py-1.5 text-sm transition-colors disabled:opacity-40"
-							>
-								<ChevronRight className="h-4 w-4" />
-							</button>
-						</div>
+						<Pagination
+							page={page}
+							totalPages={totalPages}
+							onPageChange={setPage}
+							className="justify-center"
+						/>
 					)}
 				</>
 			)}

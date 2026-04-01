@@ -3,6 +3,10 @@ import { useQuery } from '@tanstack/react-query';
 import { Workflow, ChevronRight, Zap, Globe } from 'lucide-react';
 import { api } from '@/api/client';
 import { Badge } from '@/components/ui/Badge';
+import { PageHeader } from '@/components/ui/PageHeader';
+import { LoadingState } from '@/components/ui/LoadingState';
+import { EmptyState } from '@/components/ui/EmptyState';
+import { ErrorAlert } from '@/components/ui/ErrorAlert';
 
 export default function WorkflowsPage() {
 	const navigate = useNavigate();
@@ -18,28 +22,23 @@ export default function WorkflowsPage() {
 
 	return (
 		<div className="max-w-5xl space-y-5">
-			<div>
-				<p className="text-primary/60 font-mono text-[10px] tracking-widest uppercase">
-					Catalog
-				</p>
-				<h1 className="font-heading text-foreground mt-1 text-2xl font-bold">Workflows</h1>
-			</div>
+			<PageHeader category="Catalog" title="Workflows" />
 
 			{isLoading ? (
-				<div className="text-muted-foreground py-16 text-center">Loading workflows...</div>
+				<LoadingState message="Loading workflows..." />
 			) : isError ? (
 				<div className="bg-muted border-border rounded-xl border p-12 text-center">
-					<p className="text-danger font-medium">Failed to load workflows</p>
-					<p className="text-muted-foreground mt-1 text-sm">
+					<ErrorAlert message="Failed to load workflows" />
+					<p className="text-muted-foreground mt-2 text-sm">
 						Please try refreshing the page.
 					</p>
 				</div>
 			) : !workflows || !Array.isArray(workflows) || workflows.length === 0 ? (
-				<div className="text-muted-foreground bg-muted border-border rounded-xl border border-dashed p-12 text-center">
-					<Workflow className="mx-auto mb-3 h-10 w-10 opacity-30" />
-					<p className="text-foreground font-medium">No workflows registered</p>
-					<p className="mt-1 text-sm">Import an Arazzo workflow file to get started.</p>
-				</div>
+				<EmptyState
+					icon={<Workflow className="h-10 w-10 opacity-30" />}
+					title="No workflows registered"
+					description="Import an Arazzo workflow file to get started."
+				/>
 			) : (
 				<div className="space-y-2">
 					{workflows.map((wf: any) => (

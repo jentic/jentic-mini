@@ -1,7 +1,12 @@
 import { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { AlertTriangle, Check } from 'lucide-react';
 import { UserService } from '@/api/generated';
+import { Button } from '@/components/ui/Button';
+import { Input } from '@/components/ui/Input';
+import { Label } from '@/components/ui/Label';
+import { ErrorAlert } from '@/components/ui/ErrorAlert';
 
 /**
  * Setup wizard with two steps:
@@ -108,13 +113,9 @@ export default function SetupPage() {
 						<div className="bg-success/10 border-success/30 text-success mb-6 flex items-center justify-center gap-2 rounded-lg border p-4 text-sm font-semibold">
 							<Check className="h-4 w-4" /> Setup complete
 						</div>
-						<button
-							type="button"
-							onClick={() => (window.location.href = '/')}
-							className="bg-primary text-background hover:bg-primary-hover w-full rounded-lg px-4 py-3 font-bold transition-colors"
-						>
+						<Button onClick={() => (window.location.href = '/')} size="lg" fullWidth>
 							Go to Dashboard →
-						</button>
+						</Button>
 					</div>
 				) : null}
 
@@ -136,63 +137,65 @@ export default function SetupPage() {
 								className="bg-warning/10 border-warning/30 text-warning mb-4 rounded-lg border p-3 text-sm"
 							>
 								An admin account already exists.{' '}
-								<a href="/login" className="font-semibold underline">
+								<Link to="/login" className="font-semibold underline">
 									Log in instead →
-								</a>
+								</Link>
 							</div>
 						)}
 
 						{createUserMutation.isError && !accountAlreadyExists && (
-							<div
-								role="alert"
-								className="bg-danger/10 border-danger/30 text-danger mb-4 rounded-lg border p-3 text-sm"
-							>
-								Something went wrong. Please try again.
-							</div>
+							<ErrorAlert
+								message="Something went wrong. Please try again."
+								className="mb-4"
+							/>
 						)}
 
 						<div className="mb-4">
-							<label
+							<Label
 								htmlFor="setup-username"
-								className="text-muted-foreground mb-2 block text-sm font-bold"
+								className="text-muted-foreground mb-2 block font-bold"
+								required
 							>
 								Username
-							</label>
-							<input
+							</Label>
+							<Input
 								id="setup-username"
 								type="text"
 								value={username}
 								onChange={(e) => setUsername(e.target.value)}
 								required
 								disabled={accountAlreadyExists}
-								className="bg-background border-border text-foreground focus:border-primary w-full rounded-lg border px-3 py-2 transition-colors focus:outline-hidden disabled:opacity-50"
+								className="bg-background"
 							/>
 						</div>
 						<div className="mb-6">
-							<label
+							<Label
 								htmlFor="setup-password"
-								className="text-muted-foreground mb-2 block text-sm font-bold"
+								className="text-muted-foreground mb-2 block font-bold"
+								required
 							>
 								Password
-							</label>
-							<input
+							</Label>
+							<Input
 								id="setup-password"
 								type="password"
 								value={password}
 								onChange={(e) => setPassword(e.target.value)}
 								required
 								disabled={accountAlreadyExists}
-								className="bg-background border-border text-foreground focus:border-primary w-full rounded-lg border px-3 py-2 transition-colors focus:outline-hidden disabled:opacity-50"
+								showPasswordToggle
+								className="bg-background"
 							/>
 						</div>
 						{!accountAlreadyExists && (
-							<button
+							<Button
 								type="submit"
-								disabled={createUserMutation.isPending}
-								className="bg-primary text-background hover:bg-primary-hover w-full rounded-lg px-4 py-3 font-bold transition-colors disabled:opacity-50"
+								loading={createUserMutation.isPending}
+								size="lg"
+								fullWidth
 							>
 								{createUserMutation.isPending ? 'Creating...' : 'Create Account'}
-							</button>
+							</Button>
 						)}
 					</form>
 				) : null}
@@ -214,8 +217,7 @@ export default function SetupPage() {
 								<div className="bg-background text-foreground mb-4 rounded p-3 font-mono text-sm break-all">
 									{generateKeyMutation.data.key}
 								</div>
-								<button
-									type="button"
+								<Button
 									onClick={async () => {
 										try {
 											await navigator.clipboard.writeText(
@@ -228,10 +230,11 @@ export default function SetupPage() {
 											);
 										}
 									}}
-									className="bg-primary text-background hover:bg-primary-hover w-full rounded py-2 font-semibold transition-colors"
+									fullWidth
+									className="rounded py-2 font-semibold"
 								>
 									Copy Key
-								</button>
+								</Button>
 							</div>
 						) : /* Key copied — show confirmation + proceed */
 						copiedKey ? (
@@ -239,13 +242,13 @@ export default function SetupPage() {
 								<div className="bg-success/10 border-success/30 text-success mb-6 flex items-center justify-center gap-2 rounded-lg border p-4 text-sm font-semibold">
 									<Check className="h-4 w-4" /> API key copied
 								</div>
-								<button
-									type="button"
+								<Button
 									onClick={() => (window.location.href = '/')}
-									className="bg-primary text-background hover:bg-primary-hover w-full rounded-lg px-4 py-3 font-bold transition-colors"
+									size="lg"
+									fullWidth
 								>
 									Go to Dashboard →
-								</button>
+								</Button>
 							</div>
 						) : /* Agent claimed key externally */
 						agentClaimedKey ? (
@@ -254,13 +257,13 @@ export default function SetupPage() {
 									<Check className="h-4 w-4" /> Agent claimed the key
 									automatically
 								</div>
-								<button
-									type="button"
+								<Button
 									onClick={() => (window.location.href = '/')}
-									className="bg-primary text-background hover:bg-primary-hover w-full rounded-lg px-4 py-3 font-bold transition-colors"
+									size="lg"
+									fullWidth
 								>
 									Go to Dashboard →
-								</button>
+								</Button>
 							</div>
 						) : (
 							/* Initial state — generate or wait */
@@ -284,16 +287,16 @@ export default function SetupPage() {
 									Alternatively, generate the API key now and give it to your
 									agent manually.
 								</p>
-								<button
-									type="button"
+								<Button
 									onClick={() => generateKeyMutation.mutate()}
-									disabled={generateKeyMutation.isPending}
-									className="bg-primary text-background hover:bg-primary-hover w-full rounded-lg px-4 py-3 font-semibold transition-colors disabled:opacity-50"
+									loading={generateKeyMutation.isPending}
+									size="lg"
+									fullWidth
 								>
 									{generateKeyMutation.isPending
 										? 'Generating...'
 										: 'Generate Agent API Key'}
-								</button>
+								</Button>
 							</>
 						)}
 					</div>

@@ -7,6 +7,8 @@ import { JenticLogo } from '@/components/ui/Logo';
 import { Button } from '@/components/ui/Button';
 import { PermissionRuleDisplay } from '@/components/ui/PermissionRuleDisplay';
 import { Badge } from '@/components/ui/Badge';
+import { ErrorAlert } from '@/components/ui/ErrorAlert';
+import { LoadingState } from '@/components/ui/LoadingState';
 import type { PermissionRule } from '@/api/types';
 
 function extractErrorMessage(err: unknown): string {
@@ -82,7 +84,7 @@ export default function ApprovalPage() {
 	if (userLoading) {
 		return (
 			<div className="bg-background flex min-h-screen items-center justify-center">
-				<div className="text-muted-foreground text-sm">Loading...</div>
+				<LoadingState />
 			</div>
 		);
 	}
@@ -121,7 +123,7 @@ export default function ApprovalPage() {
 	if (requestLoading) {
 		return (
 			<div className="bg-background flex min-h-screen items-center justify-center">
-				<div className="text-muted-foreground text-sm">Loading request...</div>
+				<LoadingState message="Loading request..." />
 			</div>
 		);
 	}
@@ -321,12 +323,7 @@ export default function ApprovalPage() {
 					</div>
 
 					{/* Action error — now with meaningful messages */}
-					{actionError && (
-						<div className="text-danger bg-danger/10 border-danger/30 flex items-start gap-2 rounded-lg border p-3 text-sm">
-							<AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-							<span>{extractErrorMessage(actionError)}</span>
-						</div>
-					)}
+					{actionError && <ErrorAlert message={extractErrorMessage(actionError)} />}
 
 					{/* Action buttons */}
 					<div className="flex gap-3">

@@ -1,11 +1,14 @@
-import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Key, Plus, Trash2, Settings } from 'lucide-react';
 import { api } from '@/api/client';
 import type { CredentialOut } from '@/api/types';
 import { Badge } from '@/components/ui/Badge';
+import { Button } from '@/components/ui/Button';
 import { ConfirmInline } from '@/components/ui/ConfirmInline';
+import { PageHeader } from '@/components/ui/PageHeader';
+import { LoadingState } from '@/components/ui/LoadingState';
+import { EmptyState } from '@/components/ui/EmptyState';
 
 export default function CredentialsPage() {
 	const navigate = useNavigate();
@@ -25,23 +28,15 @@ export default function CredentialsPage() {
 
 	return (
 		<div className="max-w-5xl space-y-5">
-			<div className="flex items-center justify-between">
-				<div>
-					<p className="text-primary/60 font-mono text-[10px] tracking-widest uppercase">
-						Management
-					</p>
-					<h1 className="font-heading text-foreground mt-1 text-2xl font-bold">
-						Credentials Vault
-					</h1>
-				</div>
-				<button
-					type="button"
-					onClick={() => navigate('/credentials/new')}
-					className="bg-primary text-background hover:bg-primary/80 inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors"
-				>
-					<Plus className="h-4 w-4" /> Add Credential
-				</button>
-			</div>
+			<PageHeader
+				category="Management"
+				title="Credentials Vault"
+				actions={
+					<Button onClick={() => navigate('/credentials/new')}>
+						<Plus className="h-4 w-4" /> Add Credential
+					</Button>
+				}
+			/>
 
 			<div className="bg-muted border-border text-muted-foreground rounded-xl border p-4 text-sm">
 				Store API credentials securely. Bind them to toolkits to give agents scoped access
@@ -49,24 +44,18 @@ export default function CredentialsPage() {
 			</div>
 
 			{isLoading ? (
-				<div className="text-muted-foreground py-16 text-center">
-					Loading credentials...
-				</div>
+				<LoadingState message="Loading credentials..." />
 			) : !credentials || credentials.length === 0 ? (
-				<div className="text-muted-foreground bg-muted border-border rounded-xl border border-dashed p-12 text-center">
-					<Key className="mx-auto mb-3 h-10 w-10 opacity-30" />
-					<p className="text-foreground mb-1 font-medium">No credentials stored</p>
-					<p className="mb-4 text-sm">
-						Add a credential to authenticate agents with external APIs.
-					</p>
-					<button
-						type="button"
-						onClick={() => navigate('/credentials/new')}
-						className="bg-primary text-background hover:bg-primary/80 rounded-lg px-4 py-2 text-sm font-medium transition-colors"
-					>
-						Add your first credential
-					</button>
-				</div>
+				<EmptyState
+					icon={<Key className="h-10 w-10 opacity-30" />}
+					title="No credentials stored"
+					description="Add a credential to authenticate agents with external APIs."
+					action={
+						<Button onClick={() => navigate('/credentials/new')}>
+							Add your first credential
+						</Button>
+					}
+				/>
 			) : (
 				<div className="space-y-2">
 					{(credentials as CredentialOut[]).map((cred) => (
@@ -99,26 +88,23 @@ export default function CredentialsPage() {
 								)}
 							</div>
 							<div className="flex items-center gap-2">
-								<button
-									type="button"
+								<Button
+									variant="secondary"
+									size="sm"
 									onClick={() =>
 										navigate(`/credentials/${encodeURIComponent(cred.id)}/edit`)
 									}
-									className="bg-muted border-border text-foreground hover:bg-muted/60 inline-flex items-center gap-1 rounded-lg border px-3 py-1.5 text-sm transition-colors"
 								>
 									<Settings className="h-4 w-4" /> Edit
-								</button>
+								</Button>
 								<ConfirmInline
 									onConfirm={() => deleteMutation.mutate(cred.id)}
 									message="Delete this credential?"
 									confirmLabel="Delete"
 								>
-									<button
-										type="button"
-										className="bg-danger/10 border-danger/30 text-danger hover:bg-danger/20 inline-flex items-center gap-1 rounded-lg border px-3 py-1.5 text-sm transition-colors"
-									>
+									<Button variant="danger" size="sm">
 										<Trash2 className="h-4 w-4" />
-									</button>
+									</Button>
 								</ConfirmInline>
 							</div>
 						</div>
