@@ -174,7 +174,7 @@ The broker-based Arazzo execution path (server URL rewriting + RuntimeParams) ne
 ### Medium Priority
 
 **Bundle workflow utility tools**
-Package Jentic's workflow utility tools (from [jentic-unix-tools](https://github.com/jentic/jentic-unix-tools) _naming to be confirmed for utility tools_) within Jentic Mini for enhanced workflow capabilities.
+Package Jentic's workflow utility tools (currently from [`jentic-unix-tools`](https://github.com/jentic/jentic-unix-tools), repo/package name TBD) within Jentic Mini for enhanced workflow capabilities.
 
 These tools provide Unix-style utilities designed for API workflow composition:
 - Data transformation (jq-like JSON filtering, XML/CSV conversion)
