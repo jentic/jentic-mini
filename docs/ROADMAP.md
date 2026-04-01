@@ -145,12 +145,12 @@ Specific areas: authentication headers, pagination format, error response schema
 Replace the Python `arazzo-engine` runner with the TypeScript implementation from [jentic-arazzo-tools](https://github.com/jentic/jentic-arazzo-tools/tree/main/packages/jentic-arazzo-runner).
 
 Benefits:
-- Single-language runtime (Node.js already required for UI builds)
 - Tighter integration with workflow visualization and editing tools
 - Active development and feature parity with Arazzo 1.0 spec updates
 - Shared runtime between Jentic Mini and hosted editions
+- Consistent tooling across workflow execution and UI development
 
-Migration path: subprocess invocation similar to current Python runner; `RuntimeParams` for broker URL rewriting and credential headers remain unchanged.
+Migration path: Python wrapper invokes the TypeScript runner as a subprocess (similar to current approach). The runner is installed at build time but invoked through a Python interface, keeping the core service Node-free. `RuntimeParams` for broker URL rewriting and credential headers remain unchanged.
 
 **Step-to-step data transformation**
 Arazzo runtime expressions (`$steps.X.outputs.Y`) pass data verbatim. When step 1 returns a large response (e.g. 500KB Discourse topics list) and step 2 is a token-limited API (OpenAI), the workflow fails with a 400.
