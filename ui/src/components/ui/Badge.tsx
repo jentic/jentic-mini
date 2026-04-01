@@ -1,6 +1,7 @@
 import React from 'react';
+import { cn } from '@/lib/utils';
 
-type Variant = 'default' | 'success' | 'warning' | 'danger' | 'pending';
+export type Variant = 'default' | 'success' | 'warning' | 'danger' | 'pending';
 
 const variantClasses: Record<Variant, string> = {
 	default: 'bg-primary/10 text-primary border-primary/20',
@@ -10,16 +11,19 @@ const variantClasses: Record<Variant, string> = {
 	pending: 'bg-accent-orange/10 text-accent-orange border-accent-orange/20',
 };
 
-interface BadgeProps {
+interface BadgeProps extends React.HTMLAttributes<HTMLSpanElement> {
 	variant?: Variant;
-	children: React.ReactNode;
-	className?: string;
 }
 
-export function Badge({ variant = 'default', children, className = '' }: BadgeProps) {
+export function Badge({ variant = 'default', children, className, ...props }: BadgeProps) {
 	return (
 		<span
-			className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 font-mono text-xs ${variantClasses[variant]} ${className}`}
+			className={cn(
+				'inline-flex items-center gap-1 rounded-full border px-2 py-0.5 font-mono text-xs',
+				variantClasses[variant],
+				className,
+			)}
+			{...props}
 		>
 			{children}
 		</span>
@@ -39,7 +43,10 @@ export function MethodBadge({ method }: { method?: string | null }) {
 	const colors = methodColors[m] ?? 'bg-muted text-muted-foreground border-border';
 	return (
 		<span
-			className={`inline-block rounded border px-1.5 py-0.5 font-mono text-[10px] font-bold ${colors} w-14 text-center`}
+			className={cn(
+				'inline-block w-14 rounded border px-1.5 py-0.5 text-center font-mono text-[10px] font-bold',
+				colors,
+			)}
 		>
 			{m}
 		</span>
