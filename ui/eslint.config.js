@@ -6,7 +6,7 @@ import pluginReactHooks from 'eslint-plugin-react-hooks';
 import pluginImportX from 'eslint-plugin-import-x';
 import pluginUnusedImports from 'eslint-plugin-unused-imports';
 import pluginJsxA11y from 'eslint-plugin-jsx-a11y';
-import eslintConfigPrettier from 'eslint-config-prettier';
+import eslintPluginPrettierRecommended from 'eslint-plugin-prettier/recommended';
 import globals from 'globals';
 
 export default defineConfig(
@@ -154,7 +154,7 @@ export default defineConfig(
 	},
 
 	// Prettier must be last to override formatting rules
-	eslintConfigPrettier,
+	eslintPluginPrettierRecommended,
 
 	// ─── Global ignores ──────────────────────────────────────────────────
 	globalIgnores([

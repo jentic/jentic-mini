@@ -55,10 +55,7 @@ jobs:
         if: steps.cache-playwright.outputs.cache-hit == 'true'
         run: npx playwright install-deps chromium
 
-      - name: Format check
-        run: npm run format:check
-
-      - name: Lint
+      - name: Lint & format check
         run: npm run lint
 
       - name: TypeScript check
