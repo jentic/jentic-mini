@@ -5,7 +5,7 @@ cryptography==46.0.6
 rank-bm25==0.2.2
 pyyaml==6.0.3
 aiofiles==25.1.0
-aiosqlite==0.20.0
+aiosqlite==0.22.1
 jsonpath-ng==1.6.1
 bcrypt==4.2.1
 python-jose[cryptography]==3.5.0
