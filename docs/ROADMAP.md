@@ -132,6 +132,26 @@ Use cases: home automation (Home Assistant, etc.), internal APIs behind a firewa
 
 ### High Priority
 
+**API alignment with Jentic standards**
+Jentic Mini's API surface developed rapidly and should be aligned with Jentic's extensive opinion on AI-enabled APIs in some areas (endpoint paths, request/response formats, error structures). Aligning to a common standard improves:
+- Cross-edition compatibility for agents and client libraries
+- Consistency for users migrating between self-hosted and hosted deployments
+- Shared documentation and tooling
+- Ease of migration and alignment across all Jentic versions (mini, pro, enterprise)
+
+Specific areas: authentication headers, pagination format, error response schema, capability ID format in responses.
+
+**TypeScript Arazzo runner migration**
+Replace the Python `arazzo-engine` runner with the TypeScript implementation from [jentic-arazzo-tools](https://github.com/jentic/jentic-arazzo-tools/tree/main/packages/jentic-arazzo-runner).
+
+Benefits:
+- Single-language runtime (Node.js already required for UI builds)
+- Tighter integration with workflow visualization and editing tools
+- Active development and feature parity with Arazzo 1.0 spec updates
+- Shared runtime between Jentic Mini and hosted editions
+
+Migration path: subprocess invocation similar to current Python runner; `RuntimeParams` for broker URL rewriting and credential headers remain unchanged.
+
 **Step-to-step data transformation**
 Arazzo runtime expressions (`$steps.X.outputs.Y`) pass data verbatim. When step 1 returns a large response (e.g. 500KB Discourse topics list) and step 2 is a token-limited API (OpenAI), the workflow fails with a 400.
 
@@ -152,6 +172,22 @@ No backend automated tests yet. For a credential-handling proxy this is a reliab
 The broker-based Arazzo execution path (server URL rewriting + RuntimeParams) needs more testing with workflows that span multiple APIs with different auth schemes.
 
 ### Medium Priority
+
+**Bundle workflow utility tools**
+Package Jentic's workflow utility tools (from [jentic-unix-tools](https://github.com/jentic/jentic-unix-tools) _naming to be confirmed for utility tools_) within Jentic Mini for enhanced workflow capabilities.
+
+These tools provide Unix-style utilities designed for API workflow composition:
+- Data transformation (jq-like JSON filtering, XML/CSV conversion)
+- HTTP utilities (request construction, response parsing, retry logic)
+- Text processing (template rendering, markdown conversion)
+- Validation (JSON Schema, OpenAPI spec validation)
+
+Deployment options:
+- Bundled in the same container on a different port (e.g. `:8901/tools`)
+- Separate sidecar container orchestrated via Docker Compose
+- Exposed as pseudo-operations (e.g. `POST /localhost/tools/jq`) that workflow steps can reference
+
+Makes workflows more powerful without requiring external tool dependencies; addresses the step-to-step transformation gap.
 
 **Unauthenticated search**
 Currently all endpoints require an API key. For cold-start / agent discovery without a key:
