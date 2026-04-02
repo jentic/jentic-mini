@@ -620,13 +620,14 @@ async def delete_broker_account(broker_id: BrokerIdPath, account_id: str):
                 raise HTTPException(404, f"OAuth broker '{broker_id}' not found")
 
         async with db.execute(
-            "SELECT account_id FROM oauth_broker_accounts WHERE broker_id=? AND account_id=?",
+            "SELECT account_id, api_host FROM oauth_broker_accounts WHERE broker_id=? AND account_id=?",
             (broker_id, account_id),
         ) as cur:
             row = await cur.fetchone()
 
     if not row:
         raise HTTPException(404, f"No connected account '{account_id}' found for broker '{broker_id}'")
+    api_host = row[1]
     host_slug = api_host.replace(".", "-")
     cred_id = f"pipedream-{account_id}-{host_slug}"
 
@@ -673,15 +674,14 @@ async def delete_broker_account(broker_id: BrokerIdPath, account_id: str):
     # 4. Delete from oauth_broker_accounts
     async with get_db() as db:
         await db.execute(
-            "DELETE FROM oauth_broker_accounts WHERE broker_id=? AND api_host=? AND external_user_id=?",
-            (broker_id, api_host, ext_uid),
+            "DELETE FROM oauth_broker_accounts WHERE broker_id=? AND account_id=?",
+            (broker_id, account_id),
         )
         await db.commit()
 
     return {
         "status": "ok",
         "broker_id": broker_id,
-        "api_host": api_host,
         "account_id": account_id,
         "credential_id": cred_id,
         "pipedream_revoked": pipedream_revoked,
