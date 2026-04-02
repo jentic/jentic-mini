@@ -286,15 +286,14 @@ export default function ToolkitDetailPage() {
 		refetchInterval: 30000,
 	});
 
-	// FIXED: Keys are NOT returned by get_toolkit; need separate query
-	const { data: keysResponse } = useQuery({
+	const { data: keysResponse, isError: keysError } = useQuery({
 		queryKey: ['toolkit-keys', id],
 		queryFn: () => api.listKeys(id!),
 		enabled: !!id,
 		refetchInterval: 30000,
 	});
 
-	const { data: pendingReqs } = useQuery({
+	const { data: pendingReqs, isError: pendingError } = useQuery({
 		queryKey: ['access-requests', id],
 		queryFn: () => api.listAccessRequests(id!, 'pending'),
 		enabled: !!id,
@@ -368,9 +367,11 @@ export default function ToolkitDetailPage() {
 			/>
 		);
 
-	const keys = (keysResponse as any)?.keys ?? [];
-	const pending = (pendingReqs ?? []).filter((r: any) => r.status === 'pending');
-	const credentials = toolkit.credentials ?? [];
+	const keys = Array.isArray(keysResponse) ? keysResponse : [];
+	const pending = Array.isArray(pendingReqs)
+		? pendingReqs.filter((r: any) => r.status === 'pending')
+		: [];
+	const credentials = Array.isArray(toolkit.credentials) ? toolkit.credentials : [];
 
 	return (
 		<div className="max-w-5xl space-y-6">
@@ -407,6 +408,7 @@ export default function ToolkitDetailPage() {
 			</div>
 
 			{/* Pending requests */}
+			{pendingError && <ErrorAlert message="Failed to load pending access requests." />}
 			{pending.length > 0 && (
 				<div className="bg-warning/10 border-warning/30 space-y-3 rounded-xl border p-5">
 					<div className="flex items-center gap-2">
@@ -564,7 +566,8 @@ export default function ToolkitDetailPage() {
 							</div>
 						</div>
 					)}
-					{keys.length === 0 && !showKeyCreate && !newKey && (
+					{keysError && <ErrorAlert message="Failed to load API keys." />}
+					{keys.length === 0 && !showKeyCreate && !newKey && !keysError && (
 						<p className="text-muted-foreground text-sm">
 							No keys yet. Create one to allow agents to use this toolkit.
 						</p>
@@ -644,7 +647,7 @@ export default function ToolkitDetailPage() {
 												{cred.api_id}
 											</p>
 										)}
-										{cred.permissions && (
+										{Array.isArray(cred.permissions) && (
 											<p className="text-muted-foreground mt-0.5 text-xs">
 												{
 													cred.permissions.filter(
