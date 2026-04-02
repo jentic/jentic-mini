@@ -93,10 +93,10 @@ function ApiCard({ entry, defaultOpen = false }: { entry: any; defaultOpen?: boo
 		>
 			<Button
 				variant="ghost"
-				className="hover:bg-background/50 w-full px-5 py-4 text-left transition-colors"
+				className="hover:bg-background/50 h-auto w-full justify-start px-5 py-4 text-left transition-colors"
 				onClick={() => setOpen((o) => !o)}
 			>
-				<div className="flex items-start gap-3">
+				<div className="flex w-full items-start gap-3">
 					<div className="min-w-0 flex-1 space-y-1">
 						<div className="flex flex-wrap items-center gap-2">
 							<span
