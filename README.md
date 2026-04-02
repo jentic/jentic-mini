@@ -67,7 +67,7 @@ Jentic Mini is a self-hosted deployment option for individuals and small teams w
 
 ### Quick Start (pre-built image)
 
-**Hosting:** Host Jentic Mini separately from your agent where possible. Running both on the same machine gives the agent process direct access to the admin API (credential management, toolkit configuration), which weakens the security boundary.
+**Hosting:** Host Jentic Mini separately from your agent where possible. Running both on the same machine gives the agent process direct access to the credential database, which weakens the security boundary.
 
 From **DockerHub**:
 
