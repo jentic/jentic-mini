@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Outlet, Link, useLocation } from 'react-router-dom';
+import { Outlet, useLocation } from 'react-router-dom';
 import {
 	BookOpen,
 	ExternalLink,
@@ -18,6 +18,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { JenticLogo } from '@/components/ui/Logo';
 import { ErrorBoundary } from '@/components/ui/ErrorBoundary';
 import { Button } from '@/components/ui/Button';
+import { AppLink } from '@/components/ui/AppLink';
 import { useAuth } from '@/hooks/useAuth';
 import { usePendingRequests } from '@/hooks/usePendingRequests';
 import { useUpdateCheck } from '@/hooks/useUpdateCheck';
@@ -39,8 +40,8 @@ function NavLink({
 	const loc = useLocation();
 	const active = exact ? loc.pathname === to : loc.pathname.startsWith(to);
 	return (
-		<Link
-			to={to}
+		<AppLink
+			href={to}
 			onClick={onClick}
 			className={`my-1 flex items-center gap-3 rounded-md px-4 py-2 transition-all duration-150 ${
 				active
@@ -50,7 +51,7 @@ function NavLink({
 		>
 			{icon}
 			<span className="font-semibold">{label}</span>
-		</Link>
+		</AppLink>
 	);
 }
 
@@ -145,38 +146,31 @@ function SidebarContents({ onClose }: { onClose?: () => void }) {
 
 			<div className="border-border shrink-0 border-t px-3 py-3">
 				{updateAvailable && releaseUrl && (
-					<a
+					<AppLink
 						href={releaseUrl}
-						target="_blank"
-						rel="noopener noreferrer"
 						className="text-accent-yellow bg-accent-yellow/10 hover:bg-accent-yellow/20 mb-1 flex items-center gap-2 rounded-md px-4 py-2 text-xs font-semibold transition-colors"
 					>
 						<span className="bg-accent-yellow h-1.5 w-1.5 shrink-0 animate-pulse rounded-full" />
 						Update available: {latestVersion}
-					</a>
+					</AppLink>
 				)}
-				{/* eslint-disable no-restricted-syntax -- external link to API docs server, not a client route */}
-				<a
+				<AppLink
 					href="/docs"
-					target="_blank"
-					rel="noopener noreferrer"
+					external
 					className="text-foreground hover:bg-muted hover:text-primary flex items-center gap-3 rounded-md px-4 py-2 text-sm transition-all duration-150"
 					aria-label="API (opens in a new tab)"
 					title="API (opens in a new tab)"
 				>
 					<BookOpen className="h-4 w-4" />
 					<span className="font-semibold">API</span>
-				</a>
-				{/* eslint-enable no-restricted-syntax */}
-				<a
+				</AppLink>
+				<AppLink
 					href="https://jentic.com"
-					target="_blank"
-					rel="noopener noreferrer"
 					className="text-muted-foreground/70 hover:text-primary flex items-center gap-1.5 px-4 pt-2 text-[11px] font-medium transition-colors"
 				>
 					<ExternalLink className="h-3 w-3 shrink-0" />
 					More at jentic.com
-				</a>
+				</AppLink>
 			</div>
 		</aside>
 	);
@@ -242,14 +236,14 @@ export function Layout() {
 
 					<div className="flex items-center gap-4">
 						{pendingRequests && pendingRequests.length > 0 && (
-							<Link
-								to="/toolkits"
+							<AppLink
+								href="/toolkits"
 								className="bg-danger/10 text-danger border-danger/30 hover:bg-danger/20 flex items-center gap-2 rounded-full border px-3 py-1 text-sm font-semibold transition-colors"
 							>
 								<span className="bg-danger h-2 w-2 animate-pulse rounded-full" />
 								{pendingRequests.length} Pending{' '}
 								{pendingRequests.length === 1 ? 'Request' : 'Requests'}
-							</Link>
+							</AppLink>
 						)}
 						<div className="text-muted-foreground hidden font-mono text-sm sm:block">
 							{user?.username}

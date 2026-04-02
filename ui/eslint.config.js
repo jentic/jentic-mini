@@ -91,16 +91,6 @@ export default defineConfig(
 			'react-hooks/rules-of-hooks': 'error',
 			'react-hooks/exhaustive-deps': 'warn',
 
-			'no-restricted-syntax': [
-				'warn',
-				{
-					selector:
-						"JSXOpeningElement[name.name='a'][attributes] JSXAttribute[name.name='href'][value.value=/^\\/[^/]/]",
-					message:
-						'Use <Link> from react-router-dom for internal navigation instead of <a>.',
-				},
-			],
-
 			// ── Accessibility ───────────────────────────────────────────
 			'jsx-a11y/alt-text': 'error',
 			'jsx-a11y/anchor-has-content': 'error',
@@ -132,10 +122,9 @@ export default defineConfig(
 			'no-restricted-syntax': [
 				'error',
 				{
-					selector:
-						"JSXOpeningElement[name.name='a'][attributes] JSXAttribute[name.name='href'][value.value=/^\\/[^/]/]",
+					selector: "JSXOpeningElement[name.name='a']",
 					message:
-						'Use <Link> from react-router-dom for internal navigation instead of <a>.',
+						'Use <AppLink> from @/components/ui instead of raw <a>.',
 				},
 				{
 					selector: "JSXOpeningElement[name.name='button']",
