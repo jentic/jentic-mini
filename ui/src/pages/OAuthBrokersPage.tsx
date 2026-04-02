@@ -22,6 +22,7 @@ import { LoadingState } from '@/components/ui/LoadingState';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { ErrorAlert } from '@/components/ui/ErrorAlert';
 import { ConfirmInline } from '@/components/ui/ConfirmInline';
+import { AppLink } from '@/components/ui/AppLink';
 
 // ── Add Broker Form ──────────────────────────────────────────────
 
@@ -306,15 +307,13 @@ function ConnectAccountPanel({
 		return (
 			<div className="bg-background border-primary/30 space-y-3 rounded-xl border p-4">
 				<p className="text-foreground text-sm font-medium">Connect your account</p>
-				<a
+				<AppLink
 					href={connectLink.connect_link_url}
-					target="_blank"
-					rel="noopener noreferrer"
 					className="bg-primary text-background hover:bg-primary/80 inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors"
 				>
 					<ExternalLink className="h-4 w-4" />
 					Open Connect Link
-				</a>
+				</AppLink>
 				<p className="text-muted-foreground text-xs">
 					Click the link above to connect your account in Pipedream. Return here and click{' '}
 					<strong>Done</strong> when finished — this will sync your new connection

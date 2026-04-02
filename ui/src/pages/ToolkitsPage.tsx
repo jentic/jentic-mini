@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, Wrench, AlertTriangle, Key, Ban } from 'lucide-react';
+import { AppLink } from '@/components/ui/AppLink';
 import { api } from '@/api/client';
 import { usePendingRequests } from '@/hooks/usePendingRequests';
 import type { ToolkitCreate } from '@/api/types';
@@ -162,8 +163,8 @@ export default function ToolkitsPage({ createNew = false }: ToolkitsPageProps) {
 					{toolkits.map((toolkit) => {
 						const pendingCount = pendingByToolkit[toolkit.id] ?? 0;
 						return (
-							<Link
-								to={`/toolkits/${toolkit.id}`}
+							<AppLink
+								href={`/toolkits/${toolkit.id}`}
 								key={toolkit.id}
 								className={`bg-muted hover:border-primary/50 hover:bg-muted/80 block space-y-3 rounded-xl border p-5 transition-all ${toolkit.disabled ? 'border-danger/40 opacity-70' : 'border-border'}`}
 							>
@@ -212,7 +213,7 @@ export default function ToolkitsPage({ createNew = false }: ToolkitsPageProps) {
 												: '—'}
 									</span>
 								</div>
-							</Link>
+							</AppLink>
 						);
 					})}
 				</div>

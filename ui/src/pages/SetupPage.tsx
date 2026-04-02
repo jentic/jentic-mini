@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { AlertTriangle, Check } from 'lucide-react';
+import { AppLink } from '@/components/ui/AppLink';
 import { UserService } from '@/api/generated';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
@@ -137,9 +137,9 @@ export default function SetupPage() {
 								className="bg-warning/10 border-warning/30 text-warning mb-4 rounded-lg border p-3 text-sm"
 							>
 								An admin account already exists.{' '}
-								<Link to="/login" className="font-semibold underline">
+								<AppLink href="/login" className="font-semibold underline">
 									Log in instead →
-								</Link>
+								</AppLink>
 							</div>
 						)}
 

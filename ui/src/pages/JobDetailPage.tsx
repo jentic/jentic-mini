@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { BackButton } from '@/components/ui/BackButton';
 import { LoadingState } from '@/components/ui/LoadingState';
+import { AppLink } from '@/components/ui/AppLink';
 import { Card, CardHeader, CardBody } from '@/components/ui/Card';
 import { statusVariant } from '@/lib/status';
 import { formatTimestamp } from '@/lib/time';
@@ -109,15 +110,13 @@ export default function JobDetailPage() {
 						{job.upstream_job_url && (
 							<div className="col-span-2">
 								<p className="text-muted-foreground mb-1 text-xs">Upstream Job</p>
-								<a
+								<AppLink
 									href={job.upstream_job_url}
-									target="_blank"
-									rel="noopener noreferrer"
 									className="text-primary hover:text-primary/80 flex items-center gap-1 text-sm"
 								>
 									{job.upstream_job_url}
 									<ExternalLink className="h-3 w-3" />
-								</a>
+								</AppLink>
 							</div>
 						)}
 					</div>

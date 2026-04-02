@@ -8,6 +8,7 @@ import { api } from '@/api/client';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { BackButton } from '@/components/ui/BackButton';
+import { AppLink } from '@/components/ui/AppLink';
 import { LoadingState } from '@/components/ui/LoadingState';
 import '@jentic/arazzo-ui/styles.css';
 
@@ -123,22 +124,18 @@ function CatalogWorkflowFallback({
 						<Zap className="h-4 w-4" />
 						{importing ? 'Importing...' : 'Import this workflow'}
 					</Button>
-					<a
+					<AppLink
 						href={githubUrl}
-						target="_blank"
-						rel="noopener noreferrer"
 						className="text-primary hover:text-primary/80 inline-flex items-center gap-1 text-sm"
 					>
 						<ExternalLink className="h-3.5 w-3.5" /> View on GitHub
-					</a>
-					<a
+					</AppLink>
+					<AppLink
 						href={arazzoUIUrl}
-						target="_blank"
-						rel="noopener noreferrer"
 						className="text-primary hover:text-primary/80 inline-flex items-center gap-1 text-sm"
 					>
 						<ExternalLink className="h-3.5 w-3.5" /> View using Arazzo UI
-					</a>
+					</AppLink>
 				</div>
 			</div>
 		</div>

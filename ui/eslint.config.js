@@ -145,6 +145,18 @@ export default defineConfig(
 					message: 'Use <Textarea> from @/components/ui instead of raw <textarea>.',
 				},
 			],
+			'no-restricted-imports': [
+				'error',
+				{
+					paths: [
+						{
+							name: 'react-router-dom',
+							importNames: ['Link'],
+							message: 'Use <AppLink> from @/components/ui instead of <Link>.',
+						},
+					],
+				},
+			],
 		},
 	},
 

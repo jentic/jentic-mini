@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
 	Database,
@@ -14,6 +13,7 @@ import {
 	Zap,
 	Globe,
 } from 'lucide-react';
+import { AppLink } from '@/components/ui/AppLink';
 import { api } from '@/api/client';
 import { Badge, MethodBadge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
@@ -133,13 +133,13 @@ function ApiCard({ entry, defaultOpen = false }: { entry: any; defaultOpen?: boo
 					</div>
 					<div className="flex shrink-0 items-center gap-2">
 						{isLocal && (
-							<Link
-								to={`/search?q=${encodeURIComponent(entry.id)}`}
+							<AppLink
+								href={`/search?q=${encodeURIComponent(entry.id)}`}
 								onClick={(e) => e.stopPropagation()}
 								className="text-primary hover:text-primary/80 flex items-center gap-1 text-xs"
 							>
 								Search ops
-							</Link>
+							</AppLink>
 						)}
 						{open ? (
 							<ChevronDown className="text-muted-foreground h-4 w-4" />
@@ -155,12 +155,12 @@ function ApiCard({ entry, defaultOpen = false }: { entry: any; defaultOpen?: boo
 					This API is in the public catalog but not yet imported. Add a credential with
 					this API ID to import it automatically.
 					<div className="mt-2">
-						<Link
-							to={`/credentials/new?api_id=${encodeURIComponent(entry.id)}`}
+						<AppLink
+							href={`/credentials/new?api_id=${encodeURIComponent(entry.id)}`}
 							className="text-primary hover:text-primary/80 inline-flex items-center gap-1 text-xs"
 						>
 							<Plus className="h-3 w-3" /> Add credential for {entry.id}
-						</Link>
+						</AppLink>
 					</div>
 				</div>
 			)}
@@ -200,12 +200,12 @@ function RegisteredTab({ q }: { q: string }) {
 				title="No APIs registered yet"
 				description="Import APIs from the public catalog, or add credentials with an API ID to auto-import them."
 				action={
-					<Link
-						to="/credentials/new"
+					<AppLink
+						href="/credentials/new"
 						className="bg-primary text-background hover:bg-primary/80 inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors"
 					>
 						<Plus className="h-4 w-4" /> Add Credential
-					</Link>
+					</AppLink>
 				}
 			/>
 		);
@@ -444,22 +444,20 @@ function CatalogTab({ q }: { q: string }) {
 								</div>
 								<div className="flex shrink-0 items-center gap-2">
 									{entry._links?.github && (
-										<a
+										<AppLink
 											href={entry._links.github}
-											target="_blank"
-											rel="noopener noreferrer"
 											className="text-muted-foreground hover:text-foreground transition-colors"
 										>
 											<ExternalLink className="h-4 w-4" />
-										</a>
+										</AppLink>
 									)}
 									{isRegistered ? (
-										<Link
-											to={`/search?q=${encodeURIComponent(entry.api_id)}`}
+										<AppLink
+											href={`/search?q=${encodeURIComponent(entry.api_id)}`}
 											className="bg-muted border-border text-foreground hover:bg-muted/60 inline-flex items-center gap-1 rounded-lg border px-3 py-1.5 text-xs transition-colors"
 										>
 											Search ops
-										</Link>
+										</AppLink>
 									) : (
 										<Button
 											variant="outline"
@@ -496,12 +494,12 @@ export default function CatalogPage() {
 				title="API Catalog"
 				description="Browse your registered APIs and the Jentic public API catalog."
 				actions={
-					<Link
-						to="/credentials/new"
+					<AppLink
+						href="/credentials/new"
 						className="bg-primary text-background hover:bg-primary/80 inline-flex shrink-0 items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors"
 					>
 						<Plus className="h-4 w-4" /> Add Credential
-					</Link>
+					</AppLink>
 				}
 			/>
 

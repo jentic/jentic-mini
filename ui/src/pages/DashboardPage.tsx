@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
-import { Link } from 'react-router-dom';
 import { AlertTriangle, KeyRound, Settings } from 'lucide-react';
+import { AppLink } from '@/components/ui/AppLink';
 import { usePendingRequests } from '@/hooks/usePendingRequests';
 import { api } from '@/api/client';
 import { timeAgo } from '@/lib/time';
@@ -72,12 +72,12 @@ export default function DashboardPage() {
 									</span>
 								</div>
 								{req.approve_url && (
-									<Link
-										to={req.approve_url.replace(window.location.origin, '')}
+									<AppLink
+										href={req.approve_url.replace(window.location.origin, '')}
 										className="bg-warning text-background hover:bg-warning/80 ml-4 shrink-0 rounded-lg px-4 py-2 text-sm font-bold transition-colors"
 									>
 										Review →
-									</Link>
+									</AppLink>
 								)}
 							</div>
 						))}
@@ -110,18 +110,18 @@ export default function DashboardPage() {
 				</h2>
 				<div className="grid grid-cols-2 gap-3 md:grid-cols-4">
 					{[
-						{ to: '/search', label: 'Search Catalog' },
-						{ to: '/credentials', label: 'Add Credential' },
-						{ to: '/toolkits', label: 'Create Toolkit' },
-						{ to: '/catalog', label: 'Import an API' },
+						{ href: '/search', label: 'Search Catalog' },
+						{ href: '/credentials', label: 'Add Credential' },
+						{ href: '/toolkits', label: 'Create Toolkit' },
+						{ href: '/catalog', label: 'Import an API' },
 					].map((action) => (
-						<Link
-							key={action.to}
-							to={action.to}
+						<AppLink
+							key={action.href}
+							href={action.href}
 							className="bg-muted border-border text-foreground hover:border-primary hover:text-primary flex items-center justify-center gap-2 rounded-lg border px-4 py-3 text-sm font-medium transition-colors"
 						>
 							{action.label}
-						</Link>
+						</AppLink>
 					))}
 				</div>
 			</div>

@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useParams, useNavigate, Link } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle, Search, Check, ChevronRight, Loader2 } from 'lucide-react';
+import { AppLink } from '@/components/ui/AppLink';
 import { api } from '@/api/client';
 import type { CredentialCreate, CredentialPatch, ApiOut } from '@/api/types';
 import { BackButton } from '@/components/ui/BackButton';
@@ -445,12 +446,12 @@ function CredentialFields({ selectedApi, onBack, onSaved, editId, existing }: Cr
 								</Button>
 							</div>
 							{hasOAuthBroker && (
-								<Link
-									to="/oauth-brokers"
+								<AppLink
+									href="/oauth-brokers"
 									className="text-primary inline-block text-xs hover:underline"
 								>
 									OAuth broker already configured — connect here →
-								</Link>
+								</AppLink>
 							)}
 						</div>
 					);

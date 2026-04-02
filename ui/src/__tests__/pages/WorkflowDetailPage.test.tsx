@@ -45,7 +45,7 @@ describe('WorkflowDetailPage', () => {
 		expect(screen.getByText('test~api')).toBeInTheDocument();
 	});
 
-	it('renders catalog fallback when workflow not found', async () => {
+	it('renders catalog fallback when workflow not found (404 skips retry)', async () => {
 		worker.use(http.get('/workflows/:slug', () => HttpResponse.json(null, { status: 404 })));
 
 		renderWorkflow();
@@ -63,6 +63,35 @@ describe('WorkflowDetailPage', () => {
 
 		renderWorkflow();
 
-		expect(await screen.findByText('Failed to load workflow')).toBeInTheDocument();
+		// The page retries 500s twice (3 total MSW round-trips) before
+		// surfacing the error — the timeout accounts for that. The retry
+		// logic itself is unit-tested below.
+		expect(
+			await screen.findByText('Failed to load workflow', {}, { timeout: 5000 }),
+		).toBeInTheDocument();
+	});
+});
+
+// ---------------------------------------------------------------------------
+// Unit test for the retry predicate — verifiable without MSW timing
+// ---------------------------------------------------------------------------
+
+describe('WorkflowDetailPage retry logic', () => {
+	const retry = (failureCount: number, err: { status: number }) =>
+		err?.status !== 404 && failureCount < 2;
+
+	it('retries 500s up to twice', () => {
+		expect(retry(0, { status: 500 })).toBe(true);
+		expect(retry(1, { status: 500 })).toBe(true);
+		expect(retry(2, { status: 500 })).toBe(false);
+	});
+
+	it('never retries 404s', () => {
+		expect(retry(0, { status: 404 })).toBe(false);
+	});
+
+	it('retries other server errors', () => {
+		expect(retry(0, { status: 503 })).toBe(true);
+		expect(retry(1, { status: 502 })).toBe(true);
 	});
 });

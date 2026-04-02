@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
-import { useNavigate, useSearchParams, Link } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Search, X, ChevronDown, ChevronUp, ExternalLink, Loader2, Zap, Globe } from 'lucide-react';
 import { api } from '@/api/client';
@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { AppLink } from '@/components/ui/AppLink';
 
 function parseCapabilityId(id: string) {
 	// FORMAT: METHOD/host/path  e.g. GET/api.stripe.com/v1/customers
@@ -131,21 +132,19 @@ function InspectPanel({ capabilityId, onClose }: { capabilityId: string; onClose
 			{/* Links */}
 			<div className="border-border flex items-center gap-3 border-t pt-2">
 				{detail._links?.upstream && (
-					<a
+					<AppLink
 						href={detail._links.upstream}
-						target="_blank"
-						rel="noopener noreferrer"
 						className="text-primary hover:text-primary/80 inline-flex items-center gap-1 text-xs"
 					>
 						<ExternalLink className="h-3 w-3" /> API
-					</a>
+					</AppLink>
 				)}
-				<Link
-					to={`/traces?capability=${encodeURIComponent(capabilityId)}`}
+				<AppLink
+					href={`/traces?capability=${encodeURIComponent(capabilityId)}`}
 					className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1 text-xs"
 				>
 					View traces
-				</Link>
+				</AppLink>
 			</div>
 		</div>
 	);
@@ -242,14 +241,12 @@ function CatalogPanel({ result, onClose }: { result: any; onClose: () => void })
 					</Button>
 				)}
 				{links.github && (
-					<a
+					<AppLink
 						href={links.github}
-						target="_blank"
-						rel="noopener noreferrer"
 						className="text-primary hover:text-primary/80 inline-flex items-center gap-1 text-xs"
 					>
 						<ExternalLink className="h-3 w-3" /> View on GitHub
-					</a>
+					</AppLink>
 				)}
 			</div>
 		</div>
