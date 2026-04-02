@@ -22,3 +22,4 @@ export { JenticLogo } from './Logo';
 export { OneTimeKeyDisplay } from './OneTimeKeyDisplay';
 export { PermissionRuleDisplay } from './PermissionRuleDisplay';
 export { PermissionRuleEditor } from './PermissionRuleEditor';
+export { AppLink } from './AppLink';
