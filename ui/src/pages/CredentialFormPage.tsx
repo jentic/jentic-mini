@@ -1,9 +1,18 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { ChevronLeft, AlertTriangle, Search, Check, ChevronRight, Loader2 } from 'lucide-react';
+import { AlertTriangle, Search, Check, ChevronRight, Loader2 } from 'lucide-react';
+import { AppLink } from '@/components/ui/AppLink';
 import { api } from '@/api/client';
 import type { CredentialCreate, CredentialPatch, ApiOut } from '@/api/types';
+import { BackButton } from '@/components/ui/BackButton';
+import { PageHeader } from '@/components/ui/PageHeader';
+import { Button } from '@/components/ui/Button';
+import { Input } from '@/components/ui/Input';
+import { Textarea } from '@/components/ui/Textarea';
+import { Label } from '@/components/ui/Label';
+import { ErrorAlert } from '@/components/ui/ErrorAlert';
+import { LoadingState } from '@/components/ui/LoadingState';
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -146,15 +155,15 @@ function ApiPicker({ onSelect }: { onSelect: (api: ApiOut) => void }) {
 	return (
 		<div className="space-y-3">
 			<div className="relative">
-				<Search className="text-muted-foreground absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2" />
-				<input
+				<Input
 					ref={inputRef}
 					type="text"
 					value={query}
 					onChange={(e) => setQuery(e.target.value)}
 					placeholder="Search APIs (GitHub, Gmail, Stripe…)"
 					aria-label="Search APIs"
-					className="bg-background border-border text-foreground focus:border-primary w-full rounded-lg border py-2.5 pr-3 pl-9 focus:outline-hidden"
+					startIcon={<Search className="h-4 w-4" />}
+					className="bg-background py-2.5 pr-3"
 				/>
 				{isLoading && (
 					<Loader2 className="text-muted-foreground absolute top-1/2 right-3 h-4 w-4 -translate-y-1/2 animate-spin" />
@@ -205,8 +214,8 @@ function ApiPicker({ onSelect }: { onSelect: (api: ApiOut) => void }) {
 function ApiRow({ api: a, onSelect }: { api: ApiOut; onSelect: (api: ApiOut) => void }) {
 	const hasCreds = !!a.has_credentials;
 	return (
-		<button
-			type="button"
+		<Button
+			variant="ghost"
 			onClick={() => onSelect(a)}
 			className="bg-background hover:bg-muted/60 border-border group flex w-full items-center justify-between gap-3 rounded-lg border px-3 py-2.5 text-left transition-colors"
 		>
@@ -228,7 +237,7 @@ function ApiRow({ api: a, onSelect }: { api: ApiOut; onSelect: (api: ApiOut) => 
 				)}
 			</div>
 			<ChevronRight className="text-muted-foreground group-hover:text-foreground h-4 w-4 shrink-0 transition-colors" />
-		</button>
+		</Button>
 	);
 }
 
@@ -337,14 +346,14 @@ function CredentialFields({ selectedApi, onBack, onSaved, editId, existing }: Cr
 		}
 	};
 
-	const isLoading = createMutation.isPending || updateMutation.isPending;
+	const isPending = createMutation.isPending || updateMutation.isPending;
 
 	if (schemesLoading) {
 		return (
-			<div className="text-muted-foreground flex items-center justify-center gap-2 py-10">
-				<Loader2 className="h-5 w-5 animate-spin" />
-				<span className="text-sm">Reading API spec…</span>
-			</div>
+			<LoadingState
+				message="Reading API spec…"
+				icon={<Loader2 className="h-5 w-5 animate-spin" />}
+			/>
 		);
 	}
 
@@ -360,13 +369,14 @@ function CredentialFields({ selectedApi, onBack, onSaved, editId, existing }: Cr
 						{selectedApi.id}
 					</p>
 				</div>
-				<button
-					type="button"
+				<Button
+					variant="ghost"
+					size="sm"
 					onClick={onBack}
 					className="text-muted-foreground hover:text-foreground shrink-0 text-xs transition-colors"
 				>
 					Change
-				</button>
+				</Button>
 			</div>
 
 			{/* Scheme picker — only shown when multiple auth types available */}
@@ -377,18 +387,19 @@ function CredentialFields({ selectedApi, onBack, onSaved, editId, existing }: Cr
 					</legend>
 					<div className="flex flex-wrap gap-1.5">
 						{schemeOptions.map((opt) => (
-							<button
+							<Button
 								key={opt.name}
-								type="button"
+								variant={activeScheme?.name === opt.name ? 'primary' : 'outline'}
+								size="sm"
 								onClick={() => setSelectedScheme(opt)}
-								className={`rounded-lg border px-3 py-1.5 text-xs transition-colors ${
+								className={`rounded-lg px-3 py-1.5 text-xs transition-colors ${
 									activeScheme?.name === opt.name
-										? 'bg-primary text-background border-primary font-medium'
+										? 'font-medium'
 										: 'bg-background text-muted-foreground border-border hover:text-foreground'
 								}`}
 							>
 								{opt.label}
-							</button>
+							</Button>
 						))}
 					</div>
 				</fieldset>
@@ -396,16 +407,16 @@ function CredentialFields({ selectedApi, onBack, onSaved, editId, existing }: Cr
 
 			{/* Label */}
 			<div>
-				<label htmlFor="cred-label" className="text-muted-foreground mb-1 block text-xs">
+				<Label htmlFor="cred-label" className="text-muted-foreground mb-1 block text-xs">
 					Label
-				</label>
-				<input
+				</Label>
+				<Input
 					id="cred-label"
 					type="text"
 					value={label}
 					onChange={(e) => setLabel(e.target.value)}
 					required
-					className="bg-background border-border text-foreground focus:border-primary w-full rounded-lg border px-3 py-2 focus:outline-hidden"
+					className="bg-background"
 				/>
 			</div>
 
@@ -425,21 +436,22 @@ function CredentialFields({ selectedApi, onBack, onSaved, editId, existing }: Cr
 								<pre className="bg-background border-border text-foreground rounded border p-3 font-mono text-xs leading-relaxed break-words whitespace-pre-wrap">
 									{prompt}
 								</pre>
-								<button
-									type="button"
+								<Button
+									variant="secondary"
+									size="sm"
 									onClick={() => navigator.clipboard.writeText(prompt)}
-									className="bg-muted border-border text-muted-foreground hover:text-foreground absolute top-2 right-2 rounded border px-2 py-0.5 text-[10px] transition-colors"
+									className="absolute top-2 right-2 px-2 py-0.5 text-[10px]"
 								>
 									Copy
-								</button>
+								</Button>
 							</div>
 							{hasOAuthBroker && (
-								<a
+								<AppLink
 									href="/oauth-brokers"
 									className="text-primary inline-block text-xs hover:underline"
 								>
 									OAuth broker already configured — connect here →
-								</a>
+								</AppLink>
 							)}
 						</div>
 					);
@@ -449,36 +461,37 @@ function CredentialFields({ selectedApi, onBack, onSaved, editId, existing }: Cr
 			{schemeType === 'basic' && (
 				<>
 					<div>
-						<label
+						<Label
 							htmlFor="cred-username"
 							className="text-muted-foreground mb-1 block text-xs"
 						>
 							Username
-						</label>
-						<input
+						</Label>
+						<Input
 							id="cred-username"
 							type="text"
 							value={identity}
 							onChange={(e) => setIdentity(e.target.value)}
 							placeholder="Your username"
-							className="bg-background border-border text-foreground focus:border-primary w-full rounded-lg border px-3 py-2 focus:outline-hidden"
+							className="bg-background"
 						/>
 					</div>
 					<div>
-						<label
+						<Label
 							htmlFor="cred-password"
 							className="text-muted-foreground mb-1 block text-xs"
+							required={!isEdit}
 						>
-							Password {!isEdit && '*'}
-						</label>
-						<input
+							Password
+						</Label>
+						<Input
 							id="cred-password"
 							type="password"
 							value={value}
 							onChange={(e) => setValue(e.target.value)}
 							required={!isEdit}
 							placeholder={isEdit ? 'Leave blank to keep existing' : 'Your password'}
-							className="bg-background border-border text-foreground focus:border-primary w-full rounded-lg border px-3 py-2 focus:outline-hidden"
+							className="bg-background"
 						/>
 					</div>
 				</>
@@ -487,31 +500,32 @@ function CredentialFields({ selectedApi, onBack, onSaved, editId, existing }: Cr
 			{/* Bearer / apiKey / unknown: single token field */}
 			{(schemeType === 'bearer' || schemeType === 'apiKey' || schemeType === 'unknown') && (
 				<div>
-					<label
+					<Label
 						htmlFor="cred-token"
 						className="text-muted-foreground mb-1 block text-xs"
+						required={!isEdit}
 					>
 						{schemeType === 'bearer'
 							? 'Bearer Token'
 							: schemeType === 'apiKey'
 								? 'API Key'
 								: 'Credential Value'}
-						{!isEdit && ' *'}
 						{isEdit && (
 							<span className="text-muted-foreground/60">
 								{' '}
 								(leave blank to keep existing)
 							</span>
 						)}
-					</label>
-					<textarea
+					</Label>
+					<Textarea
 						id="cred-token"
 						value={value}
 						onChange={(e) => setValue(e.target.value)}
 						rows={3}
 						required={!isEdit}
 						placeholder="Paste your token or API key…"
-						className="bg-background border-border text-foreground focus:border-primary w-full resize-none rounded-lg border px-3 py-2 font-mono text-sm focus:outline-hidden"
+						resizable="none"
+						className="bg-background font-mono"
 					/>
 					<p className="text-muted-foreground mt-1 text-xs">
 						<AlertTriangle className="-mt-0.5 inline h-3 w-3" /> Stored encrypted. Never
@@ -520,32 +534,16 @@ function CredentialFields({ selectedApi, onBack, onSaved, editId, existing }: Cr
 				</div>
 			)}
 
-			{error && (
-				<div
-					role="alert"
-					className="text-danger bg-danger/10 border-danger/30 flex items-center gap-2 rounded-lg border p-3 text-sm"
-				>
-					<AlertTriangle className="h-4 w-4 shrink-0" />
-					{error}
-				</div>
-			)}
+			{error && <ErrorAlert message={error} />}
 
 			{schemeType !== 'oauth2' && (
 				<div className="flex gap-2 pt-2">
-					<button
-						type="submit"
-						disabled={isLoading}
-						className="bg-primary text-background hover:bg-primary/80 flex-1 rounded-lg px-4 py-2 font-medium transition-colors disabled:opacity-50"
-					>
-						{isLoading ? 'Saving…' : isEdit ? 'Update Credential' : 'Save Credential'}
-					</button>
-					<button
-						type="button"
-						onClick={onBack}
-						className="bg-muted border-border text-foreground hover:bg-muted/60 rounded-lg border px-4 py-2 transition-colors"
-					>
+					<Button type="submit" loading={isPending} fullWidth>
+						{isEdit ? 'Update Credential' : 'Save Credential'}
+					</Button>
+					<Button type="button" variant="secondary" onClick={onBack}>
 						Cancel
-					</button>
+					</Button>
 				</div>
 			)}
 		</form>
@@ -593,22 +591,12 @@ export default function CredentialFormPage() {
 
 	return (
 		<div className="max-w-2xl space-y-6">
-			<button
-				type="button"
-				onClick={() => navigate('/credentials')}
-				className="text-muted-foreground hover:text-foreground flex items-center gap-1.5 text-sm transition-colors"
-			>
-				<ChevronLeft className="h-4 w-4" /> Back to Credentials
-			</button>
+			<BackButton to="/credentials" label="Back to Credentials" />
 
-			<div>
-				<p className="text-primary/60 font-mono text-[10px] tracking-widest uppercase">
-					Management
-				</p>
-				<h1 className="font-heading text-foreground mt-1 text-2xl font-bold">
-					{isEdit ? 'Edit Credential' : 'Add Credential'}
-				</h1>
-			</div>
+			<PageHeader
+				category="Management"
+				title={isEdit ? 'Edit Credential' : 'Add Credential'}
+			/>
 
 			{/* Step indicator */}
 			{!isEdit && (
@@ -649,9 +637,10 @@ export default function CredentialFormPage() {
 					/>
 				)}
 				{step === 'fill' && !selectedApi && isEdit && (
-					<div className="flex items-center justify-center py-8">
-						<Loader2 className="text-muted-foreground h-5 w-5 animate-spin" />
-					</div>
+					<LoadingState
+						message="Loading credential…"
+						icon={<Loader2 className="h-5 w-5 animate-spin" />}
+					/>
 				)}
 			</div>
 		</div>

@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
 	Database,
@@ -10,13 +9,20 @@ import {
 	ExternalLink,
 	Download,
 	Search,
-	AlertTriangle,
 	Loader2,
 	Zap,
 	Globe,
 } from 'lucide-react';
+import { AppLink } from '@/components/ui/AppLink';
 import { api } from '@/api/client';
 import { Badge, MethodBadge } from '@/components/ui/Badge';
+import { Button } from '@/components/ui/Button';
+import { Input } from '@/components/ui/Input';
+import { PageHeader } from '@/components/ui/PageHeader';
+import { LoadingState } from '@/components/ui/LoadingState';
+import { EmptyState } from '@/components/ui/EmptyState';
+import { ErrorAlert } from '@/components/ui/ErrorAlert';
+import { Pagination } from '@/components/ui/Pagination';
 
 type Tab = 'registered' | 'catalog';
 
@@ -85,12 +91,12 @@ function ApiCard({ entry, defaultOpen = false }: { entry: any; defaultOpen?: boo
 		<div
 			className={`bg-muted overflow-hidden rounded-xl border transition-all ${open ? 'border-primary/40' : 'border-border'}`}
 		>
-			<button
-				type="button"
-				className="hover:bg-background/50 w-full px-5 py-4 text-left transition-colors"
+			<Button
+				variant="ghost"
+				className="hover:bg-background/50 h-auto w-full justify-start px-5 py-4 text-left transition-colors"
 				onClick={() => setOpen((o) => !o)}
 			>
-				<div className="flex items-start gap-3">
+				<div className="flex w-full items-start gap-3">
 					<div className="min-w-0 flex-1 space-y-1">
 						<div className="flex flex-wrap items-center gap-2">
 							<span
@@ -127,13 +133,13 @@ function ApiCard({ entry, defaultOpen = false }: { entry: any; defaultOpen?: boo
 					</div>
 					<div className="flex shrink-0 items-center gap-2">
 						{isLocal && (
-							<Link
-								to={`/search?q=${encodeURIComponent(entry.id)}`}
+							<AppLink
+								href={`/search?q=${encodeURIComponent(entry.id)}`}
 								onClick={(e) => e.stopPropagation()}
 								className="text-primary hover:text-primary/80 flex items-center gap-1 text-xs"
 							>
 								Search ops
-							</Link>
+							</AppLink>
 						)}
 						{open ? (
 							<ChevronDown className="text-muted-foreground h-4 w-4" />
@@ -142,19 +148,19 @@ function ApiCard({ entry, defaultOpen = false }: { entry: any; defaultOpen?: boo
 						)}
 					</div>
 				</div>
-			</button>
+			</Button>
 			{open && isLocal && <OperationsPanel apiId={entry.id} />}
 			{open && !isLocal && (
 				<div className="border-border bg-background/40 text-muted-foreground border-t px-5 py-3 text-sm">
 					This API is in the public catalog but not yet imported. Add a credential with
 					this API ID to import it automatically.
 					<div className="mt-2">
-						<Link
-							to={`/credentials/new?api_id=${encodeURIComponent(entry.id)}`}
+						<AppLink
+							href={`/credentials/new?api_id=${encodeURIComponent(entry.id)}`}
 							className="text-primary hover:text-primary/80 inline-flex items-center gap-1 text-xs"
 						>
 							<Plus className="h-3 w-3" /> Add credential for {entry.id}
-						</Link>
+						</AppLink>
 					</div>
 				</div>
 			)}
@@ -180,35 +186,28 @@ function RegisteredTab({ q }: { q: string }) {
 	const total: number = (apisPage as any)?.total ?? 0;
 	const totalPages: number = (apisPage as any)?.total_pages ?? 1;
 
-	if (isLoading)
-		return <div className="text-muted-foreground py-16 text-center">Loading APIs...</div>;
+	if (isLoading) return <LoadingState message="Loading APIs..." />;
 
 	if (isError)
 		return (
-			<div className="bg-muted border-border rounded-xl border p-12 text-center">
-				<p className="text-danger font-medium">Failed to load registered APIs</p>
-				<p className="text-muted-foreground mt-1 text-sm">
-					Please try refreshing the page.
-				</p>
-			</div>
+			<ErrorAlert message="Failed to load registered APIs. Please try refreshing the page." />
 		);
 
 	if (apis.length === 0)
 		return (
-			<div className="text-muted-foreground bg-muted border-border rounded-xl border border-dashed p-12 text-center">
-				<Database className="mx-auto mb-3 h-10 w-10 opacity-30" />
-				<p className="text-foreground font-medium">No APIs registered yet</p>
-				<p className="mt-1 mb-4 text-sm">
-					Import APIs from the public catalog, or add credentials with an API ID to
-					auto-import them.
-				</p>
-				<Link
-					to="/credentials/new"
-					className="bg-primary text-background hover:bg-primary/80 inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors"
-				>
-					<Plus className="h-4 w-4" /> Add Credential
-				</Link>
-			</div>
+			<EmptyState
+				icon={<Database className="h-10 w-10 opacity-30" />}
+				title="No APIs registered yet"
+				description="Import APIs from the public catalog, or add credentials with an API ID to auto-import them."
+				action={
+					<AppLink
+						href="/credentials/new"
+						className="bg-primary text-background hover:bg-primary/80 inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors"
+					>
+						<Plus className="h-4 w-4" /> Add Credential
+					</AppLink>
+				}
+			/>
 		);
 
 	return (
@@ -222,27 +221,12 @@ function RegisteredTab({ q }: { q: string }) {
 				))}
 			</div>
 			{totalPages > 1 && (
-				<div className="flex items-center justify-center gap-3 pt-2">
-					<button
-						type="button"
-						disabled={page <= 1}
-						onClick={() => setPage((p) => p - 1)}
-						className="bg-muted border-border hover:bg-muted/60 rounded-lg border px-3 py-1.5 text-sm transition-colors disabled:opacity-40"
-					>
-						← Prev
-					</button>
-					<span className="text-muted-foreground text-sm">
-						Page {page} of {totalPages}
-					</span>
-					<button
-						type="button"
-						disabled={page >= totalPages}
-						onClick={() => setPage((p) => p + 1)}
-						className="bg-muted border-border hover:bg-muted/60 rounded-lg border px-3 py-1.5 text-sm transition-colors disabled:opacity-40"
-					>
-						Next →
-					</button>
-				</div>
+				<Pagination
+					page={page}
+					totalPages={totalPages}
+					onPageChange={setPage}
+					className="pt-2"
+				/>
 			)}
 		</div>
 	);
@@ -343,46 +327,40 @@ function CatalogTab({ q }: { q: string }) {
 		return `${Math.round(secs / 86400)}d ago`;
 	};
 
-	if (isLoading)
-		return <div className="text-muted-foreground py-16 text-center">Loading catalog...</div>;
+	if (isLoading) return <LoadingState message="Loading catalog..." />;
 
 	if (error)
 		return (
-			<div className="text-muted-foreground p-6 text-center">
-				<AlertTriangle className="text-warning mx-auto mb-2 h-8 w-8" />
-				<p>Failed to load catalog.</p>
-				<button
-					type="button"
-					onClick={() => queryClient.invalidateQueries({ queryKey: ['catalog'] })}
-					className="text-primary mt-3 text-sm hover:underline"
-				>
-					Try again
-				</button>
+			<div className="space-y-3">
+				<ErrorAlert message="Failed to load catalog." />
+				<div className="text-center">
+					<Button
+						variant="ghost"
+						size="sm"
+						onClick={() => queryClient.invalidateQueries({ queryKey: ['catalog'] })}
+					>
+						Try again
+					</Button>
+				</div>
 			</div>
 		);
 
 	if (isEmpty)
 		return (
-			<div className="text-muted-foreground bg-muted border-border space-y-4 rounded-xl border border-dashed p-12 text-center">
-				<Database className="mx-auto h-10 w-10 opacity-30" />
-				<div>
-					<p className="text-foreground font-medium">Catalog not synced yet</p>
-					<p className="mt-1 text-sm">
-						Pull the manifest from GitHub to browse available APIs.
-					</p>
-				</div>
-				<button
-					type="button"
-					onClick={() => refreshMutation.mutate()}
-					disabled={refreshMutation.isPending}
-					className="bg-primary text-background hover:bg-primary/80 inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors disabled:opacity-50"
-				>
-					<RefreshCw
-						className={`h-4 w-4 ${refreshMutation.isPending ? 'animate-spin' : ''}`}
-					/>
-					{refreshMutation.isPending ? 'Syncing catalog...' : 'Sync Catalog'}
-				</button>
-			</div>
+			<EmptyState
+				icon={<Database className="h-10 w-10 opacity-30" />}
+				title="Catalog not synced yet"
+				description="Pull the manifest from GitHub to browse available APIs."
+				action={
+					<Button
+						onClick={() => refreshMutation.mutate()}
+						loading={refreshMutation.isPending}
+					>
+						<RefreshCw className="h-4 w-4" />
+						{refreshMutation.isPending ? 'Syncing catalog...' : 'Sync Catalog'}
+					</Button>
+				}
+			/>
 		);
 
 	return (
@@ -403,8 +381,8 @@ function CatalogTab({ q }: { q: string }) {
 					{/* Filter */}
 					<div className="bg-muted border-border flex items-center gap-1 rounded-lg border p-0.5">
 						{(['all', 'registered', 'unregistered'] as CatalogFilter[]).map((f) => (
-							<button
-								type="button"
+							<Button
+								variant={filter === f ? 'primary' : 'ghost'}
 								key={f}
 								onClick={() => setFilter(f)}
 								className={`rounded px-2.5 py-1 text-xs font-medium transition-colors ${
@@ -418,27 +396,26 @@ function CatalogTab({ q }: { q: string }) {
 									: f === 'registered'
 										? 'Registered'
 										: 'Unregistered'}
-							</button>
+							</Button>
 						))}
 					</div>
-					<button
-						type="button"
+					<Button
+						variant="secondary"
+						size="sm"
 						onClick={() => refreshMutation.mutate()}
-						disabled={refreshMutation.isPending}
-						className="bg-muted border-border text-muted-foreground hover:text-foreground inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs transition-colors disabled:opacity-50"
+						loading={refreshMutation.isPending}
 					>
-						<RefreshCw
-							className={`h-3.5 w-3.5 ${refreshMutation.isPending ? 'animate-spin' : ''}`}
-						/>
+						<RefreshCw className="h-3.5 w-3.5" />
 						Refresh
-					</button>
+					</Button>
 				</div>
 			</div>
 
 			{catalogEntries.length === 0 ? (
-				<div className="text-muted-foreground py-12 text-center">
-					<p>No APIs match your filter.</p>
-				</div>
+				<EmptyState
+					icon={<Search className="h-8 w-8 opacity-30" />}
+					title="No APIs match your filter"
+				/>
 			) : (
 				<div className="space-y-2">
 					{catalogEntries.map((entry: any) => {
@@ -467,36 +444,32 @@ function CatalogTab({ q }: { q: string }) {
 								</div>
 								<div className="flex shrink-0 items-center gap-2">
 									{entry._links?.github && (
-										<a
+										<AppLink
 											href={entry._links.github}
-											target="_blank"
-											rel="noopener noreferrer"
 											className="text-muted-foreground hover:text-foreground transition-colors"
 										>
 											<ExternalLink className="h-4 w-4" />
-										</a>
+										</AppLink>
 									)}
 									{isRegistered ? (
-										<Link
-											to={`/search?q=${encodeURIComponent(entry.api_id)}`}
+										<AppLink
+											href={`/search?q=${encodeURIComponent(entry.api_id)}`}
 											className="bg-muted border-border text-foreground hover:bg-muted/60 inline-flex items-center gap-1 rounded-lg border px-3 py-1.5 text-xs transition-colors"
 										>
 											Search ops
-										</Link>
+										</AppLink>
 									) : (
-										<button
-											type="button"
+										<Button
+											variant="outline"
+											size="sm"
 											onClick={() => handleImport(entry)}
-											disabled={importingId === entry.api_id}
-											className="bg-primary/10 border-primary/30 text-primary hover:bg-primary/20 inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors disabled:opacity-50"
+											loading={importingId === entry.api_id}
 										>
-											{importingId === entry.api_id ? (
-												<Loader2 className="h-3.5 w-3.5 animate-spin" />
-											) : (
+											{importingId !== entry.api_id && (
 												<Download className="h-3.5 w-3.5" />
 											)}
 											Import
-										</button>
+										</Button>
 									)}
 								</div>
 							</div>
@@ -516,25 +489,19 @@ export default function CatalogPage() {
 
 	return (
 		<div className="max-w-5xl space-y-6">
-			<div className="flex items-start justify-between gap-4">
-				<div>
-					<p className="text-primary/60 font-mono text-[10px] tracking-widest uppercase">
-						Discovery
-					</p>
-					<h1 className="font-heading text-foreground mt-1 text-2xl font-bold">
-						API Catalog
-					</h1>
-					<p className="text-muted-foreground mt-1 text-sm">
-						Browse your registered APIs and the Jentic public API catalog.
-					</p>
-				</div>
-				<Link
-					to="/credentials/new"
-					className="bg-primary text-background hover:bg-primary/80 inline-flex shrink-0 items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors"
-				>
-					<Plus className="h-4 w-4" /> Add Credential
-				</Link>
-			</div>
+			<PageHeader
+				category="Discovery"
+				title="API Catalog"
+				description="Browse your registered APIs and the Jentic public API catalog."
+				actions={
+					<AppLink
+						href="/credentials/new"
+						className="bg-primary text-background hover:bg-primary/80 inline-flex shrink-0 items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors"
+					>
+						<Plus className="h-4 w-4" /> Add Credential
+					</AppLink>
+				}
+			/>
 
 			{/* Tabs + Search */}
 			<div className="flex flex-wrap items-center gap-3">
@@ -545,8 +512,8 @@ export default function CatalogPage() {
 							{ key: 'catalog', label: 'Public Catalog' },
 						] as { key: Tab; label: string }[]
 					).map((t) => (
-						<button
-							type="button"
+						<Button
+							variant={tab === t.key ? 'primary' : 'ghost'}
 							key={t.key}
 							onClick={() => setTab(t.key)}
 							className={`rounded px-4 py-1.5 text-sm font-medium transition-colors ${
@@ -556,18 +523,18 @@ export default function CatalogPage() {
 							}`}
 						>
 							{t.label}
-						</button>
+						</Button>
 					))}
 				</div>
-				<div className="relative min-w-48 flex-1">
-					<Search className="text-muted-foreground pointer-events-none absolute inset-y-0 left-3 my-auto h-3.5 w-3.5" />
-					<input
+				<div className="min-w-48 flex-1">
+					<Input
 						type="text"
 						value={q}
 						onChange={(e) => setQ(e.target.value)}
 						placeholder="Filter by name or API ID..."
 						aria-label="Filter APIs"
-						className="bg-muted border-border text-foreground placeholder:text-muted-foreground/60 focus:border-primary w-full rounded-lg border py-1.5 pr-3 pl-8 text-sm focus:outline-hidden"
+						startIcon={<Search className="h-3.5 w-3.5" />}
+						size="sm"
 					/>
 				</div>
 			</div>

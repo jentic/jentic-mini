@@ -252,21 +252,31 @@ Both gaps are expected — overlays and notes are advanced admin features, not c
     - Source badges (local/catalog) with icons
     - ConfirmInline for destructive actions
 
-4. **Smart loading states**:
+4. **UI Component Library** (shadcn-style owned components):
+    - `cn()` utility for class merging (clsx + tailwind-merge)
+    - Form primitives: `Button`, `Input`, `Label`, `Textarea`, `Select` — all with `forwardRef`, error states, accessibility
+    - Layout: `Dialog` (native `<dialog>`), `EmptyState`, `PageHeader`, `ErrorAlert`, `LoadingState`, `BackButton`
+    - Data: `DataTable` (generic typed), `Pagination`, `CopyButton`
+    - Shared hooks: `useCopyToClipboard`
+    - Shared utilities: `timeAgo`, `formatTimestamp`, `statusVariant`, `statusColor`
+    - Barrel export at `src/components/ui/index.ts`
+    - ESLint guardrails: `no-restricted-syntax` errors prevent raw `<button>`, `<input>`, `<select>`, `<textarea>` in `src/pages/`
+
+5. **Smart loading states**:
     - Skeleton text ("Loading...")
     - Empty states with helpful CTAs
     - Inline spinners for mutations
 
-5. **Search & filter**:
+6. **Search & filter**:
     - Debounced search inputs
     - Filter chips with clear buttons
     - Pagination controls
 
-6. **Keyboard-friendly**:
+7. **Keyboard-friendly**:
     - Autofocus on search inputs
     - Enter to submit forms
 
-7. **Mobile-responsive**:
+8. **Mobile-responsive**:
     - Grid layouts adapt (1/2/4 columns)
     - Overflow-x-auto on tables
 

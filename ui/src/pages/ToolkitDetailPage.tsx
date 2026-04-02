@@ -2,14 +2,12 @@ import React, { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-	ChevronLeft,
 	Key,
 	Plus,
 	Trash2,
 	Settings,
 	AlertTriangle,
 	Link as LinkIcon,
-	X,
 	Unlink,
 	Edit2,
 	ChevronDown,
@@ -20,6 +18,16 @@ import {
 } from 'lucide-react';
 import { api } from '@/api/client';
 import type { KeyCreate } from '@/api/types';
+import { Button } from '@/components/ui/Button';
+import { BackButton } from '@/components/ui/BackButton';
+import { Dialog } from '@/components/ui/Dialog';
+import { Input } from '@/components/ui/Input';
+import { Textarea } from '@/components/ui/Textarea';
+import { Label } from '@/components/ui/Label';
+import { Select } from '@/components/ui/Select';
+import { LoadingState } from '@/components/ui/LoadingState';
+import { ErrorAlert } from '@/components/ui/ErrorAlert';
+import { EmptyState } from '@/components/ui/EmptyState';
 import { OneTimeKeyDisplay } from '@/components/ui/OneTimeKeyDisplay';
 import { ConfirmInline } from '@/components/ui/ConfirmInline';
 import { Badge } from '@/components/ui/Badge';
@@ -92,34 +100,21 @@ function CredentialPermissionEditor({
 						always appended.
 					</p>
 				</div>
-				<button
-					type="button"
-					onClick={onClose}
-					className="text-muted-foreground hover:text-foreground shrink-0"
-				>
-					<X className="h-4 w-4" />
-				</button>
+				<Button variant="ghost" size="icon" onClick={onClose} className="shrink-0">
+					<span className="sr-only">Close</span>×
+				</Button>
 			</div>
 
 			<PermissionRuleEditor rules={rules} onChange={setRules} />
 
 			<div className="flex gap-2 pt-2">
-				<button
-					type="button"
-					onClick={() => saveMutation.mutate()}
-					disabled={saveMutation.isPending}
-					className="bg-primary text-background hover:bg-primary/80 inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-medium transition-colors disabled:opacity-50"
-				>
+				<Button onClick={() => saveMutation.mutate()} loading={saveMutation.isPending}>
 					<Save className="h-4 w-4" />{' '}
 					{saveMutation.isPending ? 'Saving...' : 'Save Rules'}
-				</button>
-				<button
-					type="button"
-					onClick={onClose}
-					className="bg-muted border-border text-foreground hover:bg-muted/60 rounded-lg border px-4 py-2 text-sm transition-colors"
-				>
+				</Button>
+				<Button variant="secondary" onClick={onClose}>
 					Cancel
-				</button>
+				</Button>
 			</div>
 
 			<div className="border-border/50 border-t pt-3">
@@ -170,124 +165,104 @@ function RequestAccessDialog({ toolkitId, onClose }: { toolkitId: string; onClos
 	const credList = Array.isArray(credentials) ? credentials : [];
 
 	return (
-		<div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-			<div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
-			<div className="bg-muted border-border relative z-10 max-h-[90vh] w-full max-w-2xl space-y-5 overflow-y-auto rounded-xl border p-6">
-				<div className="flex items-center justify-between">
-					<h2 className="font-heading text-foreground text-lg font-semibold">
-						Request Access
-					</h2>
-					<button
-						type="button"
-						onClick={onClose}
-						className="text-muted-foreground hover:text-foreground"
+		<Dialog
+			open
+			onClose={onClose}
+			title="Request Access"
+			size="lg"
+			footer={
+				<>
+					<Button variant="secondary" onClick={onClose}>
+						Cancel
+					</Button>
+					<Button
+						onClick={() => createMutation.mutate()}
+						disabled={!credentialId}
+						loading={createMutation.isPending}
+						fullWidth
 					>
-						<X className="h-5 w-5" />
-					</button>
-				</div>
-
+						{createMutation.isPending ? 'Submitting...' : 'Submit Request'}
+					</Button>
+				</>
+			}
+		>
+			<div className="space-y-4">
 				<p className="text-muted-foreground text-sm">
 					Create an access request for this toolkit. The admin will be notified and can
 					approve or deny.
 				</p>
 
-				<div className="space-y-4">
-					<div>
-						<label
-							htmlFor="tk-request-type"
-							className="text-muted-foreground mb-1 block text-xs"
-						>
-							Request Type
-						</label>
-						<select
-							id="tk-request-type"
-							value={requestType}
-							onChange={(e) => setRequestType(e.target.value as any)}
-							className="bg-background border-border text-foreground focus:border-primary w-full rounded-lg border px-3 py-2 focus:outline-hidden"
-						>
-							<option value="grant">
-								Grant — bind a new credential to this toolkit
-							</option>
-							<option value="modify_permissions">
-								Modify Permissions — update rules on an existing credential
-							</option>
-						</select>
-					</div>
-
-					<div>
-						<label
-							htmlFor="tk-request-credential"
-							className="text-muted-foreground mb-1 block text-xs"
-						>
-							Credential *
-						</label>
-						<select
-							id="tk-request-credential"
-							value={credentialId}
-							onChange={(e) => setCredentialId(e.target.value)}
-							required
-							className="bg-background border-border text-foreground focus:border-primary w-full rounded-lg border px-3 py-2 focus:outline-hidden"
-						>
-							<option value="">Select a credential...</option>
-							{credList.map((c: any) => (
-								<option key={c.id} value={c.id}>
-									{c.label} {c.api_id ? `(${c.api_id})` : ''}
-								</option>
-							))}
-						</select>
-					</div>
-
-					<fieldset>
-						<legend className="text-muted-foreground mb-1 block text-xs">
-							Permission Rules
-						</legend>
-						<PermissionRuleEditor rules={rules} onChange={setRules} />
-					</fieldset>
-
-					<div>
-						<label
-							htmlFor="tk-request-reason"
-							className="text-muted-foreground mb-1 block text-xs"
-						>
-							Reason (optional)
-						</label>
-						<textarea
-							id="tk-request-reason"
-							value={reason}
-							onChange={(e) => setReason(e.target.value)}
-							rows={2}
-							placeholder="Explain why you need this access..."
-							className="bg-background border-border text-foreground focus:border-primary w-full resize-none rounded-lg border px-3 py-2 focus:outline-hidden"
-						/>
-					</div>
-
-					{error && (
-						<div className="text-danger bg-danger/10 border-danger/30 flex items-center gap-2 rounded-lg border p-3 text-sm">
-							<AlertTriangle className="h-4 w-4 shrink-0" />
-							{error}
-						</div>
-					)}
-
-					<div className="flex gap-2">
-						<button
-							type="button"
-							onClick={() => createMutation.mutate()}
-							disabled={!credentialId || createMutation.isPending}
-							className="bg-primary text-background hover:bg-primary/80 flex-1 rounded-lg px-4 py-2 font-medium transition-colors disabled:opacity-50"
-						>
-							{createMutation.isPending ? 'Submitting...' : 'Submit Request'}
-						</button>
-						<button
-							type="button"
-							onClick={onClose}
-							className="bg-muted border-border text-foreground hover:bg-muted/60 rounded-lg border px-4 py-2 transition-colors"
-						>
-							Cancel
-						</button>
-					</div>
+				<div>
+					<Label
+						htmlFor="tk-request-type"
+						className="text-muted-foreground mb-1 block text-xs"
+					>
+						Request Type
+					</Label>
+					<Select
+						id="tk-request-type"
+						value={requestType}
+						onChange={(e) => setRequestType(e.target.value as any)}
+						className="bg-background"
+					>
+						<option value="grant">Grant — bind a new credential to this toolkit</option>
+						<option value="modify_permissions">
+							Modify Permissions — update rules on an existing credential
+						</option>
+					</Select>
 				</div>
+
+				<div>
+					<Label
+						htmlFor="tk-request-credential"
+						className="text-muted-foreground mb-1 block text-xs"
+						required
+					>
+						Credential
+					</Label>
+					<Select
+						id="tk-request-credential"
+						value={credentialId}
+						onChange={(e) => setCredentialId(e.target.value)}
+						className="bg-background"
+					>
+						<option value="">Select a credential...</option>
+						{credList.map((c: any) => (
+							<option key={c.id} value={c.id}>
+								{c.label} {c.api_id ? `(${c.api_id})` : ''}
+							</option>
+						))}
+					</Select>
+				</div>
+
+				<fieldset>
+					<legend className="text-muted-foreground mb-1 block text-xs">
+						Permission Rules
+					</legend>
+					<PermissionRuleEditor rules={rules} onChange={setRules} />
+				</fieldset>
+
+				<div>
+					<Label
+						htmlFor="tk-request-reason"
+						className="text-muted-foreground mb-1 block text-xs"
+					>
+						Reason (optional)
+					</Label>
+					<Textarea
+						id="tk-request-reason"
+						value={reason}
+						onChange={(e) => setReason(e.target.value)}
+						rows={2}
+						placeholder="Explain why you need this access..."
+						resizable="none"
+						className="bg-background"
+					/>
+				</div>
+
+				{error && <ErrorAlert message={error} />}
 			</div>
-		</div>
+		</Dialog>
 	);
 }
 
@@ -379,20 +354,18 @@ export default function ToolkitDetailPage() {
 		}
 	}, [toolkit, showSettings]);
 
-	if (isLoading)
-		return <div className="text-muted-foreground py-16 text-center">Loading toolkit...</div>;
+	if (isLoading) return <LoadingState message="Loading toolkit..." />;
 	if (!toolkit)
 		return (
-			<div className="text-muted-foreground py-16 text-center">
-				<p>Toolkit not found.</p>
-				<button
-					type="button"
-					onClick={() => navigate('/toolkits')}
-					className="bg-muted border-border mt-4 rounded-lg border px-4 py-2 text-sm"
-				>
-					Back
-				</button>
-			</div>
+			<EmptyState
+				icon={<span className="text-2xl">🔍</span>}
+				title="Toolkit not found"
+				action={
+					<Button variant="secondary" onClick={() => navigate('/toolkits')}>
+						Back
+					</Button>
+				}
+			/>
 		);
 
 	const keys = (keysResponse as any)?.keys ?? [];
@@ -401,13 +374,7 @@ export default function ToolkitDetailPage() {
 
 	return (
 		<div className="max-w-5xl space-y-6">
-			<button
-				type="button"
-				onClick={() => navigate('/toolkits')}
-				className="text-muted-foreground hover:text-foreground flex items-center gap-1.5 text-sm transition-colors"
-			>
-				<ChevronLeft className="h-4 w-4" /> Back to Toolkits
-			</button>
+			<BackButton to="/toolkits" label="Back to Toolkits" />
 
 			<div className="flex flex-wrap items-start justify-between gap-4">
 				<div>
@@ -428,21 +395,13 @@ export default function ToolkitDetailPage() {
 					</div>
 				</div>
 				<div className="flex items-center gap-2">
-					<button
-						type="button"
-						onClick={() => setShowRequestAccess(true)}
-						className="bg-primary/10 border-primary/30 text-primary hover:bg-primary/20 inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors"
-					>
+					<Button variant="outline" size="sm" onClick={() => setShowRequestAccess(true)}>
 						<Plus className="h-4 w-4" /> Request Access
-					</button>
+					</Button>
 					{id !== 'default' && (
-						<button
-							type="button"
-							onClick={() => setShowSettings(true)}
-							className="bg-muted border-border text-foreground hover:bg-muted/60 inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm transition-colors"
-						>
+						<Button variant="secondary" size="sm" onClick={() => setShowSettings(true)}>
 							<Settings className="h-4 w-4" /> Settings
-						</button>
+						</Button>
 					)}
 				</div>
 			</div>
@@ -473,13 +432,12 @@ export default function ToolkitDetailPage() {
 									</p>
 								)}
 							</div>
-							<button
-								type="button"
+							<Button
+								size="sm"
 								onClick={() => navigate(`/approve/${toolkit.id}/${req.id}`)}
-								className="bg-primary text-background hover:bg-primary/80 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors"
 							>
 								Review
-							</button>
+							</Button>
 						</div>
 					))}
 				</div>
@@ -505,32 +463,33 @@ export default function ToolkitDetailPage() {
 					</div>
 					<div className="flex items-center gap-2">
 						{toolkit.disabled ? (
-							<button
-								type="button"
-								disabled={killswitchMutation.isPending}
+							<Button
+								variant="outline"
+								size="sm"
+								loading={killswitchMutation.isPending}
 								onClick={() => setKillswitchConfirming((c) => !c)}
-								className="bg-primary/10 border-primary/40 text-primary hover:bg-primary/20 inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors disabled:opacity-50"
 							>
 								<ShieldCheck className="h-4 w-4" /> Restore Access
-							</button>
+							</Button>
 						) : (
-							<button
-								type="button"
-								disabled={killswitchMutation.isPending}
+							<Button
+								variant={killswitchConfirming ? 'danger' : 'secondary'}
+								size="sm"
+								loading={killswitchMutation.isPending}
 								onClick={() => setKillswitchConfirming((c) => !c)}
-								className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm transition-colors disabled:opacity-50 ${killswitchConfirming ? 'bg-danger/10 border-danger/40 text-danger' : 'bg-muted border-border text-muted-foreground hover:text-danger hover:border-danger/40 hover:bg-danger/5'}`}
+								className={
+									!killswitchConfirming
+										? 'hover:text-danger hover:border-danger/40 hover:bg-danger/5'
+										: ''
+								}
 							>
 								<Ban className="h-4 w-4" /> Kill switch
-							</button>
+							</Button>
 						)}
 						{!toolkit.disabled && (
-							<button
-								type="button"
-								onClick={() => setShowKeyCreate(true)}
-								className="bg-primary text-background hover:bg-primary/80 inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors"
-							>
+							<Button size="sm" onClick={() => setShowKeyCreate(true)}>
 								<Plus className="h-4 w-4" /> Create Key
-							</button>
+							</Button>
 						)}
 					</div>
 				</div>
@@ -544,24 +503,26 @@ export default function ToolkitDetailPage() {
 								? 'Restore access to this toolkit?'
 								: 'Block all API access for this toolkit immediately?'}
 						</span>
-						<button
-							type="button"
+						<Button
+							variant={toolkit.disabled ? 'primary' : 'danger'}
+							size="sm"
 							onClick={() => {
 								killswitchMutation.mutate(!toolkit.disabled);
 								setKillswitchConfirming(false);
 							}}
-							disabled={killswitchMutation.isPending}
-							className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors disabled:opacity-50 ${toolkit.disabled ? 'bg-primary text-background hover:bg-primary/80' : 'bg-danger text-destructive-foreground hover:bg-danger/80'}`}
+							loading={killswitchMutation.isPending}
+							className="text-xs"
 						>
 							{toolkit.disabled ? 'Restore' : 'Kill Access'}
-						</button>
-						<button
-							type="button"
+						</Button>
+						<Button
+							variant="secondary"
+							size="sm"
 							onClick={() => setKillswitchConfirming(false)}
-							className="bg-muted border-border text-muted-foreground hover:bg-muted/60 rounded-lg border px-3 py-1.5 text-xs transition-colors"
+							className="text-xs"
 						>
 							Cancel
-						</button>
+						</Button>
 					</div>
 				)}
 				<div className="space-y-3 px-5 py-4">
@@ -575,32 +536,31 @@ export default function ToolkitDetailPage() {
 					{showKeyCreate && (
 						<div className="bg-background border-border space-y-3 rounded-lg border p-4">
 							<p className="text-foreground text-sm font-semibold">Create API Key</p>
-							<input
+							<Input
 								type="text"
 								value={keyName}
 								onChange={(e) => setKeyName(e.target.value)}
 								placeholder="Key name (optional)"
 								aria-label="Key name"
-								className="bg-muted border-border text-foreground focus:border-primary w-full rounded-lg border px-3 py-2 text-sm focus:outline-hidden"
+								className="bg-background"
 							/>
 							<div className="flex gap-2">
-								<button
-									type="button"
+								<Button
+									size="sm"
 									onClick={() =>
 										createKeyMutation.mutate({ name: keyName || null })
 									}
-									disabled={createKeyMutation.isPending}
-									className="bg-primary text-background hover:bg-primary/80 rounded-lg px-3 py-1.5 text-sm transition-colors disabled:opacity-50"
+									loading={createKeyMutation.isPending}
 								>
 									{createKeyMutation.isPending ? 'Generating...' : 'Generate'}
-								</button>
-								<button
-									type="button"
+								</Button>
+								<Button
+									variant="secondary"
+									size="sm"
 									onClick={() => setShowKeyCreate(false)}
-									className="bg-muted border-border text-foreground hover:bg-muted/60 rounded-lg border px-3 py-1.5 text-sm transition-colors"
 								>
 									Cancel
-								</button>
+								</Button>
 							</div>
 						</div>
 					)}
@@ -639,12 +599,13 @@ export default function ToolkitDetailPage() {
 									message="Revoke this key?"
 									confirmLabel="Revoke"
 								>
-									<button
-										type="button"
-										className="bg-danger/10 border-danger/30 text-danger hover:bg-danger/20 rounded border px-2 py-1 text-xs transition-colors"
+									<Button
+										variant="danger"
+										size="sm"
+										className="px-2 py-1 text-xs"
 									>
 										Revoke
-									</button>
+									</Button>
 								</ConfirmInline>
 							)}
 						</div>
@@ -658,13 +619,9 @@ export default function ToolkitDetailPage() {
 					<h3 className="font-heading text-foreground font-semibold">
 						Bound Credentials ({credentials.length})
 					</h3>
-					<button
-						type="button"
-						onClick={() => navigate('/credentials')}
-						className="bg-muted border-border text-foreground hover:bg-muted/60 inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm transition-colors"
-					>
+					<Button variant="secondary" size="sm" onClick={() => navigate('/credentials')}>
 						<LinkIcon className="h-4 w-4" /> Manage Credentials
-					</button>
+					</Button>
 				</div>
 				<div className="space-y-2 px-5 py-4">
 					{credentials.length === 0 ? (
@@ -700,8 +657,9 @@ export default function ToolkitDetailPage() {
 										)}
 									</div>
 									<div className="flex shrink-0 items-center gap-1.5">
-										<button
-											type="button"
+										<Button
+											variant="secondary"
+											size="sm"
 											onClick={() =>
 												setEditingPermForCred(
 													editingPermForCred === cred.credential_id
@@ -709,7 +667,7 @@ export default function ToolkitDetailPage() {
 														: cred.credential_id,
 												)
 											}
-											className="bg-muted border-border text-muted-foreground hover:text-foreground inline-flex items-center gap-1 rounded border px-2 py-1 text-xs transition-colors"
+											className="inline-flex items-center gap-1 px-2 py-1 text-xs"
 										>
 											<Edit2 className="h-3 w-3" /> Permissions
 											{editingPermForCred === cred.credential_id ? (
@@ -717,7 +675,7 @@ export default function ToolkitDetailPage() {
 											) : (
 												<ChevronDown className="h-3 w-3" />
 											)}
-										</button>
+										</Button>
 										{id !== 'default' && (
 											<ConfirmInline
 												onConfirm={() =>
@@ -726,12 +684,13 @@ export default function ToolkitDetailPage() {
 												message="Unbind this credential?"
 												confirmLabel="Unbind"
 											>
-												<button
-													type="button"
-													className="bg-danger/10 border-danger/30 text-danger hover:bg-danger/20 inline-flex items-center gap-1 rounded border px-2 py-1 text-xs transition-colors"
+												<Button
+													variant="danger"
+													size="sm"
+													className="inline-flex items-center gap-1 px-2 py-1 text-xs"
 												>
 													<Unlink className="h-3 w-3" /> Unbind
-												</button>
+												</Button>
 											</ConfirmInline>
 										)}
 									</div>
@@ -750,92 +709,75 @@ export default function ToolkitDetailPage() {
 			</div>
 
 			{/* Settings Modal */}
-			{showSettings && (
-				<div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-					<div
-						className="absolute inset-0 bg-black/60 backdrop-blur-sm"
-						onClick={() => setShowSettings(false)}
-					/>
-					<div className="bg-muted border-border relative z-10 w-full max-w-md space-y-5 rounded-xl border p-6">
-						<div className="flex items-center justify-between">
-							<h2 className="font-heading text-foreground text-lg font-semibold">
-								Toolkit Settings
-							</h2>
-							<button
-								type="button"
-								onClick={() => setShowSettings(false)}
-								className="text-muted-foreground hover:text-foreground"
+			<Dialog
+				open={showSettings}
+				onClose={() => setShowSettings(false)}
+				title="Toolkit Settings"
+				size="sm"
+				footer={
+					<>
+						<Button variant="secondary" onClick={() => setShowSettings(false)}>
+							Cancel
+						</Button>
+						<Button
+							onClick={() => updateMutation.mutate()}
+							loading={updateMutation.isPending}
+						>
+							{updateMutation.isPending ? 'Saving...' : 'Save Changes'}
+						</Button>
+					</>
+				}
+			>
+				<div className="space-y-4">
+					<div>
+						<Label
+							htmlFor="tk-settings-name"
+							className="text-muted-foreground mb-1 block text-xs"
+						>
+							Name
+						</Label>
+						<Input
+							id="tk-settings-name"
+							type="text"
+							value={editName}
+							onChange={(e) => setEditName(e.target.value)}
+							className="bg-background"
+						/>
+					</div>
+					<div>
+						<Label
+							htmlFor="tk-settings-description"
+							className="text-muted-foreground mb-1 block text-xs"
+						>
+							Description
+						</Label>
+						<Textarea
+							id="tk-settings-description"
+							value={editDesc}
+							onChange={(e) => setEditDesc(e.target.value)}
+							rows={2}
+							resizable="none"
+							className="bg-background"
+						/>
+					</div>
+					<div className="border-border border-t pt-4">
+						<p className="text-muted-foreground mb-3 text-xs">Danger Zone</p>
+						<ConfirmInline
+							onConfirm={() => deleteMutation.mutate()}
+							message="Permanently delete this toolkit?"
+							confirmLabel="Delete Forever"
+						>
+							<Button
+								variant="danger"
+								fullWidth
+								className="justify-center gap-2 rounded-lg px-4 py-2 text-sm"
 							>
-								<X className="h-5 w-5" />
-							</button>
-						</div>
-						<div className="space-y-4">
-							<div>
-								<label
-									htmlFor="tk-settings-name"
-									className="text-muted-foreground mb-1 block text-xs"
-								>
-									Name
-								</label>
-								<input
-									id="tk-settings-name"
-									type="text"
-									value={editName}
-									onChange={(e) => setEditName(e.target.value)}
-									className="bg-background border-border text-foreground focus:border-primary w-full rounded-lg border px-3 py-2 focus:outline-hidden"
-								/>
-							</div>
-							<div>
-								<label
-									htmlFor="tk-settings-description"
-									className="text-muted-foreground mb-1 block text-xs"
-								>
-									Description
-								</label>
-								<textarea
-									id="tk-settings-description"
-									value={editDesc}
-									onChange={(e) => setEditDesc(e.target.value)}
-									rows={2}
-									className="bg-background border-border text-foreground focus:border-primary w-full resize-none rounded-lg border px-3 py-2 focus:outline-hidden"
-								/>
-							</div>
-							<div className="flex gap-2">
-								<button
-									type="button"
-									onClick={() => updateMutation.mutate()}
-									disabled={updateMutation.isPending}
-									className="bg-primary text-background hover:bg-primary/80 flex-1 rounded-lg px-4 py-2 font-medium transition-colors disabled:opacity-50"
-								>
-									{updateMutation.isPending ? 'Saving...' : 'Save Changes'}
-								</button>
-								<button
-									type="button"
-									onClick={() => setShowSettings(false)}
-									className="bg-muted border-border text-foreground hover:bg-muted/60 rounded-lg border px-4 py-2 transition-colors"
-								>
-									Cancel
-								</button>
-							</div>
-							<div className="border-border border-t pt-4">
-								<p className="text-muted-foreground mb-3 text-xs">Danger Zone</p>
-								<ConfirmInline
-									onConfirm={() => deleteMutation.mutate()}
-									message="Permanently delete this toolkit?"
-									confirmLabel="Delete Forever"
-								>
-									<button
-										type="button"
-										className="bg-danger/10 border-danger/30 text-danger hover:bg-danger/20 inline-flex w-full items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm transition-colors"
-									>
-										<Trash2 className="h-4 w-4" /> Delete Toolkit
-									</button>
-								</ConfirmInline>
-							</div>
-						</div>
+								<Trash2 className="h-4 w-4" /> Delete Toolkit
+							</Button>
+						</ConfirmInline>
 					</div>
 				</div>
-			)}
+			</Dialog>
 
 			{/* Request Access Dialog */}
 			{showRequestAccess && (

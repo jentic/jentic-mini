@@ -50,6 +50,7 @@ export function OneTimeKeyDisplay({ keyValue, onConfirm, title }: OneTimeKeyDisp
 			</div>
 
 			<label className="flex cursor-pointer items-center gap-3">
+				{/* eslint-disable-next-line no-restricted-syntax -- No Checkbox primitive yet */}
 				<input
 					type="checkbox"
 					checked={confirmed}

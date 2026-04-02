@@ -1,42 +1,15 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
-import { useNavigate, useSearchParams, Link } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import {
-	Search,
-	X,
-	ChevronDown,
-	ChevronUp,
-	ExternalLink,
-	Copy,
-	Check,
-	Loader2,
-	Zap,
-	Globe,
-} from 'lucide-react';
+import { Search, X, ChevronDown, ChevronUp, ExternalLink, Loader2, Zap, Globe } from 'lucide-react';
 import { api } from '@/api/client';
 import { Badge, MethodBadge } from '@/components/ui/Badge';
-
-function CopyButton({ text }: { text: string }) {
-	const [copied, setCopied] = useState(false);
-	const copy = () => {
-		navigator.clipboard.writeText(text);
-		setCopied(true);
-		setTimeout(() => setCopied(false), 1500);
-	};
-	return (
-		<button
-			type="button"
-			onClick={copy}
-			className="text-muted-foreground hover:text-foreground transition-colors"
-		>
-			{copied ? (
-				<Check className="text-success h-3.5 w-3.5" />
-			) : (
-				<Copy className="h-3.5 w-3.5" />
-			)}
-		</button>
-	);
-}
+import { CopyButton } from '@/components/ui/CopyButton';
+import { Button } from '@/components/ui/Button';
+import { Input } from '@/components/ui/Input';
+import { PageHeader } from '@/components/ui/PageHeader';
+import { EmptyState } from '@/components/ui/EmptyState';
+import { AppLink } from '@/components/ui/AppLink';
 
 function parseCapabilityId(id: string) {
 	// FORMAT: METHOD/host/path  e.g. GET/api.stripe.com/v1/customers
@@ -88,13 +61,9 @@ function InspectPanel({ capabilityId, onClose }: { capabilityId: string; onClose
 						<p className="text-foreground text-sm font-medium">{detail.summary}</p>
 					)}
 				</div>
-				<button
-					type="button"
-					onClick={onClose}
-					className="text-muted-foreground hover:text-foreground shrink-0"
-				>
+				<Button variant="ghost" size="icon" onClick={onClose} className="shrink-0">
 					<X className="h-4 w-4" />
-				</button>
+				</Button>
 			</div>
 
 			{detail.description && (
@@ -163,21 +132,19 @@ function InspectPanel({ capabilityId, onClose }: { capabilityId: string; onClose
 			{/* Links */}
 			<div className="border-border flex items-center gap-3 border-t pt-2">
 				{detail._links?.upstream && (
-					<a
+					<AppLink
 						href={detail._links.upstream}
-						target="_blank"
-						rel="noopener noreferrer"
 						className="text-primary hover:text-primary/80 inline-flex items-center gap-1 text-xs"
 					>
 						<ExternalLink className="h-3 w-3" /> API
-					</a>
+					</AppLink>
 				)}
-				<Link
-					to={`/traces?capability=${encodeURIComponent(capabilityId)}`}
+				<AppLink
+					href={`/traces?capability=${encodeURIComponent(capabilityId)}`}
 					className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1 text-xs"
 				>
 					View traces
-				</Link>
+				</AppLink>
 			</div>
 		</div>
 	);
@@ -251,22 +218,19 @@ function CatalogPanel({ result, onClose }: { result: any; onClose: () => void })
 							: 'This API is available in the Jentic public catalog. Import it to browse and execute its operations.'}
 					</p>
 				</div>
-				<button
-					type="button"
-					onClick={onClose}
-					className="text-muted-foreground hover:text-foreground shrink-0"
-				>
+				<Button variant="ghost" size="icon" onClick={onClose} className="shrink-0">
 					<X className="h-4 w-4" />
-				</button>
+				</Button>
 			</div>
 			{error && <p className="text-danger text-xs">{error}</p>}
 			<div className="border-border flex items-center gap-3 border-t pt-2">
 				{!imported && (
-					<button
-						type="button"
+					<Button
+						variant="ghost"
+						size="sm"
 						onClick={handleImport}
 						disabled={importing}
-						className="text-accent-teal hover:text-accent-teal/80 inline-flex items-center gap-1 text-xs disabled:opacity-50"
+						className="text-accent-teal hover:text-accent-teal/80"
 					>
 						{importing ? (
 							<Loader2 className="h-3 w-3 animate-spin" />
@@ -274,17 +238,15 @@ function CatalogPanel({ result, onClose }: { result: any; onClose: () => void })
 							<Zap className="h-3 w-3" />
 						)}
 						{importing ? 'Importing...' : 'Import this API'}
-					</button>
+					</Button>
 				)}
 				{links.github && (
-					<a
+					<AppLink
 						href={links.github}
-						target="_blank"
-						rel="noopener noreferrer"
 						className="text-primary hover:text-primary/80 inline-flex items-center gap-1 text-xs"
 					>
 						<ExternalLink className="h-3 w-3" /> View on GitHub
-					</a>
+					</AppLink>
 				)}
 			</div>
 		</div>
@@ -307,12 +269,12 @@ function ResultCard({
 		<div
 			className={`bg-muted overflow-hidden rounded-xl border transition-all ${expanded ? 'border-primary/50' : 'border-border'}`}
 		>
-			<button
-				type="button"
-				className="hover:bg-background/50 w-full px-5 py-4 text-left transition-colors"
+			<Button
+				variant="ghost"
+				className="hover:bg-background/50 h-auto w-full justify-start rounded-none px-5 py-4 text-left transition-colors"
 				onClick={onToggle}
 			>
-				<div className="flex items-start gap-3">
+				<div className="flex w-full items-start gap-3">
 					<div className="min-w-0 flex-1 space-y-1.5">
 						<div className="flex flex-wrap items-center gap-2">
 							{/* Type */}
@@ -352,7 +314,7 @@ function ResultCard({
 							<code className="text-muted-foreground max-w-xs truncate font-mono text-xs">
 								{result.id}
 							</code>
-							<CopyButton text={result.id ?? ''} />
+							<CopyButton value={result.id ?? ''} />
 						</div>
 
 						{result.description && (
@@ -375,7 +337,7 @@ function ResultCard({
 						)}
 					</div>
 				</div>
-			</button>
+			</Button>
 
 			{expanded &&
 				(isLocal ? (
@@ -439,38 +401,34 @@ export default function SearchPage() {
 
 	return (
 		<div className="max-w-4xl space-y-6">
-			<div>
-				<p className="text-primary/60 font-mono text-[10px] tracking-widest uppercase">
-					Discovery
-				</p>
-				<h1 className="font-heading text-foreground mt-1 text-2xl font-bold">Search</h1>
-				<p className="text-muted-foreground mt-1 text-sm">
-					Find operations and workflows by natural language intent. BM25 search over your
-					local registry and the Jentic public catalog.
-				</p>
-			</div>
+			<PageHeader
+				category="Discovery"
+				title="Search"
+				description="Find operations and workflows by natural language intent. BM25 search over your local registry and the Jentic public catalog."
+			/>
 
 			{/* Search input */}
 			<div className="relative">
-				<div className="pointer-events-none absolute inset-y-0 left-4 flex items-center">
-					{isFetching ? (
-						<Loader2 className="text-muted-foreground h-4 w-4 animate-spin" />
-					) : (
-						<Search className="text-muted-foreground h-4 w-4" />
-					)}
-				</div>
-				<input
+				<Input
 					autoFocus
 					type="text"
 					value={input}
 					onChange={(e) => handleInput(e.target.value)}
 					placeholder='e.g. "send an email" or "create a payment"'
 					aria-label="Search APIs and capabilities"
-					className="bg-muted border-border text-foreground placeholder:text-muted-foreground/60 focus:border-primary w-full rounded-xl border py-3.5 pr-10 pl-11 text-base focus:outline-hidden"
+					startIcon={
+						isFetching ? (
+							<Loader2 className="h-4 w-4 animate-spin" />
+						) : (
+							<Search className="h-4 w-4" />
+						)
+					}
+					className="rounded-xl py-3.5 pr-10 pl-11 text-base"
 				/>
 				{input && (
-					<button
-						type="button"
+					<Button
+						variant="ghost"
+						size="icon"
 						onClick={() => {
 							setInput('');
 							setQuery('');
@@ -480,7 +438,7 @@ export default function SearchPage() {
 						className="text-muted-foreground hover:text-foreground absolute inset-y-0 right-4 flex items-center"
 					>
 						<X className="h-4 w-4" />
-					</button>
+					</Button>
 				)}
 			</div>
 
@@ -492,18 +450,19 @@ export default function SearchPage() {
 					</p>
 					<div className="flex flex-wrap gap-2">
 						{EXAMPLE_QUERIES.map((q) => (
-							<button
-								type="button"
+							<Button
+								variant="secondary"
+								size="sm"
 								key={q}
 								onClick={() => {
 									setInput(q);
 									setQuery(q);
 									setSearchParams({ q }, { replace: true });
 								}}
-								className="bg-muted border-border text-muted-foreground hover:text-foreground hover:border-primary/50 rounded-full border px-3 py-1.5 text-sm transition-colors"
+								className="rounded-full"
 							>
 								{q}
-							</button>
+							</Button>
 						))}
 					</div>
 				</div>
@@ -521,14 +480,15 @@ export default function SearchPage() {
 						<div className="text-muted-foreground flex items-center gap-2 text-xs">
 							<span>Show</span>
 							{[10, 20, 50].map((val) => (
-								<button
-									type="button"
+								<Button
+									variant="ghost"
+									size="sm"
 									key={val}
 									onClick={() => setN(val)}
 									className={`rounded border px-2 py-0.5 text-xs transition-colors ${n === val ? 'border-primary text-primary' : 'border-border text-muted-foreground hover:text-foreground'}`}
 								>
 									{val}
-								</button>
+								</Button>
 							))}
 						</div>
 					</div>
@@ -548,13 +508,9 @@ export default function SearchPage() {
 
 					{results.length === n && (
 						<div className="pt-2 text-center">
-							<button
-								type="button"
-								onClick={() => setN((prev) => prev + 10)}
-								className="bg-muted border-border text-muted-foreground hover:text-foreground hover:border-primary/50 rounded-lg border px-4 py-2 text-sm transition-colors"
-							>
+							<Button variant="secondary" onClick={() => setN((prev) => prev + 10)}>
 								Load more results
-							</button>
+							</Button>
 						</div>
 					)}
 				</div>
@@ -562,21 +518,16 @@ export default function SearchPage() {
 
 			{/* Empty state */}
 			{showEmpty && (
-				<div className="text-muted-foreground py-16 text-center">
-					<Search className="mx-auto mb-3 h-10 w-10 opacity-30" />
-					<p className="text-foreground font-medium">No results for "{query}"</p>
-					<p className="mt-1 text-sm">
-						Try different keywords, or import an API from the{' '}
-						<button
-							type="button"
-							onClick={() => navigate('/catalog')}
-							className="text-primary hover:underline"
-						>
+				<EmptyState
+					icon={<Search className="h-10 w-10 opacity-30" />}
+					title={`No results for "${query}"`}
+					description="Try different keywords, or import an API from the Catalog."
+					action={
+						<Button variant="ghost" onClick={() => navigate('/catalog')}>
 							Catalog
-						</button>
-						.
-					</p>
-				</div>
+						</Button>
+					}
+				/>
 			)}
 		</div>
 	);

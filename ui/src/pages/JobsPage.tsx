@@ -1,26 +1,17 @@
 import { useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Briefcase, ChevronLeft, ChevronRight, X } from 'lucide-react';
+import { Briefcase, X } from 'lucide-react';
 import { api } from '@/api/client';
 import { Badge } from '@/components/ui/Badge';
-
-function timeAgo(ts?: number | null) {
-	if (!ts) return '—';
-	const s = Math.floor(Date.now() / 1000 - ts);
-	if (s < 60) return 'just now';
-	if (s < 3600) return `${Math.floor(s / 60)}m ago`;
-	if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
-	return `${Math.floor(s / 86400)}d ago`;
-}
-
-type StatusVariant = 'success' | 'danger' | 'warning' | 'default';
-function statusVariant(s?: string | null): StatusVariant {
-	if (s === 'complete') return 'success';
-	if (s === 'failed') return 'danger';
-	if (s === 'running') return 'warning';
-	return 'default';
-}
+import { Button } from '@/components/ui/Button';
+import { PageHeader } from '@/components/ui/PageHeader';
+import { LoadingState } from '@/components/ui/LoadingState';
+import { EmptyState } from '@/components/ui/EmptyState';
+import { ErrorAlert } from '@/components/ui/ErrorAlert';
+import { Pagination } from '@/components/ui/Pagination';
+import { timeAgo } from '@/lib/time';
+import { statusVariant } from '@/lib/status';
 
 export default function JobsPage() {
 	const navigate = useNavigate();
@@ -49,23 +40,20 @@ export default function JobsPage() {
 
 	return (
 		<div className="max-w-6xl space-y-5">
-			<div>
-				<p className="text-primary/60 font-mono text-[10px] tracking-widest uppercase">
-					Observability
-				</p>
-				<h1 className="font-heading text-foreground mt-1 text-2xl font-bold">
-					Background Jobs
-				</h1>
-			</div>
+			<PageHeader category="Observability" title="Background Jobs" />
 
-			{/* Status filter */}
 			<div className="flex flex-wrap items-center gap-2">
 				<span className="text-muted-foreground text-xs">Status:</span>
 				{([null, 'pending', 'running', 'complete', 'failed'] as (string | null)[]).map(
 					(s) => (
-						<button
-							type="button"
+						<Button
 							key={s ?? 'all'}
+							variant={
+								statusFilter === s || (s === null && !statusFilter)
+									? 'outline'
+									: 'ghost'
+							}
+							size="sm"
 							onClick={() => {
 								const p = new URLSearchParams(searchParams);
 								if (s) {
@@ -76,33 +64,33 @@ export default function JobsPage() {
 								setSearchParams(p);
 								setPage(1);
 							}}
-							className={`rounded-full border px-3 py-1 font-mono text-xs transition-all ${statusFilter === s || (s === null && !statusFilter) ? 'bg-primary/20 text-primary border-primary/40' : 'border-border text-muted-foreground hover:border-primary/40'}`}
+							className="rounded-full font-mono text-xs"
 						>
 							{s ?? 'all'}
-						</button>
+						</Button>
 					),
 				)}
 			</div>
 
 			{isLoading ? (
-				<div className="text-muted-foreground py-16 text-center">Loading jobs...</div>
+				<LoadingState message="Loading jobs..." />
 			) : isError ? (
 				<div className="bg-muted border-border rounded-xl border p-12 text-center">
-					<p className="text-danger font-medium">Failed to load jobs</p>
-					<p className="text-muted-foreground mt-1 text-sm">
+					<ErrorAlert message="Failed to load jobs" />
+					<p className="text-muted-foreground mt-2 text-sm">
 						Please try refreshing the page.
 					</p>
 				</div>
 			) : jobs.length === 0 ? (
-				<div className="bg-muted border-border text-muted-foreground rounded-xl border p-12 text-center">
-					<Briefcase className="mx-auto mb-3 h-10 w-10 opacity-30" />
-					<p className="text-foreground font-medium">No jobs found</p>
-					<p className="mt-1 text-sm">
-						{statusFilter
+				<EmptyState
+					icon={<Briefcase className="h-10 w-10 opacity-30" />}
+					title="No jobs found"
+					description={
+						statusFilter
 							? `No ${statusFilter} jobs.`
-							: 'Background jobs appear here when agents trigger async work.'}
-					</p>
-				</div>
+							: 'Background jobs appear here when agents trigger async work.'
+					}
+				/>
 			) : (
 				<>
 					<div className="bg-muted border-border overflow-hidden rounded-xl border">
@@ -154,8 +142,9 @@ export default function JobsPage() {
 											<td className="px-4 py-3">
 												{(job.status === 'pending' ||
 													job.status === 'running') && (
-													<button
-														type="button"
+													<Button
+														variant="ghost"
+														size="icon"
 														onClick={(e) => {
 															e.stopPropagation();
 															cancelMutation.mutate(job.id);
@@ -164,7 +153,7 @@ export default function JobsPage() {
 														title="Cancel"
 													>
 														<X className="h-4 w-4" />
-													</button>
+													</Button>
 												)}
 											</td>
 										</tr>
@@ -174,27 +163,12 @@ export default function JobsPage() {
 						</div>
 					</div>
 					{totalPages > 1 && (
-						<div className="flex items-center justify-center gap-3">
-							<button
-								type="button"
-								disabled={page <= 1}
-								onClick={() => setPage((p) => p - 1)}
-								className="bg-muted border-border hover:bg-muted/60 rounded-lg border px-3 py-1.5 text-sm transition-colors disabled:opacity-40"
-							>
-								<ChevronLeft className="h-4 w-4" />
-							</button>
-							<span className="text-muted-foreground text-sm">
-								Page {page} of {totalPages}
-							</span>
-							<button
-								type="button"
-								disabled={page >= totalPages}
-								onClick={() => setPage((p) => p + 1)}
-								className="bg-muted border-border hover:bg-muted/60 rounded-lg border px-3 py-1.5 text-sm transition-colors disabled:opacity-40"
-							>
-								<ChevronRight className="h-4 w-4" />
-							</button>
-						</div>
+						<Pagination
+							page={page}
+							totalPages={totalPages}
+							onPageChange={setPage}
+							className="justify-center"
+						/>
 					)}
 				</>
 			)}

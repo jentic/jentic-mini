@@ -81,6 +81,8 @@ export default defineConfig(
 			'react/no-array-index-key': 'warn',
 			'react/button-has-type': 'error',
 			'react/self-closing-comp': 'warn',
+			// Form primitives (Button, Input, Select, Textarea) use forwardRef
+			// which requires const + arrow syntax — they are the only exception.
 			'react/function-component-definition': [
 				'error',
 				{
@@ -90,16 +92,6 @@ export default defineConfig(
 			],
 			'react-hooks/rules-of-hooks': 'error',
 			'react-hooks/exhaustive-deps': 'warn',
-
-			'no-restricted-syntax': [
-				'warn',
-				{
-					selector:
-						"JSXOpeningElement[name.name='a'][attributes] JSXAttribute[name.name='href'][value.value=/^\\/[^/]/]",
-					message:
-						'Use <Link> from react-router-dom for internal navigation instead of <a>.',
-				},
-			],
 
 			// ── Accessibility ───────────────────────────────────────────
 			'jsx-a11y/alt-text': 'error',
@@ -122,6 +114,82 @@ export default defineConfig(
 			'no-console': ['warn', { allow: ['warn', 'error'] }],
 			'no-unused-vars': 'off',
 			'max-depth': ['warn', 4],
+		},
+	},
+
+	// ─── UI library composite components — must use own primitives ───────
+	// Primitives (Button, Input, Select, Textarea) wrap raw HTML elements
+	// and are the only files exempt from this rule. Everything else composes.
+	{
+		files: ['src/components/ui/**/*.{ts,tsx}'],
+		ignores: [
+			'src/components/ui/Button.tsx',
+			'src/components/ui/Input.tsx',
+			'src/components/ui/Select.tsx',
+			'src/components/ui/Textarea.tsx',
+		],
+		rules: {
+			'no-restricted-syntax': [
+				'error',
+				{
+					selector: "JSXOpeningElement[name.name='button']",
+					message: 'Use <Button> from ./Button instead of raw <button>.',
+				},
+				{
+					selector: "JSXOpeningElement[name.name='input']",
+					message: 'Use <Input> from ./Input instead of raw <input>.',
+				},
+				{
+					selector: "JSXOpeningElement[name.name='select']",
+					message: 'Use <Select> from ./Select instead of raw <select>.',
+				},
+				{
+					selector: "JSXOpeningElement[name.name='textarea']",
+					message: 'Use <Textarea> from ./Textarea instead of raw <textarea>.',
+				},
+			],
+		},
+	},
+
+	// ─── App shell & page files — enforce UI component library usage ────
+	{
+		files: ['src/pages/**/*.{ts,tsx}', 'src/components/layout/**/*.{ts,tsx}'],
+		rules: {
+			'no-restricted-syntax': [
+				'error',
+				{
+					selector: "JSXOpeningElement[name.name='a']",
+					message: 'Use <AppLink> from @/components/ui instead of raw <a>.',
+				},
+				{
+					selector: "JSXOpeningElement[name.name='button']",
+					message: 'Use <Button> from @/components/ui instead of raw <button>.',
+				},
+				{
+					selector: "JSXOpeningElement[name.name='input']",
+					message: 'Use <Input> from @/components/ui instead of raw <input>.',
+				},
+				{
+					selector: "JSXOpeningElement[name.name='select']",
+					message: 'Use <Select> from @/components/ui instead of raw <select>.',
+				},
+				{
+					selector: "JSXOpeningElement[name.name='textarea']",
+					message: 'Use <Textarea> from @/components/ui instead of raw <textarea>.',
+				},
+			],
+			'no-restricted-imports': [
+				'error',
+				{
+					paths: [
+						{
+							name: 'react-router-dom',
+							importNames: ['Link'],
+							message: 'Use <AppLink> from @/components/ui instead of <Link>.',
+						},
+					],
+				},
+			],
 		},
 	},
 

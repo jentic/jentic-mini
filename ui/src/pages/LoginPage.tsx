@@ -2,6 +2,10 @@ import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { JenticLogo } from '@/components/ui/Logo';
+import { Button } from '@/components/ui/Button';
+import { Input } from '@/components/ui/Input';
+import { Label } from '@/components/ui/Label';
+import { ErrorAlert } from '@/components/ui/ErrorAlert';
 
 export default function LoginPage() {
 	const [username, setUsername] = useState('');
@@ -42,55 +46,49 @@ export default function LoginPage() {
 					}}
 				>
 					{loginMutation.isError && (
-						<div
-							role="alert"
-							className="bg-danger/10 text-danger border-danger/30 mb-4 rounded-lg border p-3 text-sm font-semibold"
-						>
-							Invalid username or password.
+						<div className="mb-4">
+							<ErrorAlert message="Invalid username or password." />
 						</div>
 					)}
 
 					<div className="mb-4">
-						<label
+						<Label
 							htmlFor="login-username"
-							className="text-muted-foreground mb-2 block text-sm font-bold"
+							className="text-muted-foreground mb-2 block font-bold"
 						>
 							Username
-						</label>
-						<input
+						</Label>
+						<Input
 							id="login-username"
 							type="text"
 							value={username}
 							onChange={(e) => setUsername(e.target.value)}
 							required
-							className="bg-background border-border text-foreground focus:border-primary w-full rounded-lg border px-3 py-2 transition-colors focus:outline-hidden"
+							className="bg-background"
 						/>
 					</div>
 
 					<div className="mb-8">
-						<label
+						<Label
 							htmlFor="login-password"
-							className="text-muted-foreground mb-2 block text-sm font-bold"
+							className="text-muted-foreground mb-2 block font-bold"
 						>
 							Password
-						</label>
-						<input
+						</Label>
+						<Input
 							id="login-password"
 							type="password"
 							value={password}
 							onChange={(e) => setPassword(e.target.value)}
 							required
-							className="bg-background border-border text-foreground focus:border-primary w-full rounded-lg border px-3 py-2 transition-colors focus:outline-hidden"
+							showPasswordToggle
+							className="bg-background"
 						/>
 					</div>
 
-					<button
-						type="submit"
-						disabled={loginMutation.isPending}
-						className="bg-primary text-background hover:bg-primary-hover w-full rounded-lg px-4 py-3 font-bold transition-colors disabled:opacity-50"
-					>
+					<Button type="submit" loading={loginMutation.isPending} size="lg" fullWidth>
 						{loginMutation.isPending ? 'Logging in...' : 'Log In'}
-					</button>
+					</Button>
 				</form>
 
 				<p className="text-muted-foreground mt-6 text-center text-xs">

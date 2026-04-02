@@ -13,8 +13,16 @@ import {
 import { oauthBrokers } from '@/api/client';
 import type { OAuthBroker, ConnectLinkResponse } from '@/api/client';
 import { Button } from '@/components/ui/Button';
+import { Input } from '@/components/ui/Input';
+import { Select } from '@/components/ui/Select';
+import { Label } from '@/components/ui/Label';
 import { Badge } from '@/components/ui/Badge';
+import { PageHeader } from '@/components/ui/PageHeader';
+import { LoadingState } from '@/components/ui/LoadingState';
+import { EmptyState } from '@/components/ui/EmptyState';
+import { ErrorAlert } from '@/components/ui/ErrorAlert';
 import { ConfirmInline } from '@/components/ui/ConfirmInline';
+import { AppLink } from '@/components/ui/AppLink';
 
 // ── Add Broker Form ──────────────────────────────────────────────
 
@@ -52,67 +60,56 @@ function AddBrokerForm({ onClose }: { onClose: () => void }) {
 	const set = (field: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
 		setForm((f) => ({ ...f, [field]: e.target.value }));
 
-	const inputClass =
-		'w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-hidden focus:ring-1 focus:ring-primary/50';
-
 	return (
 		<div className="bg-muted border-border space-y-4 rounded-xl border p-4">
 			<h2 className="text-foreground text-sm font-medium">Add OAuth Broker</h2>
 
 			<div className="grid grid-cols-2 gap-3">
 				<div>
-					<label htmlFor="broker-id" className="text-muted-foreground mb-1 block text-xs">
+					<Label htmlFor="broker-id" className="text-muted-foreground mb-1 block text-xs">
 						Broker ID
-					</label>
-					<input
+					</Label>
+					<Input
 						id="broker-id"
-						className={inputClass}
 						value={form.id}
 						onChange={set('id')}
 						placeholder="e.g. pipedream"
 					/>
 				</div>
 				<div>
-					<label
+					<Label
 						htmlFor="broker-type"
 						className="text-muted-foreground mb-1 block text-xs"
 					>
 						Type
-					</label>
-					<select
-						id="broker-type"
-						className={inputClass}
-						value={form.type}
-						onChange={set('type')}
-					>
+					</Label>
+					<Select id="broker-type" value={form.type} onChange={set('type')}>
 						<option value="pipedream">pipedream</option>
-					</select>
+					</Select>
 				</div>
 				<div>
-					<label
+					<Label
 						htmlFor="broker-client-id"
 						className="text-muted-foreground mb-1 block text-xs"
 					>
 						Client ID
-					</label>
-					<input
+					</Label>
+					<Input
 						id="broker-client-id"
-						className={inputClass}
 						value={form.client_id}
 						onChange={set('client_id')}
 						placeholder="OAuth client ID"
 					/>
 				</div>
 				<div>
-					<label
+					<Label
 						htmlFor="broker-client-secret"
 						className="text-muted-foreground mb-1 block text-xs"
 					>
 						Client Secret
-					</label>
-					<input
+					</Label>
+					<Input
 						id="broker-client-secret"
-						className={inputClass}
 						type="password"
 						value={form.client_secret}
 						onChange={set('client_secret')}
@@ -120,44 +117,41 @@ function AddBrokerForm({ onClose }: { onClose: () => void }) {
 					/>
 				</div>
 				<div>
-					<label
+					<Label
 						htmlFor="broker-project-id"
 						className="text-muted-foreground mb-1 block text-xs"
 					>
 						Project ID
-					</label>
-					<input
+					</Label>
+					<Input
 						id="broker-project-id"
-						className={inputClass}
 						value={form.project_id}
 						onChange={set('project_id')}
 						placeholder="Pipedream project ID"
 					/>
 				</div>
 				<div>
-					<label
+					<Label
 						htmlFor="broker-environment"
 						className="text-muted-foreground mb-1 block text-xs"
 					>
 						Environment
-					</label>
-					<input
+					</Label>
+					<Input
 						id="broker-environment"
-						className={inputClass}
 						value={form.environment}
 						onChange={set('environment')}
 					/>
 				</div>
 				<div className="col-span-2">
-					<label
+					<Label
 						htmlFor="broker-ext-user-id"
 						className="text-muted-foreground mb-1 block text-xs"
 					>
 						Default External User ID
-					</label>
-					<input
+					</Label>
+					<Input
 						id="broker-ext-user-id"
-						className={inputClass}
 						value={form.default_external_user_id}
 						onChange={set('default_external_user_id')}
 					/>
@@ -223,8 +217,9 @@ function CatalogSearch({
 		return (
 			<div className="flex items-center gap-2">
 				<span className="bg-muted rounded px-2 py-1 font-mono text-xs">{selected}</span>
-				<button
-					type="button"
+				<Button
+					variant="ghost"
+					size="sm"
 					className="text-muted-foreground text-xs underline"
 					onClick={() => {
 						setSelected('');
@@ -232,14 +227,14 @@ function CatalogSearch({
 					}}
 				>
 					change
-				</button>
+				</Button>
 			</div>
 		);
 	}
 
 	return (
 		<div className="space-y-1.5">
-			<input
+			<Input
 				id="broker-catalog-api"
 				className="bg-background border-border text-foreground placeholder:text-muted-foreground/50 focus:ring-primary/50 w-full rounded-lg border px-3 py-2 text-sm focus:ring-1 focus:outline-hidden"
 				value={q}
@@ -262,10 +257,11 @@ function CatalogSearch({
 						<p className="text-muted-foreground p-2 text-xs">No results for "{q}"</p>
 					) : (
 						entries.map((e: any) => (
-							<button
-								type="button"
+							<Button
+								variant="ghost"
+								size="sm"
 								key={e.api_id}
-								className="hover:bg-muted border-border w-full border-b px-3 py-2 text-left font-mono text-xs last:border-0"
+								className="hover:bg-muted border-border w-full justify-start border-b px-3 py-2 text-left font-mono text-xs last:border-0"
 								onClick={() => {
 									setSelected(e.api_id);
 									setQ('');
@@ -273,7 +269,7 @@ function CatalogSearch({
 								}}
 							>
 								{e.api_id}
-							</button>
+							</Button>
 						))
 					)}
 				</div>
@@ -307,22 +303,17 @@ function ConnectAccountPanel({
 		onSuccess: (data) => setConnectLink(data),
 	});
 
-	const inputClass =
-		'w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-hidden focus:ring-1 focus:ring-primary/50';
-
 	if (connectLink) {
 		return (
 			<div className="bg-background border-primary/30 space-y-3 rounded-xl border p-4">
 				<p className="text-foreground text-sm font-medium">Connect your account</p>
-				<a
+				<AppLink
 					href={connectLink.connect_link_url}
-					target="_blank"
-					rel="noopener noreferrer"
 					className="bg-primary text-background hover:bg-primary/80 inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors"
 				>
 					<ExternalLink className="h-4 w-4" />
 					Open Connect Link
-				</a>
+				</AppLink>
 				<p className="text-muted-foreground text-xs">
 					Click the link above to connect your account in Pipedream. Return here and click{' '}
 					<strong>Done</strong> when finished — this will sync your new connection
@@ -347,30 +338,28 @@ function ConnectAccountPanel({
 			<p className="text-foreground text-sm font-medium">Connect a new account</p>
 			<div className="grid grid-cols-2 gap-3">
 				<div>
-					<label
+					<Label
 						htmlFor="broker-app-slug"
 						className="text-muted-foreground mb-1 block text-xs"
 					>
 						App Slug
-					</label>
-					<input
+					</Label>
+					<Input
 						id="broker-app-slug"
-						className={inputClass}
 						value={appSlug}
 						onChange={(e) => setAppSlug(e.target.value)}
 						placeholder="e.g. gmail, slack, github"
 					/>
 				</div>
 				<div>
-					<label
+					<Label
 						htmlFor="broker-label"
 						className="text-muted-foreground mb-1 block text-xs"
 					>
 						Label (optional)
-					</label>
-					<input
+					</Label>
+					<Input
 						id="broker-label"
-						className={inputClass}
 						value={label}
 						onChange={(e) => setLabel(e.target.value)}
 						placeholder="e.g. My Gmail"
@@ -378,12 +367,12 @@ function ConnectAccountPanel({
 				</div>
 			</div>
 			<div>
-				<label
+				<Label
 					htmlFor="broker-catalog-api"
 					className="text-muted-foreground mb-1 block text-xs"
 				>
 					Catalog API <span className="text-danger">*</span>
-				</label>
+				</Label>
 				<CatalogSearch onSelect={setApiId} mirrorValue={appSlug} />
 			</div>
 			{linkMutation.isError && (
@@ -591,8 +580,9 @@ function BrokerCard({ broker }: { broker: OAuthBroker }) {
 	return (
 		<div className="bg-muted border-border rounded-xl border p-4">
 			<div className="flex items-center gap-3">
-				<button
-					type="button"
+				<Button
+					variant="ghost"
+					size="icon"
 					onClick={() => setExpanded((e) => !e)}
 					className="text-muted-foreground hover:text-foreground transition-colors"
 					aria-label={expanded ? 'Collapse broker details' : 'Expand broker details'}
@@ -603,7 +593,7 @@ function BrokerCard({ broker }: { broker: OAuthBroker }) {
 					) : (
 						<ChevronRight className="h-5 w-5" />
 					)}
-				</button>
+				</Button>
 				<Link2 className="text-accent-blue h-5 w-5 shrink-0" />
 				<div className="min-w-0 flex-1">
 					<div className="flex flex-wrap items-center gap-2">
@@ -636,13 +626,9 @@ function BrokerCard({ broker }: { broker: OAuthBroker }) {
 					message="Delete this broker?"
 					confirmLabel="Delete"
 				>
-					<button
-						type="button"
-						className="bg-danger/10 border-danger/30 text-danger hover:bg-danger/20 inline-flex items-center gap-1 rounded-lg border px-3 py-1.5 text-sm transition-colors"
-						aria-label="Delete broker"
-					>
+					<Button variant="danger" size="sm" aria-label="Delete broker">
 						<Trash2 className="h-4 w-4" />
-					</button>
+					</Button>
 				</ConfirmInline>
 			</div>
 
@@ -667,24 +653,15 @@ export default function OAuthBrokersPage() {
 
 	return (
 		<div className="max-w-5xl space-y-5">
-			<div className="flex items-center justify-between">
-				<div>
-					<p className="text-primary/60 font-mono text-[10px] tracking-widest uppercase">
-						Management
-					</p>
-					<h1 className="font-heading text-foreground mt-1 text-2xl font-bold">
-						OAuth Brokers
-					</h1>
-				</div>
-				<button
-					type="button"
-					onClick={() => setShowAdd((s) => !s)}
-					className="bg-primary text-background hover:bg-primary/80 inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors"
-					aria-expanded={showAdd}
-				>
-					<Plus className="h-4 w-4" /> Add Broker
-				</button>
-			</div>
+			<PageHeader
+				category="Management"
+				title="OAuth Brokers"
+				actions={
+					<Button onClick={() => setShowAdd((s) => !s)} aria-expanded={showAdd}>
+						<Plus className="h-4 w-4" /> Add Broker
+					</Button>
+				}
+			/>
 
 			<div className="bg-muted border-border text-muted-foreground rounded-xl border p-4 text-sm">
 				Manage OAuth brokers for delegated API authentication. Connect external accounts
@@ -694,29 +671,16 @@ export default function OAuthBrokersPage() {
 			{showAdd && <AddBrokerForm onClose={() => setShowAdd(false)} />}
 
 			{isLoading ? (
-				<div className="text-muted-foreground py-16 text-center">Loading brokers...</div>
+				<LoadingState message="Loading brokers..." />
 			) : isError ? (
-				<div className="bg-muted border-border rounded-xl border p-12 text-center">
-					<p className="text-danger font-medium">Failed to load OAuth brokers</p>
-					<p className="text-muted-foreground mt-1 text-sm">
-						Please try refreshing the page.
-					</p>
-				</div>
+				<ErrorAlert message="Failed to load OAuth brokers. Please try refreshing the page." />
 			) : !brokers || brokers.length === 0 ? (
-				<div className="text-muted-foreground bg-muted border-border rounded-xl border border-dashed p-12 text-center">
-					<Link2 className="mx-auto mb-3 h-10 w-10 opacity-30" />
-					<p className="text-foreground mb-1 font-medium">No OAuth brokers configured</p>
-					<p className="mb-4 text-sm">
-						Add a broker to connect external accounts for agent OAuth access.
-					</p>
-					<button
-						type="button"
-						onClick={() => setShowAdd(true)}
-						className="bg-primary text-background hover:bg-primary/80 rounded-lg px-4 py-2 text-sm font-medium transition-colors"
-					>
-						Add your first broker
-					</button>
-				</div>
+				<EmptyState
+					icon={<Link2 className="h-10 w-10 opacity-30" />}
+					title="No OAuth brokers configured"
+					description="Add a broker to connect external accounts for agent OAuth access."
+					action={<Button onClick={() => setShowAdd(true)}>Add your first broker</Button>}
+				/>
 			) : (
 				<div className="space-y-2">
 					{brokers.map((broker) => (
