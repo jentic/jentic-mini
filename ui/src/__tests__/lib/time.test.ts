@@ -5,41 +5,24 @@ describe('timeAgo', () => {
 		({ timeAgo } = await import('@/lib/time'));
 	});
 
-	it('returns empty string for null', () => {
+	it('returns empty string for falsy values', () => {
 		expect(timeAgo(null)).toBe('');
-	});
-
-	it('returns empty string for undefined', () => {
 		expect(timeAgo(undefined)).toBe('');
-	});
-
-	it('returns empty string for 0', () => {
 		expect(timeAgo(0)).toBe('');
 	});
 
 	it('returns "just now" for future timestamps', () => {
-		const future = Math.floor(Date.now() / 1000) + 600;
-		expect(timeAgo(future)).toBe('just now');
+		expect(timeAgo(Math.floor(Date.now() / 1000) + 600)).toBe('just now');
 	});
 
-	it('returns seconds format for < 60s', () => {
-		const ts = Math.floor(Date.now() / 1000) - 30;
-		expect(timeAgo(ts)).toBe('30s ago');
-	});
-
-	it('returns minutes format for < 1h', () => {
-		const ts = Math.floor(Date.now() / 1000) - 300;
-		expect(timeAgo(ts)).toBe('5m ago');
-	});
-
-	it('returns hours format for < 24h', () => {
-		const ts = Math.floor(Date.now() / 1000) - 7200;
-		expect(timeAgo(ts)).toBe('2h ago');
-	});
-
-	it('returns days format for >= 24h', () => {
-		const ts = Math.floor(Date.now() / 1000) - 172800;
-		expect(timeAgo(ts)).toBe('2d ago');
+	it.each([
+		[30, '30s ago'],
+		[300, '5m ago'],
+		[7200, '2h ago'],
+		[172800, '2d ago'],
+	])('formats %i seconds ago as "%s"', (secsAgo, expected) => {
+		const ts = Math.floor(Date.now() / 1000) - secsAgo;
+		expect(timeAgo(ts)).toBe(expected);
 	});
 });
 
@@ -50,21 +33,14 @@ describe('formatTimestamp', () => {
 		({ formatTimestamp } = await import('@/lib/time'));
 	});
 
-	it('returns empty string for null', () => {
+	it('returns empty string for falsy values', () => {
 		expect(formatTimestamp(null)).toBe('');
-	});
-
-	it('returns empty string for undefined', () => {
 		expect(formatTimestamp(undefined)).toBe('');
-	});
-
-	it('returns empty string for 0', () => {
 		expect(formatTimestamp(0)).toBe('');
 	});
 
-	it('returns a formatted date string for a valid timestamp', () => {
+	it('returns locale string for valid timestamp', () => {
 		const ts = 1700000000;
-		const result = formatTimestamp(ts);
-		expect(result).toBe(new Date(ts * 1000).toLocaleString());
+		expect(formatTimestamp(ts)).toBe(new Date(ts * 1000).toLocaleString());
 	});
 });

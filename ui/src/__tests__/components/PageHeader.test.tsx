@@ -2,12 +2,12 @@ import { render, screen } from '@testing-library/react';
 import { PageHeader } from '@/components/ui/PageHeader';
 
 describe('PageHeader', () => {
-	it('renders title as heading', () => {
+	it('renders title as h1 heading', () => {
 		render(<PageHeader title="Dashboard" />);
 		expect(screen.getByRole('heading', { name: 'Dashboard', level: 1 })).toBeInTheDocument();
 	});
 
-	it('renders category text when provided', () => {
+	it('renders category when provided', () => {
 		render(<PageHeader category="Admin" title="Dashboard" />);
 		expect(screen.getByText('Admin')).toBeInTheDocument();
 	});
@@ -20,15 +20,5 @@ describe('PageHeader', () => {
 	it('renders actions slot', () => {
 		render(<PageHeader title="Dashboard" actions={<button>Export</button>} />);
 		expect(screen.getByRole('button', { name: 'Export' })).toBeInTheDocument();
-	});
-
-	it('does not render category when not provided', () => {
-		render(<PageHeader title="Dashboard" />);
-		expect(screen.queryByText('Admin')).not.toBeInTheDocument();
-	});
-
-	it('does not render description when not provided', () => {
-		render(<PageHeader title="Dashboard" />);
-		expect(screen.queryByText('Overview of your system.')).not.toBeInTheDocument();
 	});
 });

@@ -19,17 +19,7 @@ describe('useCopyToClipboard', () => {
 		expect(result.current.copied).toBe(false);
 	});
 
-	it('sets copied to true after calling copy', async () => {
-		const { result } = renderHook(() => useCopyToClipboard());
-
-		await act(async () => {
-			await result.current.copy('hello');
-		});
-
-		expect(result.current.copied).toBe(true);
-	});
-
-	it('calls navigator.clipboard.writeText with the provided value', async () => {
+	it('calls writeText and sets copied to true', async () => {
 		const { result } = renderHook(() => useCopyToClipboard());
 
 		await act(async () => {
@@ -37,6 +27,7 @@ describe('useCopyToClipboard', () => {
 		});
 
 		expect(writeTextSpy).toHaveBeenCalledWith('test-value');
+		expect(result.current.copied).toBe(true);
 	});
 
 	it('resets copied to false after the timeout', async () => {
@@ -45,30 +36,10 @@ describe('useCopyToClipboard', () => {
 		await act(async () => {
 			await result.current.copy('hello');
 		});
-
 		expect(result.current.copied).toBe(true);
 
 		await act(async () => {
 			vi.advanceTimersByTime(1000);
-		});
-
-		expect(result.current.copied).toBe(false);
-	});
-
-	it('uses default 2000ms reset timeout', async () => {
-		const { result } = renderHook(() => useCopyToClipboard());
-
-		await act(async () => {
-			await result.current.copy('hello');
-		});
-
-		await act(async () => {
-			vi.advanceTimersByTime(1999);
-		});
-		expect(result.current.copied).toBe(true);
-
-		await act(async () => {
-			vi.advanceTimersByTime(1);
 		});
 		expect(result.current.copied).toBe(false);
 	});

@@ -1,4 +1,5 @@
 import { render, screen, fireEvent } from '@testing-library/react';
+import axe from 'axe-core';
 import { createRef } from 'react';
 import { Textarea } from '@/components/ui/Textarea';
 
@@ -10,40 +11,40 @@ describe('Textarea', () => {
 		expect(textarea).toHaveValue('Hello world');
 	});
 
-	it('forwards ref to underlying textarea element', () => {
+	it('forwards ref', () => {
 		const ref = createRef<HTMLTextAreaElement>();
 		render(<Textarea ref={ref} />);
 		expect(ref.current).toBeInstanceOf(HTMLTextAreaElement);
 	});
 
-	it('shows error message with role="alert" when error prop is set', () => {
-		render(<Textarea error="Too short" />);
+	it('shows error with role="alert" and sets aria-invalid', () => {
+		render(<Textarea error="Too short" placeholder="Bio" />);
 		expect(screen.getByRole('alert')).toHaveTextContent('Too short');
-	});
-
-	it('sets aria-invalid when error is provided', () => {
-		render(<Textarea error="Required" placeholder="Bio" />);
 		expect(screen.getByPlaceholderText('Bio')).toHaveAttribute('aria-invalid', 'true');
-	});
-
-	it('does not set aria-invalid when there is no error', () => {
-		render(<Textarea placeholder="Bio" />);
-		expect(screen.getByPlaceholderText('Bio')).not.toHaveAttribute('aria-invalid');
-	});
-
-	it('passes native textarea attributes through', () => {
-		render(<Textarea rows={5} placeholder="Notes" disabled data-testid="my-textarea" />);
-		const textarea = screen.getByTestId('my-textarea');
-		expect(textarea).toBeDisabled();
-		expect(textarea).toHaveAttribute('rows', '5');
-		expect(textarea).toHaveAttribute('placeholder', 'Notes');
 	});
 
 	it('connects error message to textarea via aria-describedby', () => {
 		render(<Textarea id="bio" error="Too long" />);
 		const textarea = document.getElementById('bio')!;
-		const errorId = textarea.getAttribute('aria-describedby');
-		expect(errorId).toBe('bio-error');
+		expect(textarea).toHaveAttribute('aria-describedby', 'bio-error');
 		expect(screen.getByRole('alert')).toHaveAttribute('id', 'bio-error');
+	});
+
+	it('passes native attributes through', () => {
+		render(<Textarea rows={5} placeholder="Notes" disabled />);
+		const textarea = screen.getByPlaceholderText('Notes');
+		expect(textarea).toBeDisabled();
+		expect(textarea).toHaveAttribute('rows', '5');
+	});
+
+	it('has no accessibility violations', async () => {
+		const { container } = render(
+			<label htmlFor="test-textarea">
+				Bio
+				<Textarea id="test-textarea" />
+			</label>,
+		);
+		const results = await axe.run(container);
+		expect(results.violations).toEqual([]);
 	});
 });

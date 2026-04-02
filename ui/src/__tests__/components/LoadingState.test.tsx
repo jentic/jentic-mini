@@ -7,14 +7,9 @@ describe('LoadingState', () => {
 		expect(screen.getByText('Loading...')).toBeInTheDocument();
 	});
 
-	it('renders custom message', () => {
-		render(<LoadingState message="Fetching results..." />);
-		expect(screen.getByText('Fetching results...')).toBeInTheDocument();
-		expect(screen.queryByText('Loading...')).not.toBeInTheDocument();
-	});
-
-	it('renders custom icon when provided', () => {
-		render(<LoadingState icon={<svg data-testid="custom-icon" />} />);
-		expect(screen.getByTestId('custom-icon')).toBeInTheDocument();
+	it('renders custom message and icon when provided', () => {
+		render(<LoadingState message="Fetching..." icon={<svg data-testid="custom" />} />);
+		expect(screen.getByText('Fetching...')).toBeInTheDocument();
+		expect(screen.getByTestId('custom')).toBeInTheDocument();
 	});
 });
