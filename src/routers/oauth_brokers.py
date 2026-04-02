@@ -301,14 +301,6 @@ async def get_oauth_broker(broker_id: BrokerIdPath):
 
 
 class ConnectLinkRequest(NormModel):
-    external_user_id: str = Field(
-        "default",
-        description=(
-            "The user identity to generate the connect link for. "
-            "In a single-user setup this is always `default`. "
-            "Must match the `external_user_id` you use when routing requests."
-        ),
-    )
     app: str = Field(
         ...,
         description=(
@@ -388,10 +380,23 @@ async def create_connect_link(broker_id: BrokerIdPath, body: ConnectLinkRequest,
     # so we encode all the context we need (label, app, api_id, external_user_id)
     # as query params. The callback endpoint reads these, stores the pending label,
     # triggers a sync, and redirects the user to the credentials UI.
+    # Derive external_user_id from the broker's stored config — callers must not
+    # override this, as an incorrect value silently routes credentials to a
+    # Pipedream user that the sync will never query.
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            "SELECT default_external_user_id FROM oauth_brokers WHERE id=?",
+            (broker_id,),
+        ) as cur:
+            broker_row = await cur.fetchone()
+    if not broker_row:
+        raise HTTPException(404, f"OAuth broker '{broker_id}' not found")
+    external_user_id = broker_row[0] or "default"
+
     callback_params = {
         "label": body.label,
         "app": body.app,
-        "external_user_id": body.external_user_id,
+        "external_user_id": external_user_id,
     }
     if body.api_id:
         callback_params["api_id"] = body.api_id
@@ -400,7 +405,7 @@ async def create_connect_link(broker_id: BrokerIdPath, body: ConnectLinkRequest,
 
     try:
         result = await live_broker.create_connect_token(
-            body.external_user_id,
+            external_user_id,
             success_redirect_uri=success_redirect_uri,
         )
     except Exception as exc:
