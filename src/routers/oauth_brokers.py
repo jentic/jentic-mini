@@ -16,9 +16,13 @@ import logging
 import time
 from typing import Annotated, Any
 
+import urllib.parse
+
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request
+from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, Field
 from src.validators import NormModel, NormStr
+from src.utils import build_absolute_url
 
 from src.auth import require_human_session
 from src.db import get_db
@@ -380,24 +384,27 @@ async def create_connect_link(broker_id: BrokerIdPath, body: ConnectLinkRequest,
     if not hasattr(live_broker, "create_connect_token"):
         raise HTTPException(400, f"Broker type does not support Connect Links")
 
+    # Build the success redirect URI — Pipedream will append nothing of its own,
+    # so we encode all the context we need (label, app, api_id, external_user_id)
+    # as query params. The callback endpoint reads these, stores the pending label,
+    # triggers a sync, and redirects the user to the credentials UI.
+    callback_params = {
+        "label": body.label,
+        "app": body.app,
+        "external_user_id": body.external_user_id,
+    }
+    if body.api_id:
+        callback_params["api_id"] = body.api_id
+    callback_path = f"/oauth-brokers/{broker_id}/connect-callback?{urllib.parse.urlencode(callback_params)}"
+    success_redirect_uri = build_absolute_url(request, callback_path)
+
     try:
-        result = await live_broker.create_connect_token(body.external_user_id)
+        result = await live_broker.create_connect_token(
+            body.external_user_id,
+            success_redirect_uri=success_redirect_uri,
+        )
     except Exception as exc:
         raise HTTPException(502, f"Failed to create Pipedream Connect Token: {exc}")
-
-    # Store the label as a pending entry — consumed by sync when this account lands
-    import uuid as _uuid
-    async with get_db() as db:
-        await db.execute(
-            """INSERT OR REPLACE INTO oauth_broker_connect_labels
-               (id, broker_id, external_user_id, app_slug, label, api_id, created_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?)""",
-            (
-                str(_uuid.uuid4()), broker_id, body.external_user_id,
-                body.app, body.label, body.api_id, time.time(),
-            ),
-        )
-        await db.commit()
 
     # Pipedream requires the app slug appended to the connect link URL
     connect_link_url = result["connect_link_url"]
@@ -410,8 +417,79 @@ async def create_connect_link(broker_id: BrokerIdPath, body: ConnectLinkRequest,
         "app": body.app,
         "connect_link_url": connect_link_url,
         "expires_at": result["expires_at"],
-        "next_step": f"Visit connect_link_url in your browser, authorise {body.app}, then call POST /oauth-brokers/{broker_id}/sync",
+        "next_step": f"Visit connect_link_url in your browser, authorise {body.app}, then the browser will redirect automatically and sync will run",
     }
+
+
+@router.get(
+    "/{broker_id}/connect-callback",
+    summary="OAuth connect-link completion callback (browser redirect)",
+    include_in_schema=False,  # not a user-facing API endpoint
+)
+async def connect_callback(
+    broker_id: BrokerIdPath,
+    request: Request,
+    label: str = Query(..., description="Label set at connect-link time"),
+    app: str = Query(..., description="Pipedream app slug"),
+    external_user_id: str = Query("default"),
+    api_id: str | None = Query(None),
+):
+    """Browser callback after Pipedream OAuth completion.
+
+    Pipedream redirects here once the user successfully authorises an app.
+    We write the pending label to oauth_broker_connect_labels (keyed by
+    app_slug, as before), trigger a sync immediately, then redirect the
+    user to the credentials page of the UI.
+
+    This endpoint is hit by the user's browser — no auth token required.
+    Labels come from URL params we encoded at connect-link time, so they
+    cannot be spoofed by Pipedream or third parties.
+    """
+    import uuid as _uuid
+
+    # Write the pending label — safe to INSERT OR REPLACE here because we are
+    # processing one completion at a time (browser callback is synchronous
+    # from the user's perspective). The race that motivated this redesign was
+    # *two links created before either was completed*; at callback time each
+    # link fires its own redirect with its own label param.
+    async with get_db() as db:
+        await db.execute(
+            """INSERT OR REPLACE INTO oauth_broker_connect_labels
+               (id, broker_id, external_user_id, app_slug, label, api_id, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (
+                str(_uuid.uuid4()), broker_id, external_user_id,
+                app, label, api_id, time.time(),
+            ),
+        )
+        await db.commit()
+
+    # Trigger sync immediately so the credential lands before the UI loads
+    live_broker = next(
+        (b for b in oauth_broker_registry.brokers if getattr(b, "broker_id", None) == broker_id),
+        None,
+    )
+    if live_broker is None:
+        from src.brokers.pipedream import PipedreamOAuthBroker
+        brokers = await PipedreamOAuthBroker.from_db()
+        live_broker = next((b for b in brokers if b.broker_id == broker_id), None)
+        if live_broker:
+            oauth_broker_registry.register(live_broker)
+
+    if live_broker is not None and hasattr(live_broker, "discover_accounts"):
+        try:
+            await live_broker.discover_accounts(external_user_id)
+        except Exception as exc:
+            import logging as _logging
+            _logging.getLogger(__name__).warning(
+                "connect-callback: sync failed for broker %s: %s", broker_id, exc
+            )
+            # Don't block the redirect — user will see the credential once they
+            # manually sync, or on next automatic sync.
+
+    # Redirect to credentials UI
+    ui_url = build_absolute_url(request, "/credentials")
+    return RedirectResponse(url=ui_url, status_code=302)
 
 
 @router.post(
