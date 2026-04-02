@@ -259,6 +259,11 @@ export const oauthBrokers = {
 			headers: { 'Content-Type': 'application/json' },
 			body: JSON.stringify(body),
 		}),
+	reconnectLink: (brokerId: string, accountId: string) =>
+		fetchJson<ConnectLinkResponse>(
+			`/oauth-brokers/${encodeURIComponent(brokerId)}/accounts/${encodeURIComponent(accountId)}/reconnect-link`,
+			{ method: 'POST', credentials: 'include' },
+		),
 };
 
 export * from './generated';

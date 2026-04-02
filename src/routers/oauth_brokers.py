@@ -430,6 +430,7 @@ async def connect_callback(
     app: str = Query(..., description="Pipedream app slug"),
     external_user_id: str = Query("default"),
     api_id: str | None = Query(None),
+    replace_account_id: str | None = Query(None, description="Account ID to delete after successful reconnect"),
 ):
     """Browser callback after Pipedream OAuth completion.
 
@@ -473,9 +474,11 @@ async def connect_callback(
         if live_broker:
             oauth_broker_registry.register(live_broker)
 
+    synced_ok = False
     if live_broker is not None and hasattr(live_broker, "discover_accounts"):
         try:
             await live_broker.discover_accounts(external_user_id)
+            synced_ok = True
         except Exception as exc:
             import logging as _logging
             _logging.getLogger(__name__).warning(
@@ -484,8 +487,61 @@ async def connect_callback(
             # Don't block the redirect — user will see the credential once they
             # manually sync, or on next automatic sync.
 
-    # Redirect to credentials UI
-    ui_url = build_absolute_url(request, "/credentials")
+    # If this was a reconnect, clean up the old account — but only after sync
+    # confirmed the new connection is present.
+    if replace_account_id and synced_ok:
+        import logging as _logging
+        _log = _logging.getLogger(__name__)
+        # Verify the new account landed (old account_id should be gone; any
+        # remaining account for this app_slug other than replace_account_id is new).
+        async with get_db() as db:
+            async with db.execute(
+                """SELECT account_id FROM oauth_broker_accounts
+                   WHERE broker_id=? AND external_user_id=? AND app_slug=?
+                   AND account_id != ?""",
+                (broker_id, external_user_id, app, replace_account_id),
+            ) as cur:
+                new_row = await cur.fetchone()
+        if new_row:
+            # New account confirmed present — delete the old one
+            try:
+                delete_req = Request(
+                    scope={"type": "http", "method": "DELETE", "path": "/", "query_string": b"",
+                           "headers": []},
+                    receive=None,
+                )
+                await delete_broker_account.__wrapped__(broker_id, replace_account_id)                     if hasattr(delete_broker_account, "__wrapped__")                     else None
+                # Call the underlying logic directly
+                from src.vault import vault
+                async with get_db() as db:
+                    # Fetch api_host for cred_id construction
+                    async with db.execute(
+                        "SELECT api_host FROM oauth_broker_accounts WHERE broker_id=? AND account_id=?",
+                        (broker_id, replace_account_id),
+                    ) as cur:
+                        old_row = await cur.fetchone()
+                if old_row:
+                    old_api_host = old_row[0]
+                    old_host_slug = old_api_host.replace(".", "-")
+                    old_cred_id = f"pipedream-{replace_account_id}-{old_host_slug}"
+                    async with get_db() as db:
+                        await db.execute("DELETE FROM toolkit_credentials WHERE credential_id=?", (old_cred_id,))
+                        await db.execute("DELETE FROM oauth_broker_accounts WHERE broker_id=? AND account_id=?",
+                                         (broker_id, replace_account_id))
+                        await db.commit()
+                    await vault.delete_credential(old_cred_id)
+                    _log.info("Reconnect: removed old account %s after successful reconnect", replace_account_id)
+            except Exception as exc:
+                _log.warning("Reconnect: failed to remove old account %s: %s", replace_account_id, exc)
+        else:
+            import logging as _logging
+            _logging.getLogger(__name__).warning(
+                "Reconnect: new account not found after sync for broker %s app %s — keeping old account %s",
+                broker_id, app, replace_account_id,
+            )
+
+    # Redirect to OAuth brokers UI (so user can see the reconnected account)
+    ui_url = build_absolute_url(request, "/oauth-brokers")
     return RedirectResponse(url=ui_url, status_code=302)
 
 
@@ -686,6 +742,96 @@ async def delete_broker_account(broker_id: BrokerIdPath, account_id: str):
         "credential_id": cred_id,
         "pipedream_revoked": pipedream_revoked,
         "deleted": True,
+    }
+
+
+@router.post(
+    "/{broker_id}/accounts/{account_id}/reconnect-link",
+    summary="Get a reconnect link for an existing connected account",
+    dependencies=[Depends(require_admin_or_human_or_toolkit)],
+)
+async def reconnect_account_link(broker_id: BrokerIdPath, account_id: str, request: Request):
+    """Generate a new OAuth connect link for an existing connected account.
+
+    The returned URL sends the user through the Pipedream OAuth flow for the
+    same app slug.  On completion, the callback will:
+
+    1. Sync the broker (discovering the new account).
+    2. If the new account is confirmed present, delete the old account.
+
+    This allows a user to re-authorise a broken connection without losing the
+    existing credential until the replacement is confirmed.
+    """
+    # Load the existing account record
+    async with get_db() as db:
+        async with db.execute(
+            """SELECT app_slug, label, api_id, external_user_id
+               FROM oauth_broker_accounts WHERE broker_id=? AND account_id=?""",
+            (broker_id, account_id),
+        ) as cur:
+            row = await cur.fetchone()
+
+    if not row:
+        raise HTTPException(404, f"No connected account '{account_id}' found for broker '{broker_id}'")
+
+    app_slug, label, api_id, external_user_id = row
+    label = label or app_slug
+    external_user_id = external_user_id or "default"
+
+    # Get the live broker
+    live_broker = next(
+        (b for b in oauth_broker_registry.brokers if getattr(b, "broker_id", None) == broker_id),
+        None,
+    )
+    if live_broker is None:
+        from src.brokers.pipedream import PipedreamOAuthBroker
+        brokers = await PipedreamOAuthBroker.from_db()
+        live_broker = next((b for b in brokers if b.broker_id == broker_id), None)
+        if live_broker:
+            oauth_broker_registry.register(live_broker)
+
+    if live_broker is None:
+        raise HTTPException(404, f"OAuth broker '{broker_id}' not found or could not be loaded")
+
+    if not hasattr(live_broker, "create_connect_token"):
+        raise HTTPException(400, f"Broker type does not support reconnect links")
+
+    # Build callback URL — includes replace_account_id so the old account is
+    # cleaned up automatically after the new one is confirmed present
+    callback_params = {
+        "label": label,
+        "app": app_slug,
+        "external_user_id": external_user_id,
+        "replace_account_id": account_id,
+    }
+    if api_id:
+        callback_params["api_id"] = api_id
+    callback_path = f"/oauth-brokers/{broker_id}/connect-callback?{urllib.parse.urlencode(callback_params)}"
+    success_redirect_uri = build_absolute_url(request, callback_path)
+
+    try:
+        result = await live_broker.create_connect_token(
+            external_user_id,
+            success_redirect_uri=success_redirect_uri,
+        )
+    except Exception as exc:
+        raise HTTPException(502, f"Failed to create Pipedream Connect Token: {exc}")
+
+    connect_link_url = result["connect_link_url"]
+    if "&app=" not in connect_link_url:
+        connect_link_url = f"{connect_link_url}&app={app_slug}"
+
+    return {
+        "broker_id": broker_id,
+        "account_id": account_id,
+        "app": app_slug,
+        "label": label,
+        "connect_link_url": connect_link_url,
+        "expires_at": result["expires_at"],
+        "next_step": (
+            f"Visit connect_link_url to re-authorise {app_slug}. "
+            f"On success, the old account ({account_id}) will be replaced automatically."
+        ),
     }
 
 
