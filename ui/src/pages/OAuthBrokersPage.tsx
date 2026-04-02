@@ -472,7 +472,7 @@ function BrokerAccounts({ broker }: { broker: OAuthBroker }) {
 				<div className="space-y-1.5">
 					{accounts.map((acc) => (
 						<div
-							key={acc.api_host}
+							key={acc.account_id ?? acc.api_host}
 							className="border-border overflow-hidden rounded-lg border"
 						>
 							<div className="bg-background flex items-center gap-3 p-3 text-sm">
