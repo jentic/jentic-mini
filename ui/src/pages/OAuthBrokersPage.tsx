@@ -505,12 +505,6 @@ function BrokerAccounts({ broker }: { broker: OAuthBroker }) {
 										)}
 									</div>
 								</div>
-								<Badge
-									variant={acc.healthy ? 'success' : 'danger'}
-									className="text-[10px]"
-								>
-									{acc.healthy ? 'healthy' : 'unhealthy'}
-								</Badge>
 								<Button
 									variant="ghost"
 									size="sm"
