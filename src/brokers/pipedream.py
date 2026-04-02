@@ -511,17 +511,23 @@ class PipedreamOAuthBroker:
                     cred_id = f"pipedream-{account_id}-{host_slug}"
                     enc_account_id = vault.encrypt(account_id)
                     async with db.execute(
-                        "SELECT id FROM credentials WHERE id=?", (cred_id,)
+                        "SELECT id, label FROM credentials WHERE id=?", (cred_id,)
                     ) as cur:
-                        exists = await cur.fetchone()
+                        existing_row = await cur.fetchone()
 
-                    if exists:
-                        # Update label and value in case either changed
+                    if existing_row:
+                        # Preserve any label the user/agent has set explicitly via PATCH.
+                        # A pending label (from connect-link) intentionally overrides it;
+                        # otherwise keep the stored label rather than falling back to slug.
+                        # Use a local variable to avoid bleeding into the next host iteration.
+                        cred_label = label
+                        if app_slug not in pending and existing_row[1]:
+                            cred_label = existing_row[1]
                         await db.execute(
                             "UPDATE credentials SET label=?, encrypted_value=?, "
                             "api_id=?, auth_type='pipedream_oauth', "
                             "updated_at=unixepoch() WHERE id=?",
-                            (label, enc_account_id, api_host, cred_id),
+                            (cred_label, enc_account_id, api_host, cred_id),
                         )
                     else:
                         # env_var must be unique per (account_id, api_host) — include
