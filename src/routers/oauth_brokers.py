@@ -410,7 +410,7 @@ async def create_connect_link(broker_id: BrokerIdPath, body: ConnectLinkRequest,
 
     return {
         "broker_id": broker_id,
-        "external_user_id": body.external_user_id,
+        "external_user_id": external_user_id,
         "app": body.app,
         "connect_link_url": connect_link_url,
         "expires_at": result["expires_at"],
