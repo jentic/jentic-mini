@@ -15,12 +15,28 @@ describe('Badge', () => {
 			unmount();
 		}
 	});
+
+	it('applies custom className', () => {
+		render(<Badge className="my-custom">test</Badge>);
+		expect(screen.getByText('test').className).toContain('my-custom');
+	});
+
+	it('spreads additional HTML attributes', () => {
+		render(<Badge data-testid="badge-test">test</Badge>);
+		expect(screen.getByTestId('badge-test')).toBeInTheDocument();
+	});
 });
 
 describe('MethodBadge', () => {
 	it('renders the HTTP method in uppercase', () => {
 		render(<MethodBadge method="get" />);
 		expect(screen.getByText('GET')).toBeInTheDocument();
+	});
+
+	it.each(['GET', 'POST', 'PUT', 'PATCH', 'DELETE'])('renders %s correctly', (method) => {
+		const { unmount } = render(<MethodBadge method={method.toLowerCase()} />);
+		expect(screen.getByText(method)).toBeInTheDocument();
+		unmount();
 	});
 
 	it('shows "?" when method is null', () => {
@@ -31,6 +47,11 @@ describe('MethodBadge', () => {
 	it('shows "?" when method is undefined', () => {
 		render(<MethodBadge />);
 		expect(screen.getByText('?')).toBeInTheDocument();
+	});
+
+	it('uses fallback style for unknown methods', () => {
+		render(<MethodBadge method="OPTIONS" />);
+		expect(screen.getByText('OPTIONS')).toBeInTheDocument();
 	});
 });
 
@@ -48,5 +69,20 @@ describe('StatusBadge', () => {
 	it('returns null for zero status', () => {
 		const { container } = render(<StatusBadge status={0} />);
 		expect(container).toBeEmptyDOMElement();
+	});
+
+	it.each([
+		[200, 'success'],
+		[201, 'success'],
+		[299, 'success'],
+		[400, 'warning'],
+		[404, 'warning'],
+		[500, 'danger'],
+		[503, 'danger'],
+		[301, 'default'],
+	])('renders %i with correct variant', (status, _variant) => {
+		const { unmount } = render(<StatusBadge status={status} />);
+		expect(screen.getByText(String(status))).toBeInTheDocument();
+		unmount();
 	});
 });

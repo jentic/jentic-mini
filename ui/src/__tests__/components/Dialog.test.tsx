@@ -1,4 +1,5 @@
 import { render, screen, fireEvent } from '@testing-library/react';
+import axe from 'axe-core';
 import { Dialog } from '@/components/ui/Dialog';
 
 describe('Dialog', () => {
@@ -98,5 +99,15 @@ describe('Dialog', () => {
 		const titleId = dialog.getAttribute('aria-labelledby');
 		expect(titleId).toBeTruthy();
 		expect(document.getElementById(titleId!)).toHaveTextContent('My Title');
+	});
+
+	it('has no accessibility violations', async () => {
+		const { container } = render(
+			<Dialog open={true} onClose={vi.fn()} title="Accessible Dialog">
+				Dialog content
+			</Dialog>,
+		);
+		const results = await axe.run(container);
+		expect(results.violations).toEqual([]);
 	});
 });

@@ -1,4 +1,5 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import axe from 'axe-core';
 import { OneTimeKeyDisplay } from '@/components/ui/OneTimeKeyDisplay';
 
 let writeTextSpy: ReturnType<typeof vi.spyOn>;
@@ -47,5 +48,13 @@ describe('OneTimeKeyDisplay', () => {
 			<OneTimeKeyDisplay keyValue="key" onConfirm={vi.fn()} title="Toolkit Key Created" />,
 		);
 		expect(screen.getByText('Toolkit Key Created')).toBeInTheDocument();
+	});
+
+	it('has no accessibility violations', async () => {
+		const { container } = render(
+			<OneTimeKeyDisplay keyValue="jntc_test" onConfirm={vi.fn()} />,
+		);
+		const results = await axe.run(container);
+		expect(results.violations).toEqual([]);
 	});
 });

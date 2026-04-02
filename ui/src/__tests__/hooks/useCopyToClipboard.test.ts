@@ -43,4 +43,16 @@ describe('useCopyToClipboard', () => {
 		});
 		expect(result.current.copied).toBe(false);
 	});
+
+	it('keeps copied false when clipboard.writeText rejects', async () => {
+		writeTextSpy.mockRejectedValueOnce(new DOMException('Clipboard blocked'));
+
+		const { result } = renderHook(() => useCopyToClipboard());
+
+		await act(async () => {
+			await result.current.copy('fail').catch(() => {});
+		});
+
+		expect(result.current.copied).toBe(false);
+	});
 });

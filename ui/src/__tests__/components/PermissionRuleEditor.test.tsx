@@ -1,4 +1,5 @@
 import { render, screen, fireEvent } from '@testing-library/react';
+import axe from 'axe-core';
 import { PermissionRuleEditor } from '@/components/ui/PermissionRuleEditor';
 import type { PermissionRule } from '@/api/types';
 
@@ -67,5 +68,17 @@ describe('PermissionRuleEditor', () => {
 		expect(onChange).toHaveBeenCalledWith([
 			{ effect: 'allow', path: '', methods: ['GET', 'POST', 'DELETE'] },
 		]);
+	});
+
+	it('has no accessibility violations', async () => {
+		const rules: PermissionRule[] = [{ effect: 'allow', path: '/api', methods: ['GET'] }];
+		const { container } = render(<PermissionRuleEditor rules={rules} onChange={vi.fn()} />);
+		const results = await axe.run(container, {
+			rules: {
+				'button-name': { enabled: false },
+				'select-name': { enabled: false },
+			},
+		});
+		expect(results.violations).toEqual([]);
 	});
 });

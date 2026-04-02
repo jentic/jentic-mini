@@ -1,4 +1,5 @@
 import { render, screen, fireEvent } from '@testing-library/react';
+import axe from 'axe-core';
 import { Pagination } from '@/components/ui/Pagination';
 
 describe('Pagination', () => {
@@ -23,5 +24,23 @@ describe('Pagination', () => {
 	it('returns null when totalPages <= 0', () => {
 		const { container } = render(<Pagination page={1} totalPages={0} onPageChange={vi.fn()} />);
 		expect(container.firstChild).toBeNull();
+	});
+
+	it('disables next button on last page', () => {
+		render(<Pagination page={5} totalPages={5} onPageChange={vi.fn()} />);
+		expect(screen.getByRole('button', { name: /next/i })).toBeDisabled();
+		expect(screen.getByRole('button', { name: /previous/i })).not.toBeDisabled();
+	});
+
+	it('disables both buttons on single-page result', () => {
+		render(<Pagination page={1} totalPages={1} onPageChange={vi.fn()} />);
+		expect(screen.getByRole('button', { name: /previous/i })).toBeDisabled();
+		expect(screen.getByRole('button', { name: /next/i })).toBeDisabled();
+	});
+
+	it('has no accessibility violations', async () => {
+		const { container } = render(<Pagination page={2} totalPages={5} onPageChange={vi.fn()} />);
+		const results = await axe.run(container);
+		expect(results.violations).toEqual([]);
 	});
 });

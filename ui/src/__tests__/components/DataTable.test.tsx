@@ -1,4 +1,5 @@
 import { render, screen, fireEvent } from '@testing-library/react';
+import axe from 'axe-core';
 import { DataTable, Column } from '@/components/ui/DataTable';
 
 interface User {
@@ -63,5 +64,27 @@ describe('DataTable', () => {
 		];
 		render(<DataTable columns={cols} data={data} getRowKey={(r) => r.id} />);
 		expect(screen.getByText('ALICE')).toBeInTheDocument();
+	});
+
+	it('renders clickable rows with cursor-pointer class', () => {
+		const onRowClick = vi.fn();
+		render(
+			<DataTable
+				columns={columns}
+				data={data}
+				getRowKey={(r) => r.id}
+				onRowClick={onRowClick}
+			/>,
+		);
+		const row = screen.getByRole('cell', { name: 'Alice' }).closest('tr')!;
+		expect(row.className).toContain('cursor-pointer');
+	});
+
+	it('has no accessibility violations', async () => {
+		const { container } = render(
+			<DataTable columns={columns} data={data} getRowKey={(r) => r.id} />,
+		);
+		const results = await axe.run(container);
+		expect(results.violations).toEqual([]);
 	});
 });

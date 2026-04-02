@@ -5,6 +5,15 @@ describe('timeAgo', () => {
 		({ timeAgo } = await import('@/lib/time'));
 	});
 
+	beforeEach(() => {
+		vi.useFakeTimers();
+		vi.setSystemTime(new Date('2025-01-15T12:00:00Z'));
+	});
+
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+
 	it('returns empty string for falsy values', () => {
 		expect(timeAgo(null)).toBe('');
 		expect(timeAgo(undefined)).toBe('');

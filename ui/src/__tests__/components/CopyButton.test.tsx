@@ -1,4 +1,5 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import axe from 'axe-core';
 import { CopyButton } from '@/components/ui/CopyButton';
 
 let writeTextSpy: ReturnType<typeof vi.spyOn>;
@@ -27,5 +28,11 @@ describe('CopyButton', () => {
 		const button = screen.getByRole('button');
 		expect(button.querySelector('svg')).toBeTruthy();
 		expect(button.textContent).toBe('');
+	});
+
+	it('has no accessibility violations', async () => {
+		const { container } = render(<CopyButton value="test" label="Copy Key" />);
+		const results = await axe.run(container);
+		expect(results.violations).toEqual([]);
 	});
 });
