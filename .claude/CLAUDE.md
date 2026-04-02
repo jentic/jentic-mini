@@ -125,6 +125,14 @@ Shadcn-style owned components in `ui/src/components/ui/`. All components use `cn
 - **ESLint guardrails**: `no-restricted-syntax` errors prevent raw `<button>`, `<input>`, `<select>`, `<textarea>` in `src/pages/`
 - **Convention**: New page code must use UI library components, not raw HTML elements
 
+### Generated API client
+- **Source**: `ui/openapi.json` (static copy of `/openapi.json` from the running server)
+- **Generated files**: `ui/src/api/generated/` — do NOT edit manually (header says "do not edit")
+- **Manual wrapper**: `ui/src/api/client.ts` — thin wrapper around generated services
+- **Regenerate command**: `npx openapi-typescript-codegen --input openapi.json --output src/api/generated --client fetch --useOptions` (run from `ui/`)
+- **When to regenerate**: after adding/changing/removing backend endpoints, update `ui/openapi.json` first (`curl localhost:8900/openapi.json | python3 -m json.tool > ui/openapi.json`), then run the codegen
+- **`--useOptions` is required** — without it, method signatures change from named objects to positional params, breaking `api/client.ts`
+
 ### Build
 - **Build output**: `static/` at project root (gitignored, generated at build time)
 - **Static path resolution**: `src/main.py` resolves `STATIC_DIR` to `<project_root>/static/`. In Docker this is `/app/static/` (outside the `./src:/app/src` bind mount, so dev mounts don't hide built assets).

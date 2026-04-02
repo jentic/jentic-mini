@@ -18,4 +18,17 @@ export class MetaService {
             url: '/health',
         });
     }
+    /**
+     * Get Version
+     * Returns current version and latest GitHub release (cached 6 h).
+     * Set JENTIC_TELEMETRY=off to disable the outbound GitHub check.
+     * @returns any Successful Response
+     * @throws ApiError
+     */
+    public static getVersionVersionGet(): CancelablePromise<any> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/version',
+        });
+    }
 }

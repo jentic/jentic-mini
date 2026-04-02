@@ -7,6 +7,7 @@ import type { AccessRequestOut } from '../models/AccessRequestOut';
 import type { CredentialBindingOut } from '../models/CredentialBindingOut';
 import type { KeyCreate } from '../models/KeyCreate';
 import type { PermissionRule } from '../models/PermissionRule';
+import type { PermissionRuleOut } from '../models/PermissionRuleOut';
 import type { PermissionsPatch } from '../models/PermissionsPatch';
 import type { ToolkitCreate } from '../models/ToolkitCreate';
 import type { ToolkitCredentialAdd } from '../models/ToolkitCredentialAdd';
@@ -59,14 +60,14 @@ export class ToolkitsService {
      * Get toolkit — metadata, bound upstream API credentials, client API keys, and policy summary
      * Get toolkit with all inline context: metadata, bound upstream API credentials, client API key count, and policy summary.
      * The default toolkit implicitly contains ALL upstream API credentials — no explicit binding needed.
-     * @returns ToolkitOut Successful Response
+     * @returns any Toolkit detail — format controlled by Accept header.
      * @throws ApiError
      */
     public static getToolkitToolkitsToolkitIdGet({
         toolkitId,
     }: {
         toolkitId: string,
-    }): CancelablePromise<ToolkitOut> {
+    }): CancelablePromise<Record<string, any>> {
         return __request(OpenAPI, {
             method: 'GET',
             url: '/toolkits/{toolkit_id}',
@@ -119,284 +120,6 @@ export class ToolkitsService {
             path: {
                 'toolkit_id': toolkitId,
             },
-            errors: {
-                422: `Validation Error`,
-            },
-        });
-    }
-    /**
-     * Issue a new client API key for this toolkit
-     * Issues an additional client API key (tk_xxx) for this toolkit. Hand this key to the agent. Optionally restrict by IP (CIDR list). Returned once — not recoverable.
-     * @returns ToolkitKeyCreated Successful Response
-     * @throws ApiError
-     */
-    public static createToolkitKeyToolkitsToolkitIdKeysPost({
-        toolkitId,
-        requestBody,
-    }: {
-        toolkitId: string,
-        requestBody: KeyCreate,
-    }): CancelablePromise<ToolkitKeyCreated> {
-        return __request(OpenAPI, {
-            method: 'POST',
-            url: '/toolkits/{toolkit_id}/keys',
-            path: {
-                'toolkit_id': toolkitId,
-            },
-            body: requestBody,
-            mediaType: 'application/json',
-            errors: {
-                422: `Validation Error`,
-            },
-        });
-    }
-    /**
-     * List client API keys for this toolkit — metadata only, no secret values
-     * List all access keys for this toolkit.
-     *
-     * Active and revoked keys are shown (revoked keys have `revoked_at` set).
-     * The `api_key` value is never returned — only the key ID and metadata.
-     * @returns ToolkitKeyOut Successful Response
-     * @throws ApiError
-     */
-    public static listToolkitKeysToolkitsToolkitIdKeysGet({
-        toolkitId,
-    }: {
-        toolkitId: string,
-    }): CancelablePromise<Array<ToolkitKeyOut>> {
-        return __request(OpenAPI, {
-            method: 'GET',
-            url: '/toolkits/{toolkit_id}/keys',
-            path: {
-                'toolkit_id': toolkitId,
-            },
-            errors: {
-                422: `Validation Error`,
-            },
-        });
-    }
-    /**
-     * Update a client API key — rename or change IP restrictions
-     * Update label or IP restrictions on a client API key. Cannot change the key value itself.
-     * @returns ToolkitKeyOut Successful Response
-     * @throws ApiError
-     */
-    public static patchToolkitKeyToolkitsToolkitIdKeysKeyIdPatch({
-        toolkitId,
-        keyId,
-        requestBody,
-    }: {
-        toolkitId: string,
-        keyId: string,
-        requestBody: KeyCreate,
-    }): CancelablePromise<ToolkitKeyOut> {
-        return __request(OpenAPI, {
-            method: 'PATCH',
-            url: '/toolkits/{toolkit_id}/keys/{key_id}',
-            path: {
-                'toolkit_id': toolkitId,
-                'key_id': keyId,
-            },
-            body: requestBody,
-            mediaType: 'application/json',
-            errors: {
-                422: `Validation Error`,
-            },
-        });
-    }
-    /**
-     * Revoke a client API key
-     * Revoke a single access key.
-     *
-     * Other keys for this toolkit remain active. The revoked key immediately
-     * stops working — any agent using it will receive 401 on their next request.
-     * @returns void
-     * @throws ApiError
-     */
-    public static revokeToolkitKeyToolkitsToolkitIdKeysKeyIdDelete({
-        toolkitId,
-        keyId,
-    }: {
-        toolkitId: string,
-        keyId: string,
-    }): CancelablePromise<void> {
-        return __request(OpenAPI, {
-            method: 'DELETE',
-            url: '/toolkits/{toolkit_id}/keys/{key_id}',
-            path: {
-                'toolkit_id': toolkitId,
-                'key_id': keyId,
-            },
-            errors: {
-                422: `Validation Error`,
-            },
-        });
-    }
-    /**
-     * Bind an upstream API credential to this toolkit — enable broker injection
-     * Enrolls an existing upstream API credential in this toolkit. The broker automatically injects it into outbound calls for the API it's bound to, when the agent calls using this toolkit's client API key.
-     * @returns CredentialBindingOut Successful Response
-     * @throws ApiError
-     */
-    public static addCredentialToToolkitToolkitsToolkitIdCredentialsPost({
-        toolkitId,
-        requestBody,
-    }: {
-        toolkitId: string,
-        requestBody: ToolkitCredentialAdd,
-    }): CancelablePromise<CredentialBindingOut> {
-        return __request(OpenAPI, {
-            method: 'POST',
-            url: '/toolkits/{toolkit_id}/credentials',
-            path: {
-                'toolkit_id': toolkitId,
-            },
-            body: requestBody,
-            mediaType: 'application/json',
-            errors: {
-                422: `Validation Error`,
-            },
-        });
-    }
-    /**
-     * List upstream API credentials bound to this toolkit
-     * List upstream API credentials bound to this toolkit. Admin key only.
-     * @returns CredentialBindingOut Successful Response
-     * @throws ApiError
-     */
-    public static listToolkitCredentialsToolkitsToolkitIdCredentialsGet({
-        toolkitId,
-    }: {
-        toolkitId: string,
-    }): CancelablePromise<Array<CredentialBindingOut>> {
-        return __request(OpenAPI, {
-            method: 'GET',
-            url: '/toolkits/{toolkit_id}/credentials',
-            path: {
-                'toolkit_id': toolkitId,
-            },
-            errors: {
-                422: `Validation Error`,
-            },
-        });
-    }
-    /**
-     * Unbind an upstream API credential from this toolkit
-     * @returns void
-     * @throws ApiError
-     */
-    public static removeCredentialFromToolkitToolkitsToolkitIdCredentialsCredentialIdDelete({
-        toolkitId,
-        credentialId,
-    }: {
-        toolkitId: string,
-        credentialId: string,
-    }): CancelablePromise<void> {
-        return __request(OpenAPI, {
-            method: 'DELETE',
-            url: '/toolkits/{toolkit_id}/credentials/{credential_id}',
-            path: {
-                'toolkit_id': toolkitId,
-                'credential_id': credentialId,
-            },
-            errors: {
-                422: `Validation Error`,
-            },
-        });
-    }
-    /**
-     * Get the permission rules for a specific credential in this toolkit
-     * Returns all rules in evaluation order for this credential: agent-defined rules first,
-     * then the immutable system safety rules appended by the server. First match wins.
-     *
-     * Since rules are scoped to a single credential (which is bound to a specific API),
-     * path and operation patterns apply only to calls made using this credential.
-     * System rules are tagged `_system: true` — they cannot be removed.
-     * @returns PermissionRule Successful Response
-     * @throws ApiError
-     */
-    public static getCredentialPermissionsToolkitsToolkitIdCredentialsCredIdPermissionsGet({
-        toolkitId,
-        credId,
-    }: {
-        toolkitId: string,
-        credId: string,
-    }): CancelablePromise<Array<PermissionRule>> {
-        return __request(OpenAPI, {
-            method: 'GET',
-            url: '/toolkits/{toolkit_id}/credentials/{cred_id}/permissions',
-            path: {
-                'toolkit_id': toolkitId,
-                'cred_id': credId,
-            },
-            errors: {
-                422: `Validation Error`,
-            },
-        });
-    }
-    /**
-     * Replace permission rules for a specific credential
-     * Replaces the entire agent rule list for this credential.
-     * System safety rules are always appended server-side and cannot be removed.
-     * Use `PATCH` to add or remove individual rules without replacing the full list.
-     * @returns PermissionRule Successful Response
-     * @throws ApiError
-     */
-    public static setCredentialPermissionsToolkitsToolkitIdCredentialsCredIdPermissionsPut({
-        toolkitId,
-        credId,
-        requestBody,
-    }: {
-        toolkitId: string,
-        credId: string,
-        requestBody: Array<PermissionRule>,
-    }): CancelablePromise<Array<PermissionRule>> {
-        return __request(OpenAPI, {
-            method: 'PUT',
-            url: '/toolkits/{toolkit_id}/credentials/{cred_id}/permissions',
-            path: {
-                'toolkit_id': toolkitId,
-                'cred_id': credId,
-            },
-            body: requestBody,
-            mediaType: 'application/json',
-            errors: {
-                422: `Validation Error`,
-            },
-        });
-    }
-    /**
-     * Add or remove individual permission rules for a specific credential
-     * Incrementally update rules for this credential without replacing the full list.
-     *
-     * - `add`: rules appended (deduplicated)
-     * - `remove`: rules removed by exact match
-     *
-     * Example — unlock TTS writes for this credential:
-     * ```json
-     * {"add": [{"effect": "allow", "methods": ["POST"], "path": "text-to-speech"}]}
-     * ```
-     * @returns PermissionRule Successful Response
-     * @throws ApiError
-     */
-    public static patchCredentialPermissionsToolkitsToolkitIdCredentialsCredIdPermissionsPatch({
-        toolkitId,
-        credId,
-        requestBody,
-    }: {
-        toolkitId: string,
-        credId: string,
-        requestBody: PermissionsPatch,
-    }): CancelablePromise<Array<PermissionRule>> {
-        return __request(OpenAPI, {
-            method: 'PATCH',
-            url: '/toolkits/{toolkit_id}/credentials/{cred_id}/permissions',
-            path: {
-                'toolkit_id': toolkitId,
-                'cred_id': credId,
-            },
-            body: requestBody,
-            mediaType: 'application/json',
             errors: {
                 422: `Validation Error`,
             },
@@ -473,6 +196,107 @@ export class ToolkitsService {
         });
     }
     /**
+     * Bind an upstream API credential to this toolkit — enable broker injection
+     * Enrolls an existing upstream API credential in this toolkit. The broker automatically injects it into outbound calls for the API it's bound to, when the agent calls using this toolkit's client API key.
+     * @returns CredentialBindingOut Successful Response
+     * @throws ApiError
+     */
+    public static addCredentialToToolkitToolkitsToolkitIdCredentialsPost({
+        toolkitId,
+        requestBody,
+    }: {
+        toolkitId: string,
+        requestBody: ToolkitCredentialAdd,
+    }): CancelablePromise<CredentialBindingOut> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/toolkits/{toolkit_id}/credentials',
+            path: {
+                'toolkit_id': toolkitId,
+            },
+            body: requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: `Validation Error`,
+            },
+        });
+    }
+    /**
+     * List upstream API credentials bound to this toolkit
+     * List upstream API credentials bound to this toolkit.
+     * Admin (human session) may list any toolkit's credentials.
+     * Agents may list credentials for their own toolkit only.
+     * @returns CredentialBindingOut Successful Response
+     * @throws ApiError
+     */
+    public static listToolkitCredentialsToolkitsToolkitIdCredentialsGet({
+        toolkitId,
+    }: {
+        toolkitId: string,
+    }): CancelablePromise<Array<CredentialBindingOut>> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/toolkits/{toolkit_id}/credentials',
+            path: {
+                'toolkit_id': toolkitId,
+            },
+            errors: {
+                422: `Validation Error`,
+            },
+        });
+    }
+    /**
+     * Issue a new client API key for this toolkit
+     * Issues an additional client API key (tk_xxx) for this toolkit. Hand this key to the agent. Optionally restrict by IP (CIDR list). Returned once — not recoverable.
+     * @returns ToolkitKeyCreated Successful Response
+     * @throws ApiError
+     */
+    public static createToolkitKeyToolkitsToolkitIdKeysPost({
+        toolkitId,
+        requestBody,
+    }: {
+        toolkitId: string,
+        requestBody: KeyCreate,
+    }): CancelablePromise<ToolkitKeyCreated> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/toolkits/{toolkit_id}/keys',
+            path: {
+                'toolkit_id': toolkitId,
+            },
+            body: requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: `Validation Error`,
+            },
+        });
+    }
+    /**
+     * List client API keys for this toolkit — metadata only, no secret values
+     * List all access keys for this toolkit.
+     *
+     * Active and revoked keys are shown (revoked keys have `revoked_at` set).
+     * The `api_key` value is never returned — only the key ID and metadata.
+     * @returns any Successful Response
+     * @throws ApiError
+     */
+    public static listToolkitKeysToolkitsToolkitIdKeysGet({
+        toolkitId,
+    }: {
+        toolkitId: string,
+    }): CancelablePromise<any> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/toolkits/{toolkit_id}/keys',
+            path: {
+                'toolkit_id': toolkitId,
+            },
+            errors: {
+                422: `Validation Error`,
+            },
+        });
+    }
+    /**
      * Poll an access request — check approval status
      * Poll the status of a specific access request.
      *
@@ -498,6 +322,87 @@ export class ToolkitsService {
             path: {
                 'toolkit_id': toolkitId,
                 'req_id': reqId,
+            },
+            errors: {
+                422: `Validation Error`,
+            },
+        });
+    }
+    /**
+     * Unbind an upstream API credential from this toolkit
+     * @returns void
+     * @throws ApiError
+     */
+    public static removeCredentialFromToolkitToolkitsToolkitIdCredentialsCredentialIdDelete({
+        toolkitId,
+        credentialId,
+    }: {
+        toolkitId: string,
+        credentialId: string,
+    }): CancelablePromise<void> {
+        return __request(OpenAPI, {
+            method: 'DELETE',
+            url: '/toolkits/{toolkit_id}/credentials/{credential_id}',
+            path: {
+                'toolkit_id': toolkitId,
+                'credential_id': credentialId,
+            },
+            errors: {
+                422: `Validation Error`,
+            },
+        });
+    }
+    /**
+     * Update a client API key — rename or change IP restrictions
+     * Update label or IP restrictions on a client API key. Cannot change the key value itself.
+     * @returns ToolkitKeyOut Successful Response
+     * @throws ApiError
+     */
+    public static patchToolkitKeyToolkitsToolkitIdKeysKeyIdPatch({
+        toolkitId,
+        keyId,
+        requestBody,
+    }: {
+        toolkitId: string,
+        keyId: string,
+        requestBody: KeyCreate,
+    }): CancelablePromise<ToolkitKeyOut> {
+        return __request(OpenAPI, {
+            method: 'PATCH',
+            url: '/toolkits/{toolkit_id}/keys/{key_id}',
+            path: {
+                'toolkit_id': toolkitId,
+                'key_id': keyId,
+            },
+            body: requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: `Validation Error`,
+            },
+        });
+    }
+    /**
+     * Revoke a client API key
+     * Revoke a single access key.
+     *
+     * Other keys for this toolkit remain active. The revoked key immediately
+     * stops working — any agent using it will receive 401 on their next request.
+     * @returns void
+     * @throws ApiError
+     */
+    public static revokeToolkitKeyToolkitsToolkitIdKeysKeyIdDelete({
+        toolkitId,
+        keyId,
+    }: {
+        toolkitId: string,
+        keyId: string,
+    }): CancelablePromise<void> {
+        return __request(OpenAPI, {
+            method: 'DELETE',
+            url: '/toolkits/{toolkit_id}/keys/{key_id}',
+            path: {
+                'toolkit_id': toolkitId,
+                'key_id': keyId,
             },
             errors: {
                 422: `Validation Error`,
@@ -552,6 +457,104 @@ export class ToolkitsService {
                 'toolkit_id': toolkitId,
                 'req_id': reqId,
             },
+            errors: {
+                422: `Validation Error`,
+            },
+        });
+    }
+    /**
+     * Get the permission rules for a specific credential in this toolkit
+     * Returns all rules in evaluation order for this credential: agent-defined rules first,
+     * then the immutable system safety rules appended by the server. First match wins.
+     *
+     * Since rules are scoped to a single credential (which is bound to a specific API),
+     * path and operation patterns apply only to calls made using this credential.
+     * System rules are tagged `_system: true` — they cannot be removed.
+     * @returns PermissionRuleOut Successful Response
+     * @throws ApiError
+     */
+    public static getCredentialPermissionsToolkitsToolkitIdCredentialsCredIdPermissionsGet({
+        toolkitId,
+        credId,
+    }: {
+        toolkitId: string,
+        credId: string,
+    }): CancelablePromise<Array<PermissionRuleOut>> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/toolkits/{toolkit_id}/credentials/{cred_id}/permissions',
+            path: {
+                'toolkit_id': toolkitId,
+                'cred_id': credId,
+            },
+            errors: {
+                422: `Validation Error`,
+            },
+        });
+    }
+    /**
+     * Replace permission rules for a specific credential
+     * Replaces the entire agent rule list for this credential.
+     * System safety rules are always appended server-side and cannot be removed.
+     * Use `PATCH` to add or remove individual rules without replacing the full list.
+     * @returns PermissionRuleOut Successful Response
+     * @throws ApiError
+     */
+    public static setCredentialPermissionsToolkitsToolkitIdCredentialsCredIdPermissionsPut({
+        toolkitId,
+        credId,
+        requestBody,
+    }: {
+        toolkitId: string,
+        credId: string,
+        requestBody: Array<PermissionRule>,
+    }): CancelablePromise<Array<PermissionRuleOut>> {
+        return __request(OpenAPI, {
+            method: 'PUT',
+            url: '/toolkits/{toolkit_id}/credentials/{cred_id}/permissions',
+            path: {
+                'toolkit_id': toolkitId,
+                'cred_id': credId,
+            },
+            body: requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: `Validation Error`,
+            },
+        });
+    }
+    /**
+     * Add or remove individual permission rules for a specific credential
+     * Incrementally update rules for this credential without replacing the full list.
+     *
+     * - `add`: rules appended (deduplicated)
+     * - `remove`: rules removed by exact match
+     *
+     * Example — unlock TTS writes for this credential:
+     * ```json
+     * {"add": [{"effect": "allow", "methods": ["POST"], "path": "text-to-speech"}]}
+     * ```
+     * @returns PermissionRuleOut Successful Response
+     * @throws ApiError
+     */
+    public static patchCredentialPermissionsToolkitsToolkitIdCredentialsCredIdPermissionsPatch({
+        toolkitId,
+        credId,
+        requestBody,
+    }: {
+        toolkitId: string,
+        credId: string,
+        requestBody: PermissionsPatch,
+    }): CancelablePromise<Array<PermissionRuleOut>> {
+        return __request(OpenAPI, {
+            method: 'PATCH',
+            url: '/toolkits/{toolkit_id}/credentials/{cred_id}/permissions',
+            path: {
+                'toolkit_id': toolkitId,
+                'cred_id': credId,
+            },
+            body: requestBody,
+            mediaType: 'application/json',
             errors: {
                 422: `Validation Error`,
             },

@@ -41,12 +41,16 @@ import type { PermissionRule } from './PermissionRule';
              * Each `PermissionRule` object — all fields except `effect` are optional and AND-combined:
              * - `effect` *(required)*: `"allow"` or `"deny"`
              * - `methods`: list of HTTP verbs to match, e.g. `["GET", "POST"]` — omit to match all
-             * - `path`: Python regex, `re.search()` substring match, case-insensitive. `|` is OR. E.g. `"text-to-speech"` matches any path containing that string; `"admin|billing"` blocks both.
+             * - `path`: Python regex matched against the **path component only** of the upstream URL (host and query string are excluded). Uses `re.search()` — **substring match by default**, case-insensitive. Use `^`/`$` to anchor. `|` is regex OR.
+             * - Unanchored: `"issues"` matches any path *containing* the word — often too broad
+             * - Prefix: `"^/repos/myorg/myrepo/"` — everything under that path
+             * - Exact: `"^/v1/voices$"` — only that specific endpoint
+             * - **Tip:** always anchor with `^` when generating allow rules to avoid unintended matches
              * - `operations`: list of regexes matched against the operation ID
              *
              * **Examples:**
              * ```json
-             * [{"effect": "allow", "methods": ["POST"], "path": "text-to-speech"}]
+             * [{"effect": "allow", "methods": ["POST"], "path": "^/v1/text-to-speech$"}]
              * [{"effect": "deny",  "path": "admin|billing|pay"}]
              * [{"effect": "allow", "operations": ["^get_voices$", "^tts"]}]
              * ```
