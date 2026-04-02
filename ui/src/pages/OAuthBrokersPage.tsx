@@ -23,6 +23,7 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { ErrorAlert } from '@/components/ui/ErrorAlert';
 import { ConfirmInline } from '@/components/ui/ConfirmInline';
 import { AppLink } from '@/components/ui/AppLink';
+import { useAuth } from '@/hooks/useAuth';
 
 // ── Add Broker Form ──────────────────────────────────────────────
 
@@ -398,7 +399,11 @@ function BrokerAccounts({ broker }: { broker: OAuthBroker }) {
 	const [showConnect, setShowConnect] = useState(false);
 	const [confirmDeleteHost, setConfirmDeleteHost] = useState<string | null>(null);
 
-	const { data: accounts, isLoading } = useQuery({
+	const {
+		data: accounts,
+		isLoading,
+		isError: accountsError,
+	} = useQuery({
 		queryKey: ['oauth-broker-accounts', broker.id],
 		queryFn: () => oauthBrokers.accounts(broker.id, externalUserId),
 	});
@@ -457,7 +462,9 @@ function BrokerAccounts({ broker }: { broker: OAuthBroker }) {
 
 			{isLoading ? (
 				<p className="text-muted-foreground text-xs">Loading accounts...</p>
-			) : !accounts || accounts.length === 0 ? (
+			) : accountsError ? (
+				<p className="text-danger text-xs">Failed to load accounts.</p>
+			) : !Array.isArray(accounts) || accounts.length === 0 ? (
 				<p className="text-muted-foreground text-xs">
 					No connected accounts yet. Use Sync or Connect Account above.
 				</p>
@@ -641,15 +648,18 @@ function BrokerCard({ broker }: { broker: OAuthBroker }) {
 
 export default function OAuthBrokersPage() {
 	const [showAdd, setShowAdd] = useState(false);
+	const { user } = useAuth();
 
 	const {
-		data: brokers,
+		data: brokersRaw,
 		isLoading,
 		isError,
 	} = useQuery({
 		queryKey: ['oauth-brokers'],
 		queryFn: () => oauthBrokers.list(),
+		enabled: !!user?.logged_in,
 	});
+	const brokers = Array.isArray(brokersRaw) ? brokersRaw : [];
 
 	return (
 		<div className="max-w-5xl space-y-5">

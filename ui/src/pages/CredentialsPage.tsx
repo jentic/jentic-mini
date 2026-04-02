@@ -2,24 +2,30 @@ import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Key, Plus, Trash2, Settings } from 'lucide-react';
 import { api } from '@/api/client';
-import type { CredentialOut } from '@/api/types';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { ConfirmInline } from '@/components/ui/ConfirmInline';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { LoadingState } from '@/components/ui/LoadingState';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { ErrorAlert } from '@/components/ui/ErrorAlert';
+import { useAuth } from '@/hooks/useAuth';
 
 export default function CredentialsPage() {
 	const navigate = useNavigate();
 	const queryClient = useQueryClient();
+	const { user } = useAuth();
 
-	const { data: credentialsRaw, isLoading } = useQuery({
+	const {
+		data: credentialsRaw,
+		isLoading,
+		isError,
+	} = useQuery({
 		queryKey: ['credentials'],
 		queryFn: () => api.listCredentials(),
+		enabled: !!user?.logged_in,
 	});
-	const credentials =
-		(credentialsRaw as any)?.data ?? (credentialsRaw as CredentialOut[] | undefined) ?? [];
+	const credentials = Array.isArray(credentialsRaw) ? credentialsRaw : [];
 
 	const deleteMutation = useMutation({
 		mutationFn: (id: string) => api.deleteCredential(id),
@@ -37,14 +43,14 @@ export default function CredentialsPage() {
 					</Button>
 				}
 			/>
-
 			<div className="bg-muted border-border text-muted-foreground rounded-xl border p-4 text-sm">
 				Store API credentials securely. Bind them to toolkits to give agents scoped access
 				to external APIs. Values are write-only — they are never returned by the API.
 			</div>
-
 			{isLoading ? (
 				<LoadingState message="Loading credentials..." />
+			) : isError ? (
+				<ErrorAlert message="Failed to load credentials. Please try refreshing the page." />
 			) : !credentials || credentials.length === 0 ? (
 				<EmptyState
 					icon={<Key className="h-10 w-10 opacity-30" />}
@@ -58,7 +64,7 @@ export default function CredentialsPage() {
 				/>
 			) : (
 				<div className="space-y-2">
-					{(credentials as CredentialOut[]).map((cred) => (
+					{credentials.map((cred) => (
 						<div
 							key={cred.id}
 							className="bg-muted border-border flex items-center gap-3 rounded-xl border p-4"
