@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Key, Plus, Trash2, Settings, RotateCcw } from 'lucide-react';
+import { Key, Plus, Trash2, Settings, RotateCcw, ExternalLink } from 'lucide-react';
 import { api, oauthBrokers } from '@/api/client';
+import { AppLink } from '@/components/ui/AppLink';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { ConfirmInline } from '@/components/ui/ConfirmInline';
@@ -163,18 +164,23 @@ export default function CredentialsPage() {
 								</div>
 							</div>
 							{reconnectLink?.credId === cred.account_id && (
-								<div className="border-border bg-card mt-3 flex items-center gap-3 rounded-lg border p-3 text-sm">
-									<a
-										href={reconnectLink.url}
-										target="_blank"
-										rel="noopener noreferrer"
-										className="text-accent-blue underline"
-									>
-										Open Reconnect Link
-									</a>
-									<Button variant="secondary" size="sm" onClick={() => setReconnectLink(null)}>
-										Cancel
-									</Button>
+								<div className="bg-background border-primary/30 mt-3 space-y-3 border-t p-3 text-xs">
+									<p className="text-foreground font-medium">Re-authorise {cred.label}</p>
+									<p className="text-muted-foreground">
+										Click the link to complete OAuth. The old connection will be removed automatically once the new one is confirmed.
+									</p>
+									<div className="flex items-center gap-2">
+										<AppLink
+											href={reconnectLink.url}
+											className="bg-primary text-background hover:bg-primary/80 inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors"
+										>
+											<ExternalLink className="h-3.5 w-3.5" />
+											Open Reconnect Link
+										</AppLink>
+										<Button variant="ghost" size="sm" onClick={() => setReconnectLink(null)}>
+											Cancel
+										</Button>
+									</div>
 								</div>
 							)}
 						</div>
