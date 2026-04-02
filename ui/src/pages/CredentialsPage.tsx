@@ -94,15 +94,17 @@ export default function CredentialsPage() {
 								)}
 							</div>
 							<div className="flex items-center gap-2">
-								<Button
-									variant="secondary"
-									size="sm"
-									onClick={() =>
-										navigate(`/credentials/${encodeURIComponent(cred.id)}/edit`)
-									}
-								>
-									<Settings className="h-4 w-4" /> Edit
-								</Button>
+								{cred.auth_type !== 'pipedream_oauth' && (
+									<Button
+										variant="secondary"
+										size="sm"
+										onClick={() =>
+											navigate(`/credentials/${encodeURIComponent(cred.id)}/edit`)
+										}
+									>
+										<Settings className="h-4 w-4" /> Edit
+									</Button>
+								)}
 								<ConfirmInline
 									onConfirm={() => deleteMutation.mutate(cred.id)}
 									message="Delete this credential?"
