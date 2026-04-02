@@ -70,7 +70,7 @@ export default defineConfig({
 			'/docs': apiHost,
 			'/openapi.json': apiHost,
 			// Backend-only callback — must be proxied unconditionally (browser redirect from Pipedream)
-			'/oauth-brokers/': { target: apiHost, bypass: (req) => {
+			'/oauth-brokers': { target: apiHost, bypass: (req) => {
 				if (req.url?.includes('/connect-callback')) return null; // always proxy
 				return req.headers.accept?.includes('text/html') ? '/index.html' : null;
 			}},
