@@ -35,7 +35,7 @@ export class ToolkitsService {
      * Creates a toolkit: a named bundle of upstream API credentials with a scoped client API key for the agent.
      * Returns a toolkit API key (col_xxx) — shown once, not recoverable.
      * Bind credentials via POST /toolkits/{id}/credentials.
-     * Set access policy via PUT /toolkits/{id}/permissions.
+     * Set access policy via PUT /toolkits/{id}/credentials/{cred_id}/permissions.
      * Agents use toolkit keys to call the broker; only bound credentials are injected.
      * @returns ToolkitOut Successful Response
      * @throws ApiError
