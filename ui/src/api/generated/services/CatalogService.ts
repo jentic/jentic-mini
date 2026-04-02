@@ -9,273 +9,10 @@ import type { ImportRequest } from '../models/ImportRequest';
 import type { NoteCreate } from '../models/NoteCreate';
 import type { OperationListPage } from '../models/OperationListPage';
 import type { OverlaySubmit } from '../models/OverlaySubmit';
-import type { SchemeInput } from '../models/SchemeInput';
-import type { WorkflowOut } from '../models/WorkflowOut';
 import type { CancelablePromise } from '../core/CancelablePromise';
 import { OpenAPI } from '../core/OpenAPI';
 import { request as __request } from '../core/request';
 export class CatalogService {
-    /**
-     * List workflows — browse available multi-step Arazzo workflows
-     * Returns all registered workflows with slug, name, description, step count, and involved APIs. Use GET /inspect/{id} or GET /workflows/{slug} for full detail.
-     * @returns WorkflowOut Successful Response
-     * @throws ApiError
-     */
-    public static listWorkflowsWorkflowsGet(): CancelablePromise<Array<WorkflowOut>> {
-        return __request(OpenAPI, {
-            method: 'GET',
-            url: '/workflows',
-        });
-    }
-    /**
-     * Get workflow definition — Arazzo spec and input schema
-     * Returns the workflow definition with content negotiation:
-     * - application/json (default): Arazzo document
-     * - text/markdown: compact LLM-friendly summary with input schema and steps
-     * - text/html: human-readable summary
-     * - application/arazzo+json: same as application/json
-     * Execute via broker: POST /{jentic_host}/workflows/{slug}
-     * @returns any Workflow definition — format controlled by Accept header.
-     * @throws ApiError
-     */
-    public static getWorkflowWorkflowsSlugGet({
-        slug,
-    }: {
-        slug: string,
-    }): CancelablePromise<Record<string, any>> {
-        return __request(OpenAPI, {
-            method: 'GET',
-            url: '/workflows/{slug}',
-            path: {
-                'slug': slug,
-            },
-            errors: {
-                422: `Validation Error`,
-            },
-        });
-    }
-    /**
-     * Import an API spec or workflow — add to the searchable catalog
-     * Registers an OpenAPI spec or Arazzo workflow into the catalog and BM25 index.
-     * Source types: url (fetch from URL), upload (multipart file), inline (JSON body).
-     * For OpenAPI specs: parses operations, computes capability IDs, indexes descriptions.
-     * For Arazzo workflows: stores definition, extracts input schema and involved APIs.
-     * Returns the registered API or workflow with its canonical id.
-     * @returns ImportOut Successful Response
-     * @throws ApiError
-     */
-    public static importSourcesImportPost({
-        requestBody,
-    }: {
-        requestBody: ImportRequest,
-    }): CancelablePromise<ImportOut> {
-        return __request(OpenAPI, {
-            method: 'POST',
-            url: '/import',
-            body: requestBody,
-            mediaType: 'application/json',
-            errors: {
-                422: `Validation Error`,
-            },
-        });
-    }
-    /**
-     * Browse the Jentic public API catalog
-     * Browse and search the public Jentic API catalog (jentic/jentic-public-apis).
-     *
-     * Returns individual APIs including expanded sub-APIs for umbrella vendors
-     * (e.g. googleapis.com/gmail, googleapis.com/calendar, atlassian.com/jira).
-     * Results show `registered: true/false` to distinguish APIs already in your local
-     * registry from those available to use.
-     *
-     * To use a catalog API: call `POST /credentials` with its `api_id` — the spec
-     * is imported automatically. Manifest is auto-refreshed daily; force a refresh
-     * via `POST /catalog/refresh`.
-     * @returns any Successful Response
-     * @throws ApiError
-     */
-    public static listCatalogCatalogGet({
-        q,
-        limit = 50,
-        registeredOnly = false,
-        unregisteredOnly = false,
-    }: {
-        /**
-         * Filter by API name/domain, e.g. "stripe" or "slack"
-         */
-        q?: (string | null),
-        /**
-         * Max results
-         */
-        limit?: number,
-        /**
-         * Only show APIs already imported into your registry
-         */
-        registeredOnly?: boolean,
-        /**
-         * Only show APIs not yet in your registry
-         */
-        unregisteredOnly?: boolean,
-    }): CancelablePromise<any> {
-        return __request(OpenAPI, {
-            method: 'GET',
-            url: '/catalog',
-            query: {
-                'q': q,
-                'limit': limit,
-                'registered_only': registeredOnly,
-                'unregistered_only': unregisteredOnly,
-            },
-            errors: {
-                422: `Validation Error`,
-            },
-        });
-    }
-    /**
-     * Refresh the catalog manifest from GitHub
-     * Fetches the full recursive git tree from jentic/jentic-public-apis and builds
-     * a detailed manifest that correctly identifies individual APIs within umbrella vendors
-     * (e.g. googleapis.com expands to googleapis.com/gmail, googleapis.com/calendar, etc.).
-     *
-     * Takes ~2-5 seconds (two unauthenticated GitHub API calls). Safe to call repeatedly.
-     * Falls back to a shallow top-level listing if the tree response is truncated.
-     * @returns any Successful Response
-     * @throws ApiError
-     */
-    public static refreshCatalogCatalogRefreshPost(): CancelablePromise<any> {
-        return __request(OpenAPI, {
-            method: 'POST',
-            url: '/catalog/refresh',
-        });
-    }
-    /**
-     * Inspect a catalog entry
-     * Inspect a single catalog API entry. Shows registration status, GitHub link,
-     * and available spec files (fetched live from GitHub).
-     *
-     * Note: this makes a live GitHub API call to list the directory contents.
-     * @returns any Successful Response
-     * @throws ApiError
-     */
-    public static getCatalogEntryCatalogApiIdGet({
-        apiId,
-    }: {
-        apiId: string,
-    }): CancelablePromise<any> {
-        return __request(OpenAPI, {
-            method: 'GET',
-            url: '/catalog/{api_id}',
-            path: {
-                'api_id': apiId,
-            },
-            errors: {
-                422: `Validation Error`,
-            },
-        });
-    }
-    /**
-     * Declare auth scheme — teach Jentic how to authenticate with this API
-     * Registers a security scheme for an API that has missing or incorrect auth in its spec.
-     * Generates an OpenAPI overlay stored as pending; auto-confirmed when broker gets a 2xx.
-     * Supports: apiKey (header/query/cookie), bearer token, HTTP basic, OAuth2 client credentials, multiple headers.
-     * Returns generated_overlay, scheme_names, and next_steps for credential registration.
-     * Use this when the broker returns 'no security scheme found' for an API.
-     * @returns any Successful Response
-     * @throws ApiError
-     */
-    public static submitSchemeApisApiIdSchemePost({
-        apiId,
-        requestBody,
-    }: {
-        apiId: string,
-        requestBody: (SchemeInput | Array<SchemeInput>),
-    }): CancelablePromise<any> {
-        return __request(OpenAPI, {
-            method: 'POST',
-            url: '/apis/{api_id}/scheme',
-            path: {
-                'api_id': apiId,
-            },
-            body: requestBody,
-            mediaType: 'application/json',
-            errors: {
-                422: `Validation Error`,
-            },
-        });
-    }
-    /**
-     * Submit raw OpenAPI overlay — patch the spec directly
-     * Submit a raw OpenAPI overlay JSON to patch the stored spec for this API. Stored as pending; auto-confirmed on first successful broker call. Prefer POST /apis/{api_id}/scheme for structured auth registration.
-     * @returns any Successful Response
-     * @throws ApiError
-     */
-    public static submitOverlayApisApiIdOverlaysPost({
-        apiId,
-        requestBody,
-    }: {
-        apiId: string,
-        requestBody: OverlaySubmit,
-    }): CancelablePromise<any> {
-        return __request(OpenAPI, {
-            method: 'POST',
-            url: '/apis/{api_id}/overlays',
-            path: {
-                'api_id': apiId,
-            },
-            body: requestBody,
-            mediaType: 'application/json',
-            errors: {
-                422: `Validation Error`,
-            },
-        });
-    }
-    /**
-     * List overlays for an API
-     * List all overlays for an API.
-     * @returns any Successful Response
-     * @throws ApiError
-     */
-    public static listOverlaysApisApiIdOverlaysGet({
-        apiId,
-    }: {
-        apiId: string,
-    }): CancelablePromise<any> {
-        return __request(OpenAPI, {
-            method: 'GET',
-            url: '/apis/{api_id}/overlays',
-            path: {
-                'api_id': apiId,
-            },
-            errors: {
-                422: `Validation Error`,
-            },
-        });
-    }
-    /**
-     * Get Overlay
-     * Get a specific overlay including its full document.
-     * @returns any Successful Response
-     * @throws ApiError
-     */
-    public static getOverlayApisApiIdOverlaysOverlayIdGet({
-        apiId,
-        overlayId,
-    }: {
-        apiId: string,
-        overlayId: string,
-    }): CancelablePromise<any> {
-        return __request(OpenAPI, {
-            method: 'GET',
-            url: '/apis/{api_id}/overlays/{overlay_id}',
-            path: {
-                'api_id': apiId,
-                'overlay_id': overlayId,
-            },
-            errors: {
-                422: `Validation Error`,
-            },
-        });
-    }
     /**
      * List APIs — browse all available API providers (local and catalog)
      * Returns paginated list of API providers — both locally registered and from the Jentic public catalog.
@@ -328,9 +65,99 @@ export class CatalogService {
         });
     }
     /**
+     * Get API details — metadata, auth schemes, servers, and optional spec sections
+     * Returns API metadata enriched with selected OpenAPI spec sections.
+     *
+     * **Default response** (no `?sections=`) includes:
+     * - Summary fields: id, name, vendor, description, base_url, operation_count, overlay_count
+     * - `info` — title, version, contact, license, terms of service
+     * - `servers` — base URLs and variables (merged from spec + confirmed overlays)
+     * - `security_schemes` — security scheme definitions (merged from spec + confirmed overlays),
+     * plus `security_required` (global security requirements)
+     * - `credentials_configured` — list of auth_types that already have a credential bound.
+     * Use this to build a credential-setup UI: iterate `security_schemes`, check each key
+     * against `security_schemes` (each scheme has a `type` field) to determine which auth types need credentials.
+     * to fill in the required fields and POST to `/credentials`.
+     *
+     * **Credential setup flow:**
+     * 1. Call `GET /apis/{api_id}` — inspect `security_schemes` and `credentials_configured`
+     * 2. For each unconfigured scheme, determine required fields from the scheme type:
+     * - `http bearer` → `secret` (token)
+     * - `http basic` → `secret` (password) + optional `identity` (username)
+     * - `apiKey` → `secret` (key value); if compound, check scheme names for Secret/Identity
+     * 3. Prompt user for values, then `POST /credentials` with `api_id`, `auth_type`, `value` (and `identity` if needed).
+     * 4. Verify with `GET /credentials?api_id={api_id}`
+     *
+     * **Optional sections** (add via `?sections=`):
+     * - `tags` — tag objects with names and descriptions
+     * - `paths` — full paths object (can be very large — prefer GET /apis/{api_id}/operations)
+     * - `components` — all reusable component definitions (schemas, parameters, responses, etc.)
+     * - `webhooks` — OpenAPI 3.1 webhooks (if present)
+     *
+     * **Full spec download:** `GET /apis/{api_id}/openapi.json`
+     * @returns ApiOut API detail — format controlled by Accept header.
+     * @throws ApiError
+     */
+    public static getApiApisApiIdGet({
+        apiId,
+        sections,
+    }: {
+        apiId: string,
+        /**
+         * Comma-separated list of OpenAPI spec sections to include in the response. Valid values: components, info, paths, security, servers, tags, webhooks. Default (when omitted): info, security, servers. Large sections (paths, components, webhooks) must be requested explicitly. Use GET /apis/{api_id}/openapi.json to download the full merged spec.
+         */
+        sections?: (string | null),
+    }): CancelablePromise<ApiOut> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/apis/{api_id}',
+            path: {
+                'api_id': apiId,
+            },
+            query: {
+                'sections': sections,
+            },
+            errors: {
+                422: `Validation Error`,
+            },
+        });
+    }
+    /**
+     * Download merged OpenAPI spec — base spec with all confirmed overlays applied
+     * Returns the full merged OpenAPI spec for this API as a JSON download.
+     *
+     * All confirmed overlays are applied on top of the base spec using deep merge
+     * (overlay values win on conflict). Pending overlays are not included.
+     *
+     * Overlay actions with `target: "$"` are applied as root-level deep merges.
+     * Actions targeting specific paths or operations are listed in
+     * `x-jentic-unapplied-overlays` for transparency.
+     *
+     * For selective access to spec sections without downloading the full file,
+     * use `GET /apis/{api_id}?sections=info,servers,security,tags`.
+     * @returns any Successful Response
+     * @throws ApiError
+     */
+    public static getApiOpenapiApisApiIdOpenapiJsonGet({
+        apiId,
+    }: {
+        apiId: string,
+    }): CancelablePromise<any> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/apis/{api_id}/openapi.json',
+            path: {
+                'api_id': apiId,
+            },
+            errors: {
+                422: `Validation Error`,
+            },
+        });
+    }
+    /**
      * List operations for an API — enumerate all available actions
      * Returns paginated list of operations for the given API. Each item has capability id, summary, and description. Use GET /inspect/{id} for full schema.
-     * @returns OperationListPage Successful Response
+     * @returns OperationListPage Operation list — format controlled by Accept header.
      * @throws ApiError
      */
     public static listApiOperationsApisApiIdOperationsGet({
@@ -364,22 +191,186 @@ export class CatalogService {
         });
     }
     /**
-     * Get API summary — name, version, description, and stats
-     * Returns API metadata: title, version, description, base URL, vendor, and total operation count. Use GET /apis/{api_id}/operations to enumerate operations.
-     * @returns ApiOut Successful Response
+     * Submit an OpenAPI overlay — patch the stored spec for this API
+     * Submit an OpenAPI Overlay 1.0 document to patch the stored spec for this API.
+     *
+     * Overlays are additive and ordered — later overlays override matching keys from
+     * earlier ones via merge. A new overlay starts as **pending** and is
+     * auto-confirmed the first time a broker call for this API succeeds.
+     *
+     * See the `overlay` field schema for structure, common targets, and security
+     * scheme examples including compound apiKey schemes (Discourse-style).
+     * @returns any Successful Response
      * @throws ApiError
      */
-    public static getApiApisApiIdGet({
+    public static submitOverlayApisApiIdOverlaysPost({
         apiId,
+        requestBody,
     }: {
         apiId: string,
-    }): CancelablePromise<ApiOut> {
+        requestBody: OverlaySubmit,
+    }): CancelablePromise<any> {
         return __request(OpenAPI, {
-            method: 'GET',
-            url: '/apis/{api_id}',
+            method: 'POST',
+            url: '/apis/{api_id}/overlays',
             path: {
                 'api_id': apiId,
             },
+            body: requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: `Validation Error`,
+            },
+        });
+    }
+    /**
+     * List overlays for an API — returns full overlay documents
+     * Return all overlays for an API, each with its full overlay document included.
+     *
+     * Confirmed overlays are listed first, then pending, both ordered by creation date
+     * descending. Each overlay includes the complete OpenAPI Overlay 1.0 document so
+     * clients don't need a second call to inspect the overlay content.
+     * @returns any Successful Response
+     * @throws ApiError
+     */
+    public static listOverlaysApisApiIdOverlaysGet({
+        apiId,
+    }: {
+        apiId: string,
+    }): CancelablePromise<any> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/apis/{api_id}/overlays',
+            path: {
+                'api_id': apiId,
+            },
+            errors: {
+                422: `Validation Error`,
+            },
+        });
+    }
+    /**
+     * Delete an overlay
+     * Delete an overlay by ID. Works on both pending and confirmed overlays.
+     * @returns any Successful Response
+     * @throws ApiError
+     */
+    public static deleteOverlayApisApiIdOverlaysOverlayIdDelete({
+        apiId,
+        overlayId,
+    }: {
+        apiId: string,
+        overlayId: string,
+    }): CancelablePromise<any> {
+        return __request(OpenAPI, {
+            method: 'DELETE',
+            url: '/apis/{api_id}/overlays/{overlay_id}',
+            path: {
+                'api_id': apiId,
+                'overlay_id': overlayId,
+            },
+            errors: {
+                422: `Validation Error`,
+            },
+        });
+    }
+    /**
+     * List the public API catalog
+     * Returns entries from the cached public API catalog manifest.
+     * Use ``POST /catalog/refresh`` to sync from GitHub first if the list is empty.
+     * @returns any Successful Response
+     * @throws ApiError
+     */
+    public static listCatalogCatalogGet({
+        q,
+        limit = 50,
+        registeredOnly = false,
+        unregisteredOnly = false,
+    }: {
+        q?: (string | null),
+        limit?: number,
+        registeredOnly?: boolean,
+        unregisteredOnly?: boolean,
+    }): CancelablePromise<any> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/catalog',
+            query: {
+                'q': q,
+                'limit': limit,
+                'registered_only': registeredOnly,
+                'unregistered_only': unregisteredOnly,
+            },
+            errors: {
+                422: `Validation Error`,
+            },
+        });
+    }
+    /**
+     * Refresh the API catalog manifest from GitHub
+     * Rebuilds the internal catalog manifest from the jentic/jentic-public-apis repository.
+     * The manifest is used by lazy import — when you `POST /credentials` for an API not yet in
+     * your local registry, Jentic Mini resolves the spec from this manifest automatically.
+     *
+     * Takes ~2–5 seconds (two unauthenticated GitHub API calls). Safe to call repeatedly.
+     * The manifest auto-refreshes daily; only call this explicitly if you need immediate sync
+     * after a new API has been added to the public catalog.
+     * @returns any Successful Response
+     * @throws ApiError
+     */
+    public static refreshCatalogCatalogRefreshPost(): CancelablePromise<any> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/catalog/refresh',
+        });
+    }
+    /**
+     * Get a catalog entry with spec location
+     * Return details for a single catalog API, including the spec download URL.
+     *
+     * Use the returned `spec_url` with `POST /import` to import this API:
+     *
+     * POST /import
+     * {"sources": [{"type": "url", "url": "<spec_url>", "force_api_id": "<api_id>"}]}
+     * @returns any Successful Response
+     * @throws ApiError
+     */
+    public static getCatalogEntryCatalogApiIdGet({
+        apiId,
+    }: {
+        apiId: string,
+    }): CancelablePromise<any> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/catalog/{api_id}',
+            path: {
+                'api_id': apiId,
+            },
+            errors: {
+                422: `Validation Error`,
+            },
+        });
+    }
+    /**
+     * Import an API spec or workflow — add to the searchable catalog
+     * Registers an OpenAPI spec or Arazzo workflow into the catalog and BM25 index.
+     * Source types: url (fetch from URL), upload (multipart file), inline (JSON body).
+     * For OpenAPI specs: parses operations, computes capability IDs, indexes descriptions.
+     * For Arazzo workflows: stores definition, extracts input schema and involved APIs.
+     * Returns the registered API or workflow with its canonical id.
+     * @returns ImportOut Successful Response
+     * @throws ApiError
+     */
+    public static importSourcesImportPost({
+        requestBody,
+    }: {
+        requestBody: ImportRequest,
+    }): CancelablePromise<ImportOut> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/import',
+            body: requestBody,
+            mediaType: 'application/json',
             errors: {
                 422: `Validation Error`,
             },
@@ -448,6 +439,69 @@ export class CatalogService {
             url: '/notes/{note_id}',
             path: {
                 'note_id': noteId,
+            },
+            errors: {
+                422: `Validation Error`,
+            },
+        });
+    }
+    /**
+     * List workflows — browse available multi-step Arazzo workflows
+     * Returns registered workflows (source: local) plus available catalog workflow sources
+     * (source: catalog) — APIs in the Jentic public catalog that have associated workflows.
+     *
+     * Catalog entries show the API they belong to; add credentials to auto-import their workflows.
+     * Use ?source=local or ?source=catalog to filter. Default returns all.
+     * @returns any Successful Response
+     * @throws ApiError
+     */
+    public static listWorkflowsWorkflowsGet({
+        q,
+        source,
+    }: {
+        /**
+         * Filter by name or API, e.g. "stripe" or "oauth"
+         */
+        q?: (string | null),
+        /**
+         * Filter by source: "local" or "catalog"
+         */
+        source?: (string | null),
+    }): CancelablePromise<any> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/workflows',
+            query: {
+                'q': q,
+                'source': source,
+            },
+            errors: {
+                422: `Validation Error`,
+            },
+        });
+    }
+    /**
+     * Get workflow definition — Arazzo spec and input schema
+     * Returns the workflow definition with content negotiation:
+     * - application/json (default): workflow metadata with simplified step info
+     * - application/vnd.oai.workflows+json: raw Arazzo document as JSON
+     * - application/vnd.oai.workflows+yaml: raw Arazzo document as YAML
+     * - text/markdown: compact LLM-friendly summary with input schema and steps
+     * - text/html: human-readable HTML summary
+     * Execute via broker: POST /{jentic_host}/workflows/{slug}
+     * @returns any Workflow definition — format controlled by Accept header.
+     * @throws ApiError
+     */
+    public static getWorkflowWorkflowsSlugGet({
+        slug,
+    }: {
+        slug: string,
+    }): CancelablePromise<Record<string, any>> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/workflows/{slug}',
+            path: {
+                'slug': slug,
             },
             errors: {
                 422: `Validation Error`,

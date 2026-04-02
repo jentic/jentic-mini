@@ -44,4 +44,81 @@ export class InspectService {
             },
         });
     }
+    /**
+     * List registered OAuth brokers
+     * Return all registered OAuth brokers as a flat list. `client_secret` is never included.
+     *
+     * Accessible to both agents (toolkit key) and humans (session).
+     * @returns any Successful Response
+     * @throws ApiError
+     */
+    public static listOauthBrokersOauthBrokersGet(): CancelablePromise<any> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/oauth-brokers',
+        });
+    }
+    /**
+     * Get an OAuth broker
+     * @returns any Successful Response
+     * @throws ApiError
+     */
+    public static getOauthBrokerOauthBrokersBrokerIdGet({
+        brokerId,
+    }: {
+        /**
+         * The broker ID
+         */
+        brokerId: string,
+    }): CancelablePromise<any> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/oauth-brokers/{broker_id}',
+            path: {
+                'broker_id': brokerId,
+            },
+            errors: {
+                422: `Validation Error`,
+            },
+        });
+    }
+    /**
+     * List connected accounts for an OAuth broker
+     * List the OAuth-connected account mappings stored for this broker.
+     *
+     * Each entry represents a SaaS app the user has connected via Pipedream's OAuth
+     * UI, along with the API host it maps to and the Pipedream `account_id` used when
+     * routing requests through the proxy.
+     *
+     * Use `POST /oauth-brokers/{id}/sync` to refresh this list from Pipedream.
+     * @returns any Successful Response
+     * @throws ApiError
+     */
+    public static listBrokerAccountsOauthBrokersBrokerIdAccountsGet({
+        brokerId,
+        externalUserId,
+    }: {
+        /**
+         * The broker ID
+         */
+        brokerId: string,
+        /**
+         * Filter by external user ID
+         */
+        externalUserId?: (string | null),
+    }): CancelablePromise<any> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/oauth-brokers/{broker_id}/accounts',
+            path: {
+                'broker_id': brokerId,
+            },
+            query: {
+                'external_user_id': externalUserId,
+            },
+            errors: {
+                422: `Validation Error`,
+            },
+        });
+    }
 }

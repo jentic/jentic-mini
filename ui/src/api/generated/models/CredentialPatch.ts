@@ -5,7 +5,11 @@
 export type CredentialPatch = {
     label?: (string | null);
     value?: (string | null);
+    identity?: (string | null);
     api_id?: (string | null);
-    scheme_name?: (string | null);
+    /**
+     * Update the auth type for this credential. See `POST /credentials` for valid values and semantics.
+     */
+    auth_type?: ('bearer' | 'basic' | 'apiKey' | null);
 };
 

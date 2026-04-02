@@ -28,8 +28,6 @@ export const api = {
 	getCatalogEntry: (apiId: string) => fetchJson<any>(`/catalog/${apiId}`),
 	listOperations: (apiId: string, page = 1, limit = 50) =>
 		CatalogService.listApiOperationsApisApiIdOperationsGet({ apiId, page, limit }),
-	declareScheme: (apiId: string, body: any) =>
-		CatalogService.submitSchemeApisApiIdSchemePost({ apiId, requestBody: body }),
 	listOverlays: (apiId: string) => CatalogService.listOverlaysApisApiIdOverlaysGet({ apiId }),
 	submitOverlay: (apiId: string, overlay: any, contributedBy?: string) =>
 		CatalogService.submitOverlayApisApiIdOverlaysPost({
@@ -47,7 +45,7 @@ export const api = {
 		}),
 	refreshCatalog: () => CatalogService.refreshCatalogCatalogRefreshPost(),
 	importFromCatalog: (apiId: string) => CatalogService.getCatalogEntryCatalogApiIdGet({ apiId }),
-	listWorkflows: () => CatalogService.listWorkflowsWorkflowsGet(),
+	listWorkflows: () => CatalogService.listWorkflowsWorkflowsGet({}),
 	getWorkflow: (slug: string) => CatalogService.getWorkflowWorkflowsSlugGet({ slug }),
 	addNote: (resource: string, note: string, type?: string) =>
 		CatalogService.createNoteNotesPost({ requestBody: { resource, note, type: type ?? null } }),

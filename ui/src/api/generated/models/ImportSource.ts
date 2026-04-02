@@ -8,5 +8,6 @@ export type ImportSource = {
     url?: (string | null);
     filename?: (string | null);
     content?: (string | null);
+    force_api_id?: (string | null);
 };
 
