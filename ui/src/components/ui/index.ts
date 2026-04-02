@@ -10,6 +10,7 @@ export { Dialog } from './Dialog';
 export { EmptyState } from './EmptyState';
 export { PageHeader } from './PageHeader';
 export { ErrorAlert } from './ErrorAlert';
+export { ErrorBoundary } from './ErrorBoundary';
 export { LoadingState } from './LoadingState';
 export { BackButton } from './BackButton';
 export { CopyButton } from './CopyButton';

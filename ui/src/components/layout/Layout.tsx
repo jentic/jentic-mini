@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { JenticLogo } from '@/components/ui/Logo';
+import { ErrorBoundary } from '@/components/ui/ErrorBoundary';
 import { useAuth } from '@/hooks/useAuth';
 import { usePendingRequests } from '@/hooks/usePendingRequests';
 import { useUpdateCheck } from '@/hooks/useUpdateCheck';
@@ -182,6 +183,7 @@ export function Layout() {
 	const { user } = useAuth();
 	const { data: pendingRequests } = usePendingRequests();
 	const queryClient = useQueryClient();
+	const location = useLocation();
 
 	const logoutMutation = useMutation({
 		mutationFn: () => UserService.logoutUserLogoutPost(),
@@ -259,7 +261,9 @@ export function Layout() {
 				</header>
 
 				<div className="flex-1 overflow-y-auto p-4 md:p-6">
-					<Outlet />
+					<ErrorBoundary resetKey={location.pathname}>
+						<Outlet />
+					</ErrorBoundary>
 				</div>
 			</main>
 		</div>
