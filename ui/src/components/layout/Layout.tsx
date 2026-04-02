@@ -17,6 +17,7 @@ import {
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { JenticLogo } from '@/components/ui/Logo';
 import { ErrorBoundary } from '@/components/ui/ErrorBoundary';
+import { Button } from '@/components/ui/Button';
 import { useAuth } from '@/hooks/useAuth';
 import { usePendingRequests } from '@/hooks/usePendingRequests';
 import { useUpdateCheck } from '@/hooks/useUpdateCheck';
@@ -60,14 +61,15 @@ function SidebarContents({ onClose }: { onClose?: () => void }) {
 			<div className="border-border flex h-16 shrink-0 items-center border-b px-6">
 				<JenticLogo />
 				{onClose && (
-					<button
-						type="button"
+					<Button
+						variant="ghost"
+						size="icon"
+						className="ml-auto"
 						onClick={onClose}
-						className="hover:bg-muted-foreground/20 ml-auto rounded p-1.5 transition-colors"
 						aria-label="Close navigation"
 					>
 						<X className="h-5 w-5" />
-					</button>
+					</Button>
 				)}
 			</div>
 
@@ -153,6 +155,7 @@ function SidebarContents({ onClose }: { onClose?: () => void }) {
 						Update available: {latestVersion}
 					</a>
 				)}
+				{/* eslint-disable no-restricted-syntax -- external link to API docs server, not a client route */}
 				<a
 					href="/docs"
 					target="_blank"
@@ -164,6 +167,7 @@ function SidebarContents({ onClose }: { onClose?: () => void }) {
 					<BookOpen className="h-4 w-4" />
 					<span className="font-semibold">API</span>
 				</a>
+				{/* eslint-enable no-restricted-syntax */}
 				<a
 					href="https://jentic.com"
 					target="_blank"
@@ -221,14 +225,15 @@ export function Layout() {
 				<header className="border-border bg-background/80 flex h-16 shrink-0 items-center justify-between border-b px-4 backdrop-blur md:px-6">
 					<div className="flex items-center gap-3">
 						{/* Hamburger — mobile only */}
-						<button
-							type="button"
-							className="hover:bg-muted rounded-md p-2 transition-colors md:hidden"
+						<Button
+							variant="ghost"
+							size="icon"
+							className="md:hidden"
 							onClick={() => setSidebarOpen(true)}
 							aria-label="Open navigation"
 						>
 							<Menu className="h-5 w-5" />
-						</button>
+						</Button>
 						{/* Logo in header — mobile only (desktop has it in sidebar) */}
 						<div className="md:hidden">
 							<JenticLogo />
@@ -249,14 +254,14 @@ export function Layout() {
 						<div className="text-muted-foreground hidden font-mono text-sm sm:block">
 							{user?.username}
 						</div>
-						<button
-							type="button"
+						<Button
+							variant="ghost"
+							size="sm"
 							onClick={() => logoutMutation.mutate()}
-							className="text-muted-foreground hover:text-primary text-sm transition-colors"
 							title="Log out"
 						>
 							Logout
-						</button>
+						</Button>
 					</div>
 				</header>
 

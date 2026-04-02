@@ -125,9 +125,9 @@ export default defineConfig(
 		},
 	},
 
-	// ─── Page files — enforce UI component library usage ────────────────
+	// ─── App shell & page files — enforce UI component library usage ────
 	{
-		files: ['src/pages/**/*.{ts,tsx}'],
+		files: ['src/pages/**/*.{ts,tsx}', 'src/components/layout/**/*.{ts,tsx}'],
 		rules: {
 			'no-restricted-syntax': [
 				'error',
