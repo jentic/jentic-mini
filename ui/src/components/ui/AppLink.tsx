@@ -7,18 +7,27 @@ type AppLinkProps = Omit<React.AnchorHTMLAttributes<HTMLAnchorElement>, 'href'> 
 	};
 
 const EXTERNAL_RE = /^([a-z][a-z0-9+.-]*:|\/\/)/i;
+const UNSAFE_RE = /^(javascript|data|vbscript):/i;
 
 function isExternalHref(href: string): boolean {
 	return EXTERNAL_RE.test(href);
 }
 
-export function AppLink({ href, external, children, ...props }: AppLinkProps) {
+export function AppLink({ href, external, target, rel, children, ...props }: AppLinkProps) {
+	if (UNSAFE_RE.test(href)) {
+		return (
+			<span {...props} role="link" aria-disabled="true">
+				{children}
+			</span>
+		);
+	}
+
 	if (external || isExternalHref(href)) {
 		return (
 			<a
 				href={href}
-				target={props.target ?? '_blank'}
-				rel={props.rel ?? 'noopener noreferrer'}
+				target={target ?? '_blank'}
+				rel={rel ?? 'noopener noreferrer'}
 				{...props}
 			>
 				{children}

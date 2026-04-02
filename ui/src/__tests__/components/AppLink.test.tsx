@@ -168,6 +168,25 @@ describe('AppLink', () => {
 		});
 	});
 
+	describe('XSS protection', () => {
+		it.each([
+			'javascript:alert(1)',
+			'data:text/html,<script>alert(1)</script>',
+			'vbscript:MsgBox',
+		])('blocks dangerous scheme %s', (href) => {
+			renderLink(<AppLink href={href}>Trap</AppLink>);
+			const el = screen.getByText('Trap');
+			expect(el.tagName).toBe('SPAN');
+			expect(el).not.toHaveAttribute('href');
+			expect(el).toHaveAttribute('aria-disabled', 'true');
+		});
+
+		it('blocks javascript: with mixed case', () => {
+			renderLink(<AppLink href="JavaScript:void(0)">Trap</AppLink>);
+			expect(screen.getByText('Trap').tagName).toBe('SPAN');
+		});
+	});
+
 	describe('accessibility', () => {
 		it('internal link has no a11y violations', async () => {
 			const { container } = renderLink(<AppLink href="/dashboard">Dashboard</AppLink>);
