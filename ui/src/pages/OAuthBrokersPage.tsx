@@ -397,7 +397,7 @@ function BrokerAccounts({ broker }: { broker: OAuthBroker }) {
 	const queryClient = useQueryClient();
 	const externalUserId = broker.config?.default_external_user_id ?? 'default';
 	const [showConnect, setShowConnect] = useState(false);
-	const [confirmDeleteHost, setConfirmDeleteHost] = useState<string | null>(null);
+	const [confirmDeleteAccount, setConfirmDeleteAccount] = useState<string | null>(null);
 
 	const {
 		data: accounts,
@@ -419,7 +419,7 @@ function BrokerAccounts({ broker }: { broker: OAuthBroker }) {
 		mutationFn: (apiHost: string) =>
 			oauthBrokers.deleteAccount(broker.id, apiHost, externalUserId),
 		onSuccess: () => {
-			setConfirmDeleteHost(null);
+			setConfirmDeleteAccount(null);
 			queryClient.invalidateQueries({ queryKey: ['oauth-broker-accounts', broker.id] });
 		},
 	});
@@ -515,14 +515,14 @@ function BrokerAccounts({ broker }: { broker: OAuthBroker }) {
 									variant="ghost"
 									size="sm"
 									className="text-destructive hover:text-destructive shrink-0"
-									onClick={() => setConfirmDeleteHost(acc.api_host)}
+									onClick={() => setConfirmDeleteAccount(acc.account_id ?? acc.api_host)}
 									aria-label="Remove account"
 								>
 									<Trash2 className="h-3.5 w-3.5" />
 								</Button>
 							</div>
 
-							{confirmDeleteHost === acc.api_host && (
+							{confirmDeleteAccount === (acc.account_id ?? acc.api_host) && (
 								<div className="bg-destructive/5 border-border space-y-2 border-t px-3 pt-1 pb-3 text-xs">
 									<p className="text-destructive font-medium">
 										Remove this connection?
@@ -558,7 +558,7 @@ function BrokerAccounts({ broker }: { broker: OAuthBroker }) {
 										<Button
 											variant="ghost"
 											size="sm"
-											onClick={() => setConfirmDeleteHost(null)}
+											onClick={() => setConfirmDeleteAccount(null)}
 										>
 											Cancel
 										</Button>
