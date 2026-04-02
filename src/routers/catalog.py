@@ -74,41 +74,6 @@ def _save_workflow_manifest(entries: list[dict]) -> None:
     WORKFLOW_MANIFEST_PATH.write_text(json.dumps(entries, indent=2))
 
 
-def _build_workflow_manifest_from_tree(tree_entries: list[dict]) -> list[dict]:
-    """Build the workflow manifest from a full recursive git tree.
-
-    Workflow dirs are at workflows/<source_id>/ where source_id uses:
-      - plain domain: workflows/stripe.com/
-      - sub-api with ~: workflows/atlassian.com~jira/
-      - multi-api with +: workflows/vendorA.com+vendorB.com/ (rare)
-
-    Each entry maps source_id → api_id (replacing first ~ with /).
-    """
-    prefix = "workflows/"
-    manifest: list[dict] = []
-    seen: set[str] = set()
-    for entry in tree_entries:
-        if entry.get("type") != "tree":
-            continue
-        path = entry["path"]
-        if not path.startswith(prefix):
-            continue
-        rel = path[len(prefix):]
-        # Only top-level dirs (no nested slash)
-        if "/" in rel:
-            continue
-        source_id = rel
-        if source_id in seen:
-            continue
-        seen.add(source_id)
-        # Convert source_id → api_id: first ~ becomes /
-        api_id = source_id.replace("~", "/", 1)
-        manifest.append({
-            "source_id": source_id,
-            "path": path,
-            "api_id": api_id,
-        })
-    return sorted(manifest, key=lambda e: e["source_id"])
 
 
 def _fetch_github_dir(path: str) -> list[dict]:
@@ -338,101 +303,56 @@ async def lazy_import_catalog_workflows(api_id: str) -> list[str]:
     return imported_slugs
 
 
-# ── Tree-based manifest builder ───────────────────────────────────────────────
+# ── Catalog manifest builder (apis.json + GitHub Contents API) ────────────────
 
-_VERSION_BRANCH_RE = re.compile(r"^(main|master|latest|heads|v\d|[0-9])", re.IGNORECASE)
+_APIS_JSON_URL = f"https://raw.githubusercontent.com/{GITHUB_REPO}/main/{CATALOG_PATH}/apis.json"
+_VERSION_SUBDIR_RE = re.compile(r"^(main|master|latest|heads|v\d|[0-9])", re.IGNORECASE)
 
 
-def _fetch_full_tree() -> list[dict] | None:
-    """Fetch the full recursive git tree for the repo in a single API call.
+def _build_manifest_from_apis_json() -> list[dict] | None:
+    """Build the catalog manifest from the curated apis.json index file.
 
-    Returns the list of tree entries, or None if the response was truncated
-    (fallback to shallow approach in that case).
+    Returns a list of manifest entries, or None if the fetch fails.
+    This is the preferred method — a single HTTP fetch with no truncation
+    and full umbrella vendor expansion.
     """
-    url = f"{GITHUB_API_BASE}/repos/{GITHUB_REPO}/git/trees/main?recursive=1"
-    req = urllib.request.Request(
-        url,
-        headers={
-            "User-Agent": "Jentic-Mini/0.2",
-            "Accept": "application/vnd.github.v3+json",
-        },
-    )
-    with urllib.request.urlopen(req, timeout=90) as resp:
-        data = json.loads(resp.read())
-    if data.get("truncated"):
-        log.warning("GitHub tree API response truncated — falling back to shallow manifest")
+    try:
+        req = urllib.request.Request(
+            _APIS_JSON_URL,
+            headers={"User-Agent": "Jentic-Mini/0.2"},
+        )
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            data = json.loads(resp.read())
+    except Exception as exc:
+        log.warning("Failed to fetch apis.json: %s", exc)
         return None
-    return data.get("tree", [])
 
-
-def _build_api_manifest_from_tree(tree_entries: list[dict]) -> list[dict]:
-    """Build a detailed catalog manifest from a full recursive git tree.
-
-    Detects umbrella vendors (e.g. googleapis.com, atlassian.com) whose
-    immediate subdirectories are product/API names rather than version branches,
-    and expands them to individual sub-API entries.
-
-    Heuristic: a top-level directory is a leaf API if ANY of its first-level
-    children matches a version/branch pattern (main, master, v1, 1.0, etc.).
-    Otherwise it's an umbrella vendor — expand each child as a separate api_id.
-    """
-    prefix = "apis/openapi/"
-
-    # Build a mapping: top-level domain → set of immediate child dir names
-    top_level: dict[str, set[str]] = {}
-    top_level_sha: dict[str, str] = {}
-
-    for entry in tree_entries:
-        if entry.get("type") != "tree":
-            continue
-        path = entry["path"]
-        if not path.startswith(prefix):
-            continue
-        rel = path[len(prefix):]
-        parts = rel.split("/")
-        if len(parts) == 1:
-            domain = parts[0]
-            if domain not in top_level:
-                top_level[domain] = set()
-                top_level_sha[domain] = entry.get("sha", "")
-        elif len(parts) == 2:
-            domain, child = parts
-            if domain in top_level:
-                top_level[domain].add(child)
+    includes = data.get("include", [])
+    if not includes:
+        log.warning("apis.json has no include entries")
+        return None
 
     manifest: list[dict] = []
-    for domain in sorted(top_level.keys()):
-        children = top_level[domain]
-        if not children:
-            # Empty dir — skip
+    seen: set[str] = set()
+    for entry in includes:
+        url = entry.get("url", "")
+        # Extract api_id from URL: .../apis/openapi/{domain}/{sub}/{version}/apis.json
+        m = re.search(r"/apis/openapi/([^/]+)/([^/]+)/([^/]+)/apis\.json", url)
+        if not m:
             continue
-        if any(_VERSION_BRANCH_RE.match(c) for c in children):
-            # Leaf API: the domain IS the api_id
-            manifest.append({
-                "api_id": domain,
-                "path": f"{prefix}{domain}",
-                "sha": top_level_sha.get(domain, ""),
-            })
+        domain, sub, _version = m.groups()
+        if _VERSION_SUBDIR_RE.match(sub):
+            api_id = domain
         else:
-            # Umbrella vendor: expand to sub-APIs
-            for sub in sorted(children):
-                manifest.append({
-                    "api_id": f"{domain}/{sub}",
-                    "path": f"{prefix}{domain}/{sub}",
-                    "sha": "",  # sha for sub-dir not easily available here
-                })
+            api_id = f"{domain}/{sub}"
+        # Deduplicate (multiple versions of the same API)
+        if api_id in seen:
+            continue
+        seen.add(api_id)
+        path = f"{CATALOG_PATH}/{domain}/{sub}" if sub != domain else f"{CATALOG_PATH}/{domain}"
+        manifest.append({"api_id": api_id, "path": path, "sha": ""})
 
     return manifest
-
-
-def _build_manifest_shallow() -> list[dict]:
-    """Fallback: build manifest from top-level directory listing only (no umbrella expansion)."""
-    items = _fetch_github_dir(CATALOG_PATH)
-    return [
-        {"api_id": i["name"], "path": i["path"], "sha": i.get("sha", "")}
-        for i in items
-        if i.get("type") == "dir"
-    ]
 
 
 # ── Startup helper (called from lifespan) ────────────────────────────────────
@@ -441,22 +361,35 @@ async def refresh_catalog_if_stale() -> None:
     """Auto-refresh both API and workflow manifests on startup if absent or stale."""
     age = _manifest_age_seconds()
     if age is None or age > MANIFEST_MAX_AGE_SECONDS:
-        log.info("Catalog manifest stale or absent — fetching from GitHub (tree API)")
+        log.info("Catalog manifest stale or absent — refreshing from GitHub")
         try:
-            tree = _fetch_full_tree()
-            if tree is not None:
-                api_entries = _build_api_manifest_from_tree(tree)
-                wf_entries = _build_workflow_manifest_from_tree(tree)
-                method = "tree"
+            # API manifest from curated apis.json index (single fetch, no truncation)
+            api_entries = _build_manifest_from_apis_json()
+
+            # Workflow manifest from GitHub Contents API (single call)
+            try:
+                wf_items = _fetch_github_dir(WORKFLOWS_CATALOG_PATH)
+                wf_entries = sorted([
+                    {
+                        "source_id": i["name"],
+                        "path": i["path"],
+                        "api_id": i["name"].replace("~", "/", 1),
+                    }
+                    for i in wf_items
+                    if i.get("type") == "dir"
+                ], key=lambda e: e["source_id"])
+            except Exception as wf_exc:
+                log.warning("Workflow manifest fetch failed — keeping previous: %s", wf_exc)
+                wf_entries = None
+            if api_entries is None:
+                log.warning("apis.json fetch failed — keeping previous API manifest")
             else:
-                api_entries = _build_manifest_shallow()
-                wf_entries = []
-                method = "shallow_fallback"
-            _save_manifest(api_entries)
-            _save_workflow_manifest(wf_entries)
+                _save_manifest(sorted(api_entries, key=lambda e: e["api_id"]))
+            if wf_entries is not None:
+                _save_workflow_manifest(wf_entries)
             log.info(
-                "Manifests refreshed via %s: %d API entries, %d workflow sources",
-                method, len(api_entries), len(wf_entries),
+                "Manifests refreshed: %s API entries, %d workflow sources",
+                len(api_entries) if api_entries else "unchanged", len(wf_entries),
             )
         except Exception as e:
             log.warning("Catalog manifest refresh failed (non-fatal): %s", e)
@@ -618,35 +551,41 @@ async def refresh_catalog():
     The manifest is used by lazy import — when you `POST /credentials` for an API not yet in
     your local registry, Jentic Mini resolves the spec from this manifest automatically.
 
-    Takes ~2–5 seconds (two unauthenticated GitHub API calls). Safe to call repeatedly.
+    Fetches the curated apis.json index and the workflows directory listing
+    (two unauthenticated HTTP requests). Safe to call repeatedly.
     The manifest auto-refreshes daily; only call this explicitly if you need immediate sync
     after a new API has been added to the public catalog.
     """
     try:
-        tree = _fetch_full_tree()
-        if tree is not None:
-            api_entries = _build_api_manifest_from_tree(tree)
-            wf_entries = _build_workflow_manifest_from_tree(tree)
-            method = "tree"
-        else:
-            api_entries = _build_manifest_shallow()
-            wf_entries = []
-            method = "shallow_fallback"
+        api_entries = _build_manifest_from_apis_json()
+        if api_entries is None:
+            raise HTTPException(502, "Failed to fetch apis.json from GitHub")
+        wf_items = _fetch_github_dir(WORKFLOWS_CATALOG_PATH)
+        wf_entries = sorted([
+            {
+                "source_id": i["name"],
+                "path": i["path"],
+                "api_id": i["name"].replace("~", "/", 1),
+            }
+            for i in wf_items
+            if i.get("type") == "dir"
+        ], key=lambda e: e["source_id"])
     except urllib.error.HTTPError as e:
         raise HTTPException(502, f"GitHub returned {e.code}: {e.reason}")
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(502, f"Failed to fetch catalog from GitHub: {e}")
 
-    _save_manifest(api_entries)
+    _save_manifest(sorted(api_entries, key=lambda e: e["api_id"]))
     _save_workflow_manifest(wf_entries)
     log.info(
-        "Manifests refreshed via %s: %d API entries, %d workflow sources",
-        method, len(api_entries), len(wf_entries),
+        "Manifests refreshed: %d API entries, %d workflow sources",
+        len(api_entries), len(wf_entries),
     )
     return {
         "status": "ok",
         "api_entries": len(api_entries),
         "workflow_sources": len(wf_entries),
-        "method": method,
         "fetched_at": time.time(),
     }
