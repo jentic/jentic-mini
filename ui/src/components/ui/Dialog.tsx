@@ -1,5 +1,6 @@
 import React, { useRef, useEffect, useCallback } from 'react';
 import { X } from 'lucide-react';
+import { Button } from './Button';
 import { cn } from '@/lib/utils';
 
 type DialogSize = 'sm' | 'md' | 'lg';
@@ -77,14 +78,9 @@ export function Dialog({
 					<h2 id={titleId} className="text-foreground text-lg font-semibold">
 						{title}
 					</h2>
-					<button
-						type="button"
-						onClick={onClose}
-						className="text-muted-foreground hover:text-foreground rounded-lg p-1 transition-colors"
-						aria-label="Close"
-					>
+					<Button variant="ghost" size="icon" onClick={onClose} aria-label="Close">
 						<X className="h-5 w-5" />
-					</button>
+					</Button>
 				</div>
 				<div className="px-5 py-4">{children}</div>
 				{footer && (
