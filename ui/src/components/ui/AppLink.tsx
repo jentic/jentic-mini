@@ -1,4 +1,3 @@
-import React from 'react';
 import { Link, type LinkProps } from 'react-router-dom';
 
 type AppLinkProps = Omit<React.AnchorHTMLAttributes<HTMLAnchorElement>, 'href'> &
@@ -13,28 +12,23 @@ function isExternalHref(href: string): boolean {
 	return EXTERNAL_RE.test(href);
 }
 
-export const AppLink = React.forwardRef<HTMLAnchorElement, AppLinkProps>(
-	({ href, external, children, ...props }, ref) => {
-		if (external || isExternalHref(href)) {
-			return (
-				<a
-					ref={ref}
-					href={href}
-					target={props.target ?? '_blank'}
-					rel={props.rel ?? 'noopener noreferrer'}
-					{...props}
-				>
-					{children}
-				</a>
-			);
-		}
-
+export function AppLink({ href, external, children, ...props }: AppLinkProps) {
+	if (external || isExternalHref(href)) {
 		return (
-			<Link ref={ref} to={href} {...props}>
+			<a
+				href={href}
+				target={props.target ?? '_blank'}
+				rel={props.rel ?? 'noopener noreferrer'}
+				{...props}
+			>
 				{children}
-			</Link>
+			</a>
 		);
-	},
-);
+	}
 
-AppLink.displayName = 'AppLink';
+	return (
+		<Link to={href} {...props}>
+			{children}
+		</Link>
+	);
+}

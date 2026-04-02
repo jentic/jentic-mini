@@ -81,6 +81,8 @@ export default defineConfig(
 			'react/no-array-index-key': 'warn',
 			'react/button-has-type': 'error',
 			'react/self-closing-comp': 'warn',
+			// Form primitives (Button, Input, Select, Textarea) use forwardRef
+			// which requires const + arrow syntax — they are the only exception.
 			'react/function-component-definition': [
 				'error',
 				{

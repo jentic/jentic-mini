@@ -1,6 +1,5 @@
 import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
-import { createRef } from 'react';
 import axe from 'axe-core';
 import { AppLink } from '@/components/ui/AppLink';
 
@@ -166,27 +165,6 @@ describe('AppLink', () => {
 				</AppLink>,
 			);
 			expect(screen.getByTestId('my-link')).toBeInTheDocument();
-		});
-
-		it('forwards ref to external links', () => {
-			const ref = createRef<HTMLAnchorElement>();
-			renderLink(
-				<AppLink ref={ref} href="https://example.com">
-					Ext
-				</AppLink>,
-			);
-			expect(ref.current).toBeInstanceOf(HTMLAnchorElement);
-			expect(ref.current?.href).toContain('example.com');
-		});
-
-		it('forwards ref to internal links', () => {
-			const ref = createRef<HTMLAnchorElement>();
-			renderLink(
-				<AppLink ref={ref} href="/home">
-					Home
-				</AppLink>,
-			);
-			expect(ref.current).toBeInstanceOf(HTMLAnchorElement);
 		});
 	});
 
