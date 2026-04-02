@@ -383,15 +383,7 @@ async def create_connect_link(broker_id: BrokerIdPath, body: ConnectLinkRequest,
     # Derive external_user_id from the broker's stored config — callers must not
     # override this, as an incorrect value silently routes credentials to a
     # Pipedream user that the sync will never query.
-    async with aiosqlite.connect(DB_PATH) as db:
-        async with db.execute(
-            "SELECT default_external_user_id FROM oauth_brokers WHERE id=?",
-            (broker_id,),
-        ) as cur:
-            broker_row = await cur.fetchone()
-    if not broker_row:
-        raise HTTPException(404, f"OAuth broker '{broker_id}' not found")
-    external_user_id = broker_row[0] or "default"
+    external_user_id = getattr(live_broker, "default_external_user_id", None) or "default"
 
     callback_params = {
         "label": body.label,
