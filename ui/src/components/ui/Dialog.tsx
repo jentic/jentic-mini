@@ -68,7 +68,7 @@ export function Dialog({
 			onCancel={handleCancel}
 			onClick={handleBackdropClick}
 			className={cn(
-				'bg-muted border-border w-full rounded-xl border p-0 shadow-xl backdrop:bg-black/60',
+				'bg-muted border-border m-auto w-full rounded-xl border p-0 shadow-xl backdrop:bg-black/60',
 				sizeClasses[size],
 				className,
 			)}
