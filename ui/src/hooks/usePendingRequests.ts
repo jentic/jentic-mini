@@ -9,6 +9,7 @@ export function usePendingRequests() {
 		queryKey: ['pending_requests'],
 		queryFn: async () => {
 			const toolkits = await api.listToolkits();
+			if (!Array.isArray(toolkits)) return [];
 			const results: Array<Record<string, unknown> & { toolkit_name: string }> = [];
 			for (const t of toolkits) {
 				try {
