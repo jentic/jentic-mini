@@ -11,23 +11,25 @@ interface Props {
 
 interface State {
 	error: Error | null;
+	prevResetKey?: string;
 }
 
 export class ErrorBoundary extends Component<Props, State> {
-	state: State = { error: null };
+	state: State = { error: null, prevResetKey: this.props.resetKey };
 
-	static getDerivedStateFromError(error: Error): State {
+	static getDerivedStateFromError(error: Error): Partial<State> {
 		return { error };
+	}
+
+	static getDerivedStateFromProps(props: Props, state: State): Partial<State> | null {
+		if (props.resetKey !== state.prevResetKey) {
+			return { error: null, prevResetKey: props.resetKey };
+		}
+		return null;
 	}
 
 	componentDidCatch(error: Error, info: ErrorInfo) {
 		console.error('[ErrorBoundary]', error, info.componentStack);
-	}
-
-	componentDidUpdate(prevProps: Props) {
-		if (prevProps.resetKey !== this.props.resetKey && this.state.error) {
-			this.setState({ error: null });
-		}
 	}
 
 	render() {
@@ -35,7 +37,10 @@ export class ErrorBoundary extends Component<Props, State> {
 			if (this.props.fallback) return this.props.fallback;
 
 			return (
-				<div className="border-border bg-muted rounded-xl border p-8 text-center">
+				<div
+					role="alert"
+					className="border-border bg-muted rounded-xl border p-8 text-center"
+				>
 					<AlertTriangle className="text-warning mx-auto mb-3 h-8 w-8" />
 					<p className="text-foreground mb-1 text-sm font-medium">Something went wrong</p>
 					<p className="text-muted-foreground mb-4 text-xs">{this.state.error.message}</p>
