@@ -516,7 +516,16 @@ class PipedreamOAuthBroker:
                         exists = await cur.fetchone()
 
                     if exists:
-                        # Update label and value in case either changed
+                        # Preserve any label the user/agent has set explicitly via PATCH.
+                        # A pending label (from connect-link) intentionally overrides it;
+                        # otherwise keep the stored label rather than falling back to slug.
+                        if app_slug not in pending:
+                            async with db.execute(
+                                "SELECT label FROM credentials WHERE id=?", (cred_id,)
+                            ) as cur:
+                                existing_row = await cur.fetchone()
+                            if existing_row and existing_row[0]:
+                                label = existing_row[0]
                         await db.execute(
                             "UPDATE credentials SET label=?, encrypted_value=?, "
                             "api_id=?, auth_type='pipedream_oauth', "
