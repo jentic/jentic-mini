@@ -50,12 +50,12 @@ Jentic Mini gives any AI agent a local execution layer:
 
 The **Jentic hosted and VPC editions** offer deeper implementations across four areas:
 
-| Capability | Jentic Mini (this) | Jentic hosted / VPC |
-|------------|-------------------|---------------------|
-| **Search** | BM25 full-text search | Advanced semantic search (~64% accuracy improvement over BM25) |
-| **Request brokering** | In-process credential injection | Scalable AWS Lambda-based broker with encryption at rest and in-transit, SOC 2-grade security, and 3rd-party credential vault integrations (HashiCorp Vault, AWS Secrets Manager, etc.) |
-| **Simulation** | Basic simulate mode | Full sandbox for simulating API calls and toolkit behaviour (enterprise-only) |
-| **Catalog** | ~10,000+ APIs + ~380 workflow sources from [jentic-public-apis](https://github.com/jentic/jentic-public-apis); auto-imported on credential add | Central catalog — aggregates the collective know-how of agents across API definitions and Arazzo workflows |
+| Capability            | Jentic Mini (this)                                                                                                                             | Jentic hosted / VPC                                                                                                                                                                     |
+| --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Search**            | BM25 full-text search                                                                                                                          | Advanced semantic search (~64% accuracy improvement over BM25)                                                                                                                          |
+| **Request brokering** | In-process credential injection                                                                                                                | Scalable AWS Lambda-based broker with encryption at rest and in-transit, SOC 2-grade security, and 3rd-party credential vault integrations (HashiCorp Vault, AWS Secrets Manager, etc.) |
+| **Simulation**        | Basic simulate mode                                                                                                                            | Full sandbox for simulating API calls and toolkit behaviour (enterprise-only)                                                                                                           |
+| **Catalog**           | ~10,000+ APIs + ~380 workflow sources from [jentic-public-apis](https://github.com/jentic/jentic-public-apis); auto-imported on credential add | Central catalog — aggregates the collective know-how of agents across API definitions and Arazzo workflows                                                                              |
 
 Jentic Mini is a self-hosted deployment option for individuals and small teams who want full control over their data and credentials. For teams that need managed scaling, SLAs, or enterprise features, [Jentic](https://jentic.com) offers hosted and on-premises editions — [get in touch](https://jentic.com/contact) to find out more.
 
@@ -97,11 +97,11 @@ Open `http://localhost:8900` to complete setup.
 
 Optional environment variables (set in `.env` or pass to `docker compose`):
 
-| Variable                 | Default        | Description                                                                          |
-|--------------------------|----------------|--------------------------------------------------------------------------------------|
-| `JENTIC_VAULT_KEY`       | auto-generated | [Fernet](https://cryptography.io/en/latest/fernet/) key for the credentials vault    |
-| `JENTIC_PUBLIC_HOSTNAME` | none           | Public hostname for self-links and workflow IDs, e.g. `jentic.example.com`           |
-| `LOG_LEVEL`              | `info`         | `debug`, `info`, `warning`, `error`                                                  |
+| Variable                 | Default        | Description                                                                       |
+| ------------------------ | -------------- | --------------------------------------------------------------------------------- |
+| `JENTIC_VAULT_KEY`       | auto-generated | [Fernet](https://cryptography.io/en/latest/fernet/) key for the credentials vault |
+| `JENTIC_PUBLIC_HOSTNAME` | none           | Public hostname for self-links and workflow IDs, e.g. `jentic.example.com`        |
+| `LOG_LEVEL`              | `info`         | `debug`, `info`, `warning`, `error`                                               |
 
 ### Authentication
 
@@ -109,6 +109,7 @@ Optional environment variables (set in `.env` or pass to `docker compose`):
 - **Human session**: username/password login for admin operations (credential management, toolkit setup)
 
 First-time setup is guided through the UI at `http://localhost:8900`. Alternatively, via the API:
+
 1. `POST /default-api-key/generate` from a trusted subnet to get your agent key
 2. `POST /user/create` with `{"username": "...", "password": "..."}` to create an admin account
 3. Add credentials for your APIs — specs are auto-imported from the [public catalog](https://github.com/jentic/jentic-public-apis)
@@ -116,15 +117,15 @@ First-time setup is guided through the UI at `http://localhost:8900`. Alternativ
 
 ## API Overview
 
-| Tag | Who uses it | Purpose |
-|-----|-------------|---------|
-| **search** | Agents | Full-text search — the main entrypoint |
-| **discover** | Agents | Inspect capabilities, list APIs and operations |
-| **execute** | Agents | Transparent request broker — runs API operations and Arazzo workflows |
-| **toolkits** | Agents/Humans | Toolkits, access keys, policies, permission requests |
-| **observe** | Agents | Read execution traces |
-| **catalog** | Humans/admin | Register APIs, browse public catalog, upload specs, overlays, notes |
-| **credentials** | Humans only | Manage the credentials vault; adding credentials auto-imports catalog specs and workflows |
+| Tag             | Who uses it   | Purpose                                                                                   |
+| --------------- | ------------- | ----------------------------------------------------------------------------------------- |
+| **search**      | Agents        | Full-text search — the main entrypoint                                                    |
+| **discover**    | Agents        | Inspect capabilities, list APIs and operations                                            |
+| **execute**     | Agents        | Transparent request broker — runs API operations and Arazzo workflows                     |
+| **toolkits**    | Agents/Humans | Toolkits, access keys, policies, permission requests                                      |
+| **observe**     | Agents        | Read execution traces                                                                     |
+| **catalog**     | Humans/admin  | Register APIs, browse public catalog, upload specs, overlays, notes                       |
+| **credentials** | Humans only   | Manage the credentials vault; adding credentials auto-imports catalog specs and workflows |
 
 ## Public Catalog
 
@@ -143,12 +144,16 @@ GET /workflows?source=local&q=slack
 
 See [docs/CATALOG.md](https://github.com/jentic/jentic-mini/blob/main/docs/CATALOG.md) for full details.
 
+## Browser Requirements
+
+The admin UI targets modern browsers: **Chrome 107+**, **Firefox 104+**, **Safari 16+**, **Edge 107+**.
+
 ## Development
 
 Prerequisites for local development without Docker:
 
 - [Python 3.11+](https://www.python.org/downloads/)
-- [Node.js 20+](https://nodejs.org/)
+- [Node.js 22+](https://nodejs.org/) (24 recommended — matches Docker and `.nvmrc`)
 
 Python source (`src/`) is volume-mounted into the container — edit any `.py` file and the server hot-reloads automatically.
 

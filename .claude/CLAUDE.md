@@ -102,7 +102,7 @@ Pluggable OAuth broker system. Currently includes `pipedream.py` for Pipedream-b
 
 ## UI
 
-The `ui/` directory contains a React 18 + Vite 5 admin frontend.
+The `ui/` directory contains a React 18 + Vite 7 admin frontend.
 
 ### Tech stack
 - **TailwindCSS 4** via `@tailwindcss/vite` plugin (no PostCSS, no JS config file)
