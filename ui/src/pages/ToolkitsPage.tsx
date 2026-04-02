@@ -90,12 +90,13 @@ function CreateModal({
 					/>
 				</div>
 				<label htmlFor="tk-simulate" className="flex cursor-pointer items-center gap-3">
-					<Input
+					{/* eslint-disable-next-line no-restricted-syntax -- No Checkbox primitive yet */}
+					<input
 						id="tk-simulate"
 						type="checkbox"
 						checked={simulate}
 						onChange={(e) => setSimulate(e.target.checked)}
-						className="w-auto rounded"
+						className="border-border h-4 w-4 rounded"
 					/>
 					<div>
 						<span className="text-foreground text-sm">Simulate mode</span>
