@@ -585,7 +585,7 @@ async def list_broker_accounts(broker_id: BrokerIdPath, external_user_id: Extern
                 raise HTTPException(404, f"OAuth broker '{broker_id}' not found")
 
         query = (
-            "SELECT external_user_id, api_host, app_slug, account_id, healthy, synced_at "
+            "SELECT external_user_id, api_host, app_slug, account_id, label, healthy, synced_at "
             "FROM oauth_broker_accounts WHERE broker_id=?"
         )
         params: tuple = (broker_id,)
@@ -598,7 +598,7 @@ async def list_broker_accounts(broker_id: BrokerIdPath, external_user_id: Extern
         async with db.execute(query, params) as cur:
             rows = await cur.fetchall()
 
-    cols = ["external_user_id", "api_host", "app_slug", "account_id", "healthy", "synced_at"]
+    cols = ["external_user_id", "api_host", "app_slug", "account_id", "label", "healthy", "synced_at"]
     return [dict(zip(cols, r)) for r in rows]
 
 
