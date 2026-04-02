@@ -373,7 +373,17 @@ async def spa_middleware(request: Request, call_next):
         if wants_html and any(path == p or path.startswith(p + "/") for p in _SPA_PATHS):
             index_path = STATIC_DIR / "index.html"
             if index_path.exists():
-                return FileResponse(index_path)
+                resp = FileResponse(index_path)
+                # Vary: Accept ensures the browser caches HTML and JSON responses
+                # separately for the same URL.  Without this, a browser navigation
+                # to /credentials (which returns index.html) poisons the disk cache
+                # for subsequent API requests to the same path (Accept: application/json),
+                # causing Swagger UI and fetch() to receive HTML instead of JSON.
+                resp.headers["Vary"] = "Accept"
+                # Never store the SPA shell in a persistent cache — it can mask API
+                # responses and is cheap to re-fetch.
+                resp.headers["Cache-Control"] = "no-store"
+                return resp
             return Response(content="UI not built", status_code=404, media_type="text/plain")
     return await call_next(request)
 
