@@ -31,6 +31,7 @@ Response headers added:
                              credential selection on multi-service hosts)
 """
 import json
+import logging
 import time
 import asyncio
 from typing import Optional
@@ -39,6 +40,8 @@ from urllib.parse import unquote, urlparse
 import httpx
 from fastapi import APIRouter, Request, Response, HTTPException
 from fastapi.routing import APIRoute
+
+log = logging.getLogger("jentic.broker")
 
 from src.config import JENTIC_PUBLIC_HOSTNAME
 from src.db import get_db
@@ -129,7 +132,6 @@ async def _find_credential_for_host(
         candidates.append(".".join(parts[1:]))
 
     api_id = None
-    cred_host = None  # real hostname for credential lookup (may differ from api_id)
     async with get_db() as db:
         for candidate in candidates:
             # For subdomain-style hosts (e.g. calendar.googleapis.com), also try
@@ -139,13 +141,13 @@ async def _find_credential_for_host(
             row = None
 
             # 1. Exact match
-            async with db.execute("SELECT id, base_url FROM apis WHERE id=?", (candidate,)) as cur:
+            async with db.execute("SELECT id FROM apis WHERE id=?", (candidate,)) as cur:
                 row = await cur.fetchone()
 
             # 2. Subdomain-hinted prefix match (e.g. googleapis.com/calendar)
             if not row and sub_hint:
                 async with db.execute(
-                    "SELECT id, base_url FROM apis WHERE id LIKE ? ORDER BY length(id) DESC LIMIT 1",
+                    "SELECT id FROM apis WHERE id LIKE ? ORDER BY length(id) DESC LIMIT 1",
                     (f"{candidate}/{sub_hint}%",),
                 ) as cur:
                     row = await cur.fetchone()
@@ -153,36 +155,35 @@ async def _find_credential_for_host(
             # 3. General longest-prefix match (fallback)
             if not row:
                 async with db.execute(
-                    "SELECT id, base_url FROM apis WHERE id LIKE ? ORDER BY length(id) DESC LIMIT 1",
+                    "SELECT id FROM apis WHERE id LIKE ? ORDER BY length(id) DESC LIMIT 1",
                     (f"{candidate}%",),
                 ) as cur:
                     row = await cur.fetchone()
 
             if row:
                 api_id = row[0]
-                # Credentials are stored under the real HTTP host, not the catalog api_id
-                # (which may be a normalised form like googleapis.com/gmail vs gmail.googleapis.com)
-                if row[1]:
-                    from urllib.parse import urlparse as _up
-                    _h = _up(row[1]).hostname
-                    if _h:
-                        cred_host = _h
                 break
 
-    cred_lookup_key = cred_host or api_id  # use real hostname for credential lookup
-
-    _broker_log.debug("CRED LOOKUP: host=%r → api_id=%r cred_host=%r (toolkit=%r alias=%r)", host, api_id, cred_host, toolkit_id, alias)
+    # Credentials are always stored under api_id (the canonical ID from the apis
+    # table), which matches how POST /credentials stores them and how
+    # _resolve_credential_ids (the policy check path) looks them up.
+    _broker_log.debug("CRED LOOKUP: host=%r → api_id=%r (toolkit=%r alias=%r)", host, api_id, toolkit_id, alias)
 
     if not api_id:
         return {}, None, None
 
-    # Get credentials bound to this toolkit + api (use real hostname as lookup key)
-    creds = await vault.get_credentials_for_api(toolkit_id, cred_lookup_key)
-    _broker_log.debug("CRED LOOKUP: %d cred(s) for cred_lookup_key=%r: %s", len(creds), cred_lookup_key, [c.get("id") for c in creds])
+    # Get credentials bound to this toolkit + api
+    creds = await vault.get_credentials_for_api(toolkit_id, api_id)
+    # TODO: remove hostname fallback once Pipedream credential storage is
+    # updated to use catalog api_id instead of HTTP hostname (see #79).
+    if not creds and host != api_id:
+        creds = await vault.get_credentials_for_api(toolkit_id, host)
+    _broker_log.debug("CRED LOOKUP: %d cred(s) for api_id=%r host=%r: %s", len(creds), api_id, host, [c.get("id") for c in creds])
 
     if not creds and toolkit_id:
         raise ValueError(
-            f"No credentials found for '{cred_lookup_key}' in toolkit '{toolkit_id}'. "
+            f"No credentials found for host '{host}' (resolved api_id '{api_id}') "
+            f"in toolkit '{toolkit_id}'. "
             f"Use POST /toolkits/{toolkit_id}/access-requests to request access."
         )
 
@@ -580,13 +581,28 @@ async def broker(request: Request, target: str):
             )
         except Exception:
             pass
-    else:
+    elif toolkit_id:
         try:
             _api_id_for_host, _resolved_cred_ids = await _resolve_credential_ids(
                 host=upstream_host, toolkit_id=toolkit_id
             )
         except Exception:
-            pass  # resolution failure handled below in full lookup
+            # Fail closed: if we can't resolve credentials for policy checking,
+            # don't proceed to credential injection — deny the request.
+            # Only applies to authenticated requests; anonymous passthrough
+            # skips credential resolution entirely.
+            log.exception("Credential resolution failed for %r (toolkit=%s)",
+                          upstream_host, toolkit_id)
+            await _write_trace("error", 500, f"Credential resolution failed for {upstream_host}")
+            return Response(
+                content=json.dumps({
+                    "error": "CREDENTIAL_RESOLUTION_FAILED",
+                    "message": f"Could not resolve credentials for '{upstream_host}'. Request denied (fail-closed).",
+                }),
+                status_code=500,
+                media_type="application/json",
+                headers={"X-Jentic-Error": "true", "X-Jentic-Execution-Id": execution_id},
+            )
 
     if toolkit_id and _resolved_cred_ids:
         from src.routers.toolkits import check_credential_policy
@@ -616,7 +632,22 @@ async def broker(request: Request, target: str):
                     headers={"X-Jentic-Error": "true", "X-Jentic-Execution-Id": execution_id},
                 )
         except Exception:
-            pass  # policy check failure is non-fatal
+            # Fail closed: if the policy check itself errors, deny the request
+            # rather than allowing it through unchecked.
+            log.exception("Policy check failed for %s %r %r (cred=%s)",
+                          request.method, upstream_host, upstream_path, primary_cred_id)
+            await _write_trace("error", 403, f"Policy check failed for {request.method} {upstream_host}{upstream_path} (credential {primary_cred_id})")
+            return Response(
+                content=json.dumps({
+                    "error": "POLICY_CHECK_FAILED",
+                    "message": f"Policy evaluation failed for credential '{primary_cred_id}'. Request denied (fail-closed).",
+                    "credential_id": primary_cred_id,
+                    "toolkit_id": toolkit_id,
+                }),
+                status_code=403,
+                media_type="application/json",
+                headers={"X-Jentic-Error": "true", "X-Jentic-Execution-Id": execution_id},
+            )
 
     # body_bytes initialised here so the OAuthBroker fallback can read it
     # without a double-read; the main forward path reads it again below if empty.
@@ -692,7 +723,20 @@ async def broker(request: Request, target: str):
                             headers={"X-Jentic-Error": "true", "X-Jentic-Execution-Id": execution_id},
                         )
                 except Exception:
-                    pass  # policy check failure is non-fatal
+                    log.exception("Pipedream policy check failed for %s %r %r (cred=%s)",
+                                  request.method, upstream_host, upstream_path, pd_cred_id)
+                    await _write_trace("error", 403, f"Policy check failed for {request.method} {upstream_host}{upstream_path} (credential {pd_cred_id})")
+                    return Response(
+                        content=json.dumps({
+                            "error": "POLICY_CHECK_FAILED",
+                            "message": f"Policy evaluation failed for credential '{pd_cred_id}'. Request denied (fail-closed).",
+                            "credential_id": pd_cred_id,
+                            "toolkit_id": toolkit_id,
+                        }),
+                        status_code=403,
+                        media_type="application/json",
+                        headers={"X-Jentic-Error": "true", "X-Jentic-Execution-Id": execution_id},
+                    )
 
             # Find the Pipedream broker instance and proxy using the credential's account_id
             from src.oauth_broker import registry as _oauth_registry

@@ -1,0 +1,6 @@
+node_modules/
+dist/
+coverage/
+playwright-report/
+.vitest-attachments/
+src/api/generated/

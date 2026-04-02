@@ -210,7 +210,9 @@ class PermissionRule(BaseModel):
     E.g. `["tts", "speech"]` matches any operation whose ID contains "tts" or "speech".
 
     System safety rules (always active, cannot be removed) are marked `_system: true` in
-    `GET .../permissions` responses. They deny sensitive paths and write methods by default.
+    `GET .../permissions` responses (see `PermissionRuleOut`). They deny sensitive paths
+    and write methods by default. The `_system` and `_comment` fields are response-only
+    and will be rejected in request bodies.
 
     **Examples:**
     ```json
@@ -240,9 +242,8 @@ class PermissionRule(BaseModel):
         default=None,
         description="List of regexes matched against the operation ID. E.g. `[\"tts\", \"speech\"]`."
     )
-    # Read-only server fields on system rules (ignored on write)
     model_config = {
-        "extra": "allow",  # allows _system/_comment through in responses
+        "extra": "forbid",
         "json_schema_extra": {
             "examples": [
                 {"effect": "allow", "methods": ["POST"], "path": "text-to-speech"},
@@ -250,6 +251,16 @@ class PermissionRule(BaseModel):
                 {"effect": "allow", "operations": ["^github_get_repo$"]},
             ]
         }
+    }
+
+
+class PermissionRuleOut(PermissionRule):
+    """Permission rule as returned by the API — includes read-only server fields."""
+    system: bool | None = Field(default=None, alias="_system")
+    comment: str | None = Field(default=None, alias="_comment")
+    model_config = {
+        "extra": "allow",
+        "populate_by_name": True,
     }
 
 

@@ -3,6 +3,8 @@ import os, json, inspect
 from pathlib import Path
 from fastapi import APIRouter, Request
 
+from src.config import DATA_DIR
+
 router = APIRouter(prefix="/debug", tags=["debug"], include_in_schema=False)
 
 
@@ -77,10 +79,29 @@ async def env_mappings(arazzo_path: str = ""):
 
 @router.get("/spec")
 async def spec_info(path: str = ""):
-    p = Path(path)
+    if not path:
+        return {"error": "path is required", "exists": False}
+    data_root = DATA_DIR.resolve()
+    p = (data_root / path).resolve()
+    # Restrict to the data directory to prevent path traversal
+    try:
+        p.relative_to(data_root)
+    except ValueError:
+        return {"error": "path must be inside the data directory", "exists": False}
     if not p.exists():
         return {"exists": False, "path": path}
-    doc = json.loads(p.read_text())
+    if not p.is_file():
+        return {"error": "path must point to a regular file", "exists": True}
+    if p.suffix.lower() != ".json":
+        return {"error": "only .json files are supported", "exists": True}
+    try:
+        raw_text = p.read_text()
+    except UnicodeDecodeError:
+        return {"error": "file is not valid UTF-8 text", "exists": True}
+    try:
+        doc = json.loads(raw_text)
+    except json.JSONDecodeError:
+        return {"error": "file does not contain valid JSON", "exists": True}
     paths = doc.get("paths", {})
     sample = []
     for api_path, methods in list(paths.items())[:5]:

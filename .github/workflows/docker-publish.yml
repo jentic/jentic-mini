@@ -16,9 +16,13 @@ on:
         required: false
         type: string
 
+concurrency:
+  group: publish-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   ci:
-    uses: ./.github/workflows/ci.yml
+    uses: ./.github/workflows/ci-docker.yml
 
   publish:
     needs: ci

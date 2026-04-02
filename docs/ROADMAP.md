@@ -9,6 +9,8 @@
 - Fernet-encrypted credential vault (write-only semantics)
 - Swagger UI + Redoc served locally from vendored assets (no CDN dependency)
 - React + Vite admin UI (TailwindCSS 4, CSS custom property design tokens, Lucide React icons, dark-first theme, responsive sidebar with mobile hamburger drawer)
+- Workflow visualization: embedded `@jentic/arazzo-ui` component with diagram/docs/split view modes
+- Catalog workflow preview: direct links to `arazzo-ui.jentic.com` for workflows not yet imported locally
 - SPA served with content negotiation — browser navigations get HTML, API calls get JSON
 - Non-root container execution (configurable UID/GID)
 
@@ -17,7 +19,7 @@
 - `GET /search` — BM25 full-text search over registered APIs/operations + workflows
 - `GET /inspect/{id}` — unified capability inspection for operations and workflows
 - `GET /apis/...` — list and get registered APIs with pagination
-- `GET /workflows/...` — list and get registered workflows
+- `GET /workflows/...` — list and get registered workflows with content negotiation (formal Arazzo media types: `application/vnd.oai.workflows+json`, `application/vnd.oai.workflows+yaml`)
 - `POST /import` — register APIs (URL/file/inline) and Arazzo workflows
 - Capability IDs: `METHOD/host/path` format (no scheme, no spaces)
 - Description abbreviation (≤3 sentences) for token efficiency in LLM consumers
@@ -84,8 +86,15 @@
 
 **Technical sub-items:**
 - ~166 `any` / `@ts-ignore` instances in the TypeScript UI — undermines type safety and makes refactoring risky.
-- No error boundaries — unhandled errors crash the whole UI rather than a section.
+- Limited error boundaries — Arazzo UI component has one; general page-level boundaries still needed to prevent unhandled errors crashing the whole UI.
 - No accessibility (a11y) audit has been done.
+
+**Remaining a11y debt (deferred):**
+- Focus traps for modals/overlays
+- ConfirmInline focus management
+- `aria-live` for async status messages
+- Skip-to-content link
+- ARIA combobox pattern for search inputs
 
 **Completed (v0.3):**
 - TailwindCSS 3 → 4 upgrade with `@tailwindcss/vite` plugin (PostCSS and JS config removed)
@@ -94,32 +103,34 @@
 - All emoji icons replaced with Lucide React SVG components
 - `outline-none` → `outline-hidden` for TW4 accessibility compliance
 
+**Completed (v0.4):**
+- UI testing infrastructure: Vitest browser mode (Chromium), MSW network mocking, axe-core a11y checks, `renderWithProviders` test utility
+- 86 unit + integration tests across 10 test files (4 component, 1 hook, 5 page integration)
+- Playwright E2E test suite (35 specs across 10 spec files)
+- CI pipeline: `ui-tests` job in GitHub Actions (TypeScript check, Vitest, Playwright)
+
+**Completed (v0.5):**
+- Full page coverage: 143+ integration tests across 19 test files (all pages covered)
+- AuthGuard redirect tests (7 tests)
+- Mutation error tests with `createErrorHandler` utility
+- Docker E2E: true end-to-end tests against real backend (setup flow, auth cycle, search)
+- Accessibility fixes: htmlFor/id labels, aria-label on search inputs and icon buttons, aria-expanded on toggles, heading level corrections, role="alert" on error containers
+- isError handling added to 5 pages (TracesPage, JobsPage, WorkflowsPage, OAuthBrokersPage, CatalogPage)
+- Extracted AuthGuard component, replaced window.location.href with navigate()
+- CI split: `ci-ui.yml` (path-filtered, fast feedback) + `ci-docker.yml` (always runs, Docker layer caching)
+
 ### Versioning, Releases, and Updates
 
-**No single source of version truth**
-`"0.2.0"` is hardcoded in four separate places in `src/main.py`. Need a single `src/version.py` (or `pyproject.toml`) read by the app, Dockerfile labels, and the publish workflow.
+**✅ Completed:**
+- Version source of truth: `APP_VERSION` flows from Docker build arg (set by CI from git tag via semantic-release)
+- Versioned Docker tags: publish workflow creates full version (e.g. `0.4.1`), minor version (e.g. `0.4`), and `latest` tags for releases
+- Release process: `semantic-release` workflow creates git tags, GitHub Releases with auto-generated changelogs, and triggers Docker publish
+- Update detection: `GET /version` endpoint compares running version against latest GitHub release (cached 6h); admin UI shows "update available" banner when new version detected
+- Docker images published compatible with amd64 and arm64 architectures
+- Unstable builds: pushes to `main` branch create `:unstable` tag (not `latest`) for testing
+- Database migrations: Alembic-based schema versioning with backward-compatible migrations; breaking changes communicated via GitHub release changelogs
+- Automated dependency updates — `requirements.txt`, `package.json`, GitHub Actions are uptoupdated by Dependabot
 
-**No versioned Docker tags**
-The publish workflow always tags `latest` — no `jentic/jentic-mini:0.2.0` or `v0.2.0` tag is ever pushed. Users have no way to pin to a specific release or roll back. Should tag on git release, not on every main-branch push.
-
-**No release process**
-No git tags, no GitHub Releases, no changelog. Proposed flow:
-1. Bump version in one place
-2. `git tag v0.3.0` → triggers publish workflow
-3. Publish pushes both `vX.Y.Z` and `latest` tags
-4. GitHub Release auto-drafted from merged PRs
-
-**No update story for end-users**
-Users running via Docker Compose have no in-product signal that a new version exists and no guided path to upgrade. Options:
-- `GET /health` returns current version; UI shows "update available" banner when a newer image exists on the registry
-- Admin UI "Check for updates" button that polls GitHub releases API
-- `docker compose pull && docker compose up -d` documented as the canonical upgrade command, with a note in the README and release notes about any breaking changes or required `docker compose down -v` steps
-
-**No upgrade/migration guide**
-When the DB schema changes between versions, users need to know. Current migrations run automatically at startup (via `ALTER TABLE` in `db.py`) but there's no per-version changelog entry explaining what changed or whether a backup is advisable before upgrading.
-
-**No automated dependency updates**
-`requirements.txt` is pinned (good) but there's no Dependabot or Renovate config to surface new versions. Security patches go unnoticed.
 
 ### Local and Self-Hosted Services
 
@@ -146,8 +157,8 @@ Options:
 - JPE pseudo-operation: `POST /localhost/transform` that accepts `{data, filter}` and returns filtered result — agents can include this as a workflow step
 - Input preprocessing: let callers pre-filter before invoking the workflow (workaround, not a fix)
 
-**Test coverage**
-Zero automated tests. For a credential-handling proxy this is a reliability and security risk. Priorities:
+**Test coverage — backend**
+No backend automated tests yet. For a credential-handling proxy this is a reliability and security risk. Priorities:
 - Vault encryption/decryption
 - Auth middleware (key validation, IP allowlisting)
 - Broker credential injection
@@ -180,8 +191,7 @@ OAuth2 APIs (Spotify, Google, Slack user tokens, etc.) require multi-step human 
 **Schema samples**
 `POST /samples` endpoint: given an operation/workflow ID, return example request bodies and response shapes. Useful for simulate mode grounding (agents can see realistic mock data structures).
 
-**llms.txt**
-Standard `GET /llms.txt` endpoint for LLM discovery. Returns a structured description of what JPE provides and how to use it. Follows emerging convention from llmstxt.org.
+**~~llms.txt~~** ✅ Completed — `GET /llms.txt` endpoint and `AGENTS.md` added in v0.4.
 
 **Agent-contributed catalog (workflow authorship flywheel)**
 - Agents can submit workflows via `POST /import` — initially private to their toolkit

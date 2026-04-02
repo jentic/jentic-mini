@@ -25,7 +25,7 @@ from src.db import get_db, DEFAULT_TOOLKIT_ID
 import src.vault as vault
 from src.models import (
     ToolkitOut, ToolkitKeyOut, ToolkitKeyCreated,
-    CredentialBindingOut, PermissionRule, PermissionsPatch,
+    CredentialBindingOut, PermissionRule, PermissionRuleOut, PermissionsPatch,
 )
 
 router = APIRouter(prefix="/toolkits")
@@ -717,7 +717,7 @@ async def remove_credential_from_toolkit(toolkit_id: str, credential_id: str):
     "/{toolkit_id}/credentials/{cred_id:path}/permissions",
     summary="Get the permission rules for a specific credential in this toolkit",
     tags=["toolkits"],
-    response_model=list[PermissionRule],
+    response_model=list[PermissionRuleOut],
 )
 async def get_credential_permissions(toolkit_id: str, cred_id: str):
     """Returns all rules in evaluation order for this credential: agent-defined rules first,
@@ -752,7 +752,7 @@ async def get_credential_permissions(toolkit_id: str, cred_id: str):
     "/{toolkit_id}/credentials/{cred_id:path}/permissions",
     summary="Replace permission rules for a specific credential",
     tags=["toolkits"],
-    response_model=list[PermissionRule],
+    response_model=list[PermissionRuleOut],
     dependencies=[Depends(require_human_session)],
 )
 async def set_credential_permissions(toolkit_id: str, cred_id: str, body: list[PolicyRule]):
@@ -773,7 +773,7 @@ async def set_credential_permissions(toolkit_id: str, cred_id: str, body: list[P
     "/{toolkit_id}/credentials/{cred_id:path}/permissions",
     summary="Add or remove individual permission rules for a specific credential",
     tags=["toolkits"],
-    response_model=list[PermissionRule],
+    response_model=list[PermissionRuleOut],
     dependencies=[Depends(require_human_session)],
 )
 async def patch_credential_permissions(toolkit_id: str, cred_id: str, body: PermissionsPatch):
@@ -812,9 +812,8 @@ async def patch_credential_permissions(toolkit_id: str, cred_id: str, body: Perm
 
 async def _write_credential_permissions(credential_id: str, rules_list: list[dict]) -> list:
     """Persist agent rules for a credential and return the flat effective rule list."""
-    clean = [{k: v for k, v in r.items() if not k.startswith("_")} for r in rules_list]
-    summary = _generate_policy_summary(clean)
-    rules_json = json.dumps(clean)
+    summary = _generate_policy_summary(rules_list)
+    rules_json = json.dumps(rules_list)
     now = time.time()
     policy_id = str(uuid.uuid4())
 
@@ -830,7 +829,7 @@ async def _write_credential_permissions(credential_id: str, rules_list: list[dic
         )
         await db.commit()
 
-    return clean + SYSTEM_SAFETY_RULES
+    return rules_list + SYSTEM_SAFETY_RULES
 
 
 # ── Policy Enforcement (called by broker) ─────────────────────────────────────

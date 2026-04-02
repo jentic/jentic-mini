@@ -102,7 +102,7 @@ Pluggable OAuth broker system. Currently includes `pipedream.py` for Pipedream-b
 
 ## UI
 
-The `ui/` directory contains a React 18 + Vite 5 admin frontend.
+The `ui/` directory contains a React 18 + Vite 7 admin frontend.
 
 ### Tech stack
 - **TailwindCSS 4** via `@tailwindcss/vite` plugin (no PostCSS, no JS config file)
@@ -126,6 +126,37 @@ All theming is in `ui/src/index.css`. To add a new semantic color:
 2. Add the semantic mapping to `:root` if needed (e.g. `--info-foreground: hsl(0 0% 100%)`)
 3. Map it in `@theme inline` (e.g. `--color-info: var(--info)`)
 4. Use it in components as `bg-info`, `text-info`, etc.
+
+## Testing
+
+See `ui/TESTING.md` for the full contributor guide.
+
+```bash
+cd ui
+npm test            # Vitest watch mode (browser mode via Playwright)
+npm run test:run    # Single CI run
+npm run test:coverage  # Istanbul coverage report
+npm run test:e2e    # Playwright E2E tests (mocked)
+npm run test:e2e:docker  # Docker E2E (real backend)
+```
+
+Stack: Vitest browser mode + MSW (`msw/browser`) + axe-core + Testing Library. CI: `ci-ui.yml` (path-filtered) + `ci-docker.yml` (always runs).
+
+## Formatting & Linting
+
+```bash
+cd ui
+npm run format       # Prettier — format all files
+npm run format:check # Prettier — check without writing (used in CI)
+npm run lint         # ESLint — check for errors
+npm run lint:fix     # ESLint — auto-fix what's possible
+```
+
+- **Prettier**: tabs, single quotes, semicolons, Tailwind class sorting
+- **ESLint 9** (flat config): TypeScript, React Hooks, import ordering, unused imports, jsx-a11y accessibility, `button-has-type`, `consistent-type-imports`
+- **Husky + lint-staged**: pre-commit hook formats and lints staged files automatically
+- **`@/` imports**: all cross-directory imports use `@/` (maps to `src/`). Enforced via `no-restricted-imports` rule.
+- Config files: `ui/eslint.config.js`, `ui/prettier.config.js`, `ui/.editorconfig`
 
 ## Data directory (all gitignored)
 - `data/jentic-mini.db` — SQLite database

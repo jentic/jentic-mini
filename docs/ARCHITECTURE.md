@@ -10,6 +10,7 @@ Jentic Mini is a FastAPI service with four primary responsibilities:
 | **Broker** | Transparent HTTP reverse proxy — URL pattern `/{upstream_host}/{path}`, injects credentials automatically, enforces toolkit policies |
 | **Workflow orchestrator** | Executes Arazzo multi-step workflows via `arazzo-engine`; each step routes through the broker for credential injection |
 | **Credential vault** | Fernet-encrypted SQLite store; credentials are write-only (values never returned after creation) |
+| **Workflow renderer** | React-based visualization via `@jentic/arazzo-ui` (npm package from [jentic-arazzo-tools](https://github.com/jentic/jentic-arazzo-tools)); provides diagram, docs, and split views |
 
 Additionally:
 - **Toolkits**: scoped credential bundles with their own API keys, access policies, and per-key IP restrictions
