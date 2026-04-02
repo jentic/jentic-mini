@@ -230,9 +230,9 @@ export const oauthBrokers = {
 		fetchJson<OAuthAccount[]>(
 			`/oauth-brokers/${encodeURIComponent(id)}/accounts?external_user_id=${encodeURIComponent(externalUserId)}`,
 		),
-	deleteAccount: (id: string, apiHost: string, externalUserId = 'default', accountId?: string) =>
+	deleteAccount: (id: string, accountId: string) =>
 		fetch(
-			`/oauth-brokers/${encodeURIComponent(id)}/accounts/${encodeURIComponent(apiHost)}?external_user_id=${encodeURIComponent(externalUserId)}${accountId ? `&account_id=${encodeURIComponent(accountId)}` : ''}`,
+			`/oauth-brokers/${encodeURIComponent(id)}/accounts/${encodeURIComponent(accountId)}`,
 			{
 				method: 'DELETE',
 				credentials: 'include',

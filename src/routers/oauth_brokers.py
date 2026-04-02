@@ -600,11 +600,11 @@ async def list_broker_accounts(broker_id: BrokerIdPath, external_user_id: Extern
 
 
 @router.delete(
-    "/{broker_id}/accounts/{api_host:path}",
+    "/{broker_id}/accounts/{account_id}",
     summary="Remove a connected account from an OAuth broker",
     dependencies=[Depends(require_human_session)],
 )
-async def delete_broker_account(broker_id: BrokerIdPath, api_host: str, external_user_id: ExternalUserIdQuery = None, account_id: Annotated[str | None, Query(description="Specific account ID to delete (required when multiple accounts share the same api_host)")] = None):
+async def delete_broker_account(broker_id: BrokerIdPath, account_id: str):
     """Remove a specific connected account from this broker.
 
     This performs three actions in order:
@@ -614,30 +614,19 @@ async def delete_broker_account(broker_id: BrokerIdPath, api_host: str, external
 
     If the Pipedream revoke fails, the local cleanup still proceeds (with a warning).
     """
-    ext_uid = external_user_id or "default"
-
     async with get_db() as db:
         async with db.execute("SELECT id FROM oauth_brokers WHERE id=?", (broker_id,)) as cur:
             if not await cur.fetchone():
                 raise HTTPException(404, f"OAuth broker '{broker_id}' not found")
 
-        if account_id:
-            async with db.execute(
-                "SELECT account_id FROM oauth_broker_accounts WHERE broker_id=? AND account_id=? AND external_user_id=?",
-                (broker_id, account_id, ext_uid),
-            ) as cur:
-                row = await cur.fetchone()
-        else:
-            async with db.execute(
-                "SELECT account_id FROM oauth_broker_accounts WHERE broker_id=? AND api_host=? AND external_user_id=?",
-                (broker_id, api_host, ext_uid),
-            ) as cur:
-                row = await cur.fetchone()
+        async with db.execute(
+            "SELECT account_id FROM oauth_broker_accounts WHERE broker_id=? AND account_id=?",
+            (broker_id, account_id),
+        ) as cur:
+            row = await cur.fetchone()
 
     if not row:
-        raise HTTPException(404, f"No connected account found for api_host='{api_host}' external_user_id='{ext_uid}'")
-
-    account_id = row[0]
+        raise HTTPException(404, f"No connected account '{account_id}' found for broker '{broker_id}'")
     host_slug = api_host.replace(".", "-")
     cred_id = f"pipedream-{account_id}-{host_slug}"
 
