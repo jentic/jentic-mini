@@ -10,6 +10,18 @@ describe('Pagination', () => {
 		expect(screen.getByRole('button', { name: /next/i })).not.toBeDisabled();
 	});
 
+	it('renders as a nav element with aria-label', () => {
+		render(<Pagination page={1} totalPages={5} onPageChange={vi.fn()} />);
+		const nav = screen.getByRole('navigation', { name: /pagination/i });
+		expect(nav).toBeInTheDocument();
+	});
+
+	it('marks current page with aria-current', () => {
+		render(<Pagination page={3} totalPages={5} onPageChange={vi.fn()} />);
+		const indicator = screen.getByText('Page 3 of 5');
+		expect(indicator).toHaveAttribute('aria-current', 'page');
+	});
+
 	it('calls onPageChange with correct page numbers', () => {
 		const onPageChange = vi.fn();
 		render(<Pagination page={3} totalPages={5} onPageChange={onPageChange} />);

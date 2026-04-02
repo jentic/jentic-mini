@@ -13,7 +13,7 @@ export function Pagination({ page, totalPages, onPageChange, className }: Pagina
 	if (totalPages <= 0) return null;
 
 	return (
-		<div className={cn('flex items-center justify-between', className)}>
+		<nav aria-label="Pagination" className={cn('flex items-center justify-between', className)}>
 			<Button
 				variant="secondary"
 				size="sm"
@@ -22,7 +22,7 @@ export function Pagination({ page, totalPages, onPageChange, className }: Pagina
 			>
 				<ChevronLeft className="h-4 w-4" /> Previous
 			</Button>
-			<span className="text-muted-foreground text-sm">
+			<span className="text-muted-foreground text-sm" aria-current="page">
 				Page {page} of {totalPages}
 			</span>
 			<Button
@@ -33,6 +33,6 @@ export function Pagination({ page, totalPages, onPageChange, className }: Pagina
 			>
 				Next <ChevronRight className="h-4 w-4" />
 			</Button>
-		</div>
+		</nav>
 	);
 }
