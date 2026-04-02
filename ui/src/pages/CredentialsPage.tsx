@@ -88,7 +88,7 @@ export default function CredentialsPage() {
 										</span>
 									)}
 									{cred.auth_type === 'pipedream_oauth' ? (
-										<Badge variant="default" className="text-[10px]">OAuth</Badge>
+										<Badge variant="default" className="text-[10px]">OAuth via Pipedream</Badge>
 									) : cred.scheme_name ? (
 										<Badge variant="default" className="text-[10px]">{cred.scheme_name}</Badge>
 									) : null}
