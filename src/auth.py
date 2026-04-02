@@ -81,6 +81,9 @@ OPEN_PREFIXES = (
 def _is_public(path: str, method: str) -> bool:
     if path in SKIP or any(path.startswith(p) for p in SKIP_PREFIXES):
         return True
+    # OAuth connect-callback: browser redirect from Pipedream, no auth context available
+    if re.match(r"^/oauth-brokers/[^/]+/connect-callback", path) and method == "GET":
+        return True
     return False
 
 

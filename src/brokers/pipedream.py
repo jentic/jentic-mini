@@ -359,8 +359,14 @@ class PipedreamOAuthBroker:
                 row = await cur.fetchone()
         return row[0] if row else None
 
-    async def create_connect_token(self, external_user_id: str) -> dict:
+    async def create_connect_token(self, external_user_id: str, success_redirect_uri: str | None = None) -> dict:
         """Create a short-lived Pipedream Connect Token for the given user.
+
+        Args:
+            external_user_id: The end-user identity to scope the token to.
+            success_redirect_uri: Optional URL Pipedream redirects to after
+                successful OAuth completion. Use this to carry label/app
+                metadata back to Jentic Mini without a public webhook.
 
         Returns a dict with:
           - token: the connect token string
@@ -368,6 +374,9 @@ class PipedreamOAuthBroker:
           - expires_at: Unix timestamp when the token expires
         """
         pd_token = await self._get_access_token()
+        token_body: dict = {"external_user_id": external_user_id}
+        if success_redirect_uri:
+            token_body["success_redirect_uri"] = success_redirect_uri
         async with httpx.AsyncClient(timeout=15) as client:
             resp = await client.post(
                 f"https://api.pipedream.com/v1/connect/{self.project_id}/tokens",
@@ -376,7 +385,7 @@ class PipedreamOAuthBroker:
                     "Content-Type": "application/json",
                     "X-PD-Environment": self.environment,
                 },
-                json={"external_user_id": external_user_id},
+                json=token_body,
             )
             if resp.status_code != 200:
                 raise ValueError(
