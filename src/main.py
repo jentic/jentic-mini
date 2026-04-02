@@ -373,7 +373,10 @@ async def spa_middleware(request: Request, call_next):
         if wants_html and any(path == p or path.startswith(p + "/") for p in _SPA_PATHS):
             index_path = STATIC_DIR / "index.html"
             if index_path.exists():
-                return FileResponse(index_path)
+                resp = FileResponse(index_path)
+                resp.headers["Vary"] = "Accept"
+                resp.headers["Cache-Control"] = "no-store"
+                return resp
             return Response(content="UI not built", status_code=404, media_type="text/plain")
     return await call_next(request)
 
