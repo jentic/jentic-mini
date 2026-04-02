@@ -279,8 +279,11 @@ async def list_credentials(request: Request, api_id: str | None = None):
 
     async with get_db() as db:
         async with db.execute(
-            f"SELECT c.id, c.label, c.api_id, c.auth_type, c.created_at, c.updated_at, c.identity "
-            f"FROM credentials c {where} ORDER BY c.created_at DESC",
+            f"SELECT c.id, c.label, c.api_id, c.auth_type, c.created_at, c.updated_at, c.identity, "
+            f"       oba.account_id, oba.app_slug, oba.synced_at "
+            f"FROM credentials c "
+            f"LEFT JOIN oauth_broker_accounts oba ON oba.broker_id || '-' || oba.account_id || '-' || replace(oba.api_host, '.', '-') = c.id "
+            f"{where} ORDER BY c.created_at DESC",
             params,
         ) as cur:
             rows = await cur.fetchall()
@@ -294,6 +297,9 @@ async def list_credentials(request: Request, api_id: str | None = None):
             "created_at": r[4],
             "updated_at": r[5],
             "identity": r[6] if len(r) > 6 else None,
+            "account_id": r[7] if len(r) > 7 else None,
+            "app_slug": r[8] if len(r) > 8 else None,
+            "synced_at": r[9] if len(r) > 9 else None,
         }
         for r in rows
     ]
