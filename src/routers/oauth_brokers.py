@@ -509,7 +509,6 @@ async def connect_callback(
                      new_row[0], replace_account_id)
             # logic as delete_broker_account (revoke upstream, clean vault + DB).
             try:
-                from src.vault import vault as _vault
                 import urllib.request as _urlreq
                 import urllib.error as _urlerr
 
@@ -552,7 +551,7 @@ async def connect_callback(
                         await db.commit()
 
                     # 3. Delete from vault
-                    await _vault.delete_credential(old_cred_id)
+                    await vault.delete_credential(old_cred_id)
 
                     _log.info("Reconnect: removed old account %s after successful reconnect",
                               replace_account_id)
