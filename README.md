@@ -67,6 +67,8 @@ Jentic Mini is a self-hosted deployment option for individuals and small teams w
 
 ### Quick Start (pre-built image)
 
+**Hosting:** Host Jentic Mini separately from your agent where possible. Running both on the same machine gives the agent process direct access to the admin API (credential management, toolkit configuration), which weakens the security boundary.
+
 From **DockerHub**:
 
 ```bash
@@ -107,8 +109,6 @@ Optional environment variables (set in `.env` or pass to `docker compose`):
 
 - **Toolkit key** (`tk_xxx`): scoped to a toolkit's credentials and policy — give this to agents
 - **Human session**: username/password login for admin operations (credential management, toolkit setup)
-
-> **Hosting:** Host Jentic Mini separately from your agent where possible. Running both on the same machine gives the agent process direct access to the admin API (credential management, toolkit configuration), which weakens the security boundary.
 
 First-time setup is guided through the UI at `http://localhost:8900`. Alternatively, via the API:
 1. `POST /default-api-key/generate` from a trusted subnet to get your agent key
