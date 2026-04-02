@@ -16,10 +16,10 @@ describe('Pagination', () => {
 		expect(nav).toBeInTheDocument();
 	});
 
-	it('marks current page with aria-current', () => {
+	it('announces page changes to screen readers', () => {
 		render(<Pagination page={3} totalPages={5} onPageChange={vi.fn()} />);
 		const indicator = screen.getByText('Page 3 of 5');
-		expect(indicator).toHaveAttribute('aria-current', 'page');
+		expect(indicator).toHaveAttribute('aria-live', 'polite');
 	});
 
 	it('calls onPageChange with correct page numbers', () => {

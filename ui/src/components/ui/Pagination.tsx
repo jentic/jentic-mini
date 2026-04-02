@@ -22,7 +22,7 @@ export function Pagination({ page, totalPages, onPageChange, className }: Pagina
 			>
 				<ChevronLeft className="h-4 w-4" /> Previous
 			</Button>
-			<span className="text-muted-foreground text-sm" aria-current="page">
+			<span className="text-muted-foreground text-sm" aria-live="polite">
 				Page {page} of {totalPages}
 			</span>
 			<Button
