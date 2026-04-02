@@ -5,6 +5,7 @@ import {
 	Plus,
 	Trash2,
 	RefreshCw,
+	RotateCcw,
 	ExternalLink,
 	ChevronDown,
 	ChevronRight,
@@ -422,6 +423,12 @@ function BrokerAccounts({ broker }: { broker: OAuthBroker }) {
 			setConfirmDeleteAccount(null);
 			queryClient.invalidateQueries({ queryKey: ['oauth-broker-accounts', broker.id] });
 		},
+	});
+
+	const [reconnectLink, setReconnectLink] = useState<{ accountId: string; url: string } | null>(null);
+	const reconnectMutation = useMutation({
+		mutationFn: (accountId: string) => oauthBrokers.reconnectLink(broker.id, accountId),
+		onSuccess: (data, accountId) => setReconnectLink({ accountId, url: data.connect_link_url }),
 	});
 
 	return (
