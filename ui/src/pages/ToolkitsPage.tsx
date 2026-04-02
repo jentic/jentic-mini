@@ -93,7 +93,7 @@ export default function ToolkitsPage({ createNew = false }: ToolkitsPageProps) {
 
       {isLoading ? (
         <div className="text-center py-16 text-muted-foreground">Loading toolkits...</div>
-      ) : !toolkits || toolkits.length === 0 ? (
+      ) : !toolkits || !Array.isArray(toolkits) || toolkits.length === 0 ? (
         <div className="p-12 text-center text-muted-foreground bg-muted border border-dashed border-border rounded-xl">
           <Wrench className="h-10 w-10 mx-auto mb-3 opacity-30" />
           <p className="font-medium text-foreground mb-1">No toolkits yet</p>
