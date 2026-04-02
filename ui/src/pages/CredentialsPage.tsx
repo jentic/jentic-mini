@@ -17,15 +17,15 @@ export default function CredentialsPage() {
 	const { user } = useAuth();
 
 	const {
-		data: credentialsRaw,
+		data: credentials = [],
 		isLoading,
 		isError,
 	} = useQuery({
 		queryKey: ['credentials'],
 		queryFn: () => api.listCredentials(),
+		select: (d: any) => (Array.isArray(d) ? d : Array.isArray(d?.data) ? d.data : []),
 		enabled: !!user?.logged_in,
 	});
-	const credentials = Array.isArray(credentialsRaw) ? credentialsRaw : [];
 
 	const deleteMutation = useMutation({
 		mutationFn: (id: string) => api.deleteCredential(id),
@@ -47,7 +47,7 @@ export default function CredentialsPage() {
 				Store API credentials securely. Bind them to toolkits to give agents scoped access
 				to external APIs. Values are write-only — they are never returned by the API.
 			</div>
-			{isLoading ? (
+			{isLoading || !user?.logged_in ? (
 				<LoadingState message="Loading credentials..." />
 			) : isError ? (
 				<ErrorAlert message="Failed to load credentials. Please try refreshing the page." />
@@ -64,7 +64,7 @@ export default function CredentialsPage() {
 				/>
 			) : (
 				<div className="space-y-2">
-					{credentials.map((cred) => (
+					{credentials.map((cred: any) => (
 						<div
 							key={cred.id}
 							className="bg-muted border-border flex items-center gap-3 rounded-xl border p-4"

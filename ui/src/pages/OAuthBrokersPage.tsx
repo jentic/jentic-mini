@@ -680,7 +680,7 @@ export default function OAuthBrokersPage() {
 
 			{showAdd && <AddBrokerForm onClose={() => setShowAdd(false)} />}
 
-			{isLoading ? (
+			{isLoading || !user?.logged_in ? (
 				<LoadingState message="Loading brokers..." />
 			) : isError ? (
 				<ErrorAlert message="Failed to load OAuth brokers. Please try refreshing the page." />

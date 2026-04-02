@@ -286,16 +286,18 @@ export default function ToolkitDetailPage() {
 		refetchInterval: 30000,
 	});
 
-	const { data: keysResponse, isError: keysError } = useQuery({
+	const { data: keys = [], isError: keysError } = useQuery({
 		queryKey: ['toolkit-keys', id],
 		queryFn: () => api.listKeys(id!),
+		select: (d: any) => (Array.isArray(d) ? d : Array.isArray(d?.keys) ? d.keys : []),
 		enabled: !!id,
 		refetchInterval: 30000,
 	});
 
-	const { data: pendingReqs, isError: pendingError } = useQuery({
+	const { data: pending = [], isError: pendingError } = useQuery({
 		queryKey: ['access-requests', id],
 		queryFn: () => api.listAccessRequests(id!, 'pending'),
+		select: (d: any) => (Array.isArray(d) ? d.filter((r: any) => r.status === 'pending') : []),
 		enabled: !!id,
 		refetchInterval: 30000,
 	});
@@ -367,10 +369,6 @@ export default function ToolkitDetailPage() {
 			/>
 		);
 
-	const keys = Array.isArray(keysResponse) ? keysResponse : [];
-	const pending = Array.isArray(pendingReqs)
-		? pendingReqs.filter((r: any) => r.status === 'pending')
-		: [];
 	const credentials = Array.isArray(toolkit.credentials) ? toolkit.credentials : [];
 
 	return (
