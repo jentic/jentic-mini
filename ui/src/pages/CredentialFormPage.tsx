@@ -155,7 +155,6 @@ function ApiPicker({ onSelect }: { onSelect: (api: ApiOut) => void }) {
 	return (
 		<div className="space-y-3">
 			<div className="relative">
-				<Search className="text-muted-foreground absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2" />
 				<Input
 					ref={inputRef}
 					type="text"
@@ -163,7 +162,8 @@ function ApiPicker({ onSelect }: { onSelect: (api: ApiOut) => void }) {
 					onChange={(e) => setQuery(e.target.value)}
 					placeholder="Search APIs (GitHub, Gmail, Stripe…)"
 					aria-label="Search APIs"
-					className="bg-background py-2.5 pr-3 pl-9"
+					startIcon={<Search className="h-4 w-4" />}
+					className="bg-background py-2.5 pr-3"
 				/>
 				{isLoading && (
 					<Loader2 className="text-muted-foreground absolute top-1/2 right-3 h-4 w-4 -translate-y-1/2 animate-spin" />

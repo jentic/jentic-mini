@@ -13,10 +13,11 @@ type InputProps = Omit<React.ComponentProps<'input'>, 'size'> & {
 	error?: string;
 	size?: InputSize;
 	showPasswordToggle?: boolean;
+	startIcon?: React.ReactNode;
 };
 
 export const Input = React.forwardRef<HTMLInputElement, InputProps>(
-	({ error, size = 'md', showPasswordToggle, className, type, id, ...props }, ref) => {
+	({ error, size = 'md', showPasswordToggle, startIcon, className, type, id, ...props }, ref) => {
 		const [showPassword, setShowPassword] = useState(false);
 		const generatedId = useId();
 		const inputId = id ?? generatedId;
@@ -28,6 +29,11 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(
 		return (
 			<div className="w-full">
 				<div className="relative">
+					{startIcon && (
+						<div className="text-muted-foreground pointer-events-none absolute inset-y-0 left-3 flex items-center">
+							{startIcon}
+						</div>
+					)}
 					<input
 						ref={ref}
 						id={inputId}
@@ -38,6 +44,7 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(
 							'bg-muted border-border text-foreground placeholder:text-muted-foreground w-full rounded-lg border transition-colors',
 							'focus:border-primary focus:outline-hidden',
 							sizeClasses[size],
+							startIcon && 'pl-9',
 							isPassword && showPasswordToggle && 'pr-10',
 							error && 'border-danger focus:border-danger',
 							className,

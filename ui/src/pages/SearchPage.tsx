@@ -409,13 +409,6 @@ export default function SearchPage() {
 
 			{/* Search input */}
 			<div className="relative">
-				<div className="pointer-events-none absolute inset-y-0 left-4 flex items-center">
-					{isFetching ? (
-						<Loader2 className="text-muted-foreground h-4 w-4 animate-spin" />
-					) : (
-						<Search className="text-muted-foreground h-4 w-4" />
-					)}
-				</div>
 				<Input
 					autoFocus
 					type="text"
@@ -423,7 +416,14 @@ export default function SearchPage() {
 					onChange={(e) => handleInput(e.target.value)}
 					placeholder='e.g. "send an email" or "create a payment"'
 					aria-label="Search APIs and capabilities"
-					className="bg-muted border-border text-foreground placeholder:text-muted-foreground/60 focus:border-primary w-full rounded-xl border py-3.5 pr-10 pl-11 text-base focus:outline-hidden"
+					startIcon={
+						isFetching ? (
+							<Loader2 className="h-4 w-4 animate-spin" />
+						) : (
+							<Search className="h-4 w-4" />
+						)
+					}
+					className="rounded-xl py-3.5 pr-10 pl-11 text-base"
 				/>
 				{input && (
 					<Button

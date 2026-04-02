@@ -526,15 +526,15 @@ export default function CatalogPage() {
 						</Button>
 					))}
 				</div>
-				<div className="relative min-w-48 flex-1">
-					<Search className="text-muted-foreground pointer-events-none absolute inset-y-0 left-3 my-auto h-3.5 w-3.5" />
+				<div className="min-w-48 flex-1">
 					<Input
 						type="text"
 						value={q}
 						onChange={(e) => setQ(e.target.value)}
 						placeholder="Filter by name or API ID..."
 						aria-label="Filter APIs"
-						className="bg-muted border-border text-foreground placeholder:text-muted-foreground/60 focus:border-primary w-full rounded-lg border py-1.5 pr-3 pl-8 text-sm focus:outline-hidden"
+						startIcon={<Search className="h-3.5 w-3.5" />}
+						size="sm"
 					/>
 				</div>
 			</div>
