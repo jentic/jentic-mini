@@ -416,8 +416,8 @@ function BrokerAccounts({ broker }: { broker: OAuthBroker }) {
 	});
 
 	const deleteAccountMutation = useMutation({
-		mutationFn: (apiHost: string) =>
-			oauthBrokers.deleteAccount(broker.id, apiHost, externalUserId),
+		mutationFn: ({ apiHost, accountId }: { apiHost: string; accountId?: string }) =>
+			oauthBrokers.deleteAccount(broker.id, apiHost, externalUserId, accountId),
 		onSuccess: () => {
 			setConfirmDeleteAccount(null);
 			queryClient.invalidateQueries({ queryKey: ['oauth-broker-accounts', broker.id] });
@@ -550,7 +550,7 @@ function BrokerAccounts({ broker }: { broker: OAuthBroker }) {
 											size="sm"
 											loading={deleteAccountMutation.isPending}
 											onClick={() =>
-												deleteAccountMutation.mutate(acc.api_host)
+												deleteAccountMutation.mutate({ apiHost: acc.api_host, accountId: acc.account_id })
 											}
 										>
 											Remove & Revoke
