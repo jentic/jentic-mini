@@ -564,8 +564,12 @@ async def connect_callback(
             log.warning("Reconnect: new account NOT found in DB after sync for broker=%s app=%s external_user_id=%s (replacing %s)",
                         broker_id, app, external_user_id, replace_account_id)
 
-    # Redirect to OAuth brokers UI (so user can see the reconnected account)
-    ui_url = build_absolute_url(request, "/oauth-brokers")
+    # Redirect to the appropriate UI page (return_to defaults to /oauth-brokers)
+    return_to = request.query_params.get("return_to", "/oauth-brokers")
+    # Safety: only allow relative paths starting with /
+    if not return_to.startswith("/"):
+        return_to = "/oauth-brokers"
+    ui_url = build_absolute_url(request, return_to)
     return RedirectResponse(url=ui_url, status_code=302)
 
 
@@ -827,6 +831,7 @@ async def reconnect_account_link(broker_id: BrokerIdPath, account_id: str, reque
         "app": app_slug,
         "external_user_id": external_user_id,
         "replace_account_id": account_id,
+        "return_to": "/credentials",
     }
     if api_id:
         callback_params["api_id"] = api_id
