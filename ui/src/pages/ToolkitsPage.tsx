@@ -119,11 +119,16 @@ export default function ToolkitsPage({ createNew = false }: ToolkitsPageProps) {
 	const navigate = useNavigate();
 	const [showCreate, setShowCreate] = useState(createNew);
 
-	const { data: toolkits, isLoading } = useQuery({
+	const {
+		data: toolkitsRaw,
+		isLoading,
+		isError,
+	} = useQuery({
 		queryKey: ['toolkits'],
 		queryFn: api.listToolkits,
 		refetchInterval: 30000,
 	});
+	const toolkits = Array.isArray(toolkitsRaw) ? toolkitsRaw : [];
 
 	const { data: pendingRequests } = usePendingRequests();
 	const pendingByToolkit = (pendingRequests ?? []).reduce<Record<string, number>>(
@@ -148,6 +153,8 @@ export default function ToolkitsPage({ createNew = false }: ToolkitsPageProps) {
 
 			{isLoading ? (
 				<LoadingState message="Loading toolkits..." />
+			) : isError ? (
+				<ErrorAlert message="Failed to load toolkits. Please try refreshing the page." />
 			) : !toolkits || toolkits.length === 0 ? (
 				<EmptyState
 					icon={<Wrench className="h-10 w-10 opacity-30" />}

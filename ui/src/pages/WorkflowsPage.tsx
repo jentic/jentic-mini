@@ -86,7 +86,7 @@ export default function WorkflowsPage() {
 										{wf.description}
 									</p>
 								)}
-								{wf.involved_apis && wf.involved_apis.length > 0 && (
+								{Array.isArray(wf.involved_apis) && wf.involved_apis.length > 0 && (
 									<div className="flex flex-wrap items-center gap-1">
 										{wf.involved_apis.slice(0, 3).map((apiId: any) => (
 											<Badge

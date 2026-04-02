@@ -35,7 +35,7 @@ export default function DashboardPage() {
 		<div className="space-y-6">
 			<h1 className="text-foreground text-3xl font-bold">Dashboard</h1>
 
-			{pendingRequests && pendingRequests.length > 0 && (
+			{Array.isArray(pendingRequests) && pendingRequests.length > 0 && (
 				<div className="bg-warning/10 border-warning/30 w-full rounded-xl border p-4 shadow-md">
 					<div className="mb-3 flex items-center gap-3">
 						<AlertTriangle className="text-warning h-5 w-5" />
@@ -88,7 +88,10 @@ export default function DashboardPage() {
 			<div className="grid grid-cols-2 gap-4 md:grid-cols-4">
 				{[
 					{ label: 'APIs Registered', value: (apisPage as any)?.total ?? '—' },
-					{ label: 'Active Toolkits', value: toolkits?.length ?? '—' },
+					{
+						label: 'Active Toolkits',
+						value: Array.isArray(toolkits) ? toolkits.length : '—',
+					},
 					{
 						label: 'Workflows',
 						value: Array.isArray(workflows) ? workflows.length : '—',

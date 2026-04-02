@@ -55,7 +55,9 @@ describe('CredentialsPage', () => {
 
 		renderWithProviders(<CredentialsPage />);
 
-		expect(await screen.findByText('No credentials stored')).toBeInTheDocument();
+		expect(
+			await screen.findByText('Failed to load credentials. Please try refreshing the page.'),
+		).toBeInTheDocument();
 	});
 
 	it('renders page header with correct title', async () => {

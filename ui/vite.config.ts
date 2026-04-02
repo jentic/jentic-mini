@@ -67,7 +67,6 @@ export default defineConfig({
 			'/inspect': apiHost,
 			'/notes': apiHost,
 			'/default-api-key': apiHost,
-			'/oauth-brokers': apiHost,
 			'/docs': apiHost,
 			'/openapi.json': apiHost,
 			// SPA + API dual-use routes — serve index.html for browser navigations
@@ -78,6 +77,7 @@ export default defineConfig({
 			'/jobs': spaRoute,
 			'/workflows': spaRoute,
 			'/catalog': spaRoute,
+			'/oauth-brokers': spaRoute,
 		},
 	},
 });
