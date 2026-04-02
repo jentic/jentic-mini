@@ -30,7 +30,7 @@ test.describe('Setup flow', () => {
 		await expect(page.getByText(/create admin account/i)).toBeVisible({ timeout: 15_000 });
 
 		await page.getByLabel('Username').fill('admin');
-		await page.getByLabel('Password').fill('admin123');
+		await page.getByRole('textbox', { name: 'Password' }).fill('admin123');
 		await page.getByRole('button', { name: /create account/i }).click();
 
 		await expect(page.getByText(/admin account created/i)).toBeVisible({ timeout: 15_000 });
