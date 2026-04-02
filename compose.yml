@@ -11,6 +11,7 @@ services:
       - "8900:8900"
     volumes:
       - ${JENTIC_HOST_PATH:-.}/src:/app/src
+      - ${JENTIC_HOST_PATH:-.}/alembic:/app/alembic
       - ${JENTIC_DATA_PATH:-${JENTIC_HOST_PATH:-.}/data}:/app/data
     environment:
       JENTIC_PUBLIC_HOSTNAME: ${JENTIC_PUBLIC_HOSTNAME}
