@@ -748,7 +748,7 @@ async def delete_broker_account(broker_id: BrokerIdPath, account_id: str):
 @router.post(
     "/{broker_id}/accounts/{account_id}/reconnect-link",
     summary="Get a reconnect link for an existing connected account",
-    dependencies=[Depends(require_admin_or_human_or_toolkit)],
+    dependencies=[Depends(require_human_session)],
 )
 async def reconnect_account_link(broker_id: BrokerIdPath, account_id: str, request: Request):
     """Generate a new OAuth connect link for an existing connected account.
