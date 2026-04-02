@@ -1,7 +1,8 @@
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Key, Plus, Trash2, Settings } from 'lucide-react';
-import { api } from '@/api/client';
+import { Key, Plus, Trash2, Settings, RotateCcw } from 'lucide-react';
+import { api, oauthBrokers } from '@/api/client';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { ConfirmInline } from '@/components/ui/ConfirmInline';
@@ -32,8 +33,22 @@ export default function CredentialsPage() {
 	});
 
 	const deleteMutation = useMutation({
-		mutationFn: (id: string) => api.deleteCredential(id),
+		mutationFn: (cred: { id: string; authType: string; brokerId?: string; accountId?: string }) => {
+			if (cred.authType === 'pipedream_oauth' && cred.brokerId && cred.accountId) {
+				return oauthBrokers.deleteAccount(cred.brokerId, cred.accountId);
+			}
+			return api.deleteCredential(cred.id);
+		},
 		onSuccess: () => queryClient.invalidateQueries({ queryKey: ['credentials'] }),
+	});
+
+	const [reconnectLink, setReconnectLink] = useState<{ credId: string; url: string } | null>(null);
+	const reconnectMutation = useMutation({
+		mutationFn: ({ brokerId, accountId }: { brokerId: string; accountId: string }) =>
+			oauthBrokers.reconnectLink(brokerId, accountId),
+		onSuccess: (data: any, vars) => {
+			setReconnectLink({ credId: vars.accountId, url: data.connect_link_url });
+		},
 	});
 
 	return (
@@ -69,65 +84,99 @@ export default function CredentialsPage() {
 			) : (
 				<div className="space-y-2">
 					{credentials.map((cred: any) => (
-						<div
-							key={cred.id}
-							className="bg-muted border-border flex items-center gap-3 rounded-xl border p-4"
-						>
-							<Key className="text-accent-yellow h-5 w-5 shrink-0" />
-							<div className="min-w-0 flex-1">
-								<div className="flex flex-wrap items-center gap-2">
-									<span className="text-foreground font-medium">
-										{cred.label}
-									</span>
-									{cred.app_slug && (
-										<span className="text-muted-foreground text-xs">({cred.app_slug})</span>
-									)}
-									{cred.api_id && (
-										<span className="text-muted-foreground font-mono text-xs">
-											{cred.api_id}
+						<div key={cred.id} className="bg-muted border-border rounded-xl border p-4">
+							<div className="flex items-center gap-3">
+								<Key className="text-accent-yellow h-5 w-5 shrink-0" />
+								<div className="min-w-0 flex-1">
+									<div className="flex flex-wrap items-center gap-2">
+										<span className="text-foreground font-medium">
+											{cred.label}
 										</span>
-									)}
-									{cred.auth_type === 'pipedream_oauth' ? (
-										<Badge variant="default" className="text-[10px]">OAuth via Pipedream</Badge>
-									) : cred.scheme_name ? (
-										<Badge variant="default" className="text-[10px]">{cred.scheme_name}</Badge>
-									) : null}
+										{cred.app_slug && (
+											<span className="text-muted-foreground text-xs">({cred.app_slug})</span>
+										)}
+										{cred.api_id && (
+											<span className="text-muted-foreground font-mono text-xs">
+												{cred.api_id}
+											</span>
+										)}
+										{cred.auth_type === 'pipedream_oauth' ? (
+											<Badge variant="default" className="text-[10px]">OAuth via Pipedream</Badge>
+										) : cred.scheme_name ? (
+											<Badge variant="default" className="text-[10px]">{cred.scheme_name}</Badge>
+										) : null}
+									</div>
+									<p className="text-muted-foreground mt-0.5 text-xs">
+										{cred.auth_type === 'pipedream_oauth' && cred.account_id ? (
+											<>
+												<span>account: {cred.account_id}</span>
+												{cred.synced_at && (
+													<span className="ml-2">synced {formatSyncedAt(cred.synced_at)}</span>
+												)}
+											</>
+										) : cred.created_at ? (
+											<span>Added {new Date(cred.created_at * 1000).toLocaleDateString()}</span>
+										) : null}
+									</p>
 								</div>
-								<p className="text-muted-foreground mt-0.5 text-xs">
-									{cred.auth_type === 'pipedream_oauth' && cred.account_id ? (
-										<>
-											<span>account: {cred.account_id}</span>
-											{cred.synced_at && (
-												<span className="ml-2">synced {formatSyncedAt(cred.synced_at)}</span>
-											)}
-										</>
-									) : cred.created_at ? (
-										<span>Added {new Date(cred.created_at * 1000).toLocaleDateString()}</span>
-									) : null}
-								</p>
-							</div>
-							<div className="flex items-center gap-2">
-								{cred.auth_type !== 'pipedream_oauth' && (
-									<Button
-										variant="secondary"
-										size="sm"
-										onClick={() =>
-											navigate(`/credentials/${encodeURIComponent(cred.id)}/edit`)
-										}
+								<div className="flex items-center gap-2">
+									{cred.auth_type === 'pipedream_oauth' ? (
+										<Button
+											variant="secondary"
+											size="sm"
+											onClick={() => {
+												if (reconnectLink?.credId === cred.account_id) {
+													setReconnectLink(null);
+												} else {
+													reconnectMutation.mutate({ brokerId: 'pipedream', accountId: cred.account_id });
+												}
+											}}
+											disabled={reconnectMutation.isPending && reconnectMutation.variables?.accountId === cred.account_id}
+										>
+											<RotateCcw className="h-4 w-4" /> Reconnect
+										</Button>
+									) : (
+										<Button
+											variant="secondary"
+											size="sm"
+											onClick={() =>
+												navigate(`/credentials/${encodeURIComponent(cred.id)}/edit`)
+											}
+										>
+											<Settings className="h-4 w-4" /> Edit
+										</Button>
+									)}
+									<ConfirmInline
+										onConfirm={() => deleteMutation.mutate({
+											id: cred.id,
+											authType: cred.auth_type,
+											brokerId: cred.auth_type === 'pipedream_oauth' ? 'pipedream' : undefined,
+											accountId: cred.auth_type === 'pipedream_oauth' ? cred.account_id : undefined,
+										})}
+										message="Delete this credential?"
+										confirmLabel="Delete"
 									>
-										<Settings className="h-4 w-4" /> Edit
-									</Button>
-								)}
-								<ConfirmInline
-									onConfirm={() => deleteMutation.mutate(cred.id)}
-									message="Delete this credential?"
-									confirmLabel="Delete"
-								>
-									<Button variant="danger" size="sm">
-										<Trash2 className="h-4 w-4" />
-									</Button>
-								</ConfirmInline>
+										<Button variant="danger" size="sm">
+											<Trash2 className="h-4 w-4" />
+										</Button>
+									</ConfirmInline>
+								</div>
 							</div>
+							{reconnectLink?.credId === cred.account_id && (
+								<div className="border-border bg-card mt-3 flex items-center gap-3 rounded-lg border p-3 text-sm">
+									<a
+										href={reconnectLink.url}
+										target="_blank"
+										rel="noopener noreferrer"
+										className="text-accent-blue underline"
+									>
+										Open Reconnect Link
+									</a>
+									<Button variant="secondary" size="sm" onClick={() => setReconnectLink(null)}>
+										Cancel
+									</Button>
+								</div>
+							)}
 						</div>
 					))}
 				</div>
@@ -135,5 +184,3 @@ export default function CredentialsPage() {
 		</div>
 	);
 }
-
-
