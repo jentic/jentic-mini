@@ -479,13 +479,15 @@ async def connect_callback(
         try:
             await live_broker.discover_accounts(external_user_id)
             synced_ok = True
+            log.info("connect-callback: sync ok for broker %s, replace_account_id=%s",
+                     broker_id, replace_account_id)
         except Exception as exc:
-            import logging as _logging
-            _logging.getLogger(__name__).warning(
-                "connect-callback: sync failed for broker %s: %s", broker_id, exc
-            )
+            log.warning("connect-callback: sync failed for broker %s: %s", broker_id, exc)
             # Don't block the redirect — user will see the credential once they
             # manually sync, or on next automatic sync.
+    else:
+        log.warning("connect-callback: no live_broker found for %s — sync skipped, replace_account_id=%s will NOT be cleaned up",
+                    broker_id, replace_account_id)
 
     # If this was a reconnect, clean up the old account — but only after sync
     # confirmed the new connection is present.
@@ -503,7 +505,8 @@ async def connect_callback(
             ) as cur:
                 new_row = await cur.fetchone()
         if new_row:
-            # New account confirmed present — delete the old one using the same
+            log.info("Reconnect: new account %s confirmed, deleting old account %s",
+                     new_row[0], replace_account_id)
             # logic as delete_broker_account (revoke upstream, clean vault + DB).
             try:
                 from src.vault import vault as _vault
@@ -559,11 +562,8 @@ async def connect_callback(
             except Exception as exc:
                 _log.warning("Reconnect: failed to remove old account %s: %s", replace_account_id, exc)
         else:
-            import logging as _logging
-            _logging.getLogger(__name__).warning(
-                "Reconnect: new account not found after sync for broker %s app %s — keeping old account %s",
-                broker_id, app, replace_account_id,
-            )
+            log.warning("Reconnect: new account NOT found in DB after sync for broker=%s app=%s external_user_id=%s (replacing %s)",
+                        broker_id, app, external_user_id, replace_account_id)
 
     # Redirect to OAuth brokers UI (so user can see the reconnected account)
     ui_url = build_absolute_url(request, "/oauth-brokers")
