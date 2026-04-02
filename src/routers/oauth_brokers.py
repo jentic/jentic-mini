@@ -604,7 +604,7 @@ async def list_broker_accounts(broker_id: BrokerIdPath, external_user_id: Extern
     summary="Remove a connected account from an OAuth broker",
     dependencies=[Depends(require_human_session)],
 )
-async def delete_broker_account(broker_id: BrokerIdPath, api_host: str, external_user_id: ExternalUserIdQuery = None):
+async def delete_broker_account(broker_id: BrokerIdPath, api_host: str, external_user_id: ExternalUserIdQuery = None, account_id: Annotated[str | None, Query(description="Specific account ID to delete (required when multiple accounts share the same api_host)")] = None):
     """Remove a specific connected account from this broker.
 
     This performs three actions in order:
@@ -621,11 +621,18 @@ async def delete_broker_account(broker_id: BrokerIdPath, api_host: str, external
             if not await cur.fetchone():
                 raise HTTPException(404, f"OAuth broker '{broker_id}' not found")
 
-        async with db.execute(
-            "SELECT account_id FROM oauth_broker_accounts WHERE broker_id=? AND api_host=? AND external_user_id=?",
-            (broker_id, api_host, ext_uid),
-        ) as cur:
-            row = await cur.fetchone()
+        if account_id:
+            async with db.execute(
+                "SELECT account_id FROM oauth_broker_accounts WHERE broker_id=? AND account_id=? AND external_user_id=?",
+                (broker_id, account_id, ext_uid),
+            ) as cur:
+                row = await cur.fetchone()
+        else:
+            async with db.execute(
+                "SELECT account_id FROM oauth_broker_accounts WHERE broker_id=? AND api_host=? AND external_user_id=?",
+                (broker_id, api_host, ext_uid),
+            ) as cur:
+                row = await cur.fetchone()
 
     if not row:
         raise HTTPException(404, f"No connected account found for api_host='{api_host}' external_user_id='{ext_uid}'")
