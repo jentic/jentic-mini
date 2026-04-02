@@ -503,34 +503,59 @@ async def connect_callback(
             ) as cur:
                 new_row = await cur.fetchone()
         if new_row:
-            # New account confirmed present — delete the old one
+            # New account confirmed present — delete the old one using the same
+            # logic as delete_broker_account (revoke upstream, clean vault + DB).
             try:
-                delete_req = Request(
-                    scope={"type": "http", "method": "DELETE", "path": "/", "query_string": b"",
-                           "headers": []},
-                    receive=None,
-                )
-                await delete_broker_account.__wrapped__(broker_id, replace_account_id)                     if hasattr(delete_broker_account, "__wrapped__")                     else None
-                # Call the underlying logic directly
-                from src.vault import vault
+                from src.vault import vault as _vault
+                import urllib.request as _urlreq
+                import urllib.error as _urlerr
+
+                # Fetch api_host so we can construct the credential ID
                 async with get_db() as db:
-                    # Fetch api_host for cred_id construction
                     async with db.execute(
                         "SELECT api_host FROM oauth_broker_accounts WHERE broker_id=? AND account_id=?",
                         (broker_id, replace_account_id),
                     ) as cur:
                         old_row = await cur.fetchone()
+
                 if old_row:
                     old_api_host = old_row[0]
-                    old_host_slug = old_api_host.replace(".", "-")
-                    old_cred_id = f"pipedream-{replace_account_id}-{old_host_slug}"
+                    old_cred_id = f"pipedream-{replace_account_id}-{old_api_host.replace('.', '-')}"
+
+                    # 1. Revoke upstream in Pipedream (best-effort)
+                    if live_broker is not None:
+                        try:
+                            pd_token = await live_broker._get_access_token()
+                            pd_url = (f"https://api.pipedream.com/v1/connect/"
+                                      f"{live_broker.project_id}/accounts/{replace_account_id}")
+                            req = _urlreq.Request(pd_url, method="DELETE")
+                            req.add_header("Authorization", f"Bearer {pd_token}")
+                            req.add_header("X-PD-Environment", live_broker.environment)
+                            with _urlreq.urlopen(req, timeout=10):
+                                pass
+                            _log.info("Reconnect: revoked old Pipedream account %s", replace_account_id)
+                        except Exception as pd_exc:
+                            _log.warning("Reconnect: Pipedream revoke failed for %s (continuing): %s",
+                                         replace_account_id, pd_exc)
+
+                    # 2. Remove from toolkit provisioning + oauth_broker_accounts
                     async with get_db() as db:
-                        await db.execute("DELETE FROM toolkit_credentials WHERE credential_id=?", (old_cred_id,))
-                        await db.execute("DELETE FROM oauth_broker_accounts WHERE broker_id=? AND account_id=?",
-                                         (broker_id, replace_account_id))
+                        await db.execute("DELETE FROM toolkit_credentials WHERE credential_id=?",
+                                         (old_cred_id,))
+                        await db.execute(
+                            "DELETE FROM oauth_broker_accounts WHERE broker_id=? AND account_id=?",
+                            (broker_id, replace_account_id),
+                        )
                         await db.commit()
-                    await vault.delete_credential(old_cred_id)
-                    _log.info("Reconnect: removed old account %s after successful reconnect", replace_account_id)
+
+                    # 3. Delete from vault
+                    await _vault.delete_credential(old_cred_id)
+
+                    _log.info("Reconnect: removed old account %s after successful reconnect",
+                              replace_account_id)
+                else:
+                    _log.warning("Reconnect: old account %s already gone from DB — nothing to clean up",
+                                 replace_account_id)
             except Exception as exc:
                 _log.warning("Reconnect: failed to remove old account %s: %s", replace_account_id, exc)
         else:
