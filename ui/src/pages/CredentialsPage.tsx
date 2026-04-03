@@ -39,6 +39,7 @@ function PipedreamForm({
 		client_secret: '',
 		project_id: existing?.config?.project_id ?? '',
 	});
+	const [confirmDelete, setConfirmDelete] = useState(false);
 
 	const set = (field: string) => (e: React.ChangeEvent<HTMLInputElement>) =>
 		setForm((f) => ({ ...f, [field]: e.target.value }));
@@ -170,15 +171,34 @@ function PipedreamForm({
 					</Button>
 				</div>
 				{onDelete && (
-					<ConfirmInline
-						onConfirm={onDelete}
-						message="Remove Pipedream and all OAuth credentials?"
-						confirmLabel="Remove"
-					>
-						<Button variant="danger" size="sm" loading={deleteLoading}>
-							<Trash2 className="h-4 w-4" /> Remove Pipedream
-						</Button>
-					</ConfirmInline>
+					<div className="flex items-center gap-2">
+						{confirmDelete ? (
+							<>
+								<span className="text-muted-foreground text-xs">Remove Pipedream and all OAuth credentials?</span>
+								<Button
+									variant="danger"
+									size="sm"
+									loading={deleteLoading}
+									onClick={onDelete}
+								>
+									Yes, remove
+								</Button>
+								{!deleteLoading && (
+									<Button variant="ghost" size="sm" onClick={() => setConfirmDelete(false)}>
+										Cancel
+									</Button>
+								)}
+							</>
+						) : (
+							<Button
+								variant="danger"
+								size="sm"
+								onClick={() => setConfirmDelete(true)}
+							>
+								<Trash2 className="h-4 w-4" /> Remove Pipedream
+							</Button>
+						)}
+					</div>
 				)}
 			</div>
 		</div>
