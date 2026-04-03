@@ -265,6 +265,89 @@ async def create_oauth_broker(body: OAuthBrokerCreate):
     )
 
 
+class OAuthBrokerUpdate(NormModel):
+    config: dict[str, Any] = Field(
+        ...,
+        description=(
+            "Updated provider-specific configuration. "
+            "For `pipedream`: `client_id`, `client_secret`, `project_id` are all accepted. "
+            "Fields not supplied are left unchanged. "
+            "`client_secret` is write-only — Fernet-encrypted at rest, never returned."
+        ),
+        examples=[_PIPEDREAM_CONFIG_EXAMPLE],
+    )
+
+
+@router.patch(
+    "/{broker_id}",
+    response_model=OAuthBrokerOut,
+    summary="Update an OAuth broker configuration",
+    dependencies=[Depends(require_human_session)],
+)
+async def update_oauth_broker(broker_id: BrokerIdPath, body: OAuthBrokerUpdate):
+    """Update client_id, client_secret, and/or project_id for an existing broker.
+
+    Only supplied fields are changed. client_secret is re-encrypted if provided.
+    """
+    async with get_db() as db:
+        async with db.execute(
+            "SELECT id, type, client_id, client_secret_enc, project_id, environment, "
+            "default_external_user_id, created_at FROM oauth_brokers WHERE id=?",
+            (broker_id,),
+        ) as cur:
+            row = await cur.fetchone()
+        if not row:
+            raise HTTPException(404, f"OAuth broker '{broker_id}' not found")
+
+        _, broker_type, old_client_id, old_secret_enc, old_project_id, environment, ext_user_id, created_at = row
+
+        new_client_id = body.config.get("client_id") or old_client_id
+        new_project_id = body.config.get("project_id") or old_project_id
+        support_email = body.config.get("support_email") or None
+
+        if body.config.get("client_secret"):
+            new_secret_enc = vault.encrypt(body.config["client_secret"])
+            new_client_secret = body.config["client_secret"]
+        else:
+            new_secret_enc = old_secret_enc
+            new_client_secret = vault.decrypt(old_secret_enc)
+
+        await db.execute(
+            "UPDATE oauth_brokers SET client_id=?, client_secret_enc=?, project_id=? WHERE id=?",
+            (new_client_id, new_secret_enc, new_project_id, broker_id),
+        )
+        await db.commit()
+
+    # Re-register broker in registry with updated credentials
+    from src.brokers.pipedream import PipedreamOAuthBroker
+    broker = PipedreamOAuthBroker(
+        broker_id=broker_id,
+        client_id=new_client_id,
+        client_secret=new_client_secret,
+        project_id=new_project_id,
+        environment=environment,
+        default_external_user_id=ext_user_id or "default",
+    )
+    oauth_broker_registry.register(broker)
+
+    try:
+        await broker.configure_project(
+            app_name="Jentic Mini",
+            support_email=support_email,
+            logo_url="https://jentic.com/favicon.svg",
+        )
+    except Exception as exc:
+        log.warning("Project configuration failed after update for broker %s: %s", broker_id, exc)
+
+    log.info("OAuth broker '%s' updated", broker_id)
+    return OAuthBrokerOut(
+        id=broker_id,
+        type=broker_type,
+        config={"client_id": new_client_id, "project_id": new_project_id, "default_external_user_id": ext_user_id or "default"},
+        created_at=created_at,
+    )
+
+
 @router.get(
     "",
     summary="List registered OAuth brokers",

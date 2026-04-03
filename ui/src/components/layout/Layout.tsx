@@ -10,7 +10,6 @@ import {
 	GitBranch,
 	Shield,
 	KeyRound,
-	Link2,
 	Activity,
 	Cog,
 } from 'lucide-react';
@@ -120,12 +119,7 @@ function SidebarContents({ onClose }: { onClose?: () => void }) {
 					label="Credentials"
 					onClick={onClose}
 				/>
-				<NavLink
-					to="/oauth-brokers"
-					icon={<Link2 className="h-4 w-4" />}
-					label="OAuth Brokers"
-					onClick={onClose}
-				/>
+
 
 				<div className="text-primary/60 mt-4 mb-2 px-4 font-mono text-[10px] tracking-widest uppercase">
 					Observability
