@@ -230,9 +230,9 @@ export const oauthBrokers = {
 		fetchJson<OAuthAccount[]>(
 			`/oauth-brokers/${encodeURIComponent(id)}/accounts?external_user_id=${encodeURIComponent(externalUserId)}`,
 		),
-	deleteAccount: (id: string, apiHost: string, externalUserId = 'default') =>
+	deleteAccount: (id: string, accountId: string) =>
 		fetch(
-			`/oauth-brokers/${encodeURIComponent(id)}/accounts/${encodeURIComponent(apiHost)}?external_user_id=${encodeURIComponent(externalUserId)}`,
+			`/oauth-brokers/${encodeURIComponent(id)}/accounts/${encodeURIComponent(accountId)}`,
 			{
 				method: 'DELETE',
 				credentials: 'include',
@@ -259,6 +259,11 @@ export const oauthBrokers = {
 			headers: { 'Content-Type': 'application/json' },
 			body: JSON.stringify(body),
 		}),
+	reconnectLink: (brokerId: string, accountId: string) =>
+		fetchJson<ConnectLinkResponse>(
+			`/oauth-brokers/${encodeURIComponent(brokerId)}/accounts/${encodeURIComponent(accountId)}/reconnect-link`,
+			{ method: 'POST', credentials: 'include' },
+		),
 };
 
 export * from './generated';

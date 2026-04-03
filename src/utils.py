@@ -11,7 +11,11 @@ def build_absolute_url(request, path: str) -> str:
     Respects X-Forwarded-Proto behind reverse proxies.
     Handles comma-separated values from chained proxies.
     """
-    host = request.headers.get("host", JENTIC_PUBLIC_HOSTNAME).split(",")[0].strip()
+    host = (
+        request.headers.get("x-forwarded-host")
+        or request.headers.get("host")
+        or JENTIC_PUBLIC_HOSTNAME
+    ).split(",")[0].strip()
     scheme = request.headers.get("x-forwarded-proto", request.url.scheme).split(",")[0].strip()
     if scheme not in ("http", "https"):
         scheme = "http"

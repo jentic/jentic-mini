@@ -370,7 +370,10 @@ async def spa_middleware(request: Request, call_next):
         path = request.url.path
         accept = request.headers.get("accept", "")
         wants_html = any(part.strip().startswith("text/html") for part in accept.split(","))
-        if wants_html and any(path == p or path.startswith(p + "/") for p in _SPA_PATHS):
+        # Exclude API-only sub-paths that must not be intercepted by the SPA
+        _SPA_EXCLUDE_PREFIXES = ("/oauth-brokers/",)  # connect-callback is a real GET endpoint
+        is_spa_excluded = any(path.startswith(p) for p in _SPA_EXCLUDE_PREFIXES)
+        if wants_html and not is_spa_excluded and any(path == p or path.startswith(p + "/") for p in _SPA_PATHS):
             index_path = STATIC_DIR / "index.html"
             if index_path.exists():
                 resp = FileResponse(index_path)
