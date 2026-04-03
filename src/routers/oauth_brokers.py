@@ -954,8 +954,8 @@ async def reconnect_account_link(broker_id: BrokerIdPath, account_id: str, reque
 async def delete_oauth_broker(broker_id: BrokerIdPath):
     """Remove a broker and all its connected accounts and credentials.
 
-    Cascades through oauth_broker_accounts → toolkit_credentials → vault.
-    Does not revoke tokens on the provider side — do that in the provider's dashboard.
+    Cascades through oauth_broker_accounts -> toolkit_credentials -> vault.
+    Does not revoke tokens on the provider side - do that in the provider's dashboard.
     """
     async with get_db() as db:
         async with db.execute("SELECT id FROM oauth_brokers WHERE id=?", (broker_id,)) as cur:
