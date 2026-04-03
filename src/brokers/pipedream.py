@@ -556,13 +556,12 @@ class PipedreamOAuthBroker:
                         existing_row = await cur.fetchone()
 
                     if existing_row:
-                        # Preserve any label the user/agent has set explicitly via PATCH.
-                        # A pending label (from connect-link) intentionally overrides it;
-                        # otherwise keep the stored label rather than falling back to slug.
-                        # Use a local variable to avoid bleeding into the next host iteration.
-                        cred_label = label
-                        if app_slug not in pending and existing_row[1]:
-                            cred_label = existing_row[1]
+                        # Always preserve the stored label for existing credentials.
+                        # Pending labels apply only to new accounts (handled via
+                        # effective_label in the INSERT path below). Applying the
+                        # pending label here would pollute pre-existing accounts that
+                        # share the same app_slug (e.g. two Gmail accounts).
+                        cred_label = existing_row[1] or app_slug
                         await db.execute(
                             "UPDATE credentials SET label=?, encrypted_value=?, "
                             "api_id=?, auth_type='pipedream_oauth', "
