@@ -264,6 +264,12 @@ export const oauthBrokers = {
 			`/oauth-brokers/${encodeURIComponent(brokerId)}/accounts/${encodeURIComponent(accountId)}/reconnect-link`,
 			{ method: 'POST', credentials: 'include' },
 		),
+	update: (id: string, config: Record<string, any>) =>
+		fetchJson<OAuthBroker>(`/oauth-brokers/${encodeURIComponent(id)}`, {
+			method: 'PATCH',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ config }),
+		}),
 };
 
 export * from './generated';
