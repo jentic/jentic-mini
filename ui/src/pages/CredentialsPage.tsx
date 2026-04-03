@@ -25,9 +25,13 @@ function formatSyncedAt(ts: number): string {
 function PipedreamForm({
 	existing,
 	onClose,
+	onDelete,
+	deleteLoading,
 }: {
 	existing?: OAuthBroker;
 	onClose: () => void;
+	onDelete?: () => void;
+	deleteLoading?: boolean;
 }) {
 	const queryClient = useQueryClient();
 	const [form, setForm] = useState({
@@ -152,25 +156,40 @@ function PipedreamForm({
 				</p>
 			)}
 
-			<div className="flex items-center gap-2">
-				<Button
-					onClick={() => mutation.mutate()}
-					loading={mutation.isPending}
-					disabled={!canSubmit}
-				>
-					{isNew ? 'Enable Pipedream OAuth' : 'Save changes'}
-				</Button>
-				<Button variant="ghost" onClick={onClose}>
-					Cancel
-				</Button>
+			<div className="flex items-center justify-between gap-2">
+				<div className="flex items-center gap-2">
+					<Button
+						onClick={() => mutation.mutate()}
+						loading={mutation.isPending}
+						disabled={!canSubmit}
+					>
+						{isNew ? 'Enable Pipedream OAuth' : 'Save changes'}
+					</Button>
+					<Button variant="ghost" onClick={onClose}>
+						Cancel
+					</Button>
+				</div>
+				{onDelete && (
+					<ConfirmInline
+						onConfirm={onDelete}
+						message="Remove Pipedream and all OAuth credentials?"
+						confirmLabel="Remove"
+					>
+						<Button variant="danger" size="sm" loading={deleteLoading}>
+							<Trash2 className="h-4 w-4" /> Remove Pipedream
+						</Button>
+					</ConfirmInline>
+				)}
 			</div>
 		</div>
 	);
 }
 
-// ── Pipedream Banner ──────────────────────────────────────────────────────────
+// ── Pipedream Status Line ─────────────────────────────────────────────────────
+// A single line of muted text above the credentials list — not a card.
+// OAuth is an enhancement; this is incidental info, not a peer of the creds.
 
-function PipedreamBanner() {
+function PipedreamStatusLine() {
 	const queryClient = useQueryClient();
 	const [showForm, setShowForm] = useState(false);
 
@@ -193,6 +212,7 @@ function PipedreamBanner() {
 		onSuccess: () => {
 			queryClient.invalidateQueries({ queryKey: ['oauth-brokers'] });
 			queryClient.invalidateQueries({ queryKey: ['credentials'] });
+			setShowForm(false);
 		},
 	});
 
@@ -203,66 +223,50 @@ function PipedreamBanner() {
 
 	if (showForm) {
 		return (
-			<PipedreamForm existing={pipedream ?? undefined} onClose={() => setShowForm(false)} />
+			<PipedreamForm
+				existing={pipedream ?? undefined}
+				onClose={() => setShowForm(false)}
+				onDelete={pipedream ? () => deleteMutation.mutate() : undefined}
+				deleteLoading={deleteMutation.isPending}
+			/>
 		);
 	}
 
 	if (!pipedream) {
 		return (
-			<div className="border-border bg-background flex items-center justify-between gap-4 rounded-xl border border-dashed p-4">
-				<div className="flex items-center gap-3">
-					<Link2 className="text-muted-foreground h-5 w-5 shrink-0" />
-					<div>
-						<p className="text-foreground text-sm font-medium">
-							Enable OAuth with Pipedream
-						</p>
-						<p className="text-muted-foreground text-xs">
-							Connect 3,000+ APIs via Pipedream's managed OAuth — no per-app OAuth
-							credentials required.
-						</p>
-					</div>
-				</div>
-				<Button size="sm" onClick={() => setShowForm(true)}>
-					<Plus className="h-4 w-4" /> Set up
-				</Button>
-			</div>
+			<p className="text-muted-foreground text-xs">
+				<Link2 className="mr-1 inline h-3 w-3 align-middle opacity-60" />
+				OAuth not configured.{' '}
+				<button
+					onClick={() => setShowForm(true)}
+					className="text-primary hover:underline focus:outline-none"
+				>
+					Enable OAuth via Pipedream
+				</button>
+				.
+			</p>
 		);
 	}
 
 	return (
-		<div className="border-primary/20 bg-primary/5 flex items-center justify-between gap-4 rounded-xl border p-4">
-			<div className="flex items-center gap-3">
-				<Link2 className="text-primary h-5 w-5 shrink-0" />
-				<div>
-					<div className="flex items-center gap-2">
-						<p className="text-foreground text-sm font-medium">Pipedream OAuth enabled</p>
-						<Badge variant="default" className="text-[10px]">
-							{accounts.length} account{accounts.length !== 1 ? 's' : ''}
-						</Badge>
-					</div>
-					<p className="text-muted-foreground text-xs">
-						project: {pipedream.config?.project_id}
-						{lastSynced && (
-							<span className="ml-2">· last synced {formatSyncedAt(lastSynced)}</span>
-						)}
-					</p>
-				</div>
-			</div>
-			<div className="flex items-center gap-2">
-				<Button variant="secondary" size="sm" onClick={() => setShowForm(true)}>
-					<Pencil className="h-3.5 w-3.5" /> Edit
-				</Button>
-				<ConfirmInline
-					onConfirm={() => deleteMutation.mutate()}
-					message="Remove Pipedream broker and all its credentials?"
-					confirmLabel="Remove"
-				>
-					<Button variant="danger" size="sm" loading={deleteMutation.isPending}>
-						<Trash2 className="h-4 w-4" />
-					</Button>
-				</ConfirmInline>
-			</div>
-		</div>
+		<p className="text-muted-foreground text-xs">
+			<Link2 className="text-primary mr-1 inline h-3 w-3 align-middle" />
+			OAuth enabled via Pipedream
+			{accounts.length > 0 && (
+				<span>
+					{' · '}
+					{accounts.length} account{accounts.length !== 1 ? 's' : ''}
+				</span>
+			)}
+			{lastSynced && <span>{' · '}last synced {formatSyncedAt(lastSynced)}</span>}
+			{' · '}
+			<button
+				onClick={() => setShowForm(true)}
+				className="text-primary hover:underline focus:outline-none"
+			>
+				edit
+			</button>
+		</p>
 	);
 }
 
@@ -311,7 +315,7 @@ export default function CredentialsPage() {
 	});
 
 	return (
-		<div className="max-w-5xl space-y-6">
+		<div className="max-w-5xl space-y-5">
 			<PageHeader
 				category="Management"
 				title="Credentials Vault"
@@ -322,22 +326,13 @@ export default function CredentialsPage() {
 				}
 			/>
 
-			<div>
-				<p className="text-muted-foreground mb-2 font-mono text-[10px] tracking-widest uppercase">
-					OAuth Broker
-				</p>
-				<PipedreamBanner />
-			</div>
-
-			<div>
-				<p className="text-muted-foreground mb-2 font-mono text-[10px] tracking-widest uppercase">
-					API Credentials
-				</p>
-				{isLoading || !user?.logged_in ? (
-					<LoadingState message="Loading credentials..." />
-				) : isError ? (
-					<ErrorAlert message="Failed to load credentials. Please try refreshing the page." />
-				) : !credentials || credentials.length === 0 ? (
+			{isLoading || !user?.logged_in ? (
+				<LoadingState message="Loading credentials..." />
+			) : isError ? (
+				<ErrorAlert message="Failed to load credentials. Please try refreshing the page." />
+			) : !credentials || credentials.length === 0 ? (
+				<>
+					<PipedreamStatusLine />
 					<EmptyState
 						icon={<Key className="h-10 w-10 opacity-30" />}
 						title="No credentials stored"
@@ -348,7 +343,10 @@ export default function CredentialsPage() {
 							</Button>
 						}
 					/>
-				) : (
+				</>
+			) : (
+				<div className="space-y-3">
+					<PipedreamStatusLine />
 					<div className="space-y-2">
 						{credentials.map((cred: any) => (
 							<div
@@ -496,8 +494,8 @@ export default function CredentialsPage() {
 							</div>
 						))}
 					</div>
-				)}
-			</div>
+				</div>
+			)}
 		</div>
 	);
 }
