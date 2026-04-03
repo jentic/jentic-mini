@@ -5,7 +5,7 @@ on:
     branches: [ main ]
 
 env:
-  REQUIRED_CHECKS: "docker-e2e ui-tests"
+  REQUIRED_CHECKS: "docker-e2e ui-tests docker-security"
 
 permissions:
   pull-requests: write
