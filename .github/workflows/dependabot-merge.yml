@@ -10,6 +10,7 @@ env:
 permissions:
   pull-requests: write
   contents: write
+  checks: read
 
 jobs:
   merge-me:
@@ -19,7 +20,7 @@ jobs:
     steps:
       - name: Dependabot metadata
         id: meta
-        uses: dependabot/fetch-metadata@v2
+        uses: dependabot/fetch-metadata@0e58ed8671d6b60d0890c21b07f8835acee5fa99 # v2
         with:
           github-token: "${{ secrets.GITHUB_TOKEN }}"
 
@@ -50,6 +51,7 @@ jobs:
             ALL_DONE=true
             for CHECK in "${CHECKS[@]}"; do
               STATE=$(gh pr checks "$PR_URL" --json name,state --jq ".[] | select(.name == \"$CHECK\") | .state")
+              if [ -z "$STATE" ]; then continue; fi        # check not triggered (path-filtered) — skip
               if [ "$STATE" = "FAILURE" ]; then echo "$CHECK failed"; exit 1; fi
               if [ "$STATE" != "SUCCESS" ]; then ALL_DONE=false; fi
             done
