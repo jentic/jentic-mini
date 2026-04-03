@@ -952,18 +952,41 @@ async def reconnect_account_link(broker_id: BrokerIdPath, account_id: str, reque
     dependencies=[Depends(require_human_session)],
 )
 async def delete_oauth_broker(broker_id: BrokerIdPath):
-    """Remove a broker and all its connected account mappings.
+    """Remove a broker and all its connected accounts and credentials.
 
+    Cascades through oauth_broker_accounts → toolkit_credentials → vault.
     Does not revoke tokens on the provider side — do that in the provider's dashboard.
     """
     async with get_db() as db:
         async with db.execute("SELECT id FROM oauth_brokers WHERE id=?", (broker_id,)) as cur:
             if not await cur.fetchone():
                 raise HTTPException(404, f"OAuth broker '{broker_id}' not found")
+
+        # Collect all credential IDs for this broker before deleting
+        async with db.execute(
+            "SELECT credential_id FROM oauth_broker_accounts WHERE broker_id=?",
+            (broker_id,),
+        ) as cur:
+            cred_ids = [row[0] for row in await cur.fetchall()]
+
+        # Remove toolkit bindings and broker account rows
+        for cred_id in cred_ids:
+            await db.execute(
+                "DELETE FROM toolkit_credentials WHERE credential_id=?", (cred_id,)
+            )
+        await db.execute("DELETE FROM oauth_broker_accounts WHERE broker_id=?", (broker_id,))
+        await db.execute("DELETE FROM oauth_broker_connect_labels WHERE broker_id=?", (broker_id,))
         await db.execute("DELETE FROM oauth_brokers WHERE id=?", (broker_id,))
         await db.commit()
 
-    oauth_broker_registry.deregister(broker_id)
-    log.info("OAuth broker '%s' removed", broker_id)
+    # Delete credentials from vault after DB commit
+    for cred_id in cred_ids:
+        try:
+            await vault.delete_credential(cred_id)
+        except Exception:
+            log.warning("Could not delete credential '%s' from vault during broker removal", cred_id)
 
-    return {"status": "ok", "broker_id": broker_id, "deleted": True}
+    oauth_broker_registry.deregister(broker_id)
+    log.info("OAuth broker '%s' removed along with %d credential(s)", broker_id, len(cred_ids))
+
+    return {"status": "ok", "broker_id": broker_id, "deleted": True, "credentials_removed": len(cred_ids)}
