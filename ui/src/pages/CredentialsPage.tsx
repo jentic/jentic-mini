@@ -126,7 +126,7 @@ function PipedreamForm({
 						id="pd-client-id"
 						value={form.client_id}
 						onChange={set('client_id')}
-						placeholder={existing ? '(unchanged)' : 'oa_abc123'}
+						placeholder={existing ? '(unchanged)' : 'AbCdEfGhIjKlMnOpQrStUvWxYz012345'}
 					/>
 				</div>
 				<div>
@@ -141,7 +141,7 @@ function PipedreamForm({
 						type="password"
 						value={form.client_secret}
 						onChange={set('client_secret')}
-						placeholder={existing ? '(unchanged)' : 'pd_secret_xxxx'}
+						placeholder={existing ? '(unchanged)' : 'abc-AbCdEfGhIjKlMnOpQrStUvWxYz0123456789-de-fghij'}
 					/>
 				</div>
 				<div className="col-span-2">
@@ -155,7 +155,7 @@ function PipedreamForm({
 						id="pd-project-id"
 						value={form.project_id}
 						onChange={set('project_id')}
-						placeholder={existing ? '(unchanged)' : 'proj_abc123'}
+						placeholder={existing ? '(unchanged)' : 'proj_AbCdEfGhIjKlMnOpQrStUvWxYz01'}
 					/>
 				</div>
 			</div>

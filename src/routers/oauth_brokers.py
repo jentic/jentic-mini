@@ -963,12 +963,18 @@ async def delete_oauth_broker(broker_id: BrokerIdPath):
             if not await cur.fetchone():
                 raise HTTPException(404, f"OAuth broker '{broker_id}' not found")
 
-        # Collect all credential IDs for this broker before deleting
+        # Collect all credential IDs for this broker before deleting.
+        # Credentials are keyed as 'pipedream-{account_id}-{host_slug}' in the
+        # credentials table; oauth_broker_accounts stores account_id, not cred_id.
         async with db.execute(
-            "SELECT credential_id FROM oauth_broker_accounts WHERE broker_id=?",
+            "SELECT account_id, api_host FROM oauth_broker_accounts WHERE broker_id=?",
             (broker_id,),
         ) as cur:
-            cred_ids = [row[0] for row in await cur.fetchall()]
+            accounts = await cur.fetchall()
+        cred_ids = [
+            f"pipedream-{account_id}-{api_host.replace('.', '-')}"
+            for account_id, api_host in accounts
+        ]
 
         # Remove toolkit bindings and broker account rows
         for cred_id in cred_ids:
