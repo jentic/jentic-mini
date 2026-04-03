@@ -37,7 +37,7 @@ jobs:
           cache-to: type=gha,mode=max
 
       - name: Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@0.32.0
+        uses: aquasecurity/trivy-action@v0.35.0
         with:
           image-ref: 'jentic-mini:security-scan'
           format: 'sarif'
