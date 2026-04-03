@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Key, Plus, Trash2, Settings, RotateCcw, ExternalLink, Link2, Pencil } from 'lucide-react';
+import { Key, Plus, Trash2, Settings, RotateCcw, ExternalLink, Link2 } from 'lucide-react';
 import { api, oauthBrokers } from '@/api/client';
 import type { OAuthBroker } from '@/api/client';
 import { AppLink } from '@/components/ui/AppLink';
@@ -21,17 +21,17 @@ function formatSyncedAt(ts: number): string {
 }
 
 // ── Pipedream Setup / Edit Form ───────────────────────────────────────────────
+// This component owns both the save and delete mutations so they can't be
+// destabilised by parent re-renders that occur when query invalidation fires.
 
 function PipedreamForm({
 	existing,
 	onClose,
-	onDelete,
-	deleteLoading,
+	onDeleted,
 }: {
 	existing?: OAuthBroker;
 	onClose: () => void;
-	onDelete?: () => void;
-	deleteLoading?: boolean;
+	onDeleted?: () => void; // called after successful delete
 }) {
 	const queryClient = useQueryClient();
 	const [form, setForm] = useState({
@@ -44,7 +44,7 @@ function PipedreamForm({
 	const set = (field: string) => (e: React.ChangeEvent<HTMLInputElement>) =>
 		setForm((f) => ({ ...f, [field]: e.target.value }));
 
-	const mutation = useMutation({
+	const saveMutation = useMutation({
 		mutationFn: () =>
 			existing
 				? oauthBrokers.update('pipedream', {
@@ -64,6 +64,15 @@ function PipedreamForm({
 		onSuccess: () => {
 			queryClient.invalidateQueries({ queryKey: ['oauth-brokers'] });
 			onClose();
+		},
+	});
+
+	const deleteMutation = useMutation({
+		mutationFn: () => oauthBrokers.delete('pipedream'),
+		onSuccess: () => {
+			queryClient.invalidateQueries({ queryKey: ['oauth-brokers'] });
+			queryClient.invalidateQueries({ queryKey: ['credentials'] });
+			onDeleted?.();
 		},
 	});
 
@@ -151,40 +160,51 @@ function PipedreamForm({
 				</div>
 			</div>
 
-			{mutation.isError && (
+			{saveMutation.isError && (
 				<p role="alert" className="text-danger text-xs">
-					{(mutation.error as Error).message}
+					{(saveMutation.error as Error).message}
+				</p>
+			)}
+			{deleteMutation.isError && (
+				<p role="alert" className="text-danger text-xs">
+					Failed to remove: {(deleteMutation.error as Error).message}
 				</p>
 			)}
 
 			<div className="flex items-center justify-between gap-2">
 				<div className="flex items-center gap-2">
 					<Button
-						onClick={() => mutation.mutate()}
-						loading={mutation.isPending}
-						disabled={!canSubmit}
+						onClick={() => saveMutation.mutate()}
+						loading={saveMutation.isPending}
+						disabled={!canSubmit || deleteMutation.isPending}
 					>
 						{isNew ? 'Enable Pipedream OAuth' : 'Save changes'}
 					</Button>
-					<Button variant="ghost" onClick={onClose}>
+					<Button variant="ghost" onClick={onClose} disabled={saveMutation.isPending || deleteMutation.isPending}>
 						Cancel
 					</Button>
 				</div>
-				{onDelete && (
+				{existing && (
 					<div className="flex items-center gap-2">
 						{confirmDelete ? (
 							<>
-								<span className="text-muted-foreground text-xs">Remove Pipedream and all OAuth credentials?</span>
+								<span className="text-muted-foreground text-xs">
+									Remove Pipedream and all OAuth credentials?
+								</span>
 								<Button
 									variant="danger"
 									size="sm"
-									loading={deleteLoading}
-									onClick={onDelete}
+									loading={deleteMutation.isPending}
+									onClick={() => deleteMutation.mutate()}
 								>
 									Yes, remove
 								</Button>
-								{!deleteLoading && (
-									<Button variant="ghost" size="sm" onClick={() => setConfirmDelete(false)}>
+								{!deleteMutation.isPending && (
+									<Button
+										variant="ghost"
+										size="sm"
+										onClick={() => setConfirmDelete(false)}
+									>
 										Cancel
 									</Button>
 								)}
@@ -194,6 +214,7 @@ function PipedreamForm({
 								variant="danger"
 								size="sm"
 								onClick={() => setConfirmDelete(true)}
+								disabled={saveMutation.isPending}
 							>
 								<Trash2 className="h-4 w-4" /> Remove Pipedream
 							</Button>
@@ -210,7 +231,6 @@ function PipedreamForm({
 // OAuth is an enhancement; this is incidental info, not a peer of the creds.
 
 function PipedreamStatusLine() {
-	const queryClient = useQueryClient();
 	const [showForm, setShowForm] = useState(false);
 
 	const { data: brokersRaw } = useQuery({
@@ -227,15 +247,6 @@ function PipedreamStatusLine() {
 	});
 	const accounts = Array.isArray(accountsRaw) ? accountsRaw : [];
 
-	const deleteMutation = useMutation({
-		mutationFn: () => oauthBrokers.delete('pipedream'),
-		onSuccess: () => {
-			queryClient.invalidateQueries({ queryKey: ['oauth-brokers'] });
-			queryClient.invalidateQueries({ queryKey: ['credentials'] });
-			setShowForm(false);
-		},
-	});
-
 	const lastSynced =
 		accounts.length > 0
 			? Math.max(...accounts.map((a) => Number(a.synced_at) || 0))
@@ -246,8 +257,7 @@ function PipedreamStatusLine() {
 			<PipedreamForm
 				existing={pipedream ?? undefined}
 				onClose={() => setShowForm(false)}
-				onDelete={pipedream ? () => deleteMutation.mutate() : undefined}
-				deleteLoading={deleteMutation.isPending}
+				onDeleted={() => setShowForm(false)}
 			/>
 		);
 	}
