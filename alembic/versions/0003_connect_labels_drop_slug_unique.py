@@ -25,6 +25,7 @@ def upgrade() -> None:
     # Recreate table without the UNIQUE(broker_id, external_user_id, app_slug) constraint.
     # Rows are already uniquely identified by the UUID primary key.
     # Drop any leftover _new table from a partial previous run (e.g. interrupted by WatchFiles reload).
+    op.execute("PRAGMA foreign_keys = OFF")
     op.execute("DROP TABLE IF EXISTS oauth_broker_connect_labels_new")
     op.execute("""
     CREATE TABLE oauth_broker_connect_labels_new (
@@ -38,12 +39,13 @@ def upgrade() -> None:
     )
     """)
     op.execute("""
-    INSERT INTO oauth_broker_connect_labels_new
+    INSERT OR IGNORE INTO oauth_broker_connect_labels_new
         SELECT id, broker_id, external_user_id, app_slug, label, api_id, created_at
         FROM oauth_broker_connect_labels
     """)
     op.execute("DROP TABLE oauth_broker_connect_labels")
     op.execute("ALTER TABLE oauth_broker_connect_labels_new RENAME TO oauth_broker_connect_labels")
+    op.execute("PRAGMA foreign_keys = ON")
 
 
 def downgrade() -> None:
