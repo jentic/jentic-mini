@@ -300,11 +300,14 @@ function CredentialFields({ selectedApi, onBack, onSaved, editId, existing }: Cr
 	// On-demand connect link generation
 	const connectLinkMutation = useMutation({
 		mutationFn: () => {
+			if (!label.trim()) {
+				throw new Error('Label is required for OAuth connections');
+			}
 			const parts = selectedApi.id.split('/');
 			const appSlug = (selectedApi as any).app_slug ?? parts[parts.length - 1];
 			return oauthBrokers.connectLink(activeBroker!.id, {
 				app: appSlug,
-				label: label || (selectedApi.name ?? selectedApi.id),
+				label: label.trim(),
 				api_id: selectedApi.id,
 			});
 		},
@@ -467,7 +470,7 @@ function CredentialFields({ selectedApi, onBack, onSaved, editId, existing }: Cr
 									<Button
 										variant="default"
 										size="sm"
-										disabled={connectLinkMutation.isPending}
+										disabled={connectLinkMutation.isPending || !label.trim()}
 										onClick={() => connectLinkMutation.mutate()}
 									>
 										{connectLinkMutation.isPending ? (

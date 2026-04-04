@@ -395,12 +395,14 @@ class ConnectLinkRequest(NormModel):
     )
     label: str = Field(
         ...,
+        min_length=1,
         description=(
             "A human-readable name for this connection, e.g. `work email` or `personal email`. "
             "Required because Pipedream only returns the app name ('Gmail'), not the account "
             "address — without a label there is no way to distinguish multiple accounts "
             "for the same app. This label is carried through to the resulting credential "
-            "in `GET /credentials` and used when provisioning the credential to a toolkit."
+            "in `GET /credentials` and used when provisioning the credential to a toolkit. "
+            "Must be non-empty — no silent fallbacks to app slug or API ID."
         ),
         examples=["work email", "personal email", "main Slack workspace"],
     )

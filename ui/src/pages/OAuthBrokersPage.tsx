@@ -295,13 +295,17 @@ function ConnectAccountPanel({
 	const [connectLink, setConnectLink] = useState<ConnectLinkResponse | null>(null);
 
 	const linkMutation = useMutation({
-		mutationFn: () =>
-			oauthBrokers.connectLink(brokerId, {
+		mutationFn: () => {
+			if (!label.trim()) {
+				throw new Error('Label is required');
+			}
+			return oauthBrokers.connectLink(brokerId, {
 				app: appSlug,
 				external_user_id: externalUserId,
-				label: label || appSlug,
+				label: label.trim(),
 				api_id: apiId || undefined,
-			}),
+			});
+		},
 		onSuccess: (data) => setConnectLink(data),
 	});
 
@@ -358,13 +362,14 @@ function ConnectAccountPanel({
 						htmlFor="broker-label"
 						className="text-muted-foreground mb-1 block text-xs"
 					>
-						Label (optional)
+						Label <span className="text-danger">*</span>
 					</Label>
 					<Input
 						id="broker-label"
 						value={label}
 						onChange={(e) => setLabel(e.target.value)}
-						placeholder="e.g. My Gmail"
+						placeholder="e.g. My Gmail, Work Email"
+						required
 					/>
 				</div>
 			</div>
@@ -384,7 +389,7 @@ function ConnectAccountPanel({
 				size="sm"
 				onClick={() => linkMutation.mutate()}
 				loading={linkMutation.isPending}
-				disabled={!appSlug || !apiId}
+				disabled={!appSlug || !label.trim() || !apiId}
 			>
 				<ExternalLink className="h-3.5 w-3.5" /> Get Connect Link
 			</Button>
