@@ -232,6 +232,8 @@ function PipedreamForm({
 
 function PipedreamStatusLine() {
 	const [showForm, setShowForm] = useState(false);
+	const [showConfigure, setShowConfigure] = useState(false);
+	const queryClient = useQueryClient();
 
 	const { data: brokersRaw } = useQuery({
 		queryKey: ['oauth-brokers'],
@@ -247,6 +249,14 @@ function PipedreamStatusLine() {
 	});
 	const accounts = Array.isArray(accountsRaw) ? accountsRaw : [];
 
+	const syncMutation = useMutation({
+		mutationFn: () => oauthBrokers.sync('pipedream', 'default'),
+		onSuccess: () => {
+			queryClient.invalidateQueries({ queryKey: ['oauth-broker-accounts'] });
+			queryClient.invalidateQueries({ queryKey: ['credentials'] });
+		},
+	});
+
 	const lastSynced =
 		accounts.length > 0
 			? Math.max(...accounts.map((a) => Number(a.synced_at) || 0))
@@ -259,6 +269,66 @@ function PipedreamStatusLine() {
 				onClose={() => setShowForm(false)}
 				onDeleted={() => setShowForm(false)}
 			/>
+		);
+	}
+
+	if (showConfigure && pipedream) {
+		return (
+			<div className="bg-muted border-border space-y-4 rounded-xl border p-5">
+				<div className="flex items-center justify-between">
+					<h2 className="text-foreground text-sm font-semibold">
+						Configure Pipedream OAuth
+					</h2>
+					<Button variant="ghost" size="sm" onClick={() => setShowConfigure(false)}>
+						Close
+					</Button>
+				</div>
+
+				<div className="space-y-3">
+					<div className="bg-background border-border rounded-lg border p-4">
+						<div className="mb-2 flex items-center justify-between">
+							<h3 className="text-foreground text-xs font-semibold">Credentials</h3>
+							<Button variant="secondary" size="sm" onClick={() => {
+								setShowConfigure(false);
+								setShowForm(true);
+							}}>
+								<Settings className="h-4 w-4" /> Edit credentials
+							</Button>
+						</div>
+						<p className="text-muted-foreground text-xs">
+							Client ID and secret are configured. Update if you need to rotate keys.
+						</p>
+					</div>
+
+					<div className="bg-background border-border rounded-lg border p-4">
+						<div className="mb-2 flex items-center justify-between">
+							<h3 className="text-foreground text-xs font-semibold">Sync all connections</h3>
+							<Button
+								variant="secondary"
+								size="sm"
+								onClick={() => syncMutation.mutate()}
+								loading={syncMutation.isPending}
+							>
+								<RotateCcw className="h-4 w-4" /> Resync
+							</Button>
+						</div>
+						<p className="text-muted-foreground text-xs">
+							Fetch the latest connected accounts from Pipedream. Use this to clean up
+							defunct credentials or discover connections created elsewhere.
+						</p>
+						{syncMutation.isSuccess && (
+							<p className="text-success mt-2 text-xs">
+								✓ Sync complete — {syncMutation.data?.accounts_synced ?? 0} accounts refreshed
+							</p>
+						)}
+						{syncMutation.isError && (
+							<p className="text-danger mt-2 text-xs">
+								Sync failed: {(syncMutation.error as Error).message}
+							</p>
+						)}
+					</div>
+				</div>
+			</div>
 		);
 	}
 
@@ -291,10 +361,11 @@ function PipedreamStatusLine() {
 			{lastSynced && <span>{' · '}last synced {formatSyncedAt(lastSynced)}</span>}
 			{' · '}
 			<button
-				onClick={() => setShowForm(true)}
+				onClick={() => setShowConfigure(true)}
 				className="text-primary hover:underline focus:outline-none"
 			>
-				edit
+				<Settings className="mr-0.5 inline h-3 w-3 align-middle" />
+				configure
 			</button>
 		</p>
 	);
@@ -333,9 +404,21 @@ export default function CredentialsPage() {
 		onSuccess: () => queryClient.invalidateQueries({ queryKey: ['credentials'] }),
 	});
 
+	const [editingCred, setEditingCred] = useState<string | null>(null);
+	const [editLabel, setEditLabel] = useState('');
 	const [reconnectLink, setReconnectLink] = useState<{ credId: string; url: string } | null>(
 		null,
 	);
+
+	const renameMutation = useMutation({
+		mutationFn: ({ brokerId, accountId, label }: { brokerId: string; accountId: string; label: string }) =>
+			oauthBrokers.renameAccount(brokerId, accountId, label),
+		onSuccess: () => {
+			queryClient.invalidateQueries({ queryKey: ['credentials'] });
+			setEditingCred(null);
+		},
+	});
+
 	const reconnectMutation = useMutation({
 		mutationFn: ({ brokerId, accountId }: { brokerId: string; accountId: string }) =>
 			oauthBrokers.reconnectLink(brokerId, accountId),
@@ -437,24 +520,15 @@ export default function CredentialsPage() {
 												variant="secondary"
 												size="sm"
 												onClick={() => {
-													if (
-														reconnectLink?.credId === cred.account_id
-													) {
-														setReconnectLink(null);
+													if (editingCred === cred.account_id) {
+														setEditingCred(null);
 													} else {
-														reconnectMutation.mutate({
-															brokerId: 'pipedream',
-															accountId: cred.account_id,
-														});
+														setEditingCred(cred.account_id);
+														setEditLabel(cred.label || '');
 													}
 												}}
-												disabled={
-													reconnectMutation.isPending &&
-													reconnectMutation.variables?.accountId ===
-														cred.account_id
-												}
 											>
-												<RotateCcw className="h-4 w-4" /> Reconnect
+												<Settings className="h-4 w-4" /> Edit
 											</Button>
 										) : (
 											<Button
@@ -493,6 +567,68 @@ export default function CredentialsPage() {
 										</ConfirmInline>
 									</div>
 								</div>
+								{editingCred === cred.account_id && cred.auth_type === 'pipedream_oauth' && (
+									<div className="bg-background border-primary/30 mt-3 space-y-3 border-t p-4 text-xs">
+										<div>
+											<Label htmlFor="rename-label" className="text-foreground mb-1 block text-xs font-semibold">
+												Connection name
+											</Label>
+											<Input
+												id="rename-label"
+												value={editLabel}
+												onChange={(e) => setEditLabel(e.target.value)}
+												placeholder="e.g. Work Gmail, Personal Calendar"
+											/>
+										</div>
+										{renameMutation.isError && (
+											<p className="text-danger text-xs">
+												Failed to rename: {(renameMutation.error as Error).message}
+											</p>
+										)}
+										<div className="flex items-center justify-between">
+											<div className="flex items-center gap-2">
+												<Button
+													size="sm"
+													onClick={() => {
+														if (editLabel.trim()) {
+															renameMutation.mutate({
+																brokerId: 'pipedream',
+																accountId: cred.account_id,
+																label: editLabel.trim(),
+															});
+														}
+													}}
+													loading={renameMutation.isPending}
+													disabled={!editLabel.trim() || editLabel.trim() === cred.label}
+												>
+													Save
+												</Button>
+												<Button
+													variant="ghost"
+													size="sm"
+													onClick={() => setEditingCred(null)}
+													disabled={renameMutation.isPending}
+												>
+													Cancel
+												</Button>
+											</div>
+											<Button
+												variant="secondary"
+												size="sm"
+												onClick={() => {
+													setEditingCred(null);
+													reconnectMutation.mutate({
+														brokerId: 'pipedream',
+														accountId: cred.account_id,
+													});
+												}}
+												disabled={reconnectMutation.isPending}
+											>
+												<RotateCcw className="h-4 w-4" /> Reconnect
+											</Button>
+										</div>
+									</div>
+								)}
 								{reconnectLink?.credId === cred.account_id && (
 									<div className="bg-background border-primary/30 mt-3 space-y-3 border-t p-3 text-xs">
 										<p className="text-foreground font-medium">

@@ -856,6 +856,36 @@ async def delete_broker_account(broker_id: BrokerIdPath, account_id: str):
     }
 
 
+@router.patch(
+    "/{broker_id}/accounts/{account_id}",
+    summary="Update a connected account (e.g. rename label)",
+    dependencies=[Depends(require_human_session)],
+)
+async def update_broker_account(broker_id: BrokerIdPath, account_id: str, body: dict):
+    """Patch a connected account record. Currently supports updating `label` only."""
+    new_label = body.get("label")
+    if not new_label or not isinstance(new_label, str):
+        raise HTTPException(400, "body must include a non-empty 'label' field")
+    async with get_db() as db:
+        async with db.execute(
+            "SELECT account_id FROM oauth_broker_accounts WHERE broker_id=? AND account_id=?",
+            (broker_id, account_id),
+        ) as cur:
+            if not await cur.fetchone():
+                raise HTTPException(404, f"No connected account '{account_id}' found for broker '{broker_id}'")
+        await db.execute(
+            "UPDATE oauth_broker_accounts SET label=? WHERE broker_id=? AND account_id=?",
+            (new_label.strip(), broker_id, account_id),
+        )
+        # Also update the credential label in the vault if it exists
+        await db.execute(
+            "UPDATE credentials SET label=? WHERE id LIKE ?",
+            (new_label.strip(), f"pipedream-{account_id}-%"),
+        )
+        await db.commit()
+    return {"account_id": account_id, "label": new_label.strip()}
+
+
 @router.post(
     "/{broker_id}/accounts/{account_id}/reconnect-link",
     summary="Get a reconnect link for an existing connected account",
