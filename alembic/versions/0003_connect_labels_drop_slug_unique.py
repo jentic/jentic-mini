@@ -24,8 +24,10 @@ depends_on = None
 def upgrade() -> None:
     # Recreate table without the UNIQUE(broker_id, external_user_id, app_slug) constraint.
     # Rows are already uniquely identified by the UUID primary key.
+    # Drop any leftover _new table from a partial previous run (e.g. interrupted by WatchFiles reload).
+    op.execute("DROP TABLE IF EXISTS oauth_broker_connect_labels_new")
     op.execute("""
-    CREATE TABLE IF NOT EXISTS oauth_broker_connect_labels_new (
+    CREATE TABLE oauth_broker_connect_labels_new (
         id               TEXT PRIMARY KEY,
         broker_id        TEXT NOT NULL REFERENCES oauth_brokers(id) ON DELETE CASCADE,
         external_user_id TEXT NOT NULL,
