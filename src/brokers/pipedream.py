@@ -514,61 +514,69 @@ class PipedreamOAuthBroker:
                     hosts = pd_slug_to_hosts(app_slug)
                 for api_host in hosts:
                     row_id = f"{self.broker_id}:{external_user_id}:{api_host}:{account_id}"
-                    # Only update the label if we have a pending one — otherwise
-                    # preserve whatever label is already stored (e.g. set by a
-                    # previous connect-link callback). Slug fallback only applies
-                    # on first INSERT.
+                    # Check if this account row already exists.
                     async with db.execute(
                         "SELECT label FROM oauth_broker_accounts WHERE id=?",
                         (row_id,),
                     ) as cur:
                         existing_row = await cur.fetchone()
-                    stored_label = existing_row[0] if existing_row else None
-                    has_pending = app_slug in pending
-                    # Pending label applies ONLY to new rows (no existing row).
-                    # Existing rows always keep their stored label — we must not
-                    # relabel an already-known account just because a new account
-                    # with the same app_slug is being connected simultaneously.
-                    if existing_row:
-                        effective_label = stored_label or app_slug
-                    elif has_pending:
-                        effective_label = label  # label set from pending[app_slug]
-                    else:
-                        effective_label = app_slug  # slug fallback for new row with no pending
 
-                    await db.execute(
-                        """INSERT OR REPLACE INTO oauth_broker_accounts
-                           (id, broker_id, external_user_id, api_host, app_slug,
-                            account_id, label, api_id, healthy, synced_at)
-                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?)""",
-                        (row_id, self.broker_id, external_user_id,
-                         api_host, app_slug, account_id, effective_label, user_api_id, time.time()),
-                    )
+                    if existing_row:
+                        # Existing account: freeze the label. Never overwrite it, even if
+                        # there's a pending label (which would be for a different account
+                        # with the same app_slug). Only update the non-label fields.
+                        effective_label = existing_row[0]
+                        await db.execute(
+                            """UPDATE oauth_broker_accounts
+                               SET api_id=?, healthy=1, synced_at=?
+                               WHERE id=?""",
+                            (user_api_id, time.time(), row_id),
+                        )
+                    else:
+                        # New account: set label from pending table or reject if no label.
+                        # We no longer fall back to app_slug — the label must come from
+                        # the user at connect-link time (enforced by min_length=1 in the API).
+                        has_pending = app_slug in pending
+                        if not has_pending:
+                            log.warning(
+                                "No pending label for new account %s (app_slug=%s). "
+                                "This should not happen if connect-link was used. Skipping.",
+                                account_id, app_slug,
+                            )
+                            continue  # skip this account
+                        effective_label = label  # label set from pending[app_slug]
+                        await db.execute(
+                            """INSERT INTO oauth_broker_accounts
+                               (id, broker_id, external_user_id, api_host, app_slug,
+                                account_id, label, api_id, healthy, synced_at)
+                               VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?)""",
+                            (row_id, self.broker_id, external_user_id,
+                             api_host, app_slug, account_id, effective_label, user_api_id, time.time()),
+                        )
 
                     # Upsert a credential in the vault so users can provision it to toolkits.
                     # Credential ID is stable: pipedream-{account_id}-{api_host_slug}
+                    # Label is always copied from oauth_broker_accounts (single source of truth).
                     host_slug = api_host.replace(".", "-")
                     cred_id = f"pipedream-{account_id}-{host_slug}"
                     enc_account_id = vault.encrypt(account_id)
                     async with db.execute(
-                        "SELECT id, label FROM credentials WHERE id=?", (cred_id,)
+                        "SELECT id FROM credentials WHERE id=?", (cred_id,)
                     ) as cur:
-                        existing_row = await cur.fetchone()
+                        existing_cred = await cur.fetchone()
 
-                    if existing_row:
-                        # Always preserve the stored label for existing credentials.
-                        # Pending labels apply only to new accounts (handled via
-                        # effective_label in the INSERT path below). Applying the
-                        # pending label here would pollute pre-existing accounts that
-                        # share the same app_slug (e.g. two Gmail accounts).
-                        cred_label = existing_row[1] or app_slug
+                    if existing_cred:
+                        # Existing credential: update the encrypted value and sync the label
+                        # from oauth_broker_accounts (the authoritative source). Never read
+                        # the label from credentials — that creates divergence.
                         await db.execute(
                             "UPDATE credentials SET label=?, encrypted_value=?, "
                             "api_id=?, auth_type='pipedream_oauth', "
                             "updated_at=unixepoch() WHERE id=?",
-                            (cred_label, enc_account_id, api_host, cred_id),
+                            (effective_label, enc_account_id, api_host, cred_id),
                         )
                     else:
+                        # New credential: use the effective_label from oauth_broker_accounts.
                         # env_var must be unique per (account_id, api_host) — include
                         # the host slug so multiple APIs sharing one Pipedream account
                         # (e.g. googleapis.com/gmail and googleapis.com/calendar) each
