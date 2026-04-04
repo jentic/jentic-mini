@@ -259,6 +259,15 @@ export const oauthBrokers = {
 			headers: { 'Content-Type': 'application/json' },
 			body: JSON.stringify(body),
 		}),
+	renameAccount: (brokerId: string, accountId: string, label: string) =>
+		fetchJson<{ account_id: string; label: string }>(
+			`/oauth-brokers/${encodeURIComponent(brokerId)}/accounts/${encodeURIComponent(accountId)}`,
+			{
+				method: 'PATCH',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ label }),
+			},
+		),
 	reconnectLink: (brokerId: string, accountId: string) =>
 		fetchJson<ConnectLinkResponse>(
 			`/oauth-brokers/${encodeURIComponent(brokerId)}/accounts/${encodeURIComponent(accountId)}/reconnect-link`,
