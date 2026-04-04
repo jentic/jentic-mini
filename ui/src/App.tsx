@@ -1,4 +1,4 @@
-import { createBrowserRouter, RouterProvider } from 'react-router-dom';
+import { createBrowserRouter, RouterProvider, Navigate } from 'react-router-dom';
 import { Layout } from '@/components/layout/Layout';
 import { AuthGuard } from '@/components/AuthGuard';
 import SetupPage from '@/pages/SetupPage';
@@ -9,7 +9,6 @@ import CatalogPage from '@/pages/CatalogPage';
 import ToolkitsPage from '@/pages/ToolkitsPage';
 import ToolkitDetailPage from '@/pages/ToolkitDetailPage';
 import CredentialsPage from '@/pages/CredentialsPage';
-import OAuthBrokersPage from '@/pages/OAuthBrokersPage';
 import CredentialFormPage from '@/pages/CredentialFormPage';
 import WorkflowsPage from '@/pages/WorkflowsPage';
 import WorkflowDetailPage from '@/pages/WorkflowDetailPage';
@@ -41,7 +40,7 @@ const router = createBrowserRouter([
 					{ path: '/credentials', element: <CredentialsPage /> },
 					{ path: '/credentials/new', element: <CredentialFormPage /> },
 					{ path: '/credentials/:id/edit', element: <CredentialFormPage /> },
-					{ path: '/oauth-brokers', element: <OAuthBrokersPage /> },
+					{ path: '/oauth-brokers', element: <Navigate to="/credentials" replace /> },
 					{ path: '/traces', element: <TracesPage /> },
 					{ path: '/traces/:id', element: <TraceDetailPage /> },
 					{ path: '/jobs', element: <JobsPage /> },

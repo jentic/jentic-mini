@@ -263,6 +263,89 @@ async def create_oauth_broker(body: OAuthBrokerCreate):
     )
 
 
+class OAuthBrokerUpdate(NormModel):
+    config: dict[str, Any] = Field(
+        ...,
+        description=(
+            "Updated provider-specific configuration. "
+            "For `pipedream`: `client_id`, `client_secret`, `project_id` are all accepted. "
+            "Fields not supplied are left unchanged. "
+            "`client_secret` is write-only — Fernet-encrypted at rest, never returned."
+        ),
+        examples=[_PIPEDREAM_CONFIG_EXAMPLE],
+    )
+
+
+@router.patch(
+    "/{broker_id}",
+    response_model=OAuthBrokerOut,
+    summary="Update an OAuth broker configuration",
+    dependencies=[Depends(require_human_session)],
+)
+async def update_oauth_broker(broker_id: BrokerIdPath, body: OAuthBrokerUpdate):
+    """Update client_id, client_secret, and/or project_id for an existing broker.
+
+    Only supplied fields are changed. client_secret is re-encrypted if provided.
+    """
+    async with get_db() as db:
+        async with db.execute(
+            "SELECT id, type, client_id, client_secret_enc, project_id, environment, "
+            "default_external_user_id, created_at FROM oauth_brokers WHERE id=?",
+            (broker_id,),
+        ) as cur:
+            row = await cur.fetchone()
+        if not row:
+            raise HTTPException(404, f"OAuth broker '{broker_id}' not found")
+
+        _, broker_type, old_client_id, old_secret_enc, old_project_id, environment, ext_user_id, created_at = row
+
+        new_client_id = body.config.get("client_id") or old_client_id
+        new_project_id = body.config.get("project_id") or old_project_id
+        support_email = body.config.get("support_email") or None
+
+        if body.config.get("client_secret"):
+            new_secret_enc = vault.encrypt(body.config["client_secret"])
+            new_client_secret = body.config["client_secret"]
+        else:
+            new_secret_enc = old_secret_enc
+            new_client_secret = vault.decrypt(old_secret_enc)
+
+        await db.execute(
+            "UPDATE oauth_brokers SET client_id=?, client_secret_enc=?, project_id=? WHERE id=?",
+            (new_client_id, new_secret_enc, new_project_id, broker_id),
+        )
+        await db.commit()
+
+    # Re-register broker in registry with updated credentials
+    from src.brokers.pipedream import PipedreamOAuthBroker
+    broker = PipedreamOAuthBroker(
+        broker_id=broker_id,
+        client_id=new_client_id,
+        client_secret=new_client_secret,
+        project_id=new_project_id,
+        environment=environment,
+        default_external_user_id=ext_user_id or "default",
+    )
+    oauth_broker_registry.register(broker)
+
+    try:
+        await broker.configure_project(
+            app_name="Jentic Mini",
+            support_email=support_email,
+            logo_url="https://jentic.com/favicon.svg",
+        )
+    except Exception as exc:
+        log.warning("Project configuration failed after update for broker %s: %s", broker_id, exc)
+
+    log.info("OAuth broker '%s' updated", broker_id)
+    return OAuthBrokerOut(
+        id=broker_id,
+        type=broker_type,
+        config={"client_id": new_client_id, "project_id": new_project_id, "default_external_user_id": ext_user_id or "default"},
+        created_at=created_at,
+    )
+
+
 @router.get(
     "",
     summary="List registered OAuth brokers",
@@ -773,6 +856,36 @@ async def delete_broker_account(broker_id: BrokerIdPath, account_id: str):
     }
 
 
+@router.patch(
+    "/{broker_id}/accounts/{account_id}",
+    summary="Update a connected account (e.g. rename label)",
+    dependencies=[Depends(require_human_session)],
+)
+async def update_broker_account(broker_id: BrokerIdPath, account_id: str, body: dict):
+    """Patch a connected account record. Currently supports updating `label` only."""
+    new_label = body.get("label")
+    if not new_label or not isinstance(new_label, str):
+        raise HTTPException(400, "body must include a non-empty 'label' field")
+    async with get_db() as db:
+        async with db.execute(
+            "SELECT account_id FROM oauth_broker_accounts WHERE broker_id=? AND account_id=?",
+            (broker_id, account_id),
+        ) as cur:
+            if not await cur.fetchone():
+                raise HTTPException(404, f"No connected account '{account_id}' found for broker '{broker_id}'")
+        await db.execute(
+            "UPDATE oauth_broker_accounts SET label=? WHERE broker_id=? AND account_id=?",
+            (new_label.strip(), broker_id, account_id),
+        )
+        # Also update the credential label in the vault if it exists
+        await db.execute(
+            "UPDATE credentials SET label=? WHERE id LIKE ?",
+            (new_label.strip(), f"pipedream-{account_id}-%"),
+        )
+        await db.commit()
+    return {"account_id": account_id, "label": new_label.strip()}
+
+
 @router.post(
     "/{broker_id}/accounts/{account_id}/reconnect-link",
     summary="Get a reconnect link for an existing connected account",
@@ -870,18 +983,47 @@ async def reconnect_account_link(broker_id: BrokerIdPath, account_id: str, reque
     dependencies=[Depends(require_human_session)],
 )
 async def delete_oauth_broker(broker_id: BrokerIdPath):
-    """Remove a broker and all its connected account mappings.
+    """Remove a broker and all its connected accounts and credentials.
 
-    Does not revoke tokens on the provider side — do that in the provider's dashboard.
+    Cascades through oauth_broker_accounts -> toolkit_credentials -> vault.
+    Does not revoke tokens on the provider side - do that in the provider's dashboard.
     """
     async with get_db() as db:
         async with db.execute("SELECT id FROM oauth_brokers WHERE id=?", (broker_id,)) as cur:
             if not await cur.fetchone():
                 raise HTTPException(404, f"OAuth broker '{broker_id}' not found")
+
+        # Collect all credential IDs for this broker before deleting.
+        # Credentials are keyed as 'pipedream-{account_id}-{host_slug}' in the
+        # credentials table; oauth_broker_accounts stores account_id, not cred_id.
+        async with db.execute(
+            "SELECT account_id, api_host FROM oauth_broker_accounts WHERE broker_id=?",
+            (broker_id,),
+        ) as cur:
+            accounts = await cur.fetchall()
+        cred_ids = [
+            f"pipedream-{account_id}-{api_host.replace('.', '-')}"
+            for account_id, api_host in accounts
+        ]
+
+        # Remove toolkit bindings and broker account rows
+        for cred_id in cred_ids:
+            await db.execute(
+                "DELETE FROM toolkit_credentials WHERE credential_id=?", (cred_id,)
+            )
+        await db.execute("DELETE FROM oauth_broker_accounts WHERE broker_id=?", (broker_id,))
+        await db.execute("DELETE FROM oauth_broker_connect_labels WHERE broker_id=?", (broker_id,))
         await db.execute("DELETE FROM oauth_brokers WHERE id=?", (broker_id,))
         await db.commit()
 
-    oauth_broker_registry.deregister(broker_id)
-    log.info("OAuth broker '%s' removed", broker_id)
+    # Delete credentials from vault after DB commit
+    for cred_id in cred_ids:
+        try:
+            await vault.delete_credential(cred_id)
+        except Exception:
+            log.warning("Could not delete credential '%s' from vault during broker removal", cred_id)
 
-    return {"status": "ok", "broker_id": broker_id, "deleted": True}
+    oauth_broker_registry.deregister(broker_id)
+    log.info("OAuth broker '%s' removed along with %d credential(s)", broker_id, len(cred_ids))
+
+    return {"status": "ok", "broker_id": broker_id, "deleted": True, "credentials_removed": len(cred_ids)}
