@@ -157,7 +157,7 @@ The default `compose.yml` includes [Watchtower](https://containrrr.dev/watchtowe
 **Without Watchtower** (or if you prefer the command line):
 
 ```bash
-./jentic-update.sh
+./scripts/jentic-update.sh
 ```
 
 Or manually:
