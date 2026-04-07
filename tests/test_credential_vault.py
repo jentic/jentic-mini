@@ -5,8 +5,6 @@ accepted on write but NEVER returned on read.
 """
 import json
 
-import pytest
-
 
 def _register_api_with_scheme(client, cookies, api_id, scheme_type="bearer"):
     """Helper: register a minimal API with a security scheme so credentials can be stored."""
