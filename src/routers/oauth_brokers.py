@@ -18,6 +18,7 @@ from typing import Annotated, Any
 
 import urllib.parse
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, Field
@@ -440,8 +441,7 @@ async def connect_callback(
     user to the credentials page of the UI.
 
     This endpoint is hit by the user's browser — no auth token required.
-    Labels come from URL params we encoded at connect-link time, so they
-    cannot be spoofed by Pipedream or third parties.
+    Labels come from URL params encoded at connect-link time.
     """
     import uuid as _uuid
 
@@ -492,8 +492,6 @@ async def connect_callback(
     # If this was a reconnect, clean up the old account — but only after sync
     # confirmed the new connection is present.
     if replace_account_id and synced_ok:
-        import logging as _logging
-        _log = _logging.getLogger(__name__)
         # Verify the new account landed (old account_id should be gone; any
         # remaining account for this app_slug other than replace_account_id is new).
         async with get_db() as db:
@@ -507,11 +505,7 @@ async def connect_callback(
         if new_row:
             log.info("Reconnect: new account %s confirmed, deleting old account %s",
                      new_row[0], replace_account_id)
-            # logic as delete_broker_account (revoke upstream, clean vault + DB).
             try:
-                import urllib.request as _urlreq
-                import urllib.error as _urlerr
-
                 # Fetch api_host so we can construct the credential ID
                 async with get_db() as db:
                     async with db.execute(
@@ -524,21 +518,24 @@ async def connect_callback(
                     old_api_host = old_row[0]
                     old_cred_id = f"pipedream-{replace_account_id}-{old_api_host.replace('.', '-')}"
 
-                    # 1. Revoke upstream in Pipedream (best-effort)
+                    # 1. Revoke upstream in Pipedream (best-effort, async)
                     if live_broker is not None:
                         try:
                             pd_token = await live_broker._get_access_token()
                             pd_url = (f"https://api.pipedream.com/v1/connect/"
                                       f"{live_broker.project_id}/accounts/{replace_account_id}")
-                            req = _urlreq.Request(pd_url, method="DELETE")
-                            req.add_header("Authorization", f"Bearer {pd_token}")
-                            req.add_header("X-PD-Environment", live_broker.environment)
-                            with _urlreq.urlopen(req, timeout=10):
-                                pass
-                            _log.info("Reconnect: revoked old Pipedream account %s", replace_account_id)
+                            async with httpx.AsyncClient(timeout=10) as client:
+                                await client.delete(
+                                    pd_url,
+                                    headers={
+                                        "Authorization": f"Bearer {pd_token}",
+                                        "X-PD-Environment": live_broker.environment,
+                                    },
+                                )
+                            log.info("Reconnect: revoked old Pipedream account %s", replace_account_id)
                         except Exception as pd_exc:
-                            _log.warning("Reconnect: Pipedream revoke failed for %s (continuing): %s",
-                                         replace_account_id, pd_exc)
+                            log.warning("Reconnect: Pipedream revoke failed for %s (continuing): %s",
+                                        replace_account_id, pd_exc)
 
                     # 2. Remove from toolkit provisioning + oauth_broker_accounts
                     async with get_db() as db:
@@ -553,21 +550,21 @@ async def connect_callback(
                     # 3. Delete from vault
                     await vault.delete_credential(old_cred_id)
 
-                    _log.info("Reconnect: removed old account %s after successful reconnect",
-                              replace_account_id)
+                    log.info("Reconnect: removed old account %s after successful reconnect",
+                             replace_account_id)
                 else:
-                    _log.warning("Reconnect: old account %s already gone from DB — nothing to clean up",
-                                 replace_account_id)
+                    log.warning("Reconnect: old account %s already gone from DB — nothing to clean up",
+                                replace_account_id)
             except Exception as exc:
-                _log.warning("Reconnect: failed to remove old account %s: %s", replace_account_id, exc)
+                log.warning("Reconnect: failed to remove old account %s: %s", replace_account_id, exc)
         else:
             log.warning("Reconnect: new account NOT found in DB after sync for broker=%s app=%s external_user_id=%s (replacing %s)",
                         broker_id, app, external_user_id, replace_account_id)
 
     # Redirect to the appropriate UI page (return_to defaults to /oauth-brokers)
     return_to = request.query_params.get("return_to", "/oauth-brokers")
-    # Safety: only allow relative paths starting with /
-    if not return_to.startswith("/"):
+    # Safety: only allow relative paths — block protocol-relative URLs (//evil.com)
+    if not return_to.startswith("/") or return_to.startswith("//"):
         return_to = "/oauth-brokers"
     ui_url = build_absolute_url(request, return_to)
     return RedirectResponse(url=ui_url, status_code=302)

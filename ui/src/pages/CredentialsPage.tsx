@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Key, Plus, Trash2, Settings, RotateCcw, ExternalLink } from 'lucide-react';
@@ -34,7 +34,12 @@ export default function CredentialsPage() {
 	});
 
 	const deleteMutation = useMutation({
-		mutationFn: (cred: { id: string; authType: string; brokerId?: string; accountId?: string }) => {
+		mutationFn: (cred: {
+			id: string;
+			authType: string;
+			brokerId?: string;
+			accountId?: string;
+		}) => {
 			if (cred.authType === 'pipedream_oauth' && cred.brokerId && cred.accountId) {
 				return oauthBrokers.deleteAccount(cred.brokerId, cred.accountId);
 			}
@@ -43,7 +48,9 @@ export default function CredentialsPage() {
 		onSuccess: () => queryClient.invalidateQueries({ queryKey: ['credentials'] }),
 	});
 
-	const [reconnectLink, setReconnectLink] = useState<{ credId: string; url: string } | null>(null);
+	const [reconnectLink, setReconnectLink] = useState<{ credId: string; url: string } | null>(
+		null,
+	);
 	const reconnectMutation = useMutation({
 		mutationFn: ({ brokerId, accountId }: { brokerId: string; accountId: string }) =>
 			oauthBrokers.reconnectLink(brokerId, accountId),
@@ -94,7 +101,9 @@ export default function CredentialsPage() {
 											{cred.label}
 										</span>
 										{cred.app_slug && (
-											<span className="text-muted-foreground text-xs">({cred.app_slug})</span>
+											<span className="text-muted-foreground text-xs">
+												({cred.app_slug})
+											</span>
 										)}
 										{cred.api_id && (
 											<span className="text-muted-foreground font-mono text-xs">
@@ -102,9 +111,13 @@ export default function CredentialsPage() {
 											</span>
 										)}
 										{cred.auth_type === 'pipedream_oauth' ? (
-											<Badge variant="default" className="text-[10px]">OAuth via Pipedream</Badge>
+											<Badge variant="default" className="text-[10px]">
+												OAuth via Pipedream
+											</Badge>
 										) : cred.scheme_name ? (
-											<Badge variant="default" className="text-[10px]">{cred.scheme_name}</Badge>
+											<Badge variant="default" className="text-[10px]">
+												{cred.scheme_name}
+											</Badge>
 										) : null}
 									</div>
 									<p className="text-muted-foreground mt-0.5 text-xs">
@@ -112,11 +125,18 @@ export default function CredentialsPage() {
 											<>
 												<span>account: {cred.account_id}</span>
 												{cred.synced_at && (
-													<span className="ml-2">synced {formatSyncedAt(cred.synced_at)}</span>
+													<span className="ml-2">
+														synced {formatSyncedAt(cred.synced_at)}
+													</span>
 												)}
 											</>
 										) : cred.created_at ? (
-											<span>Added {new Date(cred.created_at * 1000).toLocaleDateString()}</span>
+											<span>
+												Added{' '}
+												{new Date(
+													cred.created_at * 1000,
+												).toLocaleDateString()}
+											</span>
 										) : null}
 									</p>
 								</div>
@@ -129,10 +149,17 @@ export default function CredentialsPage() {
 												if (reconnectLink?.credId === cred.account_id) {
 													setReconnectLink(null);
 												} else {
-													reconnectMutation.mutate({ brokerId: 'pipedream', accountId: cred.account_id });
+													reconnectMutation.mutate({
+														brokerId: 'pipedream',
+														accountId: cred.account_id,
+													});
 												}
 											}}
-											disabled={reconnectMutation.isPending && reconnectMutation.variables?.accountId === cred.account_id}
+											disabled={
+												reconnectMutation.isPending &&
+												reconnectMutation.variables?.accountId ===
+													cred.account_id
+											}
 										>
 											<RotateCcw className="h-4 w-4" /> Reconnect
 										</Button>
@@ -141,19 +168,29 @@ export default function CredentialsPage() {
 											variant="secondary"
 											size="sm"
 											onClick={() =>
-												navigate(`/credentials/${encodeURIComponent(cred.id)}/edit`)
+												navigate(
+													`/credentials/${encodeURIComponent(cred.id)}/edit`,
+												)
 											}
 										>
 											<Settings className="h-4 w-4" /> Edit
 										</Button>
 									)}
 									<ConfirmInline
-										onConfirm={() => deleteMutation.mutate({
-											id: cred.id,
-											authType: cred.auth_type,
-											brokerId: cred.auth_type === 'pipedream_oauth' ? 'pipedream' : undefined,
-											accountId: cred.auth_type === 'pipedream_oauth' ? cred.account_id : undefined,
-										})}
+										onConfirm={() =>
+											deleteMutation.mutate({
+												id: cred.id,
+												authType: cred.auth_type,
+												brokerId:
+													cred.auth_type === 'pipedream_oauth'
+														? 'pipedream'
+														: undefined,
+												accountId:
+													cred.auth_type === 'pipedream_oauth'
+														? cred.account_id
+														: undefined,
+											})
+										}
 										message="Delete this credential?"
 										confirmLabel="Delete"
 									>
@@ -163,11 +200,14 @@ export default function CredentialsPage() {
 									</ConfirmInline>
 								</div>
 							</div>
-							{reconnectLink?.credId === cred.account_id && (
+							{reconnectLink !== null && reconnectLink.credId === cred.account_id && (
 								<div className="bg-background border-primary/30 mt-3 space-y-3 border-t p-3 text-xs">
-									<p className="text-foreground font-medium">Re-authorise {cred.label}</p>
+									<p className="text-foreground font-medium">
+										Re-authorise {cred.label}
+									</p>
 									<p className="text-muted-foreground">
-										Click the link to complete OAuth. The old connection will be removed automatically once the new one is confirmed.
+										Click the link to complete OAuth. The old connection will be
+										removed automatically once the new one is confirmed.
 									</p>
 									<div className="flex items-center gap-2">
 										<AppLink
@@ -177,7 +217,11 @@ export default function CredentialsPage() {
 											<ExternalLink className="h-3.5 w-3.5" />
 											Open Reconnect Link
 										</AppLink>
-										<Button variant="ghost" size="sm" onClick={() => setReconnectLink(null)}>
+										<Button
+											variant="ghost"
+											size="sm"
+											onClick={() => setReconnectLink(null)}
+										>
 											Cancel
 										</Button>
 									</div>

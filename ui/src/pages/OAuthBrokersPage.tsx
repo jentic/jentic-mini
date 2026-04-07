@@ -417,15 +417,16 @@ function BrokerAccounts({ broker }: { broker: OAuthBroker }) {
 	});
 
 	const deleteAccountMutation = useMutation({
-		mutationFn: (accountId: string) =>
-			oauthBrokers.deleteAccount(broker.id, accountId),
+		mutationFn: (accountId: string) => oauthBrokers.deleteAccount(broker.id, accountId),
 		onSuccess: () => {
 			setConfirmDeleteAccount(null);
 			queryClient.invalidateQueries({ queryKey: ['oauth-broker-accounts', broker.id] });
 		},
 	});
 
-	const [reconnectLink, setReconnectLink] = useState<{ accountId: string; url: string } | null>(null);
+	const [reconnectLink, setReconnectLink] = useState<{ accountId: string; url: string } | null>(
+		null,
+	);
 	const reconnectMutation = useMutation({
 		mutationFn: (accountId: string) => oauthBrokers.reconnectLink(broker.id, accountId),
 		onSuccess: (data, accountId) => setReconnectLink({ accountId, url: data.connect_link_url }),
@@ -517,7 +518,10 @@ function BrokerAccounts({ broker }: { broker: OAuthBroker }) {
 									size="sm"
 									className="text-muted-foreground hover:text-foreground shrink-0"
 									onClick={() => reconnectMutation.mutate(acc.account_id)}
-									loading={reconnectMutation.isPending && reconnectMutation.variables === acc.account_id}
+									loading={
+										reconnectMutation.isPending &&
+										reconnectMutation.variables === acc.account_id
+									}
 									aria-label="Reconnect account"
 									title="Reconnect — re-authorise this account via OAuth"
 								>
@@ -527,7 +531,9 @@ function BrokerAccounts({ broker }: { broker: OAuthBroker }) {
 									variant="ghost"
 									size="sm"
 									className="text-destructive hover:text-destructive shrink-0"
-									onClick={() => setConfirmDeleteAccount(acc.account_id ?? acc.api_host)}
+									onClick={() =>
+										setConfirmDeleteAccount(acc.account_id ?? acc.api_host)
+									}
 									aria-label="Remove account"
 								>
 									<Trash2 className="h-3.5 w-3.5" />
@@ -536,9 +542,12 @@ function BrokerAccounts({ broker }: { broker: OAuthBroker }) {
 
 							{reconnectLink?.accountId === acc.account_id && (
 								<div className="bg-background border-primary/30 space-y-3 border-t p-3 text-xs">
-									<p className="text-foreground font-medium">Re-authorise {acc.label ?? acc.app_slug}</p>
+									<p className="text-foreground font-medium">
+										Re-authorise {acc.label ?? acc.app_slug}
+									</p>
 									<p className="text-muted-foreground">
-										Click the link to complete OAuth. The old connection will be removed automatically once the new one is confirmed.
+										Click the link to complete OAuth. The old connection will be
+										removed automatically once the new one is confirmed.
 									</p>
 									<div className="flex items-center gap-2">
 										<AppLink
@@ -548,7 +557,11 @@ function BrokerAccounts({ broker }: { broker: OAuthBroker }) {
 											<ExternalLink className="h-3.5 w-3.5" />
 											Open Reconnect Link
 										</AppLink>
-										<Button variant="ghost" size="sm" onClick={() => setReconnectLink(null)}>
+										<Button
+											variant="ghost"
+											size="sm"
+											onClick={() => setReconnectLink(null)}
+										>
 											Cancel
 										</Button>
 									</div>
