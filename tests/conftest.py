@@ -10,9 +10,10 @@ import tempfile
 
 # ── DB_PATH must be set BEFORE any src.* imports ──────────────────────────────
 # src/config.py reads DB_PATH at import time, so we override it here.
-_test_db = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
-_test_db.close()
-os.environ["DB_PATH"] = _test_db.name
+# Using a dedicated temp directory isolates DB + any artifacts and ensures
+# clean teardown with no cross-run interference.
+_test_dir = tempfile.mkdtemp(prefix="jentic-test-")
+os.environ["DB_PATH"] = os.path.join(_test_dir, "test.db")
 os.environ["JENTIC_TELEMETRY"] = "off"
 os.environ["APP_VERSION"] = "0.0.0-test"
 
@@ -58,7 +59,7 @@ def admin_session(client):
         "username": "testadmin",
         "password": "testpassword123",
     })
-    assert resp.status_code in (200, 201, 409), f"Failed to create user: {resp.text}"
+    assert resp.status_code in (200, 201, 410), f"Failed to create user: {resp.text}"
 
     # Login
     resp = client.post("/user/login", json={
@@ -79,26 +80,26 @@ def agent_key(client, admin_session):
     resp = client.post("/default-api-key/generate", headers={"X-Forwarded-For": "127.0.0.1"})
     if resp.status_code in (200, 201):
         return resp.json()["key"]
+    default_key_status, default_key_body = resp.status_code, resp.text
     # Already claimed — create a new key on the default toolkit
     resp = client.post("/toolkits/default/keys", cookies=admin_session, json={"label": "test-agent"})
     if resp.status_code in (200, 201):
         return resp.json()["key"]
-    return None
+    pytest.fail(
+        f"/default-api-key/generate returned {default_key_status} ({default_key_body}); "
+        f"/toolkits/default/keys returned {resp.status_code} ({resp.text})"
+    )
 
 
 @pytest.fixture(scope="session")
 def agent_key_header(agent_key):
     """Return the auth header dict for agent requests."""
-    if agent_key is None:
-        pytest.skip("No agent key available")
     return {"X-Jentic-API-Key": agent_key}
 
 
 @pytest.fixture(scope="session", autouse=True)
 def _cleanup():
-    """Remove temp DB after all tests complete."""
+    """Remove temp directory after all tests complete."""
+    import shutil
     yield
-    try:
-        os.unlink(_test_db.name)
-    except OSError:
-        pass
+    shutil.rmtree(_test_dir, ignore_errors=True)

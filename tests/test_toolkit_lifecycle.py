@@ -23,6 +23,7 @@ def test_toolkit_list_returns_array(client, admin_session):
 def test_toolkit_list_includes_counts(client, admin_session):
     """Each toolkit in the list has key_count and credential_count (regression #60)."""
     resp = client.get("/toolkits", cookies=admin_session)
+    assert resp.status_code == 200
     for toolkit in resp.json():
         assert "key_count" in toolkit, f"Toolkit {toolkit['id']} missing key_count"
         assert "credential_count" in toolkit, f"Toolkit {toolkit['id']} missing credential_count"
