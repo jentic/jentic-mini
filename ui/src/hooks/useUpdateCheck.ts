@@ -80,7 +80,8 @@ export function useUpdateCheck(): UpdateStatus {
 		const cached = sessionStorage.getItem(CACHE_KEY);
 		if (cached) {
 			try {
-				const parsed: UpdateStatus = JSON.parse(cached);
+				const raw = JSON.parse(cached);
+				const parsed: UpdateStatus = { ...status, ...raw };
 				// Validate cache against current server version before using it
 				fetch('/health')
 					.then((r) => (r.ok ? r.json() : null))
