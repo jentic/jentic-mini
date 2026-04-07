@@ -37,6 +37,7 @@ def test_default_toolkit_counts_all_credentials(client, admin_session):
     """
     # Get total credential count
     creds_resp = client.get("/credentials", cookies=admin_session)
+    assert creds_resp.status_code == 200
     total_creds = len(creds_resp.json())
 
     # Get default toolkit's reported count

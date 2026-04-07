@@ -1,8 +1,9 @@
-"""Broker contract tests — credential injection, policy gate, fail-closed.
+"""Broker contract tests — route detection and upstream error handling.
 
 These test the broker's HTTP-level behavior using non-routable local
-addresses to avoid real network calls. They verify the broker's own
-responses when credentials are missing, policies deny, or errors occur.
+addresses to avoid real network calls. They verify that non-broker
+paths return 404, and that broker-like requests to unreachable targets
+return error responses rather than succeeding.
 """
 
 

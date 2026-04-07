@@ -53,7 +53,7 @@ def client(app):
 
 @pytest.fixture(scope="session")
 def admin_session(client):
-    """Create an admin account and return a client-like callable with the session cookie."""
+    """Create an admin account and return session cookies for use with `cookies=` in requests."""
     # Create account (first-time setup)
     resp = client.post("/user/create", json={
         "username": "testadmin",

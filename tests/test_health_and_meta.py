@@ -1,7 +1,7 @@
 """Contract tests for /health and /version endpoints."""
 
 
-def test_health_returns_ok(client):
+def test_health_returns_valid_status(client):
     resp = client.get("/health")
     assert resp.status_code == 200
     data = resp.json()
