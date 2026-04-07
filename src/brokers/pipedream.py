@@ -604,25 +604,9 @@ class PipedreamOAuthBroker:
             # and toolkit_credentials so stale entries don't linger in the UI.
             stale_ids = existing_account_ids - seen_account_ids
             for stale_id in stale_ids:
-                # 1. Revoke upstream in Pipedream (best-effort)
-                try:
-                    pd_token = await self._get_access_token()
-                    pd_url = (f"https://api.pipedream.com/v1/connect/"
-                              f"{self.project_id}/accounts/{stale_id}")
-                    async with httpx.AsyncClient(timeout=10) as client:
-                        await client.delete(
-                            pd_url,
-                            headers={
-                                "Authorization": f"Bearer {pd_token}",
-                                "X-PD-Environment": self.environment,
-                            },
-                        )
-                    log.info("Revoked stale Pipedream account %s", stale_id)
-                except Exception as pd_exc:
-                    log.warning("Pipedream revoke failed for stale account %s (continuing): %s",
-                                stale_id, pd_exc)
-
-                # 2. Find and remove all credential IDs derived from this account
+                # Stale accounts are already gone from Pipedream (not returned by API).
+                # Only clean up local rows — no upstream revoke needed.
+                # Find and remove all credential IDs derived from this account
                 async with db.execute(
                     "SELECT id FROM credentials WHERE id LIKE ?",
                     (f"{self.broker_id}-{stale_id}-%",),
@@ -633,7 +617,7 @@ class PipedreamOAuthBroker:
                     await db.execute("DELETE FROM credentials WHERE id=?", (cred_id,))
                     log.info("Removed stale credential %s (account %s disconnected)", cred_id, stale_id)
 
-                # 3. Remove account row
+                # Remove account row
                 await db.execute(
                     "DELETE FROM oauth_broker_accounts "
                     "WHERE broker_id=? AND external_user_id=? AND account_id=?",
