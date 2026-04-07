@@ -61,14 +61,14 @@ export function useUpdateCheck(): UpdateStatus {
 				const latestVersion: string = data.latest || '';
 				const releaseUrl: string = data.release_url || '';
 
-				if (!latestVersion) return;
-
-				const updateAvailable = isNewer(latestVersion, currentVersion);
+				const updateAvailable = latestVersion
+					? isNewer(latestVersion, currentVersion)
+					: false;
 				const result: UpdateStatus = {
 					currentVersion,
-					latestVersion,
+					latestVersion: latestVersion || null,
 					updateAvailable,
-					releaseUrl,
+					releaseUrl: releaseUrl || null,
 				};
 
 				try {

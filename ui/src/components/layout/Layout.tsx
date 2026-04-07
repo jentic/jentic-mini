@@ -56,7 +56,7 @@ function NavLink({
 }
 
 function SidebarContents({ onClose }: { onClose?: () => void }) {
-	const { updateAvailable, latestVersion, releaseUrl } = useUpdateCheck();
+	const { updateAvailable, currentVersion, latestVersion, releaseUrl } = useUpdateCheck();
 	return (
 		<aside className="bg-muted border-border flex h-full w-60 flex-col border-r">
 			<div className="border-border flex h-16 shrink-0 items-center border-b px-6">
@@ -171,6 +171,11 @@ function SidebarContents({ onClose }: { onClose?: () => void }) {
 					<ExternalLink className="h-3 w-3 shrink-0" />
 					More at jentic.com
 				</AppLink>
+				{currentVersion && (
+					<div className="text-muted-foreground/50 px-4 pt-2 font-mono text-[10px]">
+						v{currentVersion}
+					</div>
+				)}
 			</div>
 		</aside>
 	);
