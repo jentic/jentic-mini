@@ -3,7 +3,7 @@
 Tests _check_policy directly (pure function) and verifies the
 system safety rules behave as documented.
 """
-from src.routers.toolkits import _check_policy, SYSTEM_SAFETY_RULES
+from src.routers.toolkits import _check_policy
 
 
 class TestSystemSafetyRulesAlone:

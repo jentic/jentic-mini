@@ -3,12 +3,13 @@
 The single most important security property: credential values are
 accepted on write but NEVER returned on read.
 """
+import json
+
 import pytest
 
 
 def _register_api_with_scheme(client, cookies, api_id, scheme_type="bearer"):
     """Helper: register a minimal API with a security scheme so credentials can be stored."""
-    import json as _json
 
     if scheme_type == "bearer":
         schemes = {"BearerAuth": {"type": "http", "scheme": "bearer"}}
@@ -26,7 +27,7 @@ def _register_api_with_scheme(client, cookies, api_id, scheme_type="bearer"):
     resp = client.post("/import", cookies=cookies, json={
         "sources": [{
             "type": "inline",
-            "content": _json.dumps(spec),
+            "content": json.dumps(spec),
             "filename": f"{api_id}.json",
         }],
     })

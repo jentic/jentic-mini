@@ -38,6 +38,7 @@ async def _test_lifespan(app):
 def app():
     """Create a FastAPI app with test lifespan."""
     from src.main import app as _app
+    # NB: mutates the singleton app — safe for tests but not reversible
     _app.router.lifespan_context = _test_lifespan
     return _app
 
@@ -74,12 +75,12 @@ def admin_session(client):
 @pytest.fixture(scope="session")
 def agent_key(client, admin_session):
     """Get an agent API key — either from first-time generation or by creating a toolkit key."""
-    # Try the first-time generation path
-    resp = client.post("/default-api-key/generate")
-    if resp.status_code == 200:
+    # Try the first-time generation path (trusted subnet check requires forwarded IP)
+    resp = client.post("/default-api-key/generate", headers={"X-Forwarded-For": "127.0.0.1"})
+    if resp.status_code in (200, 201):
         return resp.json()["key"]
     # Already claimed — create a new key on the default toolkit
-    resp = client.post("/toolkits/default/keys", cookies=admin_session, json={"name": "test-agent"})
+    resp = client.post("/toolkits/default/keys", cookies=admin_session, json={"label": "test-agent"})
     if resp.status_code in (200, 201):
         return resp.json()["key"]
     return None
@@ -91,16 +92,6 @@ def agent_key_header(agent_key):
     if agent_key is None:
         pytest.skip("No agent key available")
     return {"X-Jentic-API-Key": agent_key}
-
-
-def _authed_get(client, url, cookies):
-    """Helper: GET with admin session cookies."""
-    return client.get(url, cookies=cookies)
-
-
-def _authed_post(client, url, cookies, **kwargs):
-    """Helper: POST with admin session cookies."""
-    return client.post(url, cookies=cookies, **kwargs)
 
 
 @pytest.fixture(scope="session", autouse=True)

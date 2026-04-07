@@ -149,6 +149,19 @@ All theming is in `ui/src/index.css`. To add a new semantic color:
 
 ## Testing
 
+### Backend tests
+
+```bash
+pip install -r requirements-dev.txt
+python -m pytest tests/ -v
+```
+
+pytest-based test harness that exercises the API at the HTTP boundary. Uses a real temp SQLite DB with Alembic migrations — no mocking. Tests organized by trust boundary (auth, policy, vault, broker, toolkit). CI: `ci-backend.yml` (path-filtered to `src/`, `tests/`, `alembic/`).
+
+- `requirements-dev.txt` — includes production deps (`-r requirements.txt`) plus test deps (pytest, pytest-asyncio). **Not installed in the Docker image.**
+
+### UI tests
+
 See `ui/TESTING.md` for the full contributor guide.
 
 ```bash

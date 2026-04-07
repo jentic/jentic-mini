@@ -7,19 +7,20 @@ on:
       - 'src/**'
       - 'tests/**'
       - 'alembic/**'
-      - 'requirements.txt'
+      - 'requirements*.txt'
   pull_request:
     branches: [main]
     paths:
       - 'src/**'
       - 'tests/**'
       - 'alembic/**'
-      - 'requirements.txt'
+      - 'requirements*.txt'
   workflow_call:
+  workflow_dispatch:
 
 concurrency:
   group: backend-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   backend-tests:
@@ -34,7 +35,7 @@ jobs:
           cache: 'pip'
 
       - name: Install dependencies
-        run: pip install -r requirements.txt
+        run: pip install -r requirements-dev.txt
 
       - name: Run backend tests
         env:

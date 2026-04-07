@@ -30,7 +30,6 @@ def test_agent_cannot_create_credentials(client, agent_key_header):
         "auth_type": "bearer",
     })
     assert resp.status_code in (403, 409)
-    assert resp.status_code != 201  # must NOT succeed
 
 
 def test_human_session_can_access_toolkits(client, admin_session):

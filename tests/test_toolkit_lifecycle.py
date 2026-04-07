@@ -48,12 +48,15 @@ def test_create_and_list_key(client, admin_session):
     """POST /toolkits/{id}/keys creates a key, GET lists it."""
     # Create a key
     resp = client.post("/toolkits/default/keys", cookies=admin_session, json={
-        "name": "test-key",
+        "label": "test-key",
     })
     assert resp.status_code in (200, 201), f"Key creation failed: {resp.text}"
     data = resp.json()
     assert "key" in data  # The raw key is returned once
 
-    # List keys
+    # List keys — verify the created key appears
     keys_resp = client.get("/toolkits/default/keys", cookies=admin_session)
     assert keys_resp.status_code == 200
+    keys_data = keys_resp.json()
+    key_labels = [k["label"] for k in keys_data["keys"]]
+    assert "test-key" in key_labels
