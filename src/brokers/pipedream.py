@@ -32,6 +32,18 @@ import src.vault as vault
 
 log = logging.getLogger("jentic.brokers.pipedream")
 
+
+def broker_account_row_id(broker_id: str, external_user_id: str, api_host: str, account_id: str) -> str:
+    """Stable primary key for oauth_broker_accounts rows."""
+    return f"{broker_id}:{external_user_id}:{api_host}:{account_id}"
+
+
+def broker_credential_id(broker_id: str, account_id: str, api_host: str) -> str:
+    """Stable credential ID for Pipedream OAuth credentials."""
+    host_slug = api_host.replace(".", "-")
+    return f"{broker_id}-{account_id}-{host_slug}"
+
+
 # ── App slug ↔ api_id mapping ─────────────────────────────────────────────────
 # Single authoritative map: Jentic canonical api_id → Pipedream app slug.
 #
@@ -513,7 +525,7 @@ class PipedreamOAuthBroker:
                 else:
                     hosts = pd_slug_to_hosts(app_slug)
                 for api_host in hosts:
-                    row_id = f"{self.broker_id}:{external_user_id}:{api_host}:{account_id}"
+                    row_id = broker_account_row_id(self.broker_id, external_user_id, api_host, account_id)
                     # Only update the label if we have a pending one — otherwise
                     # preserve whatever label is already stored (e.g. set by a
                     # previous connect-link callback). Slug fallback only applies
@@ -546,9 +558,7 @@ class PipedreamOAuthBroker:
                     )
 
                     # Upsert a credential in the vault so users can provision it to toolkits.
-                    # Credential ID is stable: pipedream-{account_id}-{api_host_slug}
-                    host_slug = api_host.replace(".", "-")
-                    cred_id = f"pipedream-{account_id}-{host_slug}"
+                    cred_id = broker_credential_id(self.broker_id, account_id, api_host)
                     enc_account_id = vault.encrypt(account_id)
                     async with db.execute(
                         "SELECT id, label FROM credentials WHERE id=?", (cred_id,)
@@ -594,16 +604,36 @@ class PipedreamOAuthBroker:
             # and toolkit_credentials so stale entries don't linger in the UI.
             stale_ids = existing_account_ids - seen_account_ids
             for stale_id in stale_ids:
-                # Find all credential IDs derived from this account
+                # 1. Revoke upstream in Pipedream (best-effort)
+                try:
+                    pd_token = await self._get_access_token()
+                    pd_url = (f"https://api.pipedream.com/v1/connect/"
+                              f"{self.project_id}/accounts/{stale_id}")
+                    async with httpx.AsyncClient(timeout=10) as client:
+                        await client.delete(
+                            pd_url,
+                            headers={
+                                "Authorization": f"Bearer {pd_token}",
+                                "X-PD-Environment": self.environment,
+                            },
+                        )
+                    log.info("Revoked stale Pipedream account %s", stale_id)
+                except Exception as pd_exc:
+                    log.warning("Pipedream revoke failed for stale account %s (continuing): %s",
+                                stale_id, pd_exc)
+
+                # 2. Find and remove all credential IDs derived from this account
                 async with db.execute(
                     "SELECT id FROM credentials WHERE id LIKE ?",
-                    (f"pipedream-{stale_id}-%",),
+                    (f"{self.broker_id}-{stale_id}-%",),
                 ) as cur:
                     stale_creds = [r[0] for r in await cur.fetchall()]
                 for cred_id in stale_creds:
                     await db.execute("DELETE FROM toolkit_credentials WHERE credential_id=?", (cred_id,))
                     await db.execute("DELETE FROM credentials WHERE id=?", (cred_id,))
                     log.info("Removed stale credential %s (account %s disconnected)", cred_id, stale_id)
+
+                # 3. Remove account row
                 await db.execute(
                     "DELETE FROM oauth_broker_accounts "
                     "WHERE broker_id=? AND external_user_id=? AND account_id=?",

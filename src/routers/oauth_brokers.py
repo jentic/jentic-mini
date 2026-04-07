@@ -26,6 +26,7 @@ from src.validators import NormModel, NormStr
 from src.utils import build_absolute_url
 
 from src.auth import require_human_session
+from src.brokers.pipedream import broker_credential_id
 from src.db import get_db
 from src.oauth_broker import registry as oauth_broker_registry
 import src.vault as vault
@@ -516,7 +517,7 @@ async def connect_callback(
 
                 if old_row:
                     old_api_host = old_row[0]
-                    old_cred_id = f"pipedream-{replace_account_id}-{old_api_host.replace('.', '-')}"
+                    old_cred_id = broker_credential_id(broker_id, replace_account_id, old_api_host)
 
                     # 1. Revoke upstream in Pipedream (best-effort, async)
                     if live_broker is not None:
@@ -709,8 +710,7 @@ async def delete_broker_account(broker_id: BrokerIdPath, account_id: str):
     if not row:
         raise HTTPException(404, f"No connected account '{account_id}' found for broker '{broker_id}'")
     api_host = row[1]
-    host_slug = api_host.replace(".", "-")
-    cred_id = f"pipedream-{account_id}-{host_slug}"
+    cred_id = broker_credential_id(broker_id, account_id, api_host)
 
     # 1. Revoke upstream in Pipedream
     pipedream_revoked = False
