@@ -65,6 +65,39 @@ describe('Layout', () => {
 		expect(await screen.findByText(/1 Pending Request/)).toBeInTheDocument();
 	});
 
+	it('shows current version in sidebar footer', async () => {
+		worker.use(
+			http.get('/version', () =>
+				HttpResponse.json({
+					current: '0.5.3',
+					latest: '0.5.3',
+					release_url: null,
+				}),
+			),
+		);
+
+		renderLayout();
+
+		expect(await screen.findByText('v0.5.3')).toBeInTheDocument();
+	});
+
+	it('shows version without update banner when telemetry is off', async () => {
+		worker.use(
+			http.get('/version', () =>
+				HttpResponse.json({
+					current: '0.5.3',
+					latest: null,
+					release_url: null,
+				}),
+			),
+		);
+
+		renderLayout();
+
+		expect(await screen.findByText('v0.5.3')).toBeInTheDocument();
+		expect(screen.queryByText(/Update available/)).not.toBeInTheDocument();
+	});
+
 	it('shows update available banner when new version exists', async () => {
 		worker.use(
 			http.get('/version', () =>

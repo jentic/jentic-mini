@@ -89,6 +89,24 @@ describe('useUpdateCheck', () => {
 		expect(result.current.updateAvailable).toBe(false);
 	});
 
+	it('sets currentVersion even when latest is null (telemetry off)', async () => {
+		worker.use(
+			http.get('/version', () =>
+				HttpResponse.json({ current: '0.5.3', latest: null, release_url: null }),
+			),
+		);
+
+		const { result } = renderHook(() => useUpdateCheck());
+
+		await waitFor(() => {
+			expect(result.current.currentVersion).toBe('0.5.3');
+		});
+
+		expect(result.current.updateAvailable).toBe(false);
+		expect(result.current.latestVersion).toBeNull();
+		expect(result.current.releaseUrl).toBeNull();
+	});
+
 	it('handles non-semver current version', async () => {
 		worker.use(
 			http.get('/version', () => HttpResponse.json({ current: 'unknown', latest: '1.0.0' })),
