@@ -52,15 +52,15 @@ export function useUpdateCheck(): UpdateStatus {
 				const latestVersion: string = data.latest || '';
 				const releaseUrl: string = data.release_url || '';
 
-				if (!latestVersion) return;
-
-				const updateAvailable = isNewer(latestVersion, currentVersion);
-				const upgradeAvailable = updateAvailable && !!data.upgrade_available;
+				const updateAvailable = latestVersion
+					? isNewer(latestVersion, currentVersion)
+					: false;
+				const upgradeAvailable = updateAvailable && !!data.watchtower_configured;
 				const result: UpdateStatus = {
 					currentVersion,
-					latestVersion,
+					latestVersion: latestVersion || null,
 					updateAvailable,
-					releaseUrl,
+					releaseUrl: releaseUrl || null,
 					upgradeAvailable,
 				};
 
@@ -75,22 +75,27 @@ export function useUpdateCheck(): UpdateStatus {
 			}
 		}
 
-		// Use cache only if the currentVersion still matches the running server.
-		// After an upgrade the version changes, so the stale cache is discarded.
+		// Use cache if the version still matches the running server.
+		// After an upgrade the version changes, invalidating the cache.
 		const cached = sessionStorage.getItem(CACHE_KEY);
 		if (cached) {
 			try {
-				const parsed = JSON.parse(cached);
+				const parsed: UpdateStatus = JSON.parse(cached);
+				// Validate cache against current server version before using it
 				fetch('/health')
 					.then((r) => (r.ok ? r.json() : null))
 					.then((health) => {
 						if (health?.version && parsed.currentVersion !== health.version) {
 							sessionStorage.removeItem(CACHE_KEY);
 							check();
+						} else {
+							setStatus(parsed);
 						}
 					})
-					.catch(() => {});
-				setStatus(parsed);
+					.catch(() => {
+						// Validation failed — use cache anyway
+						setStatus(parsed);
+					});
 				return;
 			} catch {
 				// ignore bad cache

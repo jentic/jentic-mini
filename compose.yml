@@ -26,7 +26,7 @@ services:
       com.centurylinklabs.watchtower.scope: "jentic"
 
   watchtower:
-    image: containrrr/watchtower:latest
+    image: containrrr/watchtower:1.7.1
     container_name: jentic-watchtower
     restart: unless-stopped
     volumes:

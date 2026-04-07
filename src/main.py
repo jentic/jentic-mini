@@ -7,14 +7,14 @@ import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, Request, Response
+from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.openapi.docs import get_redoc_html
 from fastapi.openapi.utils import get_openapi
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, HTMLResponse
 import httpx
 
-from src.auth import APIKeyMiddleware
+from src.auth import APIKeyMiddleware, require_human_session
 from src.negotiate import negotiate_middleware
 from src.db import run_migrations, setup_state
 from src.routers import apis as apis_router
@@ -233,7 +233,7 @@ async def get_version():
     Set JENTIC_TELEMETRY=off to disable the outbound GitHub check.
     """
     if os.getenv("JENTIC_TELEMETRY", "").lower() == "off":
-        return {"current": APP_VERSION, "latest": None, "release_url": None}
+        return {"current": APP_VERSION, "latest": None, "release_url": None, "watchtower_configured": bool(os.getenv("WATCHTOWER_API_URL"))}
 
     now = time.time()
     if now - _version_cache["ts"] > _VERSION_CACHE_TTL:
@@ -259,24 +259,20 @@ async def get_version():
         "current": APP_VERSION,
         "latest": _version_cache["latest"],
         "release_url": _version_cache["release_url"],
-        "upgrade_available": bool(os.getenv("WATCHTOWER_API_URL")),
+        "watchtower_configured": bool(os.getenv("WATCHTOWER_API_URL")),
     }
 
 
-@app.post("/admin/upgrade", tags=["meta"], include_in_schema=False)
-async def trigger_upgrade(request: Request):
+@app.post("/admin/upgrade", tags=["meta"], include_in_schema=False,
+          dependencies=[Depends(require_human_session)])
+async def trigger_upgrade():
     """Trigger a one-click upgrade via Watchtower's HTTP API.
 
     Requires a human session. Watchtower must be running in monitor-only
     + HTTP API mode (the default compose.yml configuration).
     """
-    if not getattr(request.state, "is_human_session", False):
-        from fastapi import HTTPException
-        raise HTTPException(403, "Upgrade requires a human session.")
-
     watchtower_url = os.getenv("WATCHTOWER_API_URL")
     if not watchtower_url:
-        from fastapi import HTTPException
         raise HTTPException(
             501,
             "Watchtower is not configured. Set WATCHTOWER_API_URL or use "
@@ -291,13 +287,18 @@ async def trigger_upgrade(request: Request):
                 headers={"Authorization": f"Bearer {watchtower_token}"},
                 timeout=10.0,
             )
+        if resp.status_code >= 400:
+            log.error("Watchtower returned %d: %s", resp.status_code, resp.text)
+            raise HTTPException(502, "Watchtower rejected the upgrade request.")
         return {
             "status": "update_triggered",
             "message": "Watchtower is pulling the latest image. The app will restart shortly.",
         }
-    except Exception as e:
-        from fastapi import HTTPException
-        raise HTTPException(502, f"Could not reach Watchtower: {e}")
+    except HTTPException:
+        raise
+    except Exception:
+        log.exception("Failed to reach Watchtower")
+        raise HTTPException(502, "Could not reach Watchtower. Is the watchtower service running?")
 
 
 @app.get("/favicon.ico", include_in_schema=False)
