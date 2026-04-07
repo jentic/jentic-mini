@@ -25,6 +25,9 @@ services:
     labels:
       com.centurylinklabs.watchtower.scope: "jentic"
 
+  # One-click upgrades via Watchtower. In dev mode (bind-mounted src/),
+  # Watchtower can't upgrade the app — use `docker compose pull jentic-mini`
+  # instead. In production (pulling from GHCR), the UI "Update now" button works.
   watchtower:
     image: containrrr/watchtower:1.7.1
     container_name: jentic-watchtower
@@ -38,5 +41,3 @@ services:
       WATCHTOWER_MONITOR_ONLY: "true"
       WATCHTOWER_HTTP_API_UPDATE: "true"
       WATCHTOWER_HTTP_API_TOKEN: ${WATCHTOWER_TOKEN:-jentic-update}
-    labels:
-      com.centurylinklabs.watchtower.scope: "jentic"

@@ -276,7 +276,7 @@ async def trigger_upgrade():
         raise HTTPException(
             501,
             "Watchtower is not configured. Set WATCHTOWER_API_URL or use "
-            "the manual upgrade command: docker compose pull && docker compose up -d",
+            "the manual upgrade command: docker compose pull jentic-mini && docker compose up -d jentic-mini",
         )
 
     watchtower_token = os.getenv("WATCHTOWER_TOKEN", "jentic-update")
