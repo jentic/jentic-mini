@@ -558,6 +558,7 @@ class PipedreamOAuthBroker:
                     )
 
                     # Upsert a credential in the vault so users can provision it to toolkits.
+                    host_slug = api_host.replace(".", "-")
                     cred_id = broker_credential_id(self.broker_id, account_id, api_host)
                     enc_account_id = vault.encrypt(account_id)
                     async with db.execute(
