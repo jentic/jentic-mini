@@ -218,7 +218,7 @@ async def create(body: CredentialCreate, request: Request):
         )
     except Exception as e:
         log.exception("Failed to create credential")
-        raise HTTPException(400, "Failed to create credential. Check your input and try again.")
+        raise HTTPException(400, "Failed to create credential.")
 
     return cred
 

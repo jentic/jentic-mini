@@ -253,7 +253,6 @@ async def pycheck():
 @router.get("/broker-cred-test")
 async def broker_cred_test(host: str = "api.elevenlabs.io"):
     """Test broker credential lookup for a given host."""
-    import traceback
     from src.db import get_db
     import src.vault as vault
 
@@ -350,7 +349,7 @@ async def check_creds():
 @router.get("/async-subprocess-test", include_in_schema=False)
 async def async_subprocess_test():
     """Test if subprocesses work correctly from both sync and background task contexts."""
-    import asyncio, sys, json, traceback
+    import asyncio, sys, json
 
     script = """
 import socket, sys, json
@@ -403,7 +402,7 @@ print(json.dumps(results))
 @router.post("/test-async-workflow", include_in_schema=False)
 async def test_async_workflow():
     """Run dispatch_workflow with Prefer: wait=0 and capture full exception details."""
-    import asyncio, traceback
+    import asyncio
     from src.routers.workflows import dispatch_workflow
     from src.routers.jobs import get_job
 
@@ -447,8 +446,8 @@ async def test_async_workflow():
             error_detail["step"] = "complete"
             error_detail["status_code"] = result.status_code
         except Exception as exc:
-            error_detail["error"] = str(exc)
-            error_detail["traceback"] = traceback.format_exc()
+            log.exception("Broker credential test failed for %s", host)
+            error_detail["error"] = "Request failed. Check server logs."
 
     task = asyncio.create_task(instrumented_bg())
     await task

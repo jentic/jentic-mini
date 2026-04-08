@@ -344,7 +344,7 @@ h1 span{{color:#888;font-weight:normal;font-size:.6em;margin-left:12px}}</style>
 <h2>APIs used</h2>
 <p>{apis_html}</p>
 <h2>Execute</h2>
-<p>POST to <code>https://{JENTIC_PUBLIC_HOSTNAME}/workflows/{slug}</code> with your inputs and <code>X-Jentic-API-Key</code> header.</p>
+<p>POST to <code>https://{JENTIC_PUBLIC_HOSTNAME}/workflows/{_e(slug)}</code> with your inputs and <code>X-Jentic-API-Key</code> header.</p>
 <h2>Arazzo source</h2>
 <pre>{_e(json.dumps(doc, indent=2)[:4000]) if doc else ''}</pre>
 </body></html>"""

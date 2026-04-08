@@ -236,7 +236,7 @@ async def approval_ui_legacy(toolkit_id: str, req_id: str):
         <script>
         async function resolve(action) {{
           document.getElementById('actions').style.display = 'none';
-          const r = await fetch('/toolkits/{toolkit_id}/access-requests/{req_id}/' + action, {{
+          const r = await fetch('/toolkits/{quote(toolkit_id, safe="")}/access-requests/{quote(req_id, safe="")}/' + action, {{
             method: 'POST',
             credentials: 'include',
           }});
@@ -254,7 +254,7 @@ async def approval_ui_legacy(toolkit_id: str, req_id: str):
         }}
         </script>"""
     else:
-        resolved_html = f'<p><em>This request has already been resolved: <strong>{status}</strong></em></p>'
+        resolved_html = f'<p><em>This request has already been resolved: <strong>{_html.escape(status)}</strong></em></p>'
 
     html = f"""<!DOCTYPE html>
 <html>

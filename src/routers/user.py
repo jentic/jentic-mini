@@ -15,7 +15,7 @@ import time
 import uuid
 
 from fastapi import APIRouter, Form, HTTPException, Request, Response
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from pydantic import BaseModel, field_validator
 from src.validators import NormModel
 
@@ -181,7 +181,6 @@ async def login(request: Request, response: Response, redirect_to: str | None = 
         # Prevent open redirect — only allow relative paths
         if not redirect_to.startswith("/") or redirect_to.startswith("//"):
             redirect_to = "/"
-        from fastapi.responses import RedirectResponse
         redir = RedirectResponse(url=redirect_to, status_code=303)
         redir.set_cookie("jentic_session", token, httponly=True, samesite="strict", max_age=JWT_TTL_SECONDS)
         return redir
