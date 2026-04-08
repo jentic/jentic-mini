@@ -21,14 +21,19 @@ Special request headers:
                         bypassing host-matching auto-selection entirely. Required when
                         multiple credentials share the same upstream host (e.g. multiple
                         Google services all routing through googleapis.com).
+  X-Jentic-Service    — service name (Pipedream app_slug, e.g. "google_calendar") to
+                        select the right credential when multiple share a host.
+                        Friendlier alternative to X-Jentic-Credential.
   X-Jentic-Callback   — webhook URL for async result delivery (TODO: phase 2)
 
 Response headers added:
-  X-Jentic-Error           — "true" when the error is from Jentic, not upstream
-  X-Jentic-Execution-Id    — trace ID (exec_*) for this broker call
-  X-Jentic-Credential-Used — ID of the credential actually injected (always set when
-                             a credential was used, enabling callers to detect wrong-
-                             credential selection on multi-service hosts)
+  X-Jentic-Error              — "true" when the error is from Jentic, not upstream
+  X-Jentic-Execution-Id       — trace ID (exec_*) for this broker call
+  X-Jentic-Credential-Used    — ID of the credential actually injected (always set when
+                                a credential was used, enabling callers to detect wrong-
+                                credential selection on multi-service hosts)
+  X-Jentic-Credential-Ambiguous — "true" when multiple credentials matched and no
+                                  alias/service was specified to disambiguate
 """
 import json
 import logging
@@ -52,6 +57,11 @@ from src.routers.traces import new_trace_id, safe_write_trace
 
 router = APIRouter(tags=["execute"])
 
+
+class ServiceNotFoundError(Exception):
+    """Raised when X-Jentic-Service doesn't match any credential for the host."""
+
+
 # Hop-by-hop headers that must NOT be forwarded
 _HOP_BY_HOP = {
     "connection", "keep-alive", "proxy-authenticate", "proxy-authorization",
@@ -63,7 +73,7 @@ _HOP_BY_HOP = {
     "content-length",
     # Jentic-specific — consumed here, not forwarded upstream
     "x-jentic-api-key", "x-jentic-simulate",
-    "x-jentic-credential", "x-jentic-callback",
+    "x-jentic-credential", "x-jentic-service", "x-jentic-callback",
     # Host is set from the target URL
     "host",
     # Reverse-proxy headers injected by nginx/traefik/etc. — these describe
@@ -115,12 +125,16 @@ async def _find_credential_for_host(
     path: str,
     toolkit_id: str,
     alias: str | None,
-) -> tuple[dict[str, str], str | None, str | None]:
+    service: str | None = None,
+) -> tuple[dict[str, str], str | None, str | None, bool]:
     """
-    Return (headers_to_inject, api_id, credential_id) for the given upstream host.
+    Return (headers_to_inject, api_id, credential_id, is_ambiguous) for the given upstream host.
 
     credential_id is the ID of the first credential used for injection — used by the
     caller to enforce per-credential policy rules.
+
+    is_ambiguous is True when multiple credentials matched and no alias/service
+    was provided to disambiguate.
     """
     import logging as _log
     _broker_log = _log.getLogger("jentic.broker")
@@ -170,7 +184,7 @@ async def _find_credential_for_host(
     _broker_log.debug("CRED LOOKUP: host=%r → api_id=%r (toolkit=%r alias=%r)", host, api_id, toolkit_id, alias)
 
     if not api_id:
-        return {}, None, None
+        return {}, None, None, False
 
     # Get credentials bound to this toolkit + api
     creds = await vault.get_credentials_for_api(toolkit_id, api_id)
@@ -187,6 +201,8 @@ async def _find_credential_for_host(
             f"Use POST /toolkits/{toolkit_id}/access-requests to request access."
         )
 
+    is_ambiguous = False
+
     if alias and creds:
         matched = [c for c in creds if c.get("id") == alias]
         if matched:
@@ -195,6 +211,46 @@ async def _find_credential_for_host(
         else:
             _broker_log.warning("CRED LOOKUP: alias %r not found in %s — falling back to first cred", alias, [c.get("id") for c in creds])
         # If alias doesn't match any credential, fall through with all creds (best-effort)
+
+    elif service and creds and len(creds) > 1:
+        # X-Jentic-Service: select by Pipedream app_slug (e.g. "google_calendar")
+        # Look up which credentials belong to accounts with this app_slug.
+        async with get_db() as db:
+            async with db.execute(
+                "SELECT id FROM credentials WHERE id IN "
+                "(SELECT broker_id || '-' || account_id || '-' || replace(api_host, '.', '-') "
+                " FROM oauth_broker_accounts WHERE app_slug=?)",
+                (service,),
+            ) as cur:
+                service_cred_ids = {r[0] for r in await cur.fetchall()}
+        matched = [c for c in creds if c["id"] in service_cred_ids]
+        if matched:
+            _broker_log.debug("CRED LOOKUP: service %r matched %d cred(s)", service, len(matched))
+            creds = matched
+        else:
+            # Service name doesn't match any credential for this host — fail with
+            # a 409 listing available services so the agent can self-correct.
+            async with get_db() as db:
+                async with db.execute(
+                    "SELECT DISTINCT app_slug FROM oauth_broker_accounts "
+                    "WHERE api_host=? AND app_slug IS NOT NULL",
+                    (host,),
+                ) as cur:
+                    available = [r[0] for r in await cur.fetchall()]
+            raise ServiceNotFoundError(
+                f"Service '{service}' not found for host '{host}'. "
+                f"Available services: {available}"
+            )
+
+    if len(creds) > 1 and not alias and not service:
+        is_ambiguous = True
+        _broker_log.warning(
+            "CRED AMBIGUITY: %d credentials for host=%r api_id=%r — using first. "
+            "Set X-Jentic-Service or X-Jentic-Credential header to disambiguate. "
+            "Credential IDs: %s",
+            len(creds), host, api_id,
+            [c.get("id") for c in creds],
+        )
 
     # Get merged security schemes (spec + confirmed overlays)
     from src.routers.overlays import get_merged_security_schemes
@@ -301,8 +357,8 @@ async def _find_credential_for_host(
         elif auth_type == "oauth2":
             headers["Authorization"] = f"Bearer {value}"
 
-    _broker_log.debug("CRED INJECT: api_id=%r injecting headers=%s using cred=%r", api_id, list(headers.keys()), first_credential_id)
-    return headers, api_id, first_credential_id
+    _broker_log.debug("CRED INJECT: api_id=%r injecting headers=%s using cred=%r ambiguous=%s", api_id, list(headers.keys()), first_credential_id, is_ambiguous)
+    return headers, api_id, first_credential_id, is_ambiguous
 
 
 async def _find_pipedream_credential_for_host(
@@ -398,6 +454,7 @@ _BROKER_DESCRIPTION = (
     "**Headers:**\n"
     "- `X-Jentic-Simulate: true` — validate and preview the call without sending it\n"
     "- `X-Jentic-Credential: {alias}` — select a specific credential when multiple exist for an API\n"
+    "- `X-Jentic-Service: {app_slug}` — select by service name (e.g. `google_calendar`, `gmail`) when multiple credentials share a host\n"
     "- `X-Jentic-Dry-Run: true` — alias for Simulate (deprecated)\n\n"
     "Returns upstream response verbatim plus `X-Jentic-Execution-Id` for trace correlation."
 )
@@ -529,6 +586,7 @@ async def broker(request: Request, target: str):
         or request.headers.get("x-jentic-simulate", "").lower() == "true"
     )
     credential_alias = request.headers.get("x-jentic-credential")
+    credential_service = request.headers.get("x-jentic-service")
     callback_url = request.headers.get("x-jentic-callback")
 
     # ── Killswitch: reject all requests for disabled toolkits ─────────────────
@@ -655,11 +713,20 @@ async def broker(request: Request, target: str):
 
     # ── Full credential lookup (with decryption) ──────────────────────────────
     try:
-        inject_headers, api_id, credential_id = await _find_credential_for_host(
+        inject_headers, api_id, credential_id, credential_ambiguous = await _find_credential_for_host(
             host=upstream_host,
             path=upstream_path,
             toolkit_id=toolkit_id,
             alias=credential_alias,
+            service=credential_service,
+        )
+    except ServiceNotFoundError as e:
+        await _write_trace("error", 409, str(e))
+        return Response(
+            content=json.dumps({"error": "SERVICE_NOT_FOUND", "message": str(e)}),
+            status_code=409,
+            media_type="application/json",
+            headers={"X-Jentic-Error": "true", "X-Jentic-Execution-Id": execution_id},
         )
     except Exception as e:
         log.exception("Credential lookup failed")
@@ -671,6 +738,13 @@ async def broker(request: Request, target: str):
             media_type="application/json",
             headers={"X-Jentic-Error": "true", "X-Jentic-Execution-Id": execution_id},
         )
+
+    # Credential-related headers — included on all responses (success and error)
+    _cred_headers: dict[str, str] = {}
+    if credential_id:
+        _cred_headers["X-Jentic-Credential-Used"] = credential_id
+    if credential_ambiguous:
+        _cred_headers["X-Jentic-Credential-Ambiguous"] = "true"
 
     # ── Compute routing host (used by both main and Pipedream paths) ──────────
     # Look up base_url from the apis table for the matched api_id. This decouples
@@ -937,7 +1011,7 @@ async def broker(request: Request, target: str):
             content=json.dumps(error_body),
             status_code=504,
             media_type="application/json",
-            headers={"X-Jentic-Error": "true", "X-Jentic-Execution-Id": execution_id},
+            headers={"X-Jentic-Error": "true", "X-Jentic-Execution-Id": execution_id, **_cred_headers},
         )
     except httpx.RequestError as e:
         log.exception("Upstream request failed for %s", upstream_host)
@@ -950,7 +1024,7 @@ async def broker(request: Request, target: str):
             content=json.dumps(error_body),
             status_code=502,
             media_type="application/json",
-            headers={"X-Jentic-Error": "true", "X-Jentic-Execution-Id": execution_id},
+            headers={"X-Jentic-Error": "true", "X-Jentic-Execution-Id": execution_id, **_cred_headers},
         )
 
     # ── Build response — strip hop-by-hop, add Jentic trace headers ──────────
@@ -959,10 +1033,7 @@ async def broker(request: Request, target: str):
         if k.lower() not in _HOP_BY_HOP
     }
     response_headers["X-Jentic-Execution-Id"] = execution_id
-    # Always surface which credential was injected so callers can detect
-    # silent wrong-credential selection (especially for multi-service hosts).
-    if credential_id:
-        response_headers["X-Jentic-Credential-Used"] = credential_id
+    response_headers.update(_cred_headers)
 
     # ── Confirm pending overlay on first successful call ──────────────────────
     if api_id and upstream_response.status_code < 400:

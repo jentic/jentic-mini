@@ -35,7 +35,7 @@ Getting started:
 - [POST /default-api-key/generate](/docs#/user/generate_default_key_default_api_key_generate_post): Claim agent API key (first call, subnet-restricted)
 - [GET /search?q=TEXT](/docs#/search/search_search_get): Find APIs and workflows by intent
 - [GET /inspect/{id}](/docs#/inspect/get_capability_inspect__capability_id__get): Full capability schema, parameters, auth, errors
-- [/{host}/{path}](/docs#/execute/broker_get): Execute via broker with credential injection (supports all HTTP methods)
+- [/{host}/{path}](/docs#/execute/broker_get): Execute via broker with credential injection (supports all HTTP methods). When multiple credentials share a host (e.g. Google APIs), use `X-Jentic-Service: {app_slug}` to select the right one.
 - [GET /workflows](/docs#/catalog/list_workflows_workflows_get): List available workflows
 - [GET /workflows/{slug}](/docs#/catalog/get_workflow_workflows__slug__get): Inspect workflow definition and input schema
 - [GET /health](/docs#/meta/health_health_get): Instance status and bootstrap info

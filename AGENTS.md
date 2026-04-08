@@ -106,6 +106,12 @@ The broker resolves your toolkit, finds the matching credential, injects the
 auth header, forwards to the upstream API, logs a trace, and returns the
 response verbatim.
 
+**Multiple credentials for the same host** (e.g. Google Calendar + Gmail both on
+`www.googleapis.com`): add `X-Jentic-Service: google_calendar` to select by
+service name. The response includes `X-Jentic-Credential-Used` so you can verify
+which credential was injected. If ambiguous, `X-Jentic-Credential-Ambiguous: true`
+is set as a warning.
+
 ## Workflow Execution
 
 Multi-step workflows (Arazzo specs) are executed the same way:
