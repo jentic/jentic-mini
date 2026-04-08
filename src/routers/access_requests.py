@@ -23,6 +23,7 @@ import logging
 import time
 import uuid
 from typing import Literal
+from urllib.parse import quote
 
 from fastapi import APIRouter, HTTPException, Depends, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -206,7 +207,6 @@ async def create_access_request(toolkit_id: str, request: Request, body: AccessR
 @router.get("/{toolkit_id}/access-requests/approve/{req_id}", include_in_schema=False)
 async def approval_ui(toolkit_id: str, req_id: str):
     """Redirect to the React SPA approval page. Kept for backward compat with old approve_urls."""
-    from urllib.parse import quote
     return RedirectResponse(url=f"/approve/{quote(toolkit_id, safe='')}/{quote(req_id, safe='')}", status_code=302)
 
 @router.get("/{toolkit_id}/access-requests/approve/{req_id}/legacy", include_in_schema=False)
