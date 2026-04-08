@@ -86,6 +86,18 @@ def test_rename_account_rejects_empty_label(client, admin_session, broker):
     assert resp.status_code == 422
 
 
+# ── POST /oauth-brokers/{id}/connect-link ─────────────────────────────────────
+
+def test_connect_link_rejects_empty_label(client, admin_session, broker):
+    """Empty label is rejected with 422 (min_length=1 validation)."""
+    resp = client.post(
+        f"/oauth-brokers/{broker}/connect-link",
+        cookies=admin_session,
+        json={"app": "google_calendar", "label": ""},
+    )
+    assert resp.status_code == 422
+
+
 # ── POST /oauth-brokers/{id}/accounts/{account_id}/reconnect-link ───────────
 
 def test_reconnect_link_requires_human_session(agent_only_client, broker):

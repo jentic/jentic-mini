@@ -26,7 +26,7 @@ from src.validators import NormModel, NormStr
 from src.utils import build_absolute_url
 
 from src.auth import require_human_session
-from src.brokers.pipedream import broker_credential_id
+from src.brokers.pipedream import api_host_to_pd_slug, broker_credential_id
 from src.db import get_db
 from src.oauth_broker import registry as oauth_broker_registry
 import src.vault as vault
@@ -190,7 +190,8 @@ def _extract_pipedream_config(config: dict) -> tuple[str, str, str, str | None, 
         )
     support_email = config.get("support_email") or None
     environment = config.get("environment") or "production"
-    return config["client_id"], config["client_secret"], config["project_id"], support_email, environment
+    default_external_user_id = config.get("default_external_user_id") or "default"
+    return config["client_id"], config["client_secret"], config["project_id"], support_email, environment, default_external_user_id
 
 
 # ── Routes ────────────────────────────────────────────────────────────────────
@@ -206,7 +207,7 @@ async def create_oauth_broker(body: OAuthBrokerCreate):
     if body.type not in _SUPPORTED_TYPES:
         raise HTTPException(400, f"Unsupported broker type: '{body.type}'. Supported: pipedream")
 
-    client_id, client_secret, project_id, support_email, environment = (
+    client_id, client_secret, project_id, support_email, environment, default_external_user_id = (
         _extract_pipedream_config(body.config)
     )
 
@@ -223,7 +224,7 @@ async def create_oauth_broker(body: OAuthBrokerCreate):
                 environment, default_external_user_id, created_at)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
             (broker_id, body.type, client_id, secret_enc,
-             project_id, environment, "default", time.time()),
+             project_id, environment, default_external_user_id, time.time()),
         )
         await db.commit()
 
@@ -234,7 +235,7 @@ async def create_oauth_broker(body: OAuthBrokerCreate):
         client_secret=client_secret,
         project_id=project_id,
         environment=environment,
-        default_external_user_id="default",
+        default_external_user_id=default_external_user_id,
     )
     oauth_broker_registry.register(broker)
 
@@ -259,7 +260,7 @@ async def create_oauth_broker(body: OAuthBrokerCreate):
     return OAuthBrokerOut(
         id=broker_id,
         type=body.type,
-        config={"client_id": client_id, "project_id": project_id, "default_external_user_id": "default"},
+        config={"client_id": client_id, "project_id": project_id, "default_external_user_id": default_external_user_id},
         created_at=time.time(),
         accounts_discovered=accounts_discovered,
     )
@@ -463,6 +464,13 @@ async def create_connect_link(broker_id: BrokerIdPath, body: ConnectLinkRequest,
 
     if not hasattr(live_broker, "create_connect_token"):
         raise HTTPException(400, f"Broker type does not support Connect Links")
+
+    # Resolve app slug from api_id if the provided slug looks like a path segment
+    # rather than a valid Pipedream slug (e.g. "calendar" instead of "google_calendar").
+    if body.api_id:
+        resolved_slug = api_host_to_pd_slug(body.api_id)
+        if resolved_slug:
+            body.app = resolved_slug
 
     # Build the success redirect URI — Pipedream will append nothing of its own,
     # so we encode all the context we need (label, app, api_id, external_user_id)
