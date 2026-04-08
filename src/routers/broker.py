@@ -68,7 +68,7 @@ _HOP_BY_HOP = {
     "content-length",
     # Jentic-specific — consumed here, not forwarded upstream
     "x-jentic-api-key", "x-jentic-simulate",
-    "x-jentic-credential", "x-jentic-callback",
+    "x-jentic-credential", "x-jentic-service", "x-jentic-callback",
     # Host is set from the target URL
     "host",
     # Reverse-proxy headers injected by nginx/traefik/etc. — these describe
@@ -230,9 +230,9 @@ async def _find_credential_for_host(
         _broker_log.warning(
             "CRED AMBIGUITY: %d credentials for host=%r api_id=%r — using first. "
             "Set X-Jentic-Service or X-Jentic-Credential header to disambiguate. "
-            "Credentials: %s",
+            "Credential IDs: %s",
             len(creds), host, api_id,
-            [(c.get("id"), c.get("label")) for c in creds],
+            [c.get("id") for c in creds],
         )
 
     # Get merged security schemes (spec + confirmed overlays)
