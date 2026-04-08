@@ -227,7 +227,9 @@ describe('CredentialFormPage — OAuth connect link', () => {
 		const user = userEvent.setup();
 		await navigateToOAuth2Api(user);
 
-		await screen.findByText(/connect via oauth/i);
+		await waitFor(() => {
+			expect(screen.getByText(/connect via oauth/i)).toBeInTheDocument();
+		});
 
 		// Clear the pre-filled label
 		const labelInput = screen.getByLabelText(/label/i);
@@ -253,7 +255,10 @@ describe('CredentialFormPage — OAuth connect link', () => {
 		);
 
 		await navigateToOAuth2Api(user);
-		await screen.findByText(/connect via oauth/i);
+
+		await waitFor(() => {
+			expect(screen.getByText(/connect via oauth/i)).toBeInTheDocument();
+		});
 
 		const connectButton = screen.getByRole('button', { name: /create connect link/i });
 		await user.click(connectButton);
@@ -265,7 +270,9 @@ describe('CredentialFormPage — OAuth connect link', () => {
 		const user = userEvent.setup();
 		await navigateToOAuth2Api(user);
 
-		await screen.findByText(/connect via oauth/i);
+		await waitFor(() => {
+			expect(screen.getByText(/connect via oauth/i)).toBeInTheDocument();
+		});
 
 		const labelInput = screen.getByLabelText(/label/i);
 		await user.clear(labelInput);
