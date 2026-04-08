@@ -663,7 +663,7 @@ async def broker(request: Request, target: str):
         )
     except Exception as e:
         log.exception("Credential lookup failed")
-        await _write_trace("error", 500, f"Credential lookup failed: {str(e)}")
+        await _write_trace("error", 500, "Credential lookup failed")
         error_body = {"error": "CREDENTIAL_LOOKUP_FAILED", "message": "Internal error during credential lookup."}
         return Response(
             content=json.dumps(error_body),
@@ -941,7 +941,7 @@ async def broker(request: Request, target: str):
         )
     except httpx.RequestError as e:
         log.exception("Upstream request failed for %s", upstream_host)
-        await _write_trace("error", 502, f"Network error: {str(e)}")
+        await _write_trace("error", 502, f"Network error reaching {upstream_host}")
         error_body = {
             "error": "UPSTREAM_UNREACHABLE",
             "message": f"Could not reach {upstream_host}.",

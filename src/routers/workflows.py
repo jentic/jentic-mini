@@ -321,9 +321,9 @@ async def get_workflow(slug: str, request: Request):
         _e = _html.escape
         steps_html = ""
         for s in meta.get("steps", []):
-            steps_html += f"<li><code>{_e(s['id'])}</code> — {_e(s.get('operation','?'))}"
+            steps_html += f"<li><code>{_e(str(s.get('id', '')))}</code> — {_e(str(s.get('operation','?')))}"
             if s.get('description'):
-                steps_html += f"<br><small>{_e(s['description'])}</small>"
+                steps_html += f"<br><small>{_e(str(s['description']))}</small>"
             steps_html += "</li>"
         apis_html = ", ".join(f"<code>{_e(a)}</code>" for a in involved_apis) or "—"
         html = f"""<!DOCTYPE html>
@@ -346,7 +346,7 @@ h1 span{{color:#888;font-weight:normal;font-size:.6em;margin-left:12px}}</style>
 <h2>Execute</h2>
 <p>POST to <code>https://{JENTIC_PUBLIC_HOSTNAME}/workflows/{slug}</code> with your inputs and <code>X-Jentic-API-Key</code> header.</p>
 <h2>Arazzo source</h2>
-<pre>{doc and json.dumps(doc, indent=2)[:4000]}</pre>
+<pre>{_e(json.dumps(doc, indent=2)[:4000]) if doc else ''}</pre>
 </body></html>"""
         return HTMLResponse(html)
 
