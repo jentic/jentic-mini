@@ -114,6 +114,14 @@ def test_reconnect_link_404_nonexistent_account(client, admin_session, broker):
     assert resp.status_code == 404
 
 
+# ── DELETE /oauth-brokers/{id}/accounts/{account_id} ─────────────────────────
+
+def test_delete_account_requires_human_session(agent_only_client, broker):
+    """Agent keys cannot delete connected accounts."""
+    resp = agent_only_client.delete(f"/oauth-brokers/{broker}/accounts/apn_test")
+    assert resp.status_code == 403
+
+
 # ── DELETE /oauth-brokers/{id} ───────────────────────────────────────────────
 
 def test_delete_broker_requires_human_session(agent_only_client, broker):
