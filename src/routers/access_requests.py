@@ -17,7 +17,9 @@ URL structure (nested under /toolkits):
   POST   /toolkits/{toolkit_id}/access-requests/{req_id}/deny
   GET    /toolkits/{toolkit_id}/access-requests/approve/{req_id}  (HTML UI)
 """
+import html as _html
 import json
+import logging
 import time
 import uuid
 from typing import Literal
@@ -27,6 +29,8 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from src.auth import require_human_session
 from pydantic import BaseModel, Field
 from src.validators import NormModel
+
+log = logging.getLogger("jentic")
 from src.utils import build_absolute_url
 
 from src.db import get_db
@@ -202,7 +206,8 @@ async def create_access_request(toolkit_id: str, request: Request, body: AccessR
 @router.get("/{toolkit_id}/access-requests/approve/{req_id}", include_in_schema=False)
 async def approval_ui(toolkit_id: str, req_id: str):
     """Redirect to the React SPA approval page. Kept for backward compat with old approve_urls."""
-    return RedirectResponse(url=f"/approve/{toolkit_id}/{req_id}", status_code=302)
+    from urllib.parse import quote
+    return RedirectResponse(url=f"/approve/{quote(toolkit_id, safe='')}/{quote(req_id, safe='')}", status_code=302)
 
 @router.get("/{toolkit_id}/access-requests/approve/{req_id}/legacy", include_in_schema=False)
 async def approval_ui_legacy(toolkit_id: str, req_id: str):
@@ -273,14 +278,14 @@ async def approval_ui_legacy(toolkit_id: str, req_id: str):
 <body>
   <h1>🔐 Access Request</h1>
   <div class="card">
-    <p><span class="label">Request ID</span><br>{row_id}</p>
-    <p><span class="label">Type</span><br>{req_type}</p>
-    <p><span class="label">Toolkit</span><br>{row_toolkit_id or 'N/A'}</p>
-    <p><span class="label">Status</span><br><span class="status-{status}">{status}</span></p>
-    <p><span class="label">What the agent is requesting</span><br>{description}</p>
-    <p><span class="label">Reason from agent</span><br>{reason or '<em>No reason provided</em>'}</p>
+    <p><span class="label">Request ID</span><br>{_html.escape(row_id)}</p>
+    <p><span class="label">Type</span><br>{_html.escape(req_type)}</p>
+    <p><span class="label">Toolkit</span><br>{_html.escape(row_toolkit_id or 'N/A')}</p>
+    <p><span class="label">Status</span><br><span class="status-{_html.escape(status)}">{_html.escape(status)}</span></p>
+    <p><span class="label">What the agent is requesting</span><br>{_html.escape(description)}</p>
+    <p><span class="label">Reason from agent</span><br>{_html.escape(reason) if reason else '<em>No reason provided</em>'}</p>
     <p><span class="label">Payload</span></p>
-    <pre>{json.dumps(payload, indent=2)}</pre>
+    <pre>{_html.escape(json.dumps(payload, indent=2))}</pre>
   </div>
   {resolved_html}
 </body>
@@ -389,7 +394,13 @@ async def approve_access_request(toolkit_id: str, req_id: str, _: None = Depends
     For `grant` requests: the upstream API credential is automatically bound to the toolkit.
     For `modify_permissions` requests: the new permission rules are applied immediately.
     """
-    return await _resolve(toolkit_id, req_id, "approved")
+    try:
+        return await _resolve(toolkit_id, req_id, "approved")
+    except HTTPException:
+        raise
+    except Exception:
+        log.exception("Failed to approve access request %s", req_id)
+        raise HTTPException(500, "Failed to process approval. Check server logs.")
 
 
 @router.post("/{toolkit_id}/access-requests/{req_id}/deny",
@@ -397,7 +408,13 @@ async def approve_access_request(toolkit_id: str, req_id: str, _: None = Depends
              tags=["toolkits"], response_model=AccessRequestOut)
 async def deny_access_request(toolkit_id: str, req_id: str, _: None = Depends(require_human_session)):
     """Deny a pending access request."""
-    return await _resolve(toolkit_id, req_id, "denied")
+    try:
+        return await _resolve(toolkit_id, req_id, "denied")
+    except HTTPException:
+        raise
+    except Exception:
+        log.exception("Failed to deny access request %s", req_id)
+        raise HTTPException(500, "Failed to process denial. Check server logs.")
 
 
 # ── Internals ─────────────────────────────────────────────────────────────────

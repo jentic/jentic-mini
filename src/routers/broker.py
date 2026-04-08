@@ -662,8 +662,9 @@ async def broker(request: Request, target: str):
             alias=credential_alias,
         )
     except Exception as e:
+        log.exception("Credential lookup failed")
         await _write_trace("error", 500, f"Credential lookup failed: {str(e)}")
-        error_body = {"error": "CREDENTIAL_LOOKUP_FAILED", "message": str(e)}
+        error_body = {"error": "CREDENTIAL_LOOKUP_FAILED", "message": "Internal error during credential lookup."}
         return Response(
             content=json.dumps(error_body),
             status_code=500,
@@ -939,10 +940,11 @@ async def broker(request: Request, target: str):
             headers={"X-Jentic-Error": "true", "X-Jentic-Execution-Id": execution_id},
         )
     except httpx.RequestError as e:
+        log.exception("Upstream request failed for %s", upstream_host)
         await _write_trace("error", 502, f"Network error: {str(e)}")
         error_body = {
             "error": "UPSTREAM_UNREACHABLE",
-            "message": f"Could not reach {upstream_host}: {str(e)}",
+            "message": f"Could not reach {upstream_host}.",
         }
         return Response(
             content=json.dumps(error_body),

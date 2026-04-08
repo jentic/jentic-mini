@@ -1,10 +1,12 @@
 """Debug endpoints — hidden from public docs (include_in_schema=False on all routes)."""
+import logging
 import os, json, inspect
 from pathlib import Path
 from fastapi import APIRouter, Request
 
 from src.config import DATA_DIR
 
+log = logging.getLogger("jentic")
 router = APIRouter(prefix="/debug", tags=["debug"], include_in_schema=False)
 
 
@@ -73,8 +75,8 @@ async def env_mappings(arazzo_path: str = ""):
         mappings = runner.get_env_mappings()
         return {"mappings": mappings}
     except Exception as e:
-        import traceback
-        return {"error": str(e), "trace": traceback.format_exc()[-1000:]}
+        log.exception("env-mappings failed for %s", arazzo_path)
+        return {"error": "Failed to load env mappings. Check server logs for details."}
 
 
 @router.get("/spec")
@@ -276,7 +278,8 @@ async def broker_cred_test(host: str = "api.elevenlabs.io"):
         mappings = runner.get_env_mappings()
         auth_mappings = mappings.get("auth", {})
     except Exception as e:
-        return {"error": f"arazzo-runner failed: {e}", "traceback": traceback.format_exc()}
+        log.exception("arazzo-runner failed for %s", spec_path)
+        return {"error": "arazzo-runner failed. Check server logs for details."}
 
     # Step 3: resolve headers
     import json

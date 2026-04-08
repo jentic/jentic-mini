@@ -1,4 +1,5 @@
 """Upstream API credentials vault routes."""
+import logging
 import uuid
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse
@@ -6,6 +7,8 @@ from src.models import CredentialCreate, CredentialOut, CredentialPatch
 import src.vault as vault
 from src.db import get_db
 from src.config import JENTIC_PUBLIC_HOSTNAME
+
+log = logging.getLogger("jentic")
 
 
 def _self_api_id() -> str:
@@ -214,7 +217,8 @@ async def create(body: CredentialCreate, request: Request):
             identity=getattr(body, "identity", None),
         )
     except Exception as e:
-        raise HTTPException(400, str(e))
+        log.exception("Failed to create credential")
+        raise HTTPException(400, "Failed to create credential. Check your input and try again.")
 
     return cred
 

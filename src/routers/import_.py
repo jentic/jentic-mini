@@ -10,6 +10,7 @@ Detects whether the spec is an OpenAPI or Arazzo document and routes accordingly
 Synchronous (no job queue) — suitable for Jentic's local deployment.
 """
 import json
+import logging
 import re
 import uuid
 import os
@@ -28,6 +29,7 @@ from src.bm25 import get_index
 import src.vault as vault
 from src.models import ImportOut
 
+log = logging.getLogger("jentic")
 router = APIRouter()
 
 from src.config import SPECS_DIR, WORKFLOWS_DIR
@@ -262,10 +264,11 @@ async def import_sources(body: ImportRequest):
                 result = await _register_openapi(doc, saved_path, force_api_id=source.force_api_id)
             results.append({"index": i, "status": "success", **result})
         except Exception as e:
+            log.exception("Import failed for source %d", i)
             results.append({
                 "index": i,
                 "status": "failed",
-                "error": str(e),
+                "error": "Import failed. Check server logs for details.",
                 "source": source.model_dump(exclude_none=True),
             })
 

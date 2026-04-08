@@ -12,6 +12,7 @@ Workflow capability IDs in search/inspect use the same METHOD/host/path format
 as operation IDs. The backend detects them by matching the Jentic hostname.
 """
 import copy
+import html as _html
 import json
 import tempfile
 import uuid
@@ -317,16 +318,17 @@ async def get_workflow(slug: str, request: Request):
         )
 
     if "text/html" in accept:
+        _e = _html.escape
         steps_html = ""
         for s in meta.get("steps", []):
-            steps_html += f"<li><code>{s['id']}</code> — {s.get('operation','?')}"
+            steps_html += f"<li><code>{_e(s['id'])}</code> — {_e(s.get('operation','?'))}"
             if s.get('description'):
-                steps_html += f"<br><small>{s['description']}</small>"
+                steps_html += f"<br><small>{_e(s['description'])}</small>"
             steps_html += "</li>"
-        apis_html = ", ".join(f"<code>{a}</code>" for a in involved_apis) or "—"
+        apis_html = ", ".join(f"<code>{_e(a)}</code>" for a in involved_apis) or "—"
         html = f"""<!DOCTYPE html>
 <html>
-<head><title>{name} — Jentic Workflow</title>
+<head><title>{_e(name)} — Jentic Workflow</title>
 <style>body{{font-family:sans-serif;max-width:800px;margin:40px auto;padding:0 20px}}
 code{{background:#f4f4f4;padding:2px 6px;border-radius:3px}}
 pre{{background:#f4f4f4;padding:16px;border-radius:6px;overflow:auto}}
@@ -334,9 +336,9 @@ pre{{background:#f4f4f4;padding:16px;border-radius:6px;overflow:auto}}
 h1 span{{color:#888;font-weight:normal;font-size:.6em;margin-left:12px}}</style>
 </head>
 <body>
-<h1>{name} <span>workflow</span></h1>
-<p class="meta">Capability ID: <code>{capability_id}</code></p>
-<p>{description or ''}</p>
+<h1>{_e(name)} <span>workflow</span></h1>
+<p class="meta">Capability ID: <code>{_e(capability_id)}</code></p>
+<p>{_e(description or '')}</p>
 <h2>Steps ({steps_count})</h2>
 <ol>{steps_html}</ol>
 <h2>APIs used</h2>
