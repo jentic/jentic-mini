@@ -130,6 +130,9 @@ class CredentialOut(BaseModel):
     auth_type: str | None = None
     created_at: float | None = None
     updated_at: float | None = None
+    account_id: str | None = None
+    app_slug: str | None = None
+    synced_at: float | None = None
 
 
 # ── Toolkits (output) ─────────────────────────────────────────────────────────

@@ -69,6 +69,11 @@ export default defineConfig({
 			'/default-api-key': apiHost,
 			'/docs': apiHost,
 			'/openapi.json': apiHost,
+			// Backend-only callback — must be proxied unconditionally (browser redirect from Pipedream)
+			'/oauth-brokers': { target: apiHost, bypass: (req) => {
+				if (req.url?.includes('/connect-callback')) return null; // always proxy
+				return req.headers.accept?.includes('text/html') ? '/index.html' : null;
+			}},
 			// SPA + API dual-use routes — serve index.html for browser navigations
 			'/search': spaRoute,
 			'/toolkits': spaRoute,
@@ -77,7 +82,6 @@ export default defineConfig({
 			'/jobs': spaRoute,
 			'/workflows': spaRoute,
 			'/catalog': spaRoute,
-			'/oauth-brokers': spaRoute,
 		},
 	},
 });

@@ -3,6 +3,7 @@ Jentic Mini — main.py
 """
 import logging
 import os
+import re
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -370,7 +371,9 @@ async def spa_middleware(request: Request, call_next):
         path = request.url.path
         accept = request.headers.get("accept", "")
         wants_html = any(part.strip().startswith("text/html") for part in accept.split(","))
-        if wants_html and any(path == p or path.startswith(p + "/") for p in _SPA_PATHS):
+        # Exclude connect-callback from SPA interception (real GET endpoint, browser redirect)
+        is_spa_excluded = bool(re.match(r"^/oauth-brokers/[^/]+/connect-callback", path))
+        if wants_html and not is_spa_excluded and any(path == p or path.startswith(p + "/") for p in _SPA_PATHS):
             index_path = STATIC_DIR / "index.html"
             if index_path.exists():
                 resp = FileResponse(index_path)

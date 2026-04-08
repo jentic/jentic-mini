@@ -16,11 +16,17 @@ import logging
 import time
 from typing import Annotated, Any
 
+import urllib.parse
+
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request
+from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, Field
 from src.validators import NormModel, NormStr
+from src.utils import build_absolute_url
 
 from src.auth import require_human_session
+from src.brokers.pipedream import broker_credential_id
 from src.db import get_db
 from src.oauth_broker import registry as oauth_broker_registry
 import src.vault as vault
@@ -297,14 +303,6 @@ async def get_oauth_broker(broker_id: BrokerIdPath):
 
 
 class ConnectLinkRequest(NormModel):
-    external_user_id: str = Field(
-        "default",
-        description=(
-            "The user identity to generate the connect link for. "
-            "In a single-user setup this is always `default`. "
-            "Must match the `external_user_id` you use when routing requests."
-        ),
-    )
     app: str = Field(
         ...,
         description=(
@@ -380,24 +378,32 @@ async def create_connect_link(broker_id: BrokerIdPath, body: ConnectLinkRequest,
     if not hasattr(live_broker, "create_connect_token"):
         raise HTTPException(400, f"Broker type does not support Connect Links")
 
+    # Build the success redirect URI — Pipedream will append nothing of its own,
+    # so we encode all the context we need (label, app, api_id, external_user_id)
+    # as query params. The callback endpoint reads these, stores the pending label,
+    # triggers a sync, and redirects the user to the credentials UI.
+    # Derive external_user_id from the broker's stored config — callers must not
+    # override this, as an incorrect value silently routes credentials to a
+    # Pipedream user that the sync will never query.
+    external_user_id = getattr(live_broker, "default_external_user_id", None) or "default"
+
+    callback_params = {
+        "label": body.label,
+        "app": body.app,
+        "external_user_id": external_user_id,
+    }
+    if body.api_id:
+        callback_params["api_id"] = body.api_id
+    callback_path = f"/oauth-brokers/{broker_id}/connect-callback?{urllib.parse.urlencode(callback_params)}"
+    success_redirect_uri = build_absolute_url(request, callback_path)
+
     try:
-        result = await live_broker.create_connect_token(body.external_user_id)
+        result = await live_broker.create_connect_token(
+            external_user_id,
+            success_redirect_uri=success_redirect_uri,
+        )
     except Exception as exc:
         raise HTTPException(502, f"Failed to create Pipedream Connect Token: {exc}")
-
-    # Store the label as a pending entry — consumed by sync when this account lands
-    import uuid as _uuid
-    async with get_db() as db:
-        await db.execute(
-            """INSERT OR REPLACE INTO oauth_broker_connect_labels
-               (id, broker_id, external_user_id, app_slug, label, api_id, created_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?)""",
-            (
-                str(_uuid.uuid4()), broker_id, body.external_user_id,
-                body.app, body.label, body.api_id, time.time(),
-            ),
-        )
-        await db.commit()
 
     # Pipedream requires the app slug appended to the connect link URL
     connect_link_url = result["connect_link_url"]
@@ -406,12 +412,164 @@ async def create_connect_link(broker_id: BrokerIdPath, body: ConnectLinkRequest,
 
     return {
         "broker_id": broker_id,
-        "external_user_id": body.external_user_id,
+        "external_user_id": external_user_id,
         "app": body.app,
         "connect_link_url": connect_link_url,
         "expires_at": result["expires_at"],
-        "next_step": f"Visit connect_link_url in your browser, authorise {body.app}, then call POST /oauth-brokers/{broker_id}/sync",
+        "next_step": f"Visit connect_link_url in your browser, authorise {body.app}, then the browser will redirect automatically and sync will run",
     }
+
+
+@router.get(
+    "/{broker_id}/connect-callback",
+    summary="OAuth connect-link completion callback (browser redirect)",
+    include_in_schema=False,  # not a user-facing API endpoint
+)
+async def connect_callback(
+    broker_id: BrokerIdPath,
+    request: Request,
+    label: str = Query(..., description="Label set at connect-link time"),
+    app: str = Query(..., description="Pipedream app slug"),
+    external_user_id: str = Query("default"),
+    api_id: str | None = Query(None),
+    replace_account_id: str | None = Query(None, description="Account ID to delete after successful reconnect"),
+):
+    """Browser callback after Pipedream OAuth completion.
+
+    Pipedream redirects here once the user successfully authorises an app.
+    We write the pending label to oauth_broker_connect_labels (keyed by
+    app_slug, as before), trigger a sync immediately, then redirect the
+    user to the credentials page of the UI.
+
+    This endpoint is hit by the user's browser — no auth token required.
+    Labels come from URL params encoded at connect-link time.
+    """
+    import uuid as _uuid
+
+    # Write the pending label — safe to INSERT OR REPLACE here because we are
+    # processing one completion at a time (browser callback is synchronous
+    # from the user's perspective). The race that motivated this redesign was
+    # *two links created before either was completed*; at callback time each
+    # link fires its own redirect with its own label param.
+    async with get_db() as db:
+        await db.execute(
+            """INSERT OR REPLACE INTO oauth_broker_connect_labels
+               (id, broker_id, external_user_id, app_slug, label, api_id, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (
+                str(_uuid.uuid4()), broker_id, external_user_id,
+                app, label, api_id, time.time(),
+            ),
+        )
+        await db.commit()
+
+    # Trigger sync immediately so the credential lands before the UI loads
+    live_broker = next(
+        (b for b in oauth_broker_registry.brokers if getattr(b, "broker_id", None) == broker_id),
+        None,
+    )
+    if live_broker is None:
+        from src.brokers.pipedream import PipedreamOAuthBroker
+        brokers = await PipedreamOAuthBroker.from_db()
+        live_broker = next((b for b in brokers if b.broker_id == broker_id), None)
+        if live_broker:
+            oauth_broker_registry.register(live_broker)
+
+    synced_ok = False
+    if live_broker is not None and hasattr(live_broker, "discover_accounts"):
+        try:
+            await live_broker.discover_accounts(external_user_id)
+            synced_ok = True
+            log.info("connect-callback: sync ok for broker %s, replace_account_id=%s",
+                     broker_id, replace_account_id)
+        except Exception as exc:
+            log.warning("connect-callback: sync failed for broker %s: %s", broker_id, exc)
+            # Don't block the redirect — user will see the credential once they
+            # manually sync, or on next automatic sync.
+    else:
+        log.warning("connect-callback: no live_broker found for %s — sync skipped, replace_account_id=%s will NOT be cleaned up",
+                    broker_id, replace_account_id)
+
+    # If this was a reconnect, clean up the old account — but only after sync
+    # confirmed the new connection is present.
+    if replace_account_id and synced_ok:
+        # Verify the new account landed (old account_id should be gone; any
+        # remaining account for this app_slug other than replace_account_id is new).
+        async with get_db() as db:
+            async with db.execute(
+                """SELECT account_id FROM oauth_broker_accounts
+                   WHERE broker_id=? AND external_user_id=? AND app_slug=?
+                   AND account_id != ?""",
+                (broker_id, external_user_id, app, replace_account_id),
+            ) as cur:
+                new_row = await cur.fetchone()
+        if new_row:
+            log.info("Reconnect: new account %s confirmed, deleting old account %s",
+                     new_row[0], replace_account_id)
+            try:
+                # Fetch all api_hosts for this account (may have multiple host mappings)
+                async with get_db() as db:
+                    async with db.execute(
+                        "SELECT api_host FROM oauth_broker_accounts WHERE broker_id=? AND account_id=?",
+                        (broker_id, replace_account_id),
+                    ) as cur:
+                        old_rows = await cur.fetchall()
+
+                if old_rows:
+                    old_cred_ids = [broker_credential_id(broker_id, replace_account_id, r[0]) for r in old_rows]
+
+                    # 1. Revoke upstream in Pipedream (best-effort, async)
+                    if live_broker is not None:
+                        try:
+                            pd_token = await live_broker._get_access_token()
+                            pd_url = (f"https://api.pipedream.com/v1/connect/"
+                                      f"{live_broker.project_id}/accounts/{replace_account_id}")
+                            async with httpx.AsyncClient(timeout=10) as client:
+                                await client.delete(
+                                    pd_url,
+                                    headers={
+                                        "Authorization": f"Bearer {pd_token}",
+                                        "X-PD-Environment": live_broker.environment,
+                                    },
+                                )
+                            log.info("Reconnect: revoked old Pipedream account %s", replace_account_id)
+                        except Exception as pd_exc:
+                            log.warning("Reconnect: Pipedream revoke failed for %s (continuing): %s",
+                                        replace_account_id, pd_exc)
+
+                    # 2. Remove from toolkit provisioning + oauth_broker_accounts
+                    async with get_db() as db:
+                        for old_cred_id in old_cred_ids:
+                            await db.execute("DELETE FROM toolkit_credentials WHERE credential_id=?",
+                                             (old_cred_id,))
+                        await db.execute(
+                            "DELETE FROM oauth_broker_accounts WHERE broker_id=? AND account_id=?",
+                            (broker_id, replace_account_id),
+                        )
+                        await db.commit()
+
+                    # 3. Delete from vault
+                    for old_cred_id in old_cred_ids:
+                        await vault.delete_credential(old_cred_id)
+
+                    log.info("Reconnect: removed old account %s (%d credentials) after successful reconnect",
+                             replace_account_id, len(old_cred_ids))
+                else:
+                    log.warning("Reconnect: old account %s already gone from DB — nothing to clean up",
+                                replace_account_id)
+            except Exception as exc:
+                log.warning("Reconnect: failed to remove old account %s: %s", replace_account_id, exc)
+        else:
+            log.warning("Reconnect: new account NOT found in DB after sync for broker=%s app=%s external_user_id=%s (replacing %s)",
+                        broker_id, app, external_user_id, replace_account_id)
+
+    # Redirect to the appropriate UI page (return_to defaults to /oauth-brokers)
+    return_to = request.query_params.get("return_to", "/oauth-brokers")
+    # Safety: only allow relative paths — block protocol-relative URLs (//evil.com)
+    if not return_to.startswith("/") or return_to.startswith("//"):
+        return_to = "/oauth-brokers"
+    ui_url = build_absolute_url(request, return_to)
+    return RedirectResponse(url=ui_url, status_code=302)
 
 
 @router.post(
@@ -507,7 +665,7 @@ async def list_broker_accounts(broker_id: BrokerIdPath, external_user_id: Extern
                 raise HTTPException(404, f"OAuth broker '{broker_id}' not found")
 
         query = (
-            "SELECT external_user_id, api_host, app_slug, account_id, healthy, synced_at "
+            "SELECT external_user_id, api_host, app_slug, account_id, label, healthy, synced_at "
             "FROM oauth_broker_accounts WHERE broker_id=?"
         )
         params: tuple = (broker_id,)
@@ -520,16 +678,16 @@ async def list_broker_accounts(broker_id: BrokerIdPath, external_user_id: Extern
         async with db.execute(query, params) as cur:
             rows = await cur.fetchall()
 
-    cols = ["external_user_id", "api_host", "app_slug", "account_id", "healthy", "synced_at"]
+    cols = ["external_user_id", "api_host", "app_slug", "account_id", "label", "healthy", "synced_at"]
     return [dict(zip(cols, r)) for r in rows]
 
 
 @router.delete(
-    "/{broker_id}/accounts/{api_host:path}",
+    "/{broker_id}/accounts/{account_id}",
     summary="Remove a connected account from an OAuth broker",
     dependencies=[Depends(require_human_session)],
 )
-async def delete_broker_account(broker_id: BrokerIdPath, api_host: str, external_user_id: ExternalUserIdQuery = None):
+async def delete_broker_account(broker_id: BrokerIdPath, account_id: str):
     """Remove a specific connected account from this broker.
 
     This performs three actions in order:
@@ -539,25 +697,21 @@ async def delete_broker_account(broker_id: BrokerIdPath, api_host: str, external
 
     If the Pipedream revoke fails, the local cleanup still proceeds (with a warning).
     """
-    ext_uid = external_user_id or "default"
-
     async with get_db() as db:
         async with db.execute("SELECT id FROM oauth_brokers WHERE id=?", (broker_id,)) as cur:
             if not await cur.fetchone():
                 raise HTTPException(404, f"OAuth broker '{broker_id}' not found")
 
         async with db.execute(
-            "SELECT account_id FROM oauth_broker_accounts WHERE broker_id=? AND api_host=? AND external_user_id=?",
-            (broker_id, api_host, ext_uid),
+            "SELECT account_id, api_host FROM oauth_broker_accounts WHERE broker_id=? AND account_id=?",
+            (broker_id, account_id),
         ) as cur:
-            row = await cur.fetchone()
+            rows = await cur.fetchall()
 
-    if not row:
-        raise HTTPException(404, f"No connected account found for api_host='{api_host}' external_user_id='{ext_uid}'")
-
-    account_id = row[0]
-    host_slug = api_host.replace(".", "-")
-    cred_id = f"pipedream-{account_id}-{host_slug}"
+    if not rows:
+        raise HTTPException(404, f"No connected account '{account_id}' found for broker '{broker_id}'")
+    # An account can map to multiple api_hosts (e.g. Google Sheets → sheets.googleapis.com + googleapis.com/sheets)
+    cred_ids = [broker_credential_id(broker_id, account_id, r[1]) for r in rows]
 
     # 1. Revoke upstream in Pipedream
     pipedream_revoked = False
@@ -591,30 +745,121 @@ async def delete_broker_account(broker_id: BrokerIdPath, api_host: str, external
         except Exception as exc:
             log.warning("Failed to revoke Pipedream account %s: %s — continuing with local cleanup", account_id, exc)
 
-    # 2. Remove from toolkit provisioning
+    # 2. Remove from toolkit provisioning + vault for all host mappings
     async with get_db() as db:
-        await db.execute("DELETE FROM toolkit_credentials WHERE credential_id=?", (cred_id,))
+        for cred_id in cred_ids:
+            await db.execute("DELETE FROM toolkit_credentials WHERE credential_id=?", (cred_id,))
         await db.commit()
 
-    # 3. Delete from vault
-    await vault.delete_credential(cred_id)
+    for cred_id in cred_ids:
+        await vault.delete_credential(cred_id)
 
-    # 4. Delete from oauth_broker_accounts
+    # 3. Delete from oauth_broker_accounts
     async with get_db() as db:
         await db.execute(
-            "DELETE FROM oauth_broker_accounts WHERE broker_id=? AND api_host=? AND external_user_id=?",
-            (broker_id, api_host, ext_uid),
+            "DELETE FROM oauth_broker_accounts WHERE broker_id=? AND account_id=?",
+            (broker_id, account_id),
         )
         await db.commit()
 
     return {
         "status": "ok",
         "broker_id": broker_id,
-        "api_host": api_host,
         "account_id": account_id,
-        "credential_id": cred_id,
+        "credential_ids": cred_ids,
         "pipedream_revoked": pipedream_revoked,
         "deleted": True,
+    }
+
+
+@router.post(
+    "/{broker_id}/accounts/{account_id}/reconnect-link",
+    summary="Get a reconnect link for an existing connected account",
+    dependencies=[Depends(require_human_session)],
+)
+async def reconnect_account_link(broker_id: BrokerIdPath, account_id: str, request: Request):
+    """Generate a new OAuth connect link for an existing connected account.
+
+    The returned URL sends the user through the Pipedream OAuth flow for the
+    same app slug.  On completion, the callback will:
+
+    1. Sync the broker (discovering the new account).
+    2. If the new account is confirmed present, delete the old account.
+
+    This allows a user to re-authorise a broken connection without losing the
+    existing credential until the replacement is confirmed.
+    """
+    # Load the existing account record
+    async with get_db() as db:
+        async with db.execute(
+            """SELECT app_slug, label, api_id, external_user_id
+               FROM oauth_broker_accounts WHERE broker_id=? AND account_id=?""",
+            (broker_id, account_id),
+        ) as cur:
+            row = await cur.fetchone()
+
+    if not row:
+        raise HTTPException(404, f"No connected account '{account_id}' found for broker '{broker_id}'")
+
+    app_slug, label, api_id, external_user_id = row
+    label = label or app_slug
+    external_user_id = external_user_id or "default"
+
+    # Get the live broker
+    live_broker = next(
+        (b for b in oauth_broker_registry.brokers if getattr(b, "broker_id", None) == broker_id),
+        None,
+    )
+    if live_broker is None:
+        from src.brokers.pipedream import PipedreamOAuthBroker
+        brokers = await PipedreamOAuthBroker.from_db()
+        live_broker = next((b for b in brokers if b.broker_id == broker_id), None)
+        if live_broker:
+            oauth_broker_registry.register(live_broker)
+
+    if live_broker is None:
+        raise HTTPException(404, f"OAuth broker '{broker_id}' not found or could not be loaded")
+
+    if not hasattr(live_broker, "create_connect_token"):
+        raise HTTPException(400, f"Broker type does not support reconnect links")
+
+    # Build callback URL — includes replace_account_id so the old account is
+    # cleaned up automatically after the new one is confirmed present
+    callback_params = {
+        "label": label,
+        "app": app_slug,
+        "external_user_id": external_user_id,
+        "replace_account_id": account_id,
+        "return_to": "/credentials",
+    }
+    if api_id:
+        callback_params["api_id"] = api_id
+    callback_path = f"/oauth-brokers/{broker_id}/connect-callback?{urllib.parse.urlencode(callback_params)}"
+    success_redirect_uri = build_absolute_url(request, callback_path)
+
+    try:
+        result = await live_broker.create_connect_token(
+            external_user_id,
+            success_redirect_uri=success_redirect_uri,
+        )
+    except Exception as exc:
+        raise HTTPException(502, f"Failed to create Pipedream Connect Token: {exc}")
+
+    connect_link_url = result["connect_link_url"]
+    if "&app=" not in connect_link_url:
+        connect_link_url = f"{connect_link_url}&app={app_slug}"
+
+    return {
+        "broker_id": broker_id,
+        "account_id": account_id,
+        "app": app_slug,
+        "label": label,
+        "connect_link_url": connect_link_url,
+        "expires_at": result["expires_at"],
+        "next_step": (
+            f"Visit connect_link_url to re-authorise {app_slug}. "
+            f"On success, the old account ({account_id}) will be replaced automatically."
+        ),
     }
 
 

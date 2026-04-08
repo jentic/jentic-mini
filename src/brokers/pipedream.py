@@ -32,6 +32,18 @@ import src.vault as vault
 
 log = logging.getLogger("jentic.brokers.pipedream")
 
+
+def broker_account_row_id(broker_id: str, external_user_id: str, api_host: str, account_id: str) -> str:
+    """Stable primary key for oauth_broker_accounts rows."""
+    return f"{broker_id}:{external_user_id}:{api_host}:{account_id}"
+
+
+def broker_credential_id(broker_id: str, account_id: str, api_host: str) -> str:
+    """Stable credential ID for Pipedream OAuth credentials."""
+    host_slug = api_host.replace(".", "-")
+    return f"{broker_id}-{account_id}-{host_slug}"
+
+
 # ── App slug ↔ api_id mapping ─────────────────────────────────────────────────
 # Single authoritative map: Jentic canonical api_id → Pipedream app slug.
 #
@@ -359,8 +371,14 @@ class PipedreamOAuthBroker:
                 row = await cur.fetchone()
         return row[0] if row else None
 
-    async def create_connect_token(self, external_user_id: str) -> dict:
+    async def create_connect_token(self, external_user_id: str, success_redirect_uri: str | None = None) -> dict:
         """Create a short-lived Pipedream Connect Token for the given user.
+
+        Args:
+            external_user_id: The end-user identity to scope the token to.
+            success_redirect_uri: Optional URL Pipedream redirects to after
+                successful OAuth completion. Use this to carry label/app
+                metadata back to Jentic Mini without a public webhook.
 
         Returns a dict with:
           - token: the connect token string
@@ -368,6 +386,9 @@ class PipedreamOAuthBroker:
           - expires_at: Unix timestamp when the token expires
         """
         pd_token = await self._get_access_token()
+        token_body: dict = {"external_user_id": external_user_id}
+        if success_redirect_uri:
+            token_body["success_redirect_uri"] = success_redirect_uri
         async with httpx.AsyncClient(timeout=15) as client:
             resp = await client.post(
                 f"https://api.pipedream.com/v1/connect/{self.project_id}/tokens",
@@ -376,7 +397,7 @@ class PipedreamOAuthBroker:
                     "Content-Type": "application/json",
                     "X-PD-Environment": self.environment,
                 },
-                json={"external_user_id": external_user_id},
+                json=token_body,
             )
             if resp.status_code != 200:
                 raise ValueError(
@@ -435,6 +456,14 @@ class PipedreamOAuthBroker:
         count = 0
 
         async with get_db() as db:
+            # Collect existing account_ids for this broker+user so we can detect removals
+            async with db.execute(
+                "SELECT account_id FROM oauth_broker_accounts "
+                "WHERE broker_id=? AND external_user_id=?",
+                (self.broker_id, external_user_id),
+            ) as cur:
+                existing_account_ids: set[str] = {r[0] for r in await cur.fetchall()}
+
             # Load pending labels and user-specified api_ids: {app_slug: (label, api_id)}
             async with db.execute(
                 "SELECT app_slug, label, api_id FROM oauth_broker_connect_labels "
@@ -444,6 +473,7 @@ class PipedreamOAuthBroker:
                 pending: dict[str, tuple[str, str | None]] = {r[0]: (r[1], r[2]) for r in await cur.fetchall()}
 
             consumed_slugs: set[str] = set()
+            seen_account_ids: set[str] = set()
 
             for account in accounts:
                 account_id = account.get("id", "")
@@ -495,20 +525,41 @@ class PipedreamOAuthBroker:
                 else:
                     hosts = pd_slug_to_hosts(app_slug)
                 for api_host in hosts:
-                    row_id = f"{self.broker_id}:{external_user_id}:{api_host}"
+                    row_id = broker_account_row_id(self.broker_id, external_user_id, api_host, account_id)
+                    # Only update the label if we have a pending one — otherwise
+                    # preserve whatever label is already stored (e.g. set by a
+                    # previous connect-link callback). Slug fallback only applies
+                    # on first INSERT.
+                    async with db.execute(
+                        "SELECT label FROM oauth_broker_accounts WHERE id=?",
+                        (row_id,),
+                    ) as cur:
+                        existing_row = await cur.fetchone()
+                    stored_label = existing_row[0] if existing_row else None
+                    has_pending = app_slug in pending
+                    # Pending label applies ONLY to new rows (no existing row).
+                    # Existing rows always keep their stored label — we must not
+                    # relabel an already-known account just because a new account
+                    # with the same app_slug is being connected simultaneously.
+                    if existing_row:
+                        effective_label = stored_label or app_slug
+                    elif has_pending:
+                        effective_label = label  # label set from pending[app_slug]
+                    else:
+                        effective_label = app_slug  # slug fallback for new row with no pending
+
                     await db.execute(
                         """INSERT OR REPLACE INTO oauth_broker_accounts
                            (id, broker_id, external_user_id, api_host, app_slug,
                             account_id, label, api_id, healthy, synced_at)
                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?)""",
                         (row_id, self.broker_id, external_user_id,
-                         api_host, app_slug, account_id, label, user_api_id, time.time()),
+                         api_host, app_slug, account_id, effective_label, user_api_id, time.time()),
                     )
 
                     # Upsert a credential in the vault so users can provision it to toolkits.
-                    # Credential ID is stable: pipedream-{account_id}-{api_host_slug}
                     host_slug = api_host.replace(".", "-")
-                    cred_id = f"pipedream-{account_id}-{host_slug}"
+                    cred_id = broker_credential_id(self.broker_id, account_id, api_host)
                     enc_account_id = vault.encrypt(account_id)
                     async with db.execute(
                         "SELECT id, label FROM credentials WHERE id=?", (cred_id,)
@@ -516,13 +567,12 @@ class PipedreamOAuthBroker:
                         existing_row = await cur.fetchone()
 
                     if existing_row:
-                        # Preserve any label the user/agent has set explicitly via PATCH.
-                        # A pending label (from connect-link) intentionally overrides it;
-                        # otherwise keep the stored label rather than falling back to slug.
-                        # Use a local variable to avoid bleeding into the next host iteration.
-                        cred_label = label
-                        if app_slug not in pending and existing_row[1]:
-                            cred_label = existing_row[1]
+                        # Always preserve the stored label for existing credentials.
+                        # Pending labels apply only to new accounts (handled via
+                        # effective_label in the INSERT path below). Applying the
+                        # pending label here would pollute pre-existing accounts that
+                        # share the same app_slug (e.g. two Gmail accounts).
+                        cred_label = existing_row[1] or app_slug
                         await db.execute(
                             "UPDATE credentials SET label=?, encrypted_value=?, "
                             "api_id=?, auth_type='pipedream_oauth', "
@@ -540,13 +590,41 @@ class PipedreamOAuthBroker:
                             "INSERT INTO credentials "
                             "(id, label, env_var, encrypted_value, api_id, auth_type) "
                             "VALUES (?, ?, ?, ?, ?, 'pipedream_oauth')",
-                            (cred_id, label, env_var, enc_account_id, api_host),
+                            (cred_id, effective_label, env_var, enc_account_id, api_host),
                         )
 
                     count += 1
 
                 if app_slug in pending:
                     consumed_slugs.add(app_slug)
+                seen_account_ids.add(account_id)
+
+            # ── Stale account cleanup ─────────────────────────────────────────
+            # Any account_id that was in the DB before sync but not returned by
+            # Pipedream has been disconnected. Remove it and cascade to credentials
+            # and toolkit_credentials so stale entries don't linger in the UI.
+            stale_ids = existing_account_ids - seen_account_ids
+            for stale_id in stale_ids:
+                # Stale accounts are already gone from Pipedream (not returned by API).
+                # Only clean up local rows — no upstream revoke needed.
+                # Find and remove all credential IDs derived from this account
+                async with db.execute(
+                    "SELECT id FROM credentials WHERE id LIKE ?",
+                    (f"{self.broker_id}-{stale_id}-%",),
+                ) as cur:
+                    stale_creds = [r[0] for r in await cur.fetchall()]
+                for cred_id in stale_creds:
+                    await db.execute("DELETE FROM toolkit_credentials WHERE credential_id=?", (cred_id,))
+                    await db.execute("DELETE FROM credentials WHERE id=?", (cred_id,))
+                    log.info("Removed stale credential %s (account %s disconnected)", cred_id, stale_id)
+
+                # Remove account row
+                await db.execute(
+                    "DELETE FROM oauth_broker_accounts "
+                    "WHERE broker_id=? AND external_user_id=? AND account_id=?",
+                    (self.broker_id, external_user_id, stale_id),
+                )
+                log.info("Removed stale oauth_broker_account for account_id=%s", stale_id)
 
             # Remove consumed pending labels
             for slug in consumed_slugs:
