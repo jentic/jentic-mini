@@ -446,7 +446,7 @@ async def test_async_workflow():
             error_detail["step"] = "complete"
             error_detail["status_code"] = result.status_code
         except Exception as exc:
-            log.exception("Broker credential test failed for %s", host)
+            log.exception("Async workflow test failed")
             error_detail["error"] = "Request failed. Check server logs."
 
     task = asyncio.create_task(instrumented_bg())
