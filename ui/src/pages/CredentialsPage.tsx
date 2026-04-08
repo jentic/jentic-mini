@@ -433,7 +433,7 @@ export default function CredentialsPage() {
 
 	const [editingCred, setEditingCred] = useState<string | null>(null);
 	const [editLabel, setEditLabel] = useState('');
-	const [reconnectLink, setReconnectLink] = useState<{ credId: string; url: string } | null>(
+	const [reconnectLink, setReconnectLink] = useState<{ accountId: string; url: string } | null>(
 		null,
 	);
 
@@ -457,7 +457,7 @@ export default function CredentialsPage() {
 		mutationFn: ({ brokerId, accountId }: { brokerId: string; accountId: string }) =>
 			oauthBrokers.reconnectLink(brokerId, accountId),
 		onSuccess: (data: any, vars) => {
-			setReconnectLink({ credId: vars.accountId, url: data.connect_link_url });
+			setReconnectLink({ accountId: vars.accountId, url: data.connect_link_url });
 		},
 	});
 
@@ -672,7 +672,7 @@ export default function CredentialsPage() {
 										</div>
 									)}
 								{reconnectLink !== null &&
-									reconnectLink.credId === cred.account_id && (
+									reconnectLink.accountId === cred.account_id && (
 										<div className="bg-background border-primary/30 mt-3 space-y-3 border-t p-3 text-xs">
 											<p className="text-foreground font-medium">
 												Re-authorise {cred.label}

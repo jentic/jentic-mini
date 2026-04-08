@@ -202,8 +202,9 @@ export interface OAuthAccount {
 
 export interface ConnectLinkResponse {
 	connect_link_url: string;
-	token: string;
-	expires_in: number;
+	expires_at: number;
+	broker_id: string;
+	app: string;
 }
 
 export interface SyncResponse {

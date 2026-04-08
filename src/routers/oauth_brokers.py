@@ -855,16 +855,18 @@ async def delete_broker_account(broker_id: BrokerIdPath, account_id: str):
     }
 
 
+class AccountUpdate(NormModel):
+    label: str = Field(..., min_length=1, description="New display label for this account")
+
+
 @router.patch(
     "/{broker_id}/accounts/{account_id}",
     summary="Update a connected account (e.g. rename label)",
     dependencies=[Depends(require_human_session)],
 )
-async def update_broker_account(broker_id: BrokerIdPath, account_id: str, body: dict):
+async def update_broker_account(broker_id: BrokerIdPath, account_id: str, body: AccountUpdate):
     """Patch a connected account record. Currently supports updating `label` only."""
-    new_label = body.get("label")
-    if not new_label or not isinstance(new_label, str):
-        raise HTTPException(400, "body must include a non-empty 'label' field")
+    new_label = body.label
     async with get_db() as db:
         async with db.execute(
             "SELECT account_id FROM oauth_broker_accounts WHERE broker_id=? AND account_id=?",
