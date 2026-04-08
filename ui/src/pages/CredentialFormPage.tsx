@@ -2,7 +2,6 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle, Search, Check, ChevronRight, Loader2 } from 'lucide-react';
-import { AppLink } from '@/components/ui/AppLink';
 import { api, oauthBrokers } from '@/api/client';
 import type { CredentialCreate, CredentialPatch, ApiOut } from '@/api/types';
 import { BackButton } from '@/components/ui/BackButton';
@@ -456,39 +455,53 @@ function CredentialFields({ selectedApi, onBack, onSaved, editId, existing }: Cr
 						const connectUrl = connectLinkMutation.data?.connect_link_url;
 						return (
 							<div className="bg-muted/50 border-border space-y-3 rounded-lg border p-4">
-								<p className="text-foreground text-sm font-medium">Connect via OAuth</p>
+								<p className="text-foreground text-sm font-medium">
+									Connect via OAuth
+								</p>
 								<p className="text-muted-foreground text-xs">
-									{apiName} uses OAuth 2.0. Generate a connect link to authorise access.
+									{apiName} uses OAuth 2.0. Generate a connect link to authorise
+									access.
 								</p>
 								{connectLinkMutation.isError && (
-									<p className="text-destructive text-xs">Failed to generate connect link. Check your Pipedream broker config.</p>
+									<p className="text-destructive text-xs">
+										Failed to generate connect link. Check your Pipedream broker
+										config.
+									</p>
 								)}
 								{!connectUrl ? (
 									<Button
-										variant="default"
+										variant="primary"
 										size="sm"
 										disabled={connectLinkMutation.isPending}
 										onClick={() => connectLinkMutation.mutate()}
 									>
 										{connectLinkMutation.isPending ? (
-											<><Loader2 className="mr-1 h-3 w-3 animate-spin" />Generating…</>
-										) : 'Create Connect Link'}
+											<>
+												<Loader2 className="mr-1 h-3 w-3 animate-spin" />
+												Generating…
+											</>
+										) : (
+											'Create Connect Link'
+										)}
 									</Button>
 								) : (
 									<div className="flex items-center gap-2">
 										<Button
-											variant="default"
+											variant="primary"
 											size="sm"
 											onClick={() => window.open(connectUrl, '_blank')}
 										>
 											Open Connect Link →
 										</Button>
-										<button
+										<Button
+											type="button"
+											variant="ghost"
+											size="sm"
 											className="text-muted-foreground text-xs hover:underline"
 											onClick={() => connectLinkMutation.reset()}
 										>
 											new link
-										</button>
+										</Button>
 									</div>
 								)}
 							</div>

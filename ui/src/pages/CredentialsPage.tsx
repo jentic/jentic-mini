@@ -51,7 +51,7 @@ function PipedreamForm({
 						client_id: form.client_id || undefined,
 						client_secret: form.client_secret || undefined,
 						project_id: form.project_id || undefined,
-				  })
+					})
 				: oauthBrokers.create({
 						id: 'pipedream',
 						type: 'pipedream',
@@ -60,7 +60,7 @@ function PipedreamForm({
 							client_secret: form.client_secret,
 							project_id: form.project_id,
 						},
-				  }),
+					}),
 		onSuccess: () => {
 			queryClient.invalidateQueries({ queryKey: ['oauth-brokers'] });
 			onClose();
@@ -93,7 +93,10 @@ function PipedreamForm({
 					<ol className="text-muted-foreground ml-4 list-decimal space-y-1.5">
 						<li>
 							Go to{' '}
-							<AppLink href="https://pipedream.com" className="text-primary underline">
+							<AppLink
+								href="https://pipedream.com"
+								className="text-primary underline"
+							>
 								pipedream.com
 							</AppLink>{' '}
 							and sign in or create an account.
@@ -119,7 +122,10 @@ function PipedreamForm({
 
 			<div className="grid grid-cols-2 gap-3">
 				<div>
-					<Label htmlFor="pd-client-id" className="text-muted-foreground mb-1 block text-xs">
+					<Label
+						htmlFor="pd-client-id"
+						className="text-muted-foreground mb-1 block text-xs"
+					>
 						Client ID
 					</Label>
 					<Input
@@ -141,7 +147,11 @@ function PipedreamForm({
 						type="password"
 						value={form.client_secret}
 						onChange={set('client_secret')}
-						placeholder={existing ? '(unchanged)' : 'abc-AbCdEfGhIjKlMnOpQrStUvWxYz0123456789-de-fghij'}
+						placeholder={
+							existing
+								? '(unchanged)'
+								: 'abc-AbCdEfGhIjKlMnOpQrStUvWxYz0123456789-de-fghij'
+						}
 					/>
 				</div>
 				<div className="col-span-2">
@@ -180,7 +190,11 @@ function PipedreamForm({
 					>
 						{isNew ? 'Enable Pipedream OAuth' : 'Save changes'}
 					</Button>
-					<Button variant="ghost" onClick={onClose} disabled={saveMutation.isPending || deleteMutation.isPending}>
+					<Button
+						variant="ghost"
+						onClick={onClose}
+						disabled={saveMutation.isPending || deleteMutation.isPending}
+					>
 						Cancel
 					</Button>
 				</div>
@@ -258,9 +272,7 @@ function PipedreamStatusLine() {
 	});
 
 	const lastSynced =
-		accounts.length > 0
-			? Math.max(...accounts.map((a) => Number(a.synced_at) || 0))
-			: null;
+		accounts.length > 0 ? Math.max(...accounts.map((a) => Number(a.synced_at) || 0)) : null;
 
 	if (showForm) {
 		return (
@@ -288,10 +300,14 @@ function PipedreamStatusLine() {
 					<div className="bg-background border-border rounded-lg border p-4">
 						<div className="mb-2 flex items-center justify-between">
 							<h3 className="text-foreground text-xs font-semibold">Credentials</h3>
-							<Button variant="secondary" size="sm" onClick={() => {
-								setShowConfigure(false);
-								setShowForm(true);
-							}}>
+							<Button
+								variant="secondary"
+								size="sm"
+								onClick={() => {
+									setShowConfigure(false);
+									setShowForm(true);
+								}}
+							>
 								<Settings className="h-4 w-4" /> Edit credentials
 							</Button>
 						</div>
@@ -302,7 +318,9 @@ function PipedreamStatusLine() {
 
 					<div className="bg-background border-border rounded-lg border p-4">
 						<div className="mb-2 flex items-center justify-between">
-							<h3 className="text-foreground text-xs font-semibold">Sync all connections</h3>
+							<h3 className="text-foreground text-xs font-semibold">
+								Sync all connections
+							</h3>
 							<Button
 								variant="secondary"
 								size="sm"
@@ -318,7 +336,8 @@ function PipedreamStatusLine() {
 						</p>
 						{syncMutation.isSuccess && (
 							<p className="text-success mt-2 text-xs">
-								✓ Sync complete — {syncMutation.data?.accounts_synced ?? 0} accounts refreshed
+								✓ Sync complete — {syncMutation.data?.accounts_synced ?? 0} accounts
+								refreshed
 							</p>
 						)}
 						{syncMutation.isError && (
@@ -337,12 +356,14 @@ function PipedreamStatusLine() {
 			<p className="text-muted-foreground text-xs">
 				<Link2 className="mr-1 inline h-3 w-3 align-middle opacity-60" />
 				OAuth not configured.{' '}
-				<button
+				<Button
+					type="button"
+					variant="ghost"
+					className="text-primary inline h-auto p-0 hover:underline focus:outline-none"
 					onClick={() => setShowForm(true)}
-					className="text-primary hover:underline focus:outline-none"
 				>
 					Enable OAuth via Pipedream
-				</button>
+				</Button>
 				.
 			</p>
 		);
@@ -358,15 +379,21 @@ function PipedreamStatusLine() {
 					{accounts.length} account{accounts.length !== 1 ? 's' : ''}
 				</span>
 			)}
-			{lastSynced && <span>{' · '}last synced {formatSyncedAt(lastSynced)}</span>}
+			{lastSynced && (
+				<span>
+					{' · '}last synced {formatSyncedAt(lastSynced)}
+				</span>
+			)}
 			{' · '}
-			<button
+			<Button
+				type="button"
+				variant="ghost"
+				className="text-primary inline h-auto p-0 hover:underline focus:outline-none"
 				onClick={() => setShowConfigure(true)}
-				className="text-primary hover:underline focus:outline-none"
 			>
 				<Settings className="mr-0.5 inline h-3 w-3 align-middle" />
 				configure
-			</button>
+			</Button>
 		</p>
 	);
 }
@@ -411,8 +438,15 @@ export default function CredentialsPage() {
 	);
 
 	const renameMutation = useMutation({
-		mutationFn: ({ brokerId, accountId, label }: { brokerId: string; accountId: string; label: string }) =>
-			oauthBrokers.renameAccount(brokerId, accountId, label),
+		mutationFn: ({
+			brokerId,
+			accountId,
+			label,
+		}: {
+			brokerId: string;
+			accountId: string;
+			label: string;
+		}) => oauthBrokers.renameAccount(brokerId, accountId, label),
 		onSuccess: () => {
 			queryClient.invalidateQueries({ queryKey: ['credentials'] });
 			setEditingCred(null);
@@ -567,96 +601,105 @@ export default function CredentialsPage() {
 										</ConfirmInline>
 									</div>
 								</div>
-								{editingCred === cred.account_id && cred.auth_type === 'pipedream_oauth' && (
-									<div className="bg-background border-primary/30 mt-3 space-y-3 border-t p-4 text-xs">
-										<div>
-											<Label htmlFor="rename-label" className="text-foreground mb-1 block text-xs font-semibold">
-												Connection name
-											</Label>
-											<Input
-												id="rename-label"
-												value={editLabel}
-												onChange={(e) => setEditLabel(e.target.value)}
-												placeholder="e.g. Work Gmail, Personal Calendar"
-											/>
-										</div>
-										{renameMutation.isError && (
-											<p className="text-danger text-xs">
-												Failed to rename: {(renameMutation.error as Error).message}
-											</p>
-										)}
-										<div className="flex items-center justify-between">
-											<div className="flex items-center gap-2">
+								{editingCred === cred.account_id &&
+									cred.auth_type === 'pipedream_oauth' && (
+										<div className="bg-background border-primary/30 mt-3 space-y-3 border-t p-4 text-xs">
+											<div>
+												<Label
+													htmlFor="rename-label"
+													className="text-foreground mb-1 block text-xs font-semibold"
+												>
+													Connection name
+												</Label>
+												<Input
+													id="rename-label"
+													value={editLabel}
+													onChange={(e) => setEditLabel(e.target.value)}
+													placeholder="e.g. Work Gmail, Personal Calendar"
+												/>
+											</div>
+											{renameMutation.isError && (
+												<p className="text-danger text-xs">
+													Failed to rename:{' '}
+													{(renameMutation.error as Error).message}
+												</p>
+											)}
+											<div className="flex items-center justify-between">
+												<div className="flex items-center gap-2">
+													<Button
+														size="sm"
+														onClick={() => {
+															if (editLabel.trim()) {
+																renameMutation.mutate({
+																	brokerId: 'pipedream',
+																	accountId: cred.account_id,
+																	label: editLabel.trim(),
+																});
+															}
+														}}
+														loading={renameMutation.isPending}
+														disabled={
+															!editLabel.trim() ||
+															editLabel.trim() === cred.label
+														}
+													>
+														Save
+													</Button>
+													<Button
+														variant="ghost"
+														size="sm"
+														onClick={() => setEditingCred(null)}
+														disabled={renameMutation.isPending}
+													>
+														Cancel
+													</Button>
+												</div>
 												<Button
+													variant="secondary"
 													size="sm"
 													onClick={() => {
-														if (editLabel.trim()) {
-															renameMutation.mutate({
-																brokerId: 'pipedream',
-																accountId: cred.account_id,
-																label: editLabel.trim(),
-															});
-														}
+														setEditingCred(null);
+														reconnectMutation.mutate({
+															brokerId: 'pipedream',
+															accountId: cred.account_id,
+														});
 													}}
-													loading={renameMutation.isPending}
-													disabled={!editLabel.trim() || editLabel.trim() === cred.label}
+													disabled={reconnectMutation.isPending}
 												>
-													Save
+													<RotateCcw className="h-4 w-4" /> Reconnect
 												</Button>
+											</div>
+										</div>
+									)}
+								{reconnectLink !== null &&
+									reconnectLink.credId === cred.account_id && (
+										<div className="bg-background border-primary/30 mt-3 space-y-3 border-t p-3 text-xs">
+											<p className="text-foreground font-medium">
+												Re-authorise {cred.label}
+											</p>
+											<p className="text-muted-foreground">
+												Click the link to complete OAuth. The old connection
+												will be removed automatically once the new one is
+												confirmed.
+											</p>
+											<div className="flex items-center gap-2">
+												<AppLink
+													href={reconnectLink.url}
+													className="bg-primary text-background hover:bg-primary/80 inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors"
+												>
+													<ExternalLink className="h-3.5 w-3.5" />
+													Open Reconnect Link
+												</AppLink>
 												<Button
 													variant="ghost"
 													size="sm"
-													onClick={() => setEditingCred(null)}
-													disabled={renameMutation.isPending}
+													onClick={() => setReconnectLink(null)}
 												>
 													Cancel
 												</Button>
 											</div>
-											<Button
-												variant="secondary"
-												size="sm"
-												onClick={() => {
-													setEditingCred(null);
-													reconnectMutation.mutate({
-														brokerId: 'pipedream',
-														accountId: cred.account_id,
-													});
-												}}
-												disabled={reconnectMutation.isPending}
-											>
-												<RotateCcw className="h-4 w-4" /> Reconnect
-											</Button>
 										</div>
-									</div>
-								)}
-								{reconnectLink?.credId === cred.account_id && (
-									<div className="bg-background border-primary/30 mt-3 space-y-3 border-t p-3 text-xs">
-										<p className="text-foreground font-medium">
-											Re-authorise {cred.label}
-										</p>
-										<p className="text-muted-foreground">
-											Click the link to complete OAuth. The old connection
-											will be removed automatically once the new one is
-											confirmed.
-										</p>
-										<div className="flex items-center gap-2">
-											<AppLink
-												href={reconnectLink.url}
-												className="bg-primary text-background hover:bg-primary/80 inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors"
-											>
-												<ExternalLink className="h-3.5 w-3.5" />
-												Open Reconnect Link
-											</AppLink>
-											<Button
-												variant="ghost"
-												size="sm"
-												onClick={() => setReconnectLink(null)}
-											>
-												Cancel
-											</Button>
-										</div>
-									</div>
-								)}
+									)}
 							</div>
 						))}
 					</div>

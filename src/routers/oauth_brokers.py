@@ -879,7 +879,7 @@ async def update_broker_account(broker_id: BrokerIdPath, account_id: str, body: 
         # Also update the credential label in the vault if it exists
         await db.execute(
             "UPDATE credentials SET label=? WHERE id LIKE ?",
-            (new_label.strip(), f"pipedream-{account_id}-%"),
+            (new_label.strip(), f"{broker_id}-{account_id}-%"),
         )
         await db.commit()
     return {"account_id": account_id, "label": new_label.strip()}
@@ -1001,7 +1001,7 @@ async def delete_oauth_broker(broker_id: BrokerIdPath):
         ) as cur:
             accounts = await cur.fetchall()
         cred_ids = [
-            f"pipedream-{account_id}-{api_host.replace('.', '-')}"
+            broker_credential_id(broker_id, account_id, api_host)
             for account_id, api_host in accounts
         ]
 

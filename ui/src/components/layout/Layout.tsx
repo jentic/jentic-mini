@@ -120,7 +120,6 @@ function SidebarContents({ onClose }: { onClose?: () => void }) {
 					onClick={onClose}
 				/>
 
-
 				<div className="text-primary/60 mt-4 mb-2 px-4 font-mono text-[10px] tracking-widest uppercase">
 					Observability
 				</div>
