@@ -181,6 +181,108 @@ describe('CredentialFormPage — edit mode', () => {
 	});
 });
 
+describe('CredentialFormPage — OAuth connect link', () => {
+	async function navigateToOAuth2Api(user: ReturnType<typeof userEvent.setup>) {
+		worker.use(
+			http.get('/apis', ({ request }) => {
+				const url = new URL(request.url);
+				const q = url.searchParams.get('q');
+				if (q?.includes('google')) {
+					return HttpResponse.json({
+						data: [
+							{
+								id: 'googleapis.com/calendar',
+								name: 'Google Calendar',
+								description: 'Calendar API',
+								source: 'local',
+							},
+						],
+						total: 1,
+						page: 1,
+					});
+				}
+				return HttpResponse.json({ data: [], total: 0, page: 1 });
+			}),
+			http.get('/apis/googleapis.com/calendar', () =>
+				HttpResponse.json({
+					id: 'googleapis.com/calendar',
+					name: 'Google Calendar',
+					source: 'local',
+					security_schemes: { oauth2: { type: 'oauth2' } },
+				}),
+			),
+			http.get('/oauth-brokers', () =>
+				HttpResponse.json([{ id: 'pipedream', type: 'pipedream', config: {} }]),
+			),
+		);
+
+		renderWithProviders(<CredentialFormPage />);
+
+		const input = await screen.findByPlaceholderText(/search apis/i);
+		await user.type(input, 'google');
+		await user.click(await screen.findByText('Google Calendar'));
+	}
+
+	it('disables Create Connect Link button when label is empty', async () => {
+		const user = userEvent.setup();
+		await navigateToOAuth2Api(user);
+
+		await waitFor(() => {
+			expect(screen.getByText(/connect via oauth/i)).toBeInTheDocument();
+		});
+
+		// Clear the pre-filled label
+		const labelInput = screen.getByLabelText(/label/i);
+		await user.clear(labelInput);
+
+		const connectButton = screen.getByRole('button', { name: /create connect link/i });
+		expect(connectButton).toBeDisabled();
+	});
+
+	it('shows connect link after successful generation', async () => {
+		const user = userEvent.setup();
+
+		worker.use(
+			http.post('/oauth-brokers/:id/connect-link', () =>
+				HttpResponse.json({
+					connect_link_url:
+						'https://pipedream.com/_static/connect.html?token=test&app=google_calendar',
+					expires_at: Date.now() / 1000 + 3600,
+					broker_id: 'pipedream',
+					app: 'google_calendar',
+				}),
+			),
+		);
+
+		await navigateToOAuth2Api(user);
+
+		await waitFor(() => {
+			expect(screen.getByText(/connect via oauth/i)).toBeInTheDocument();
+		});
+
+		const connectButton = screen.getByRole('button', { name: /create connect link/i });
+		await user.click(connectButton);
+
+		expect(await screen.findByText(/open connect link/i)).toBeInTheDocument();
+	});
+
+	it('enables Create Connect Link button when label is provided', async () => {
+		const user = userEvent.setup();
+		await navigateToOAuth2Api(user);
+
+		await waitFor(() => {
+			expect(screen.getByText(/connect via oauth/i)).toBeInTheDocument();
+		});
+
+		const labelInput = screen.getByLabelText(/label/i);
+		await user.clear(labelInput);
+		await user.type(labelInput, 'Work Cal');
+
+		const connectButton = screen.getByRole('button', { name: /create connect link/i });
+		expect(connectButton).toBeEnabled();
+	});
+});
+
 describe('CredentialFormPage — mutation errors', () => {
 	async function fillAndSubmitCredential(user: ReturnType<typeof userEvent.setup>) {
 		worker.use(

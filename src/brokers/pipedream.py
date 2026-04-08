@@ -464,13 +464,17 @@ class PipedreamOAuthBroker:
             ) as cur:
                 existing_account_ids: set[str] = {r[0] for r in await cur.fetchall()}
 
-            # Load pending labels and user-specified api_ids: {app_slug: (label, api_id)}
+            # Load pending labels and user-specified api_ids.
+            # Multiple pending rows per app_slug are possible (e.g. two Gmail connects).
+            # Use a list per slug so each new account consumes one label in order.
             async with db.execute(
                 "SELECT app_slug, label, api_id FROM oauth_broker_connect_labels "
-                "WHERE broker_id=? AND external_user_id=?",
+                "WHERE broker_id=? AND external_user_id=? ORDER BY created_at ASC",
                 (self.broker_id, external_user_id),
             ) as cur:
-                pending: dict[str, tuple[str, str | None]] = {r[0]: (r[1], r[2]) for r in await cur.fetchall()}
+                pending: dict[str, list[tuple[str, str | None]]] = {}
+                for r in await cur.fetchall():
+                    pending.setdefault(r[0], []).append((r[1], r[2]))
 
             consumed_slugs: set[str] = set()
             seen_account_ids: set[str] = set()
@@ -482,7 +486,9 @@ class PipedreamOAuthBroker:
                 if not account_id or not app_slug:
                     continue
 
-                label, user_api_id = pending.get(app_slug, (app_slug, None))
+                # Default label/api_id — overridden below for new accounts with pending labels.
+                label, user_api_id = app_slug, None
+                has_pending_label = False
 
                 # If no pending label, check if we already have a stored api_id for this account
                 # (from a previous sync where the user specified one). This prevents the slug map
@@ -526,60 +532,70 @@ class PipedreamOAuthBroker:
                     hosts = pd_slug_to_hosts(app_slug)
                 for api_host in hosts:
                     row_id = broker_account_row_id(self.broker_id, external_user_id, api_host, account_id)
-                    # Only update the label if we have a pending one — otherwise
-                    # preserve whatever label is already stored (e.g. set by a
-                    # previous connect-link callback). Slug fallback only applies
-                    # on first INSERT.
+                    # Check if this account row already exists.
                     async with db.execute(
                         "SELECT label FROM oauth_broker_accounts WHERE id=?",
                         (row_id,),
                     ) as cur:
                         existing_row = await cur.fetchone()
-                    stored_label = existing_row[0] if existing_row else None
-                    has_pending = app_slug in pending
-                    # Pending label applies ONLY to new rows (no existing row).
-                    # Existing rows always keep their stored label — we must not
-                    # relabel an already-known account just because a new account
-                    # with the same app_slug is being connected simultaneously.
-                    if existing_row:
-                        effective_label = stored_label or app_slug
-                    elif has_pending:
-                        effective_label = label  # label set from pending[app_slug]
-                    else:
-                        effective_label = app_slug  # slug fallback for new row with no pending
 
-                    await db.execute(
-                        """INSERT OR REPLACE INTO oauth_broker_accounts
-                           (id, broker_id, external_user_id, api_host, app_slug,
-                            account_id, label, api_id, healthy, synced_at)
-                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?)""",
-                        (row_id, self.broker_id, external_user_id,
-                         api_host, app_slug, account_id, effective_label, user_api_id, time.time()),
-                    )
+                    if existing_row:
+                        # Existing account: freeze the label. Never overwrite it, even if
+                        # there's a pending label (which would be for a different account
+                        # with the same app_slug). Only update the non-label fields.
+                        effective_label = existing_row[0] or app_slug
+                        await db.execute(
+                            """UPDATE oauth_broker_accounts
+                               SET api_id=?, healthy=1, synced_at=?
+                               WHERE id=?""",
+                            (user_api_id, time.time(), row_id),
+                        )
+                    else:
+                        # New account: pop a pending label from the queue (FIFO).
+                        # Only new accounts consume pending labels — existing accounts
+                        # keep their frozen labels and must not steal from the queue.
+                        pending_queue = pending.get(app_slug, [])
+                        if not pending_queue:
+                            log.warning(
+                                "No pending label for new account %s (app_slug=%s). "
+                                "This should not happen if connect-link was used. Skipping.",
+                                account_id, app_slug,
+                            )
+                            continue  # skip this account
+                        label, user_api_id = pending_queue.pop(0)
+                        has_pending_label = True
+                        effective_label = label
+                        await db.execute(
+                            """INSERT INTO oauth_broker_accounts
+                               (id, broker_id, external_user_id, api_host, app_slug,
+                                account_id, label, api_id, healthy, synced_at)
+                               VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?)""",
+                            (row_id, self.broker_id, external_user_id,
+                             api_host, app_slug, account_id, effective_label, user_api_id, time.time()),
+                        )
 
                     # Upsert a credential in the vault so users can provision it to toolkits.
+                    # Label is always copied from oauth_broker_accounts (single source of truth).
                     host_slug = api_host.replace(".", "-")
                     cred_id = broker_credential_id(self.broker_id, account_id, api_host)
                     enc_account_id = vault.encrypt(account_id)
                     async with db.execute(
-                        "SELECT id, label FROM credentials WHERE id=?", (cred_id,)
+                        "SELECT id FROM credentials WHERE id=?", (cred_id,)
                     ) as cur:
-                        existing_row = await cur.fetchone()
+                        existing_cred = await cur.fetchone()
 
-                    if existing_row:
-                        # Always preserve the stored label for existing credentials.
-                        # Pending labels apply only to new accounts (handled via
-                        # effective_label in the INSERT path below). Applying the
-                        # pending label here would pollute pre-existing accounts that
-                        # share the same app_slug (e.g. two Gmail accounts).
-                        cred_label = existing_row[1] or app_slug
+                    if existing_cred:
+                        # Existing credential: update the encrypted value and sync the label
+                        # from oauth_broker_accounts (the authoritative source). Never read
+                        # the label from credentials — that creates divergence.
                         await db.execute(
                             "UPDATE credentials SET label=?, encrypted_value=?, "
                             "api_id=?, auth_type='pipedream_oauth', "
                             "updated_at=unixepoch() WHERE id=?",
-                            (cred_label, enc_account_id, api_host, cred_id),
+                            (effective_label, enc_account_id, api_host, cred_id),
                         )
                     else:
+                        # New credential: use the effective_label from oauth_broker_accounts.
                         # env_var must be unique per (account_id, api_host) — include
                         # the host slug so multiple APIs sharing one Pipedream account
                         # (e.g. googleapis.com/gmail and googleapis.com/calendar) each
@@ -595,7 +611,7 @@ class PipedreamOAuthBroker:
 
                     count += 1
 
-                if app_slug in pending:
+                if has_pending_label:
                     consumed_slugs.add(app_slug)
                 seen_account_ids.add(account_id)
 

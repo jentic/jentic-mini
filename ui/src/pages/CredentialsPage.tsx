@@ -38,6 +38,8 @@ function PipedreamForm({
 		client_id: existing?.config?.client_id ?? '',
 		client_secret: '',
 		project_id: existing?.config?.project_id ?? '',
+		environment: existing?.config?.environment ?? 'production',
+		default_external_user_id: existing?.config?.default_external_user_id ?? 'default',
 	});
 	const [confirmDelete, setConfirmDelete] = useState(false);
 
@@ -59,6 +61,8 @@ function PipedreamForm({
 							client_id: form.client_id,
 							client_secret: form.client_secret,
 							project_id: form.project_id,
+							environment: form.environment,
+							default_external_user_id: form.default_external_user_id,
 						},
 					}),
 		onSuccess: () => {
@@ -166,6 +170,34 @@ function PipedreamForm({
 						value={form.project_id}
 						onChange={set('project_id')}
 						placeholder={existing ? '(unchanged)' : 'proj_AbCdEfGhIjKlMnOpQrStUvWxYz01'}
+					/>
+				</div>
+				<div>
+					<Label
+						htmlFor="pd-environment"
+						className="text-muted-foreground mb-1 block text-xs"
+					>
+						Environment
+					</Label>
+					<Input
+						id="pd-environment"
+						value={form.environment}
+						onChange={set('environment')}
+						placeholder="development"
+					/>
+				</div>
+				<div>
+					<Label
+						htmlFor="pd-ext-user"
+						className="text-muted-foreground mb-1 block text-xs"
+					>
+						External User ID
+					</Label>
+					<Input
+						id="pd-ext-user"
+						value={form.default_external_user_id}
+						onChange={set('default_external_user_id')}
+						placeholder="default"
 					/>
 				</div>
 			</div>
