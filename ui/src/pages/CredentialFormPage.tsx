@@ -489,7 +489,13 @@ function CredentialFields({ selectedApi, onBack, onSaved, editId, existing }: Cr
 										<Button
 											variant="primary"
 											size="sm"
-											onClick={() => window.open(connectUrl, '_blank')}
+											onClick={() =>
+												window.open(
+													connectUrl,
+													'_blank',
+													'noopener,noreferrer',
+												)
+											}
 										>
 											Open Connect Link →
 										</Button>

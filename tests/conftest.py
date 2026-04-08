@@ -106,9 +106,9 @@ def agent_only_client(app, agent_key, client):
     cookies from admin_session). Depends on `client` to ensure the
     app lifespan has already started.
     """
-    c = TestClient(app, raise_server_exceptions=False)
-    c.headers["X-Jentic-API-Key"] = agent_key
-    return c
+    with TestClient(app, raise_server_exceptions=False) as c:
+        c.headers["X-Jentic-API-Key"] = agent_key
+        yield c
 
 
 @pytest.fixture(scope="session", autouse=True)

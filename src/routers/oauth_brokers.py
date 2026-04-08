@@ -328,6 +328,7 @@ async def update_oauth_broker(broker_id: BrokerIdPath, body: OAuthBrokerUpdate):
         environment=environment,
         default_external_user_id=ext_user_id or "default",
     )
+    oauth_broker_registry.deregister(broker_id)
     oauth_broker_registry.register(broker)
 
     try:
