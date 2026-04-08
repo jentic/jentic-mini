@@ -203,7 +203,7 @@ describe('CredentialFormPage — OAuth connect link', () => {
 				}
 				return HttpResponse.json({ data: [], total: 0, page: 1 });
 			}),
-			http.get('/apis/:id', () =>
+			http.get('/apis/googleapis.com/calendar', () =>
 				HttpResponse.json({
 					id: 'googleapis.com/calendar',
 					name: 'Google Calendar',
