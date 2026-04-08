@@ -486,14 +486,9 @@ class PipedreamOAuthBroker:
                 if not account_id or not app_slug:
                     continue
 
-                # Pop the next pending label for this slug (FIFO).
-                # If no pending entries, label/user_api_id stay as defaults.
-                pending_queue = pending.get(app_slug, [])
-                has_pending_label = bool(pending_queue)
-                if pending_queue:
-                    label, user_api_id = pending_queue.pop(0)
-                else:
-                    label, user_api_id = app_slug, None
+                # Default label/api_id — overridden below for new accounts with pending labels.
+                label, user_api_id = app_slug, None
+                has_pending_label = False
 
                 # If no pending label, check if we already have a stored api_id for this account
                 # (from a previous sync where the user specified one). This prevents the slug map
@@ -548,7 +543,7 @@ class PipedreamOAuthBroker:
                         # Existing account: freeze the label. Never overwrite it, even if
                         # there's a pending label (which would be for a different account
                         # with the same app_slug). Only update the non-label fields.
-                        effective_label = existing_row[0]
+                        effective_label = existing_row[0] or app_slug
                         await db.execute(
                             """UPDATE oauth_broker_accounts
                                SET api_id=?, healthy=1, synced_at=?
@@ -556,17 +551,20 @@ class PipedreamOAuthBroker:
                             (user_api_id, time.time(), row_id),
                         )
                     else:
-                        # New account: set label from pending table or reject if no label.
-                        # We no longer fall back to app_slug — the label must come from
-                        # the user at connect-link time (enforced by min_length=1 in the API).
-                        if not has_pending_label:
+                        # New account: pop a pending label from the queue (FIFO).
+                        # Only new accounts consume pending labels — existing accounts
+                        # keep their frozen labels and must not steal from the queue.
+                        pending_queue = pending.get(app_slug, [])
+                        if not pending_queue:
                             log.warning(
                                 "No pending label for new account %s (app_slug=%s). "
                                 "This should not happen if connect-link was used. Skipping.",
                                 account_id, app_slug,
                             )
                             continue  # skip this account
-                        effective_label = label  # label set from pending[app_slug]
+                        label, user_api_id = pending_queue.pop(0)
+                        has_pending_label = True
+                        effective_label = label
                         await db.execute(
                             """INSERT INTO oauth_broker_accounts
                                (id, broker_id, external_user_id, api_host, app_slug,
