@@ -25,6 +25,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
+# Upgrade pip and its dependencies to fix CVE-2026-24049 (wheel) and CVE-2026-23949 (jaraco.context)
+RUN pip install --no-cache-dir --upgrade pip wheel setuptools
+
 # Clone arazzo-engine and install runner from source
 RUN git clone --depth 1 https://github.com/jentic/arazzo-engine.git /opt/arazzo-engine \
     && pip install --no-cache-dir -e /opt/arazzo-engine/runner
