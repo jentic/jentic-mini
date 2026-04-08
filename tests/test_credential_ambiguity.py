@@ -115,12 +115,17 @@ def test_service_header_selects_credential(client, agent_key_header, ambiguous_c
     assert resp.headers.get("x-jentic-credential-ambiguous") is None
 
 
-def test_unknown_service_falls_back(client, agent_key_header, ambiguous_credentials):
-    """Unknown service name still makes the call (falls back to first credential)."""
+def test_unknown_service_returns_409(client, agent_key_header, ambiguous_credentials):
+    """Unknown service name returns 409 with available services listed."""
     headers = {**agent_key_header, "X-Jentic-Service": "nonexistent_app"}
     resp = client.get(f"/{API_HOST}/v1/test", headers=headers)
-    # Falls back — still ambiguous since the service didn't match
-    assert resp.headers.get("x-jentic-credential-used") is not None
+    assert resp.status_code == 409
+    data = resp.json()
+    assert data["error"] == "SERVICE_NOT_FOUND"
+    assert "nonexistent_app" in data["message"]
+    # Available services should be listed so the agent can self-correct
+    assert APP_SLUG_A in data["message"]
+    assert APP_SLUG_B in data["message"]
 
 
 def test_alias_overrides_no_ambiguity(client, agent_key_header, ambiguous_credentials):

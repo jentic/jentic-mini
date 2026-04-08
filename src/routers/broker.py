@@ -57,6 +57,11 @@ from src.routers.traces import new_trace_id, safe_write_trace
 
 router = APIRouter(tags=["execute"])
 
+
+class ServiceNotFoundError(Exception):
+    """Raised when X-Jentic-Service doesn't match any credential for the host."""
+
+
 # Hop-by-hop headers that must NOT be forwarded
 _HOP_BY_HOP = {
     "connection", "keep-alive", "proxy-authenticate", "proxy-authorization",
@@ -223,7 +228,19 @@ async def _find_credential_for_host(
             _broker_log.debug("CRED LOOKUP: service %r matched %d cred(s)", service, len(matched))
             creds = matched
         else:
-            _broker_log.warning("CRED LOOKUP: service %r matched no creds in %s", service, [c.get("id") for c in creds])
+            # Service name doesn't match any credential for this host — fail with
+            # a 409 listing available services so the agent can self-correct.
+            async with get_db() as db:
+                async with db.execute(
+                    "SELECT DISTINCT app_slug FROM oauth_broker_accounts "
+                    "WHERE api_host=? AND app_slug IS NOT NULL",
+                    (host,),
+                ) as cur:
+                    available = [r[0] for r in await cur.fetchall()]
+            raise ServiceNotFoundError(
+                f"Service '{service}' not found for host '{host}'. "
+                f"Available services: {available}"
+            )
 
     if len(creds) > 1 and not alias and not service:
         is_ambiguous = True
@@ -702,6 +719,14 @@ async def broker(request: Request, target: str):
             toolkit_id=toolkit_id,
             alias=credential_alias,
             service=credential_service,
+        )
+    except ServiceNotFoundError as e:
+        await _write_trace("error", 409, str(e))
+        return Response(
+            content=json.dumps({"error": "SERVICE_NOT_FOUND", "message": str(e)}),
+            status_code=409,
+            media_type="application/json",
+            headers={"X-Jentic-Error": "true", "X-Jentic-Execution-Id": execution_id},
         )
     except Exception as e:
         log.exception("Credential lookup failed")
