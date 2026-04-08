@@ -507,17 +507,16 @@ async def connect_callback(
             log.info("Reconnect: new account %s confirmed, deleting old account %s",
                      new_row[0], replace_account_id)
             try:
-                # Fetch api_host so we can construct the credential ID
+                # Fetch all api_hosts for this account (may have multiple host mappings)
                 async with get_db() as db:
                     async with db.execute(
                         "SELECT api_host FROM oauth_broker_accounts WHERE broker_id=? AND account_id=?",
                         (broker_id, replace_account_id),
                     ) as cur:
-                        old_row = await cur.fetchone()
+                        old_rows = await cur.fetchall()
 
-                if old_row:
-                    old_api_host = old_row[0]
-                    old_cred_id = broker_credential_id(broker_id, replace_account_id, old_api_host)
+                if old_rows:
+                    old_cred_ids = [broker_credential_id(broker_id, replace_account_id, r[0]) for r in old_rows]
 
                     # 1. Revoke upstream in Pipedream (best-effort, async)
                     if live_broker is not None:
@@ -540,8 +539,9 @@ async def connect_callback(
 
                     # 2. Remove from toolkit provisioning + oauth_broker_accounts
                     async with get_db() as db:
-                        await db.execute("DELETE FROM toolkit_credentials WHERE credential_id=?",
-                                         (old_cred_id,))
+                        for old_cred_id in old_cred_ids:
+                            await db.execute("DELETE FROM toolkit_credentials WHERE credential_id=?",
+                                             (old_cred_id,))
                         await db.execute(
                             "DELETE FROM oauth_broker_accounts WHERE broker_id=? AND account_id=?",
                             (broker_id, replace_account_id),
@@ -549,10 +549,11 @@ async def connect_callback(
                         await db.commit()
 
                     # 3. Delete from vault
-                    await vault.delete_credential(old_cred_id)
+                    for old_cred_id in old_cred_ids:
+                        await vault.delete_credential(old_cred_id)
 
-                    log.info("Reconnect: removed old account %s after successful reconnect",
-                             replace_account_id)
+                    log.info("Reconnect: removed old account %s (%d credentials) after successful reconnect",
+                             replace_account_id, len(old_cred_ids))
                 else:
                     log.warning("Reconnect: old account %s already gone from DB — nothing to clean up",
                                 replace_account_id)
@@ -705,12 +706,12 @@ async def delete_broker_account(broker_id: BrokerIdPath, account_id: str):
             "SELECT account_id, api_host FROM oauth_broker_accounts WHERE broker_id=? AND account_id=?",
             (broker_id, account_id),
         ) as cur:
-            row = await cur.fetchone()
+            rows = await cur.fetchall()
 
-    if not row:
+    if not rows:
         raise HTTPException(404, f"No connected account '{account_id}' found for broker '{broker_id}'")
-    api_host = row[1]
-    cred_id = broker_credential_id(broker_id, account_id, api_host)
+    # An account can map to multiple api_hosts (e.g. Google Sheets → sheets.googleapis.com + googleapis.com/sheets)
+    cred_ids = [broker_credential_id(broker_id, account_id, r[1]) for r in rows]
 
     # 1. Revoke upstream in Pipedream
     pipedream_revoked = False
@@ -744,15 +745,16 @@ async def delete_broker_account(broker_id: BrokerIdPath, account_id: str):
         except Exception as exc:
             log.warning("Failed to revoke Pipedream account %s: %s — continuing with local cleanup", account_id, exc)
 
-    # 2. Remove from toolkit provisioning
+    # 2. Remove from toolkit provisioning + vault for all host mappings
     async with get_db() as db:
-        await db.execute("DELETE FROM toolkit_credentials WHERE credential_id=?", (cred_id,))
+        for cred_id in cred_ids:
+            await db.execute("DELETE FROM toolkit_credentials WHERE credential_id=?", (cred_id,))
         await db.commit()
 
-    # 3. Delete from vault
-    await vault.delete_credential(cred_id)
+    for cred_id in cred_ids:
+        await vault.delete_credential(cred_id)
 
-    # 4. Delete from oauth_broker_accounts
+    # 3. Delete from oauth_broker_accounts
     async with get_db() as db:
         await db.execute(
             "DELETE FROM oauth_broker_accounts WHERE broker_id=? AND account_id=?",
@@ -764,7 +766,7 @@ async def delete_broker_account(broker_id: BrokerIdPath, account_id: str):
         "status": "ok",
         "broker_id": broker_id,
         "account_id": account_id,
-        "credential_id": cred_id,
+        "credential_ids": cred_ids,
         "pipedream_revoked": pipedream_revoked,
         "deleted": True,
     }
