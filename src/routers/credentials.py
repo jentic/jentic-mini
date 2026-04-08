@@ -1,4 +1,5 @@
 """Upstream API credentials vault routes."""
+import logging
 import uuid
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse
@@ -6,6 +7,8 @@ from src.models import CredentialCreate, CredentialOut, CredentialPatch
 import src.vault as vault
 from src.db import get_db
 from src.config import JENTIC_PUBLIC_HOSTNAME
+
+log = logging.getLogger("jentic")
 
 
 def _self_api_id() -> str:
@@ -99,7 +102,7 @@ async def create(body: CredentialCreate, request: Request):
     | `auth_type` | Status | Broker injects | `value` | `identity` |
     |---|---|---|---|---|
     | `bearer` | ✅ implemented | `Authorization: Bearer {value}` | Token, PAT, or OAuth access token | Not used |
-    | `basic` | ✅ implemented | `Authorization: Basic base64({identity\|"token"}:{value})` | Password or PAT | Username (optional — defaults to `"token"` if omitted, works for GitHub PATs) |
+    | `basic` | ✅ implemented | `Authorization: Basic base64({identity or "token"}:{value})` | Password or PAT | Username (optional — defaults to `"token"` if omitted, works for GitHub PATs) |
     | `apiKey` | ✅ implemented | Custom header or query param `= {value}` | API key | For **compound schemes** (e.g. Discourse `Api-Key` + `Api-Username`): set `identity` to the username — one credential covers both headers when the overlay uses canonical `Secret`/`Identity` scheme names |
     | `oauth2` | ⚠️ partial | `Authorization: Bearer {value}` — token must be pre-obtained | Access token (Pipedream-managed flows only via `pipedream_oauth`) | Not used |
     | `digest` | 🔲 planned | RFC 2617 challenge-response (nonce/HMAC handshake) | Password | Username |
@@ -214,7 +217,8 @@ async def create(body: CredentialCreate, request: Request):
             identity=getattr(body, "identity", None),
         )
     except Exception as e:
-        raise HTTPException(400, str(e))
+        log.exception("Failed to create credential")
+        raise HTTPException(400, "Failed to create credential.")
 
     return cred
 

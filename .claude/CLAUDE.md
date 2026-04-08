@@ -175,6 +175,10 @@ npm run test:e2e:docker  # Docker E2E (real backend)
 
 Stack: Vitest browser mode + MSW (`msw/browser`) + axe-core + Testing Library. CI: `ci-ui.yml` (path-filtered) + `ci-docker.yml` (always runs).
 
+## Python Code Style
+
+- **Top-level imports only** — never use local/inline imports inside functions. All imports must be at the top of the file. The only exception is avoiding circular imports (must be commented as such).
+
 ## Formatting & Linting
 
 ```bash

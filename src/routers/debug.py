@@ -1,10 +1,12 @@
 """Debug endpoints — hidden from public docs (include_in_schema=False on all routes)."""
+import logging
 import os, json, inspect
 from pathlib import Path
 from fastapi import APIRouter, Request
 
 from src.config import DATA_DIR
 
+log = logging.getLogger("jentic")
 router = APIRouter(prefix="/debug", tags=["debug"], include_in_schema=False)
 
 
@@ -73,8 +75,8 @@ async def env_mappings(arazzo_path: str = ""):
         mappings = runner.get_env_mappings()
         return {"mappings": mappings}
     except Exception as e:
-        import traceback
-        return {"error": str(e), "trace": traceback.format_exc()[-1000:]}
+        log.exception("env-mappings failed for %s", arazzo_path)
+        return {"error": "Failed to load env mappings. Check server logs for details."}
 
 
 @router.get("/spec")
@@ -251,7 +253,6 @@ async def pycheck():
 @router.get("/broker-cred-test")
 async def broker_cred_test(host: str = "api.elevenlabs.io"):
     """Test broker credential lookup for a given host."""
-    import traceback
     from src.db import get_db
     import src.vault as vault
 
@@ -276,7 +277,8 @@ async def broker_cred_test(host: str = "api.elevenlabs.io"):
         mappings = runner.get_env_mappings()
         auth_mappings = mappings.get("auth", {})
     except Exception as e:
-        return {"error": f"arazzo-runner failed: {e}", "traceback": traceback.format_exc()}
+        log.exception("arazzo-runner failed for %s", spec_path)
+        return {"error": "arazzo-runner failed. Check server logs for details."}
 
     # Step 3: resolve headers
     import json
@@ -347,7 +349,7 @@ async def check_creds():
 @router.get("/async-subprocess-test", include_in_schema=False)
 async def async_subprocess_test():
     """Test if subprocesses work correctly from both sync and background task contexts."""
-    import asyncio, sys, json, traceback
+    import asyncio, sys, json
 
     script = """
 import socket, sys, json
@@ -400,7 +402,7 @@ print(json.dumps(results))
 @router.post("/test-async-workflow", include_in_schema=False)
 async def test_async_workflow():
     """Run dispatch_workflow with Prefer: wait=0 and capture full exception details."""
-    import asyncio, traceback
+    import asyncio
     from src.routers.workflows import dispatch_workflow
     from src.routers.jobs import get_job
 
@@ -444,8 +446,8 @@ async def test_async_workflow():
             error_detail["step"] = "complete"
             error_detail["status_code"] = result.status_code
         except Exception as exc:
-            error_detail["error"] = str(exc)
-            error_detail["traceback"] = traceback.format_exc()
+            log.exception("Async workflow test failed")
+            error_detail["error"] = "Request failed. Check server logs."
 
     task = asyncio.create_task(instrumented_bg())
     await task
