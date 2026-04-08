@@ -48,8 +48,8 @@ _PIPEDREAM_CONFIG_EXAMPLE = {
 _SUPPORTED_TYPES = ("pipedream",)
 
 # Annotated path/query helpers with pre-filled Swagger examples
-BrokerIdPath = Annotated[str, Path(description="The broker ID", example="pipedream")]
-ExternalUserIdQuery = Annotated[str | None, Query(description="Filter by external user ID", example="default")]
+BrokerIdPath = Annotated[str, Path(description="The broker ID", examples=["pipedream"])]
+ExternalUserIdQuery = Annotated[str | None, Query(description="Filter by external user ID", examples=["default"])]
 
 _CREATE_EXAMPLE = {
     "type": "pipedream",
@@ -375,6 +375,14 @@ async def list_oauth_brokers():
     tags=["inspect"],
 )
 async def get_oauth_broker(broker_id: BrokerIdPath):
+    """
+    Retrieve OAuth broker configuration and metadata.
+
+    Returns broker type, client ID, project ID, and connected account statistics.
+    Use this to verify a broker is registered before creating connect links or syncing accounts.
+
+    For connected account details, use `GET /oauth-brokers/{broker_id}/accounts`.
+    """
     async with get_db() as db:
         async with db.execute(
             "SELECT id, type, client_id, project_id, default_external_user_id, created_at "

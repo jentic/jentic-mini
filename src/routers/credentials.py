@@ -240,6 +240,19 @@ async def get_credential(cid: str):
 
 @router.patch("/{cid:path}", response_model=CredentialOut, summary="Update an upstream API credential — rotate a secret or fix its API binding")
 async def patch(cid: str, body: CredentialPatch, request: Request):
+    """
+    Update a credential's label, secret value, identity field, API binding, or auth_type.
+
+    Common use cases:
+    - Rotate an expired token or password (update `value`)
+    - Fix incorrect API binding (update `api_id`)
+    - Add username to existing credential (update `identity`)
+    - Relabel for clarity (update `label`)
+
+    Only changed fields need to be included in the request body. Omitted fields are left unchanged.
+
+    **Auth:** Requires human session OR agent key with explicit `PATCH /credentials` allow rule on jentic-mini credential.
+    """
     if not request.state.is_human_session:
         if not await _agent_has_credential_write_permission(request.state.toolkit_id, "PATCH", f"/credentials/{cid}"):
             raise HTTPException(status_code=403, detail="Updating credentials requires a human session, or an agent key with an explicit PATCH /credentials allow rule on the jentic-mini credential.")
@@ -252,6 +265,16 @@ async def patch(cid: str, body: CredentialPatch, request: Request):
 
 @router.delete("/{cid:path}", status_code=204, summary="Delete an upstream API credential")
 async def delete(cid: str, request: Request):
+    """
+    Permanently delete a credential.
+
+    The credential is removed from the vault and unbound from all toolkits that reference it.
+    Agents using toolkits with this credential will immediately lose access to the upstream API.
+
+    **Auth:** Requires human session OR agent key with explicit `DELETE /credentials` allow rule on jentic-mini credential.
+
+    **Warning:** This operation cannot be undone. The secret value is irrecoverably destroyed.
+    """
     if not request.state.is_human_session:
         if not await _agent_has_credential_write_permission(request.state.toolkit_id, "DELETE", f"/credentials/{cid}"):
             raise HTTPException(status_code=403, detail="Deleting credentials requires a human session, or an agent key with an explicit DELETE /credentials allow rule on the jentic-mini credential.")

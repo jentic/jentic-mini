@@ -14,14 +14,15 @@ Password reset is CLI-only:
 import time
 import uuid
 
-from fastapi import APIRouter, Form, HTTPException, Request, Response
+from fastapi import APIRouter, Depends, Form, HTTPException, Request, Response
 from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import BaseModel, field_validator
 from src.validators import NormModel
 
 from src.auth import _make_jwt, JWT_TTL_SECONDS
 from src.db import get_db, get_setting, set_setting, setup_state
-from src.models import UserOut
+from src.models import TokenRequest, UserOut
 
 import bcrypt as _bcrypt
 
@@ -201,12 +202,7 @@ async def login(request: Request, response: Response, redirect_to: str | None = 
     summary="OAuth2 password grant — returns Bearer JWT",
     response_description="Access token for use in Authorization: Bearer header",
 )
-async def token(
-    grant_type: str = Form(default="password"),
-    username: str = Form(...),
-    password: str = Form(...),
-    scope: str = Form(default=""),
-):
+async def token(form_data: OAuth2PasswordRequestForm = Depends()):
     """OAuth2 password grant endpoint.
 
     Swagger UI's **Authorize** dialog uses this automatically when you fill in
@@ -217,8 +213,8 @@ async def token(
     in the response body rather than as a cookie — the standard OAuth2 pattern
     expected by Swagger UI.
     """
-    if grant_type != "password":
-        raise HTTPException(400, detail={"error": "unsupported_grant_type"})
+    username = form_data.username
+    password = form_data.password
 
     async with get_db() as db:
         db.row_factory = __import__("aiosqlite").Row

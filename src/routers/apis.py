@@ -9,13 +9,39 @@ from urllib.parse import urlparse
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Query
-from fastapi.responses import Response
+from fastapi.responses import Response, JSONResponse
 from src.models import ApiOut, OperationOut, ApiListPage, OperationListPage
 from src.db import get_db
 from src.config import JENTIC_PUBLIC_HOSTNAME
 import src.bm25 as bm25
 
 router = APIRouter()
+
+
+# ---------------------------------------------------------------------------
+# OpenAPI Spec Endpoints
+# ---------------------------------------------------------------------------
+
+@router.get("/openapi.json", include_in_schema=False, tags=["catalog"])
+async def get_openapi_json():
+    """Serve OpenAPI spec as JSON with correct media type."""
+    # Import here to avoid circular dependency
+    from src.main import app
+    return JSONResponse(
+        content=app.openapi(),
+        media_type="application/openapi+json"
+    )
+
+
+@router.get("/openapi.yaml", include_in_schema=False, tags=["catalog"])
+async def get_openapi_yaml():
+    """Serve OpenAPI spec as YAML with correct media type."""
+    # Import here to avoid circular dependency
+    from src.main import app
+    return Response(
+        content=yaml.dump(app.openapi(), default_flow_style=False, sort_keys=False),
+        media_type="application/openapi+yaml"
+    )
 
 # ---------------------------------------------------------------------------
 # Spec helpers

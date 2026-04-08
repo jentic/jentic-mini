@@ -57,6 +57,16 @@ async def create_note(body: NoteCreate):
 
 @router.get("", summary="List notes for a resource")
 async def list_notes(resource: str | None = None, type: str | None = None, limit: int = 50):
+    """
+    List notes attached to resources (operations, workflows, APIs).
+
+    Notes capture observations from execution — success signals, failure patterns,
+    data validation findings, and human annotations. Agents use notes to build
+    operational knowledge and improve reliability over time.
+
+    Filter by `?resource={id}` to see notes for a specific operation/workflow,
+    or by `?type={type}` to filter by note category (e.g., "success", "error", "validation").
+    """
     conditions = []
     params = []
     if resource:
@@ -85,6 +95,12 @@ async def list_notes(resource: str | None = None, type: str | None = None, limit
 
 @router.delete("/{note_id}", status_code=204, summary="Delete a note")
 async def delete_note(note_id: str):
+    """
+    Permanently delete a note.
+
+    Use this to remove outdated observations, incorrect annotations, or
+    notes that no longer apply after an API change.
+    """
     async with get_db() as db:
         await db.execute("DELETE FROM notes WHERE id=?", (note_id,))
         await db.commit()

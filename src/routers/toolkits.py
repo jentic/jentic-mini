@@ -450,6 +450,15 @@ async def get_toolkit(toolkit_id: str, request: Request):
 @router.patch("/{toolkit_id}", summary="Update toolkit — rename or update description", response_model=ToolkitOut,
               dependencies=[Depends(require_human_session)])
 async def patch_toolkit(toolkit_id: str, body: ToolkitPatch, request: Request):
+    """
+    Update toolkit metadata — name, description, disabled state, or simulation mode.
+
+    Only changed fields need to be included in the request body. Omitted fields are left unchanged.
+
+    **Note:** The default toolkit's name and description cannot be modified (403 error).
+
+    **Auth:** Requires human session (admin).
+    """
     if toolkit_id == DEFAULT_TOOLKIT_ID and (body.name is not None or body.description is not None or body.simulate is not None):
         raise HTTPException(403, "The default toolkit's name, description and simulate flag cannot be modified.")
     async with get_db() as db:
@@ -479,6 +488,18 @@ async def patch_toolkit(toolkit_id: str, body: ToolkitPatch, request: Request):
 @router.delete("/{toolkit_id}", status_code=204, summary="Delete toolkit and revoke all its client API keys",
                dependencies=[Depends(require_human_session)])
 async def delete_toolkit(toolkit_id: str):
+    """
+    Permanently delete a toolkit and revoke all its access keys.
+
+    All agents using keys from this toolkit will immediately receive 401 errors.
+    Credential bindings are removed, but the credentials themselves remain in the vault.
+
+    **Note:** The default toolkit cannot be deleted (403 error).
+
+    **Auth:** Requires human session (admin).
+
+    **Warning:** This operation cannot be undone.
+    """
     if toolkit_id == DEFAULT_TOOLKIT_ID:
         raise HTTPException(403, "The default toolkit cannot be deleted.")
     async with get_db() as db:
@@ -703,6 +724,14 @@ async def list_toolkit_credentials(toolkit_id: str, request: Request):
 
 @router.delete("/{toolkit_id}/credentials/{credential_id:path}", status_code=204, summary="Unbind an upstream API credential from this toolkit")
 async def remove_credential_from_toolkit(toolkit_id: str, credential_id: str):
+    """
+    Unbind a credential from this toolkit.
+
+    Agents using this toolkit will immediately lose access to the upstream API.
+    The credential remains in the vault and can be bound to other toolkits.
+
+    To delete the credential entirely (from all toolkits), use `DELETE /credentials/{id}`.
+    """
     async with get_db() as db:
         await db.execute(
             "DELETE FROM toolkit_credentials WHERE toolkit_id=? AND credential_id=?",
