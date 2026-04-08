@@ -30,12 +30,11 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from src.auth import require_human_session
 from pydantic import BaseModel, Field
 from src.validators import NormModel
-
-log = logging.getLogger("jentic")
 from src.utils import build_absolute_url
-
 from src.db import get_db
 from src.models import AccessRequestOut, PermissionRule
+
+log = logging.getLogger("jentic")
 
 router = APIRouter()
 
