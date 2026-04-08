@@ -464,13 +464,17 @@ class PipedreamOAuthBroker:
             ) as cur:
                 existing_account_ids: set[str] = {r[0] for r in await cur.fetchall()}
 
-            # Load pending labels and user-specified api_ids: {app_slug: (label, api_id)}
+            # Load pending labels and user-specified api_ids.
+            # Multiple pending rows per app_slug are possible (e.g. two Gmail connects).
+            # Use a list per slug so each new account consumes one label in order.
             async with db.execute(
                 "SELECT app_slug, label, api_id FROM oauth_broker_connect_labels "
-                "WHERE broker_id=? AND external_user_id=?",
+                "WHERE broker_id=? AND external_user_id=? ORDER BY created_at ASC",
                 (self.broker_id, external_user_id),
             ) as cur:
-                pending: dict[str, tuple[str, str | None]] = {r[0]: (r[1], r[2]) for r in await cur.fetchall()}
+                pending: dict[str, list[tuple[str, str | None]]] = {}
+                for r in await cur.fetchall():
+                    pending.setdefault(r[0], []).append((r[1], r[2]))
 
             consumed_slugs: set[str] = set()
             seen_account_ids: set[str] = set()
@@ -482,7 +486,14 @@ class PipedreamOAuthBroker:
                 if not account_id or not app_slug:
                     continue
 
-                label, user_api_id = pending.get(app_slug, (app_slug, None))
+                # Pop the next pending label for this slug (FIFO).
+                # If no pending entries, label/user_api_id stay as defaults.
+                pending_queue = pending.get(app_slug, [])
+                has_pending_label = bool(pending_queue)
+                if pending_queue:
+                    label, user_api_id = pending_queue.pop(0)
+                else:
+                    label, user_api_id = app_slug, None
 
                 # If no pending label, check if we already have a stored api_id for this account
                 # (from a previous sync where the user specified one). This prevents the slug map
@@ -548,8 +559,7 @@ class PipedreamOAuthBroker:
                         # New account: set label from pending table or reject if no label.
                         # We no longer fall back to app_slug — the label must come from
                         # the user at connect-link time (enforced by min_length=1 in the API).
-                        has_pending = app_slug in pending
-                        if not has_pending:
+                        if not has_pending_label:
                             log.warning(
                                 "No pending label for new account %s (app_slug=%s). "
                                 "This should not happen if connect-link was used. Skipping.",
@@ -603,7 +613,7 @@ class PipedreamOAuthBroker:
 
                     count += 1
 
-                if app_slug in pending:
+                if has_pending_label:
                     consumed_slugs.add(app_slug)
                 seen_account_ids.add(account_id)
 
