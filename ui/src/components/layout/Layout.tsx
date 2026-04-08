@@ -10,7 +10,6 @@ import {
 	GitBranch,
 	Shield,
 	KeyRound,
-	Link2,
 	Activity,
 	Cog,
 } from 'lucide-react';
@@ -118,12 +117,6 @@ function SidebarContents({ onClose }: { onClose?: () => void }) {
 					to="/credentials"
 					icon={<KeyRound className="h-4 w-4" />}
 					label="Credentials"
-					onClick={onClose}
-				/>
-				<NavLink
-					to="/oauth-brokers"
-					icon={<Link2 className="h-4 w-4" />}
-					label="OAuth Brokers"
 					onClick={onClose}
 				/>
 

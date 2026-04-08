@@ -2,8 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle, Search, Check, ChevronRight, Loader2 } from 'lucide-react';
-import { AppLink } from '@/components/ui/AppLink';
-import { api } from '@/api/client';
+import { api, oauthBrokers } from '@/api/client';
 import type { CredentialCreate, CredentialPatch, ApiOut } from '@/api/types';
 import { BackButton } from '@/components/ui/BackButton';
 import { PageHeader } from '@/components/ui/PageHeader';
@@ -288,8 +287,27 @@ function CredentialFields({ selectedApi, onBack, onSaved, editId, existing }: Cr
 	const [identity, setIdentity] = useState(existing?.identity ?? '');
 	const [error, setError] = useState<string | null>(null);
 
-	// For OAuth, show a different CTA
-	const hasOAuthBroker = !!(selectedApi.oauth_broker_id as string | undefined);
+	// For OAuth, check if any broker is configured
+	const { data: brokers, isLoading: brokersLoading } = useQuery({
+		queryKey: ['oauth-brokers'],
+		queryFn: () => oauthBrokers.list(),
+		staleTime: 60 * 1000,
+	});
+	const activeBroker = brokers?.[0] ?? null;
+	const hasOAuthBroker = !!activeBroker;
+
+	// On-demand connect link generation
+	const connectLinkMutation = useMutation({
+		mutationFn: () => {
+			const parts = selectedApi.id.split('/');
+			const appSlug = (selectedApi as any).app_slug ?? parts[parts.length - 1];
+			return oauthBrokers.connectLink(activeBroker!.id, {
+				app: appSlug,
+				label: label || (selectedApi.name ?? selectedApi.id),
+				api_id: selectedApi.id,
+			});
+		},
+	});
 
 	const createMutation = useMutation({
 		mutationFn: (d: CredentialCreate) => api.createCredential(d),
@@ -424,6 +442,78 @@ function CredentialFields({ selectedApi, onBack, onSaved, editId, existing }: Cr
 			{schemeType === 'oauth2' &&
 				(() => {
 					const apiName = selectedApi.name ?? selectedApi.id;
+					if (brokersLoading) {
+						// Still checking for broker — don't flash the wrong state
+						return (
+							<div className="text-muted-foreground flex items-center gap-2 text-xs">
+								<Loader2 className="h-3 w-3 animate-spin" />
+								Checking OAuth configuration…
+							</div>
+						);
+					}
+					if (hasOAuthBroker) {
+						const connectUrl = connectLinkMutation.data?.connect_link_url;
+						return (
+							<div className="bg-muted/50 border-border space-y-3 rounded-lg border p-4">
+								<p className="text-foreground text-sm font-medium">
+									Connect via OAuth
+								</p>
+								<p className="text-muted-foreground text-xs">
+									{apiName} uses OAuth 2.0. Generate a connect link to authorise
+									access.
+								</p>
+								{connectLinkMutation.isError && (
+									<p className="text-destructive text-xs">
+										Failed to generate connect link. Check your Pipedream broker
+										config.
+									</p>
+								)}
+								{!connectUrl ? (
+									<Button
+										variant="primary"
+										size="sm"
+										disabled={connectLinkMutation.isPending}
+										onClick={() => connectLinkMutation.mutate()}
+									>
+										{connectLinkMutation.isPending ? (
+											<>
+												<Loader2 className="mr-1 h-3 w-3 animate-spin" />
+												Generating…
+											</>
+										) : (
+											'Create Connect Link'
+										)}
+									</Button>
+								) : (
+									<div className="flex items-center gap-2">
+										<Button
+											variant="primary"
+											size="sm"
+											onClick={() =>
+												window.open(
+													connectUrl,
+													'_blank',
+													'noopener,noreferrer',
+												)
+											}
+										>
+											Open Connect Link →
+										</Button>
+										<Button
+											type="button"
+											variant="ghost"
+											size="sm"
+											className="text-muted-foreground text-xs hover:underline"
+											onClick={() => connectLinkMutation.reset()}
+										>
+											new link
+										</Button>
+									</div>
+								)}
+							</div>
+						);
+					}
+					// No broker — show agent prompt
 					const prompt = `Please set up OAuth access for ${apiName} (api_id: "${selectedApi.id}") on my Jentic Mini instance at ${window.location.host}, so I can use it in my workflows.`;
 					return (
 						<div className="bg-muted/50 border-border space-y-3 rounded-lg border p-4">
@@ -445,14 +535,6 @@ function CredentialFields({ selectedApi, onBack, onSaved, editId, existing }: Cr
 									Copy
 								</Button>
 							</div>
-							{hasOAuthBroker && (
-								<AppLink
-									href="/oauth-brokers"
-									className="text-primary inline-block text-xs hover:underline"
-								>
-									OAuth broker already configured — connect here →
-								</AppLink>
-							)}
 						</div>
 					);
 				})()}
