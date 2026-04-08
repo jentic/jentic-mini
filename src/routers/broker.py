@@ -714,6 +714,13 @@ async def broker(request: Request, target: str):
             headers={"X-Jentic-Error": "true", "X-Jentic-Execution-Id": execution_id},
         )
 
+    # Credential-related headers — included on all responses (success and error)
+    _cred_headers: dict[str, str] = {}
+    if credential_id:
+        _cred_headers["X-Jentic-Credential-Used"] = credential_id
+    if credential_ambiguous:
+        _cred_headers["X-Jentic-Credential-Ambiguous"] = "true"
+
     # ── Compute routing host (used by both main and Pipedream paths) ──────────
     # Look up base_url from the apis table for the matched api_id. This decouples
     # the api_id (e.g. googleapis.com/calendar) from the real HTTP host
@@ -979,7 +986,7 @@ async def broker(request: Request, target: str):
             content=json.dumps(error_body),
             status_code=504,
             media_type="application/json",
-            headers={"X-Jentic-Error": "true", "X-Jentic-Execution-Id": execution_id},
+            headers={"X-Jentic-Error": "true", "X-Jentic-Execution-Id": execution_id, **_cred_headers},
         )
     except httpx.RequestError as e:
         log.exception("Upstream request failed for %s", upstream_host)
@@ -992,7 +999,7 @@ async def broker(request: Request, target: str):
             content=json.dumps(error_body),
             status_code=502,
             media_type="application/json",
-            headers={"X-Jentic-Error": "true", "X-Jentic-Execution-Id": execution_id},
+            headers={"X-Jentic-Error": "true", "X-Jentic-Execution-Id": execution_id, **_cred_headers},
         )
 
     # ── Build response — strip hop-by-hop, add Jentic trace headers ──────────
@@ -1001,12 +1008,7 @@ async def broker(request: Request, target: str):
         if k.lower() not in _HOP_BY_HOP
     }
     response_headers["X-Jentic-Execution-Id"] = execution_id
-    # Always surface which credential was injected so callers can detect
-    # silent wrong-credential selection (especially for multi-service hosts).
-    if credential_id:
-        response_headers["X-Jentic-Credential-Used"] = credential_id
-    if credential_ambiguous:
-        response_headers["X-Jentic-Credential-Ambiguous"] = "true"
+    response_headers.update(_cred_headers)
 
     # ── Confirm pending overlay on first successful call ──────────────────────
     if api_id and upstream_response.status_code < 400:
