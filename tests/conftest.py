@@ -97,6 +97,20 @@ def agent_key_header(agent_key):
     return {"X-Jentic-API-Key": agent_key}
 
 
+@pytest.fixture(scope="session")
+def agent_only_client(app, agent_key, client):
+    """A TestClient with no session cookies — only agent key auth.
+
+    Separate from the main `client` fixture to avoid session cookie
+    leaking into agent auth tests (the shared client accumulates
+    cookies from admin_session). Depends on `client` to ensure the
+    app lifespan has already started.
+    """
+    c = TestClient(app, raise_server_exceptions=False)
+    c.headers["X-Jentic-API-Key"] = agent_key
+    return c
+
+
 @pytest.fixture(scope="session", autouse=True)
 def _cleanup():
     """Remove temp directory after all tests complete."""

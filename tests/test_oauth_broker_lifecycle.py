@@ -5,15 +5,14 @@ and reconnect endpoints. No live Pipedream connection — these verify
 auth, validation, and error responses only.
 """
 import pytest
-from starlette.testclient import TestClient
 
 
 BROKER_ID = "test-oauth-broker"
 
 
-@pytest.fixture()
+@pytest.fixture(scope="module")
 def broker(client, admin_session):
-    """Create a test broker. Cleaned up after each test that uses it."""
+    """Create a test broker for the module. Cleaned up at the end."""
     resp = client.post("/oauth-brokers", cookies=admin_session, json={
         "id": BROKER_ID,
         "type": "pipedream",
@@ -26,14 +25,6 @@ def broker(client, admin_session):
     assert resp.status_code in (200, 201), f"Create failed: {resp.text}"
     yield BROKER_ID
     client.delete(f"/oauth-brokers/{BROKER_ID}", cookies=admin_session)
-
-
-@pytest.fixture()
-def agent_only_client(app, agent_key):
-    """A fresh TestClient with no session cookies — only agent key auth."""
-    with TestClient(app, raise_server_exceptions=False) as c:
-        c.headers["X-Jentic-API-Key"] = agent_key
-        yield c
 
 
 # ── PATCH /oauth-brokers/{id} ────────────────────────────────────────────────
