@@ -801,7 +801,7 @@ async def list_broker_accounts(broker_id: BrokerIdPath, external_user_id: Extern
     summary="Remove a connected account from an OAuth broker",
     dependencies=[Depends(require_human_session)],
 )
-async def delete_broker_account(broker_id: BrokerIdPath, account_id: str):
+async def delete_broker_account(broker_id: BrokerIdPath, account_id: Annotated[str, Path(description="Connected account ID to delete")]):
     """Remove a specific connected account from this broker.
 
     This performs three actions in order:
@@ -895,8 +895,27 @@ class AccountUpdate(NormModel):
     summary="Update a connected account (e.g. rename label)",
     dependencies=[Depends(require_human_session)],
 )
-async def update_broker_account(broker_id: BrokerIdPath, account_id: str, body: AccountUpdate):
-    """Patch a connected account record. Currently supports updating `label` only."""
+async def update_broker_account(broker_id: BrokerIdPath, account_id: Annotated[str, Path(description="Connected account ID to update")], body: AccountUpdate):
+    """Patch a connected account record.
+
+    Updates the display label for a connected OAuth account. The account remains linked
+    to the same external OAuth identity and credentials are not affected. Label changes
+    are reflected in both the oauth_broker_accounts table and any associated credentials
+    in the vault.
+
+    Parameters:
+        broker_id: OAuth broker ID (e.g. 'pipedream')
+        account_id: Connected account ID from the broker
+        body: Update request containing the new label
+
+    Returns:
+        Updated account_id and label.
+
+    Auth: Requires human session (admin only).
+
+    Currently supports updating label only. Future versions may support updating
+    additional account metadata.
+    """
     new_label = body.label
     async with get_db() as db:
         async with db.execute(
@@ -923,7 +942,11 @@ async def update_broker_account(broker_id: BrokerIdPath, account_id: str, body: 
     summary="Get a reconnect link for an existing connected account",
     dependencies=[Depends(require_human_session)],
 )
-async def reconnect_account_link(broker_id: BrokerIdPath, account_id: str, request: Request):
+async def reconnect_account_link(
+    broker_id: BrokerIdPath,
+    account_id: Annotated[str, Path(description="OAuth broker account ID to reconnect")],
+    request: Request
+):
     """Generate a new OAuth connect link for an existing connected account.
 
     The returned URL sends the user through the Pipedream OAuth flow for the

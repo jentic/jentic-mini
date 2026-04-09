@@ -13,8 +13,9 @@ Password reset is CLI-only:
 """
 import time
 import uuid
+from typing import Annotated
 
-from fastapi import APIRouter, Depends, Form, HTTPException, Request, Response
+from fastapi import APIRouter, Depends, Form, HTTPException, Path, Query, Request, Response
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import BaseModel, field_validator
@@ -134,7 +135,11 @@ async def create_user(body: UserCreate, response: Response):
         }
     },
 )
-async def login(request: Request, response: Response, redirect_to: str | None = None):
+async def login(
+    request: Request,
+    response: Response,
+    redirect_to: Annotated[str | None, Query(description="Redirect URL after successful login (relative path only)")] = None
+):
     """Authenticate with username and password.
 
     Accepts JSON body (`{"username": ..., "password": ...}`) or HTML form data.
@@ -264,7 +269,19 @@ async def logout(request: Request, response: Response):
     response_model=UserOut,
 )
 async def me(request: Request):
-    """Returns current session info. Useful for UI to check if logged in."""
+    """Returns current session info and authentication context.
+
+    Response varies based on authentication method:
+    - Human session (JWT cookie): logged_in=true, includes username
+    - Trusted subnet (no auth): logged_in=false, admin=true (note about logging in for named session)
+    - Agent key (X-Jentic-API-Key): logged_in=false, agent_key=true, includes toolkit_id
+    - No auth: logged_in=false, agent_key=false
+
+    Useful for UI to determine what features to show and whether to require login.
+    Agents can call this to confirm their key is valid and see which toolkit they belong to.
+
+    This endpoint accepts requests with or without authentication (open passthrough).
+    """
     if getattr(request.state, "is_human_session", False):
         async with get_db() as db:
             async with db.execute("SELECT username FROM users LIMIT 1") as cur:

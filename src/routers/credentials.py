@@ -1,7 +1,8 @@
 """Upstream API credentials vault routes."""
 import logging
 import uuid
-from fastapi import APIRouter, HTTPException, Request
+from typing import Annotated
+from fastapi import APIRouter, HTTPException, Path, Query, Request
 from fastapi.responses import JSONResponse
 from src.models import CredentialCreate, CredentialOut, CredentialPatch
 import src.vault as vault
@@ -224,8 +225,21 @@ async def create(body: CredentialCreate, request: Request):
 
 
 @router.get("/{cid:path}", response_model=CredentialOut, summary="Get an upstream API credential by ID")
-async def get_credential(cid: str):
-    """Retrieve metadata for a single credential. Value is never returned."""
+async def get_credential(cid: Annotated[str, Path(description="Credential ID (format: hostname or hostname/path)")]):
+    """Retrieve metadata for a single credential.
+
+    Returns the credential's label, API binding, auth type, and identity field (if set).
+    The secret value is never returned after creation for security.
+
+    Parameters:
+        cid: Credential ID (format: hostname or hostname/path, e.g. 'api.github.com')
+
+    Returns:
+        Credential metadata including id, label, api_id, auth_type, timestamps, and identity.
+
+    Use this to confirm a credential exists before binding it to a toolkit or to inspect
+    its configuration before making authenticated calls.
+    """
     async with get_db() as db:
         async with db.execute(
             "SELECT id, label, api_id, auth_type, created_at, updated_at, identity FROM credentials WHERE id=?",
@@ -239,7 +253,7 @@ async def get_credential(cid: str):
 
 
 @router.patch("/{cid:path}", response_model=CredentialOut, summary="Update an upstream API credential — rotate a secret or fix its API binding")
-async def patch(cid: str, body: CredentialPatch, request: Request):
+async def patch(cid: Annotated[str, Path(description="Credential ID to update")], body: CredentialPatch, request: Request):
     """
     Update a credential's label, secret value, identity field, API binding, or auth_type.
 
@@ -264,7 +278,7 @@ async def patch(cid: str, body: CredentialPatch, request: Request):
 
 
 @router.delete("/{cid:path}", status_code=204, summary="Delete an upstream API credential")
-async def delete(cid: str, request: Request):
+async def delete(cid: Annotated[str, Path(description="Credential ID to delete")], request: Request):
     """
     Permanently delete a credential.
 
@@ -283,7 +297,7 @@ async def delete(cid: str, request: Request):
 
 
 @router.get("", summary="List upstream API credentials — labels and API bindings only, no secret values", response_model=list[CredentialOut])
-async def list_credentials(request: Request, api_id: str | None = None):
+async def list_credentials(request: Request, api_id: Annotated[str | None, Query(description="Filter credentials by API ID (hostname)")] = None):
     """List stored upstream API credentials. Values are never returned.
 
     All authenticated callers (agent keys and human sessions) can see all credential

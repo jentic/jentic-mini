@@ -34,11 +34,11 @@ import json
 import logging
 import time
 import asyncio
-from typing import Optional
+from typing import Annotated, Optional
 from urllib.parse import unquote, urlparse
 
 import httpx
-from fastapi import APIRouter, Request, Response, HTTPException
+from fastapi import APIRouter, Path, Request, Response, HTTPException
 from fastapi.routing import APIRoute
 
 log = logging.getLogger("jentic.broker")
@@ -453,7 +453,10 @@ _BROKER_RESPONSES = {
         ]
     ),
 )
-async def broker_doc_stub(request: Request, target: str):
+async def broker_doc_stub(
+    request: Request,
+    target: Annotated[str, Path(description="Upstream API path (format: host.domain/path, e.g. api.github.com/repos)")]
+):
     """Documentation stub — delegates to the real broker handler."""
     return await broker(request, target)
 

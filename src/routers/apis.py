@@ -6,9 +6,9 @@ import yaml
 import copy
 from pathlib import Path
 from urllib.parse import urlparse
-from typing import Optional
+from typing import Annotated, Optional
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Path, Query
 from fastapi.responses import Response, JSONResponse
 from src.models import ApiOut, OperationOut, ApiListPage, OperationListPage
 from src.db import get_db
@@ -562,7 +562,7 @@ _LARGE_SECTIONS = {"paths", "components", "webhooks"}
         ]
     ),
 )
-async def get_api_openapi(api_id: str):
+async def get_api_openapi(api_id: Annotated[str, Path(description="API ID (hostname or hostname/path format)")]):
     """
     Returns the full merged OpenAPI spec for this API as a JSON download.
 
@@ -612,7 +612,7 @@ async def get_api_openapi(api_id: str):
     ),
 )
 async def list_api_operations(
-    api_id: str,
+    api_id: Annotated[str, Path(description="API ID to list operations for")],
     page: int = Query(1, ge=1, description="Page number (1-indexed)"),
     limit: int = Query(50, ge=1, le=200, description="Results per page"),
 ):
@@ -674,7 +674,7 @@ async def list_api_operations(
     ),
 )
 async def get_api(
-    api_id: str,
+    api_id: Annotated[str, Path(description="API ID (hostname or hostname/path format)")],
     sections: str | None = Query(
         None,
         description=(

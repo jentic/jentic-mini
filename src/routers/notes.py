@@ -11,8 +11,9 @@ Notes are observable by Jentic to improve canonical OpenAPI specs.
 """
 import time
 import uuid
+from typing import Annotated
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Path, Query
 from pydantic import BaseModel
 from src.validators import NormModel, NormStr
 
@@ -89,7 +90,11 @@ async def create_note(body: NoteCreate):
         ]
     ),
 )
-async def list_notes(resource: str | None = None, type: str | None = None, limit: int = 50):
+async def list_notes(
+    resource: Annotated[str | None, Query(description="Filter notes by resource ID (capability_id, api_id, or workflow slug)")] = None,
+    type: Annotated[str | None, Query(description="Filter notes by type (auth_quirk, usage_hint, execution_feedback, correction)")] = None,
+    limit: Annotated[int, Query(description="Maximum number of notes to return (1-500)", ge=1, le=500)] = 50,
+):
     """
     List notes attached to resources (operations, workflows, APIs).
 
@@ -143,7 +148,7 @@ async def list_notes(resource: str | None = None, type: str | None = None, limit
         ]
     ),
 )
-async def delete_note(note_id: str):
+async def delete_note(note_id: Annotated[str, Path(description="Note ID to delete (format: note_{8chars})")]):
     """
     Permanently delete a note.
 

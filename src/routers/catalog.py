@@ -15,9 +15,9 @@ import re
 import time
 import urllib.request
 import urllib.error
+from typing import Annotated
 
-
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Path, Query
 from pydantic import BaseModel
 
 from src.db import get_db
@@ -465,10 +465,10 @@ def _build_catalog_result(entry: dict, registered_ids: set[str]) -> dict:
     ),
 )
 async def list_catalog(
-    q: str | None = None,
-    limit: int = 50,
-    registered_only: bool = False,
-    unregistered_only: bool = False,
+    q: Annotated[str | None, Query(description="Search term to filter APIs by name or description")] = None,
+    limit: Annotated[int, Query(description="Maximum number of results (1-500)", ge=1, le=500)] = 50,
+    registered_only: Annotated[bool, Query(description="Return only APIs already registered locally")] = False,
+    unregistered_only: Annotated[bool, Query(description="Return only APIs not yet registered locally")] = False,
 ):
     """Returns entries from the cached public API catalog manifest.
     Use ``POST /catalog/refresh`` to sync from GitHub first if the list is empty.
@@ -517,7 +517,7 @@ async def list_catalog(
         ]
     ),
 )
-async def get_catalog_entry(api_id: str):
+async def get_catalog_entry(api_id: Annotated[str, Path(description="API ID from catalog to retrieve")]):
     """Return details for a single catalog API, including the spec download URL.
 
     Use the returned `spec_url` with `POST /import` to import this API:

@@ -94,13 +94,19 @@ class OperationListPage(Page):
 # ── Search (output) ───────────────────────────────────────────────────────────
 
 class SearchResult(BaseModel):
-    type: str = Field(examples=["operation"])  # "operation" | "workflow"
-    id: str = Field(examples=["GET/api.github.com/repos/{owner}/{repo}/issues"])
-    slug: str | None = Field(default=None, examples=["github-list-issues"])
-    summary: str | None = Field(default=None, examples=["List repository issues"])
-    description: str | None = Field(default=None, examples=["List issues in a repository"])
-    score: float = Field(examples=[0.85])
-    involved_apis: list[str] = Field(default_factory=list, examples=[["api.github.com"]])
+    """A search result from the BM25 index — either an operation or workflow capability.
+
+    The BM25 search index covers both API operations (parsed from OpenAPI specs) and
+    workflows (parsed from Arazzo documents). Results are ranked by relevance score.
+    Use GET /inspect/{id} to get the full schema for a result before calling it.
+    """
+    type: str = Field(examples=["operation"], description="Result type: 'operation' for API endpoints, 'workflow' for multi-step Arazzo workflows")
+    id: str = Field(examples=["GET/api.github.com/repos/{owner}/{repo}/issues"], description="Capability ID in METHOD/host/path format")
+    slug: str | None = Field(default=None, examples=["github-list-issues"], description="Workflow slug (workflows only) — used as path segment in POST /workflows/{slug}")
+    summary: str | None = Field(default=None, examples=["List repository issues"], description="Short description of what this capability does")
+    description: str | None = Field(default=None, examples=["List issues in a repository"], description="Detailed description from the OpenAPI operation or Arazzo workflow")
+    score: float = Field(examples=[0.85], description="BM25 relevance score (0.0-1.0) — higher is more relevant to the search query")
+    involved_apis: list[str] = Field(default_factory=list, examples=[["api.github.com"]], description="List of upstream API hosts involved in this capability (for workflows, may list multiple)")
     model_config = {"extra": "allow"}
 
 
@@ -398,14 +404,21 @@ class WorkflowStepOut(BaseModel):
 
 
 class WorkflowOut(BaseModel):
-    id: str = Field(examples=["POST/localhost:8900/workflows/github-create-issue"])
-    url: str | None = Field(default=None, examples=["http://localhost:8900/workflows/github-create-issue"])
-    slug: str = Field(examples=["github-create-issue"])
-    name: str | None = Field(default=None, examples=["Create GitHub Issue"])
-    description: str | None = Field(default=None, examples=["Create a new issue in a GitHub repository"])
-    steps_count: int = Field(default=0, examples=[3])
-    involved_apis: list[str] = Field(default_factory=list, examples=[["api.github.com"]])
-    created_at: float | None = Field(default=None, examples=[1672531200.0])
+    """Multi-step workflow parsed from an Arazzo document.
+
+    Workflows compose multiple API operations into reusable sequences. Each workflow
+    is registered in the catalog with a slug and can be executed via POST /workflows/{slug}.
+    The workflow runner automatically routes all HTTP calls through the broker for
+    credential injection, tracing, and policy enforcement.
+    """
+    id: str = Field(examples=["POST/localhost:8900/workflows/github-create-issue"], description="Capability ID in format POST/{host}/workflows/{slug}")
+    url: str | None = Field(default=None, examples=["http://localhost:8900/workflows/github-create-issue"], description="Absolute URL to execute this workflow via POST")
+    slug: str = Field(examples=["github-create-issue"], description="URL-safe workflow identifier used in /workflows/{slug} endpoints")
+    name: str | None = Field(default=None, examples=["Create GitHub Issue"], description="Human-readable workflow name from Arazzo info.title or workflow.summary")
+    description: str | None = Field(default=None, examples=["Create a new issue in a GitHub repository"], description="Workflow description from Arazzo info.description or workflow.description")
+    steps_count: int = Field(default=0, examples=[3], description="Number of steps in this workflow")
+    involved_apis: list[str] = Field(default_factory=list, examples=[["api.github.com"]], description="List of upstream API hosts called by this workflow's steps")
+    created_at: float | None = Field(default=None, examples=[1672531200.0], description="Unix timestamp when this workflow was imported")
     model_config = {"extra": "allow"}
 
 
@@ -417,11 +430,18 @@ class WorkflowDetail(WorkflowOut):
 # ── Import (output) ───────────────────────────────────────────────────────────
 
 class ImportOut(BaseModel):
-    status: str = Field(examples=["imported"])
-    id: str | None = Field(default=None, examples=["api.github.com"])
-    name: str | None = Field(default=None, examples=["GitHub REST API"])
-    operations_indexed: int | None = Field(default=None, examples=[247])
-    type: str | None = Field(default=None, examples=["api"])  # "api" | "workflow"
+    """Result of importing an OpenAPI spec or Arazzo workflow into the catalog.
+
+    The import endpoint (POST /import) accepts specs from URLs, local file paths, or
+    inline content. It parses the document, indexes operations/workflows in BM25,
+    and stores metadata for broker execution. Returns the registered ID and count
+    of indexed operations.
+    """
+    status: str = Field(examples=["imported"], description="Import status: 'ok' if all sources succeeded, 'partial' if some failed, 'failed' if all failed")
+    id: str | None = Field(default=None, examples=["api.github.com"], description="Registered API ID (for OpenAPI specs) or workflow slug (for Arazzo)")
+    name: str | None = Field(default=None, examples=["GitHub REST API"], description="Display name extracted from spec (info.title for APIs, workflow.summary for workflows)")
+    operations_indexed: int | None = Field(default=None, examples=[247], description="Number of operations parsed and indexed in BM25 (OpenAPI specs only)")
+    type: str | None = Field(default=None, examples=["api"], description="Import type: 'api' for OpenAPI specs, 'workflow' for Arazzo documents")
     model_config = {"extra": "allow"}
 
 

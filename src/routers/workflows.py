@@ -18,9 +18,9 @@ import tempfile
 import uuid
 import yaml
 from pathlib import Path
-from typing import Any
+from typing import Annotated, Any
 
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import APIRouter, HTTPException, Path, Query, Request
 from fastapi.responses import HTMLResponse, Response
 
 from src.db import get_db
@@ -306,7 +306,7 @@ _WORKFLOW_CONTENT_TYPES = {
         ]
     ),
 )
-async def get_workflow(slug: str, request: Request):
+async def get_workflow(slug: Annotated[str, Path(description="Workflow slug (URL-safe identifier)")], request: Request):
     """Returns the workflow definition with content negotiation:
     - application/json (default): workflow metadata with simplified step info
     - application/vnd.oai.workflows+json: raw Arazzo document as JSON

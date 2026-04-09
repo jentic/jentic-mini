@@ -22,10 +22,10 @@ import json
 import logging
 import time
 import uuid
-from typing import Literal
+from typing import Annotated, Literal
 from urllib.parse import quote
 
-from fastapi import APIRouter, HTTPException, Depends, Request
+from fastapi import APIRouter, HTTPException, Path, Query, Depends, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from src.auth import require_human_session
 from pydantic import BaseModel, Field
@@ -137,7 +137,7 @@ class AccessRequestBody(NormModel):
 @router.post("/{toolkit_id}/access-requests", status_code=202,
              summary="Request access — ask a human to grant a credential or adjust permissions",
              tags=["toolkits"], response_model=AccessRequestOut)
-async def create_access_request(toolkit_id: str, request: Request, body: AccessRequestBody):
+async def create_access_request(toolkit_id: Annotated[str, Path(description="Toolkit ID")], request: Request, body: AccessRequestBody):
     """Agent submits an access request. A human approves or denies it at the `approve_url`.
 
     **Workflow:**
@@ -295,7 +295,7 @@ async def approval_ui_legacy(toolkit_id: str, req_id: str):
 @router.get("/{toolkit_id}/access-requests/{req_id}",
             summary="Poll an access request — check approval status",
             tags=["toolkits"], response_model=AccessRequestOut)
-async def get_access_request(toolkit_id: str, req_id: str, request: Request):
+async def get_access_request(toolkit_id: Annotated[str, Path(description="Toolkit ID")], req_id: Annotated[str, Path(description="Access request ID (format: areq_xxxxxxxx)")], request: Request):
     """
     Poll the status of a specific access request.
 
@@ -339,7 +339,11 @@ async def get_access_request(toolkit_id: str, req_id: str, request: Request):
 @router.get("/{toolkit_id}/access-requests",
             summary="List access requests for this toolkit",
             tags=["toolkits"], response_model=list[AccessRequestOut])
-async def list_access_requests(toolkit_id: str, request: Request, status: str | None = None):
+async def list_access_requests(
+    toolkit_id: Annotated[str, Path(description="Toolkit ID")],
+    request: Request,
+    status: Annotated[str | None, Query(description="Filter by status (pending, approved, denied)")] = None
+):
     """
     List access requests for a toolkit, newest first.
 
@@ -386,7 +390,7 @@ async def list_access_requests(toolkit_id: str, request: Request, status: str | 
 @router.post("/{toolkit_id}/access-requests/{req_id}/approve",
              summary="Approve an access request (human session only)",
              tags=["toolkits"], response_model=AccessRequestOut)
-async def approve_access_request(toolkit_id: str, req_id: str, _: None = Depends(require_human_session)):
+async def approve_access_request(toolkit_id: Annotated[str, Path(description="Toolkit ID")], req_id: Annotated[str, Path(description="Access request ID to approve")], _: None = Depends(require_human_session)):
     """
     Approve a pending access request (human or admin action — agent keys cannot do this).
 
@@ -405,8 +409,22 @@ async def approve_access_request(toolkit_id: str, req_id: str, _: None = Depends
 @router.post("/{toolkit_id}/access-requests/{req_id}/deny",
              summary="Deny an access request (human session only)",
              tags=["toolkits"], response_model=AccessRequestOut)
-async def deny_access_request(toolkit_id: str, req_id: str, _: None = Depends(require_human_session)):
-    """Deny a pending access request."""
+async def deny_access_request(toolkit_id: Annotated[str, Path(description="Toolkit ID")], req_id: Annotated[str, Path(description="Access request ID to deny")], _: None = Depends(require_human_session)):
+    """Deny a pending access request.
+
+    Permanently rejects the request. The agent will receive a 403 error if it continues
+    to attempt the operation that required the permission. To grant access later, the
+    agent must file a new request.
+
+    Parameters:
+        toolkit_id: Toolkit ID containing the access request
+        req_id: Access request ID (format: areq_xxxxxxxx)
+
+    Returns:
+        Updated access request with status='denied' and resolved_at timestamp.
+
+    Auth: Requires human session (admin).
+    """
     try:
         return await _resolve(toolkit_id, req_id, "denied")
     except HTTPException:

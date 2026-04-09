@@ -29,9 +29,9 @@ import asyncio
 import json
 import time
 import uuid
-from typing import Any
+from typing import Annotated, Any
 
-from fastapi import APIRouter, HTTPException, Request, Query
+from fastapi import APIRouter, HTTPException, Path, Query, Request
 
 from src.db import get_db
 from src.models import JobOut, JobListPage
@@ -207,8 +207,8 @@ def _job_response(d: dict) -> dict:
 )
 async def list_jobs(
     status: str | None = Query(None, description="Filter by status"),
-    page: int = Query(1, ge=1),
-    limit: int = Query(20, ge=1, le=100),
+    page: Annotated[int, Query(description="Page number (1-indexed)", ge=1)] = 1,
+    limit: Annotated[int, Query(description="Results per page (1-100)", ge=1, le=100)] = 20,
 ):
     offset = (page - 1) * limit
     async with get_db() as db:
@@ -297,7 +297,7 @@ async def list_jobs(
         ]
     ),
 )
-async def get_job_route(job_id: str):
+async def get_job_route(job_id: Annotated[str, Path(description="Job ID (format: job_{12chars})")]):
     d = await get_job(job_id)
     if not d:
         raise HTTPException(404, f"Job '{job_id}' not found")
@@ -316,7 +316,7 @@ async def get_job_route(job_id: str):
         "Has no effect on already-completed jobs."
     ),
 )
-async def cancel_job(job_id: str):
+async def cancel_job(job_id: Annotated[str, Path(description="Job ID to cancel")]):
     d = await get_job(job_id)
     if not d:
         raise HTTPException(404, f"Job '{job_id}' not found")

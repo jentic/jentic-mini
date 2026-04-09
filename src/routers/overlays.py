@@ -9,7 +9,8 @@ call that uses them.
 """
 import json
 import uuid
-from fastapi import APIRouter, HTTPException
+from typing import Annotated
+from fastapi import APIRouter, HTTPException, Path
 from pydantic import Field
 from src.validators import NormModel
 from src.db import get_db
@@ -98,7 +99,7 @@ class OverlaySubmit(NormModel):
         ]
     ),
 )
-async def submit_overlay(api_id: str, body: OverlaySubmit):
+async def submit_overlay(api_id: Annotated[str, Path(description="API ID to submit overlay for")], body: OverlaySubmit):
     """Submit an OpenAPI Overlay 1.0 document to patch the stored spec for this API.
 
     Overlays are additive and ordered — later overlays override matching keys from
@@ -157,7 +158,7 @@ async def submit_overlay(api_id: str, body: OverlaySubmit):
         ]
     ),
 )
-async def list_overlays(api_id: str):
+async def list_overlays(api_id: Annotated[str, Path(description="API ID to list overlays for")]):
     """Return all overlays for an API, each with its full overlay document included.
 
     Confirmed overlays are listed first, then pending, both ordered by creation date
@@ -207,8 +208,23 @@ async def list_overlays(api_id: str):
         ]
     ),
 )
-async def delete_overlay(api_id: str, overlay_id: str):
-    """Delete an overlay by ID. Works on both pending and confirmed overlays."""
+async def delete_overlay(api_id: Annotated[str, Path(description="API ID")], overlay_id: Annotated[str, Path(description="Overlay ID to delete")]):
+    """Delete an overlay by ID.
+
+    Permanently removes the overlay from the database. Works on both pending and confirmed
+    overlays. If the overlay was confirmed and actively patching the spec, the next
+    broker call will use the spec without this overlay's changes.
+
+    Parameters:
+        api_id: API ID that owns this overlay
+        overlay_id: Overlay ID to delete (format: overlay_xxxxxxxx)
+
+    Returns:
+        Confirmation with deleted overlay_id and api_id.
+
+    Use when an overlay was submitted incorrectly or is no longer needed. To replace
+    an incorrect overlay, delete it first, then submit a corrected version.
+    """
     async with get_db() as db:
         async with db.execute(
             "SELECT id FROM api_overlays WHERE id=? AND api_id=?",

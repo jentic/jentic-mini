@@ -142,8 +142,10 @@
                         "required": true,
                         "schema": {
                             "type": "string",
+                            "description": "API ID (hostname or hostname/path format)",
                             "title": "Api Id"
-                        }
+                        },
+                        "description": "API ID (hostname or hostname/path format)"
                     },
                     {
                         "name": "sections",
@@ -232,8 +234,10 @@
                         "required": true,
                         "schema": {
                             "type": "string",
+                            "description": "API ID (hostname or hostname/path format)",
                             "title": "Api Id"
-                        }
+                        },
+                        "description": "API ID (hostname or hostname/path format)"
                     }
                 ],
                 "responses": {
@@ -295,8 +299,10 @@
                         "required": true,
                         "schema": {
                             "type": "string",
+                            "description": "API ID to list operations for",
                             "title": "Api Id"
-                        }
+                        },
+                        "description": "API ID to list operations for"
                     },
                     {
                         "name": "page",
@@ -400,8 +406,10 @@
                         "required": true,
                         "schema": {
                             "type": "string",
+                            "description": "API ID to submit overlay for",
                             "title": "Api Id"
-                        }
+                        },
+                        "description": "API ID to submit overlay for"
                     }
                 ],
                 "requestBody": {
@@ -469,8 +477,10 @@
                         "required": true,
                         "schema": {
                             "type": "string",
+                            "description": "API ID to list overlays for",
                             "title": "Api Id"
-                        }
+                        },
+                        "description": "API ID to list overlays for"
                     }
                 ],
                 "responses": {
@@ -516,7 +526,7 @@
                     "catalog"
                 ],
                 "summary": "Delete an overlay",
-                "description": "Delete an overlay by ID. Works on both pending and confirmed overlays.",
+                "description": "Delete an overlay by ID.\n\nPermanently removes the overlay from the database. Works on both pending and confirmed\noverlays. If the overlay was confirmed and actively patching the spec, the next\nbroker call will use the spec without this overlay's changes.\n\nParameters:\n    api_id: API ID that owns this overlay\n    overlay_id: Overlay ID to delete (format: overlay_xxxxxxxx)\n\nReturns:\n    Confirmation with deleted overlay_id and api_id.\n\nUse when an overlay was submitted incorrectly or is no longer needed. To replace\nan incorrect overlay, delete it first, then submit a corrected version.",
                 "operationId": "delete_overlay_apis__api_id__overlays__overlay_id__delete",
                 "parameters": [
                     {
@@ -525,8 +535,10 @@
                         "required": true,
                         "schema": {
                             "type": "string",
+                            "description": "API ID",
                             "title": "Api Id"
-                        }
+                        },
+                        "description": "API ID"
                     },
                     {
                         "name": "overlay_id",
@@ -534,8 +546,10 @@
                         "required": true,
                         "schema": {
                             "type": "string",
+                            "description": "Overlay ID to delete",
                             "title": "Overlay Id"
-                        }
+                        },
+                        "description": "Overlay ID to delete"
                     }
                 ],
                 "responses": {
@@ -601,8 +615,10 @@
                                     "type": "null"
                                 }
                             ],
+                            "description": "Search term to filter APIs by name or description",
                             "title": "Q"
-                        }
+                        },
+                        "description": "Search term to filter APIs by name or description"
                     },
                     {
                         "name": "limit",
@@ -610,9 +626,13 @@
                         "required": false,
                         "schema": {
                             "type": "integer",
+                            "maximum": 500,
+                            "minimum": 1,
+                            "description": "Maximum number of results (1-500)",
                             "default": 50,
                             "title": "Limit"
-                        }
+                        },
+                        "description": "Maximum number of results (1-500)"
                     },
                     {
                         "name": "registered_only",
@@ -620,9 +640,11 @@
                         "required": false,
                         "schema": {
                             "type": "boolean",
+                            "description": "Return only APIs already registered locally",
                             "default": false,
                             "title": "Registered Only"
-                        }
+                        },
+                        "description": "Return only APIs already registered locally"
                     },
                     {
                         "name": "unregistered_only",
@@ -630,9 +652,11 @@
                         "required": false,
                         "schema": {
                             "type": "boolean",
+                            "description": "Return only APIs not yet registered locally",
                             "default": false,
                             "title": "Unregistered Only"
-                        }
+                        },
+                        "description": "Return only APIs not yet registered locally"
                     }
                 ],
                 "responses": {
@@ -735,8 +759,10 @@
                         "required": true,
                         "schema": {
                             "type": "string",
+                            "description": "API ID from catalog to retrieve",
                             "title": "Api Id"
-                        }
+                        },
+                        "description": "API ID from catalog to retrieve"
                     }
                 ],
                 "responses": {
@@ -850,8 +876,10 @@
                                     "type": "null"
                                 }
                             ],
+                            "description": "Filter credentials by API ID (hostname)",
                             "title": "Api Id"
-                        }
+                        },
+                        "description": "Filter credentials by API ID (hostname)"
                     }
                 ],
                 "responses": {
@@ -896,7 +924,7 @@
                     "credentials"
                 ],
                 "summary": "Get an upstream API credential by ID",
-                "description": "Retrieve metadata for a single credential. Value is never returned.",
+                "description": "Retrieve metadata for a single credential.\n\nReturns the credential's label, API binding, auth type, and identity field (if set).\nThe secret value is never returned after creation for security.\n\nParameters:\n    cid: Credential ID (format: hostname or hostname/path, e.g. 'api.github.com')\n\nReturns:\n    Credential metadata including id, label, api_id, auth_type, timestamps, and identity.\n\nUse this to confirm a credential exists before binding it to a toolkit or to inspect\nits configuration before making authenticated calls.",
                 "operationId": "get_credential_credentials__cid__get",
                 "parameters": [
                     {
@@ -905,8 +933,10 @@
                         "required": true,
                         "schema": {
                             "type": "string",
+                            "description": "Credential ID (format: hostname or hostname/path)",
                             "title": "Cid"
-                        }
+                        },
+                        "description": "Credential ID (format: hostname or hostname/path)"
                     }
                 ],
                 "responses": {
@@ -954,8 +984,10 @@
                         "required": true,
                         "schema": {
                             "type": "string",
+                            "description": "Credential ID to update",
                             "title": "Cid"
-                        }
+                        },
+                        "description": "Credential ID to update"
                     }
                 ],
                 "requestBody": {
@@ -1010,8 +1042,10 @@
                         "required": true,
                         "schema": {
                             "type": "string",
+                            "description": "Credential ID to delete",
                             "title": "Cid"
-                        }
+                        },
+                        "description": "Credential ID to delete"
                     }
                 ],
                 "responses": {
@@ -1063,7 +1097,7 @@
                     "meta"
                 ],
                 "summary": "Health",
-                "description": "Returns current setup state with explicit instructions for agents.",
+                "description": "Returns current setup state with explicit instructions for agents and UI.\n\nResponse varies based on setup progress:\n- status='setup_required': No default API key claimed yet \u2192 agent should call POST /default-api-key/generate\n- status='account_required': Agent key active, admin account not created \u2192 user should visit setup_url\n- status='ok': Fully set up \u2192 includes version and apis_registered count\n\nThis endpoint is always public (no auth required) so agents can check setup state before\nattempting authenticated calls. UI uses this to determine whether to show setup wizard.\n\nReturns:\n    Setup status, version, and context-specific next steps or operational metrics.",
                 "operationId": "health_health_get",
                 "responses": {
                     "200": {
@@ -1160,8 +1194,10 @@
                         "required": true,
                         "schema": {
                             "type": "string",
+                            "description": "Capability ID (METHOD/host/path format) or workflow slug",
                             "title": "Capability Id"
-                        }
+                        },
+                        "description": "Capability ID (METHOD/host/path format) or workflow slug"
                     },
                     {
                         "name": "toolkit_id",
@@ -1274,9 +1310,11 @@
                         "schema": {
                             "type": "integer",
                             "minimum": 1,
+                            "description": "Page number (1-indexed)",
                             "default": 1,
                             "title": "Page"
-                        }
+                        },
+                        "description": "Page number (1-indexed)"
                     },
                     {
                         "name": "limit",
@@ -1286,9 +1324,11 @@
                             "type": "integer",
                             "maximum": 100,
                             "minimum": 1,
+                            "description": "Results per page (1-100)",
                             "default": 20,
                             "title": "Limit"
-                        }
+                        },
+                        "description": "Results per page (1-100)"
                     }
                 ],
                 "responses": {
@@ -1338,8 +1378,10 @@
                         "required": true,
                         "schema": {
                             "type": "string",
+                            "description": "Job ID (format: job_{12chars})",
                             "title": "Job Id"
-                        }
+                        },
+                        "description": "Job ID (format: job_{12chars})"
                     }
                 ],
                 "responses": {
@@ -1401,8 +1443,10 @@
                         "required": true,
                         "schema": {
                             "type": "string",
+                            "description": "Job ID to cancel",
                             "title": "Job Id"
-                        }
+                        },
+                        "description": "Job ID to cancel"
                     }
                 ],
                 "responses": {
@@ -1512,8 +1556,10 @@
                                     "type": "null"
                                 }
                             ],
+                            "description": "Filter notes by resource ID (capability_id, api_id, or workflow slug)",
                             "title": "Resource"
-                        }
+                        },
+                        "description": "Filter notes by resource ID (capability_id, api_id, or workflow slug)"
                     },
                     {
                         "name": "type",
@@ -1528,8 +1574,10 @@
                                     "type": "null"
                                 }
                             ],
+                            "description": "Filter notes by type (auth_quirk, usage_hint, execution_feedback, correction)",
                             "title": "Type"
-                        }
+                        },
+                        "description": "Filter notes by type (auth_quirk, usage_hint, execution_feedback, correction)"
                     },
                     {
                         "name": "limit",
@@ -1537,9 +1585,13 @@
                         "required": false,
                         "schema": {
                             "type": "integer",
+                            "maximum": 500,
+                            "minimum": 1,
+                            "description": "Maximum number of notes to return (1-500)",
                             "default": 50,
                             "title": "Limit"
-                        }
+                        },
+                        "description": "Maximum number of notes to return (1-500)"
                     }
                 ],
                 "responses": {
@@ -1600,8 +1652,10 @@
                         "required": true,
                         "schema": {
                             "type": "string",
+                            "description": "Note ID to delete (format: note_{8chars})",
                             "title": "Note Id"
-                        }
+                        },
+                        "description": "Note ID to delete (format: note_{8chars})"
                     }
                 ],
                 "responses": {
@@ -2135,8 +2189,10 @@
                         "required": true,
                         "schema": {
                             "type": "string",
+                            "description": "Connected account ID to delete",
                             "title": "Account Id"
-                        }
+                        },
+                        "description": "Connected account ID to delete"
                     }
                 ],
                 "responses": {
@@ -2174,7 +2230,7 @@
                     "credentials"
                 ],
                 "summary": "Update a connected account (e.g. rename label)",
-                "description": "Patch a connected account record. Currently supports updating `label` only.",
+                "description": "Patch a connected account record.\n\nUpdates the display label for a connected OAuth account. The account remains linked\nto the same external OAuth identity and credentials are not affected. Label changes\nare reflected in both the oauth_broker_accounts table and any associated credentials\nin the vault.\n\nParameters:\n    broker_id: OAuth broker ID (e.g. 'pipedream')\n    account_id: Connected account ID from the broker\n    body: Update request containing the new label\n\nReturns:\n    Updated account_id and label.\n\nAuth: Requires human session (admin only).\n\nCurrently supports updating label only. Future versions may support updating\nadditional account metadata.",
                 "operationId": "update_broker_account_oauth_brokers__broker_id__accounts__account_id__patch",
                 "parameters": [
                     {
@@ -2197,8 +2253,10 @@
                         "required": true,
                         "schema": {
                             "type": "string",
+                            "description": "Connected account ID to update",
                             "title": "Account Id"
-                        }
+                        },
+                        "description": "Connected account ID to update"
                     }
                 ],
                 "requestBody": {
@@ -2268,8 +2326,10 @@
                         "required": true,
                         "schema": {
                             "type": "string",
+                            "description": "OAuth broker account ID to reconnect",
                             "title": "Account Id"
-                        }
+                        },
+                        "description": "OAuth broker account ID to reconnect"
                     }
                 ],
                 "responses": {
@@ -2381,7 +2441,7 @@
                     "toolkits"
                 ],
                 "summary": "List toolkits",
-                "description": "List all toolkits.",
+                "description": "List all toolkits with metadata summary.\n\nReturns all toolkits visible to the caller with key counts and bound credential counts.\nAdmin users see all toolkits. Agents see only their own toolkit.\n\nEach toolkit includes:\n- Metadata (name, description, disabled state, simulation mode)\n- Active key count (revoked keys excluded)\n- Bound credential count (upstream API credentials available to this toolkit)\n\nThe default toolkit implicitly has access to all credentials without explicit binding.",
                 "operationId": "list_toolkits_toolkits_get",
                 "responses": {
                     "200": {
@@ -2469,8 +2529,10 @@
                         "required": true,
                         "schema": {
                             "type": "string",
+                            "description": "Toolkit ID (e.g. 'default' or custom toolkit identifier)",
                             "title": "Toolkit Id"
-                        }
+                        },
+                        "description": "Toolkit ID (e.g. 'default' or custom toolkit identifier)"
                     }
                 ],
                 "responses": {
@@ -2530,8 +2592,10 @@
                         "required": true,
                         "schema": {
                             "type": "string",
+                            "description": "Toolkit ID to update",
                             "title": "Toolkit Id"
-                        }
+                        },
+                        "description": "Toolkit ID to update"
                     }
                 ],
                 "requestBody": {
@@ -2586,8 +2650,10 @@
                         "required": true,
                         "schema": {
                             "type": "string",
+                            "description": "Toolkit ID to delete",
                             "title": "Toolkit Id"
-                        }
+                        },
+                        "description": "Toolkit ID to delete"
                     }
                 ],
                 "responses": {
@@ -2628,8 +2694,10 @@
                         "required": true,
                         "schema": {
                             "type": "string",
+                            "description": "Toolkit ID",
                             "title": "Toolkit Id"
-                        }
+                        },
+                        "description": "Toolkit ID"
                     }
                 ],
                 "requestBody": {
@@ -2688,8 +2756,10 @@
                         "required": true,
                         "schema": {
                             "type": "string",
+                            "description": "Toolkit ID",
                             "title": "Toolkit Id"
-                        }
+                        },
+                        "description": "Toolkit ID"
                     },
                     {
                         "name": "status",
@@ -2704,8 +2774,10 @@
                                     "type": "null"
                                 }
                             ],
+                            "description": "Filter by status (pending, approved, denied)",
                             "title": "Status"
-                        }
+                        },
+                        "description": "Filter by status (pending, approved, denied)"
                     }
                 ],
                 "responses": {
@@ -2759,8 +2831,10 @@
                         "required": true,
                         "schema": {
                             "type": "string",
+                            "description": "Toolkit ID to bind credential to",
                             "title": "Toolkit Id"
-                        }
+                        },
+                        "description": "Toolkit ID to bind credential to"
                     }
                 ],
                 "requestBody": {
@@ -2815,8 +2889,10 @@
                         "required": true,
                         "schema": {
                             "type": "string",
+                            "description": "Toolkit ID to list credentials for",
                             "title": "Toolkit Id"
-                        }
+                        },
+                        "description": "Toolkit ID to list credentials for"
                     }
                 ],
                 "responses": {
@@ -2870,8 +2946,10 @@
                         "required": true,
                         "schema": {
                             "type": "string",
+                            "description": "Toolkit ID to issue key for",
                             "title": "Toolkit Id"
-                        }
+                        },
+                        "description": "Toolkit ID to issue key for"
                     }
                 ],
                 "requestBody": {
@@ -2926,8 +3004,10 @@
                         "required": true,
                         "schema": {
                             "type": "string",
+                            "description": "Toolkit ID to list keys for",
                             "title": "Toolkit Id"
-                        }
+                        },
+                        "description": "Toolkit ID to list keys for"
                     }
                 ],
                 "responses": {
@@ -2976,8 +3056,10 @@
                         "required": true,
                         "schema": {
                             "type": "string",
+                            "description": "Toolkit ID",
                             "title": "Toolkit Id"
-                        }
+                        },
+                        "description": "Toolkit ID"
                     },
                     {
                         "name": "req_id",
@@ -2985,8 +3067,10 @@
                         "required": true,
                         "schema": {
                             "type": "string",
+                            "description": "Access request ID (format: areq_xxxxxxxx)",
                             "title": "Req Id"
-                        }
+                        },
+                        "description": "Access request ID (format: areq_xxxxxxxx)"
                     }
                 ],
                 "responses": {
@@ -3036,8 +3120,10 @@
                         "required": true,
                         "schema": {
                             "type": "string",
+                            "description": "Toolkit ID",
                             "title": "Toolkit Id"
-                        }
+                        },
+                        "description": "Toolkit ID"
                     },
                     {
                         "name": "credential_id",
@@ -3045,8 +3131,10 @@
                         "required": true,
                         "schema": {
                             "type": "string",
+                            "description": "Credential ID to unbind",
                             "title": "Credential Id"
-                        }
+                        },
+                        "description": "Credential ID to unbind"
                     }
                 ],
                 "responses": {
@@ -3077,7 +3165,7 @@
                     "toolkits"
                 ],
                 "summary": "Update a client API key \u2014 rename or change IP restrictions",
-                "description": "Update label or IP restrictions on a client API key. Cannot change the key value itself.",
+                "description": "Update label or IP restrictions on a client API key.\n\nModifies the metadata for an existing toolkit key. The key value itself cannot be\nchanged - to rotate a key, revoke the old one and create a new one.\n\nParameters:\n    toolkit_id: Toolkit ID containing the key\n    key_id: Key ID to update (format: ck_xxxxxxxx)\n    body: Update request with optional label and/or allowed_ips\n\nUpdatable fields:\n    - label: Human-readable name (e.g. \"Production bot\", \"Staging agent\")\n    - allowed_ips: IP allowlist in CIDR notation (e.g. [\"192.168.1.0/24\"]).\n      Set to null or empty array to allow all IPs.\n\nReturns:\n    Updated key metadata including new label and IP restrictions.\n\nThe key remains active with its original value. Changes take effect immediately.",
                 "operationId": "patch_toolkit_key_toolkits__toolkit_id__keys__key_id__patch",
                 "parameters": [
                     {
@@ -3086,8 +3174,10 @@
                         "required": true,
                         "schema": {
                             "type": "string",
+                            "description": "Toolkit ID",
                             "title": "Toolkit Id"
-                        }
+                        },
+                        "description": "Toolkit ID"
                     },
                     {
                         "name": "key_id",
@@ -3095,8 +3185,10 @@
                         "required": true,
                         "schema": {
                             "type": "string",
+                            "description": "Key ID to update",
                             "title": "Key Id"
-                        }
+                        },
+                        "description": "Key ID to update"
                     }
                 ],
                 "requestBody": {
@@ -3151,8 +3243,10 @@
                         "required": true,
                         "schema": {
                             "type": "string",
+                            "description": "Toolkit ID",
                             "title": "Toolkit Id"
-                        }
+                        },
+                        "description": "Toolkit ID"
                     },
                     {
                         "name": "key_id",
@@ -3160,8 +3254,10 @@
                         "required": true,
                         "schema": {
                             "type": "string",
+                            "description": "Key ID to revoke",
                             "title": "Key Id"
-                        }
+                        },
+                        "description": "Key ID to revoke"
                     }
                 ],
                 "responses": {
@@ -3202,8 +3298,10 @@
                         "required": true,
                         "schema": {
                             "type": "string",
+                            "description": "Toolkit ID",
                             "title": "Toolkit Id"
-                        }
+                        },
+                        "description": "Toolkit ID"
                     },
                     {
                         "name": "req_id",
@@ -3211,8 +3309,10 @@
                         "required": true,
                         "schema": {
                             "type": "string",
+                            "description": "Access request ID to approve",
                             "title": "Req Id"
-                        }
+                        },
+                        "description": "Access request ID to approve"
                     }
                 ],
                 "responses": {
@@ -3251,7 +3351,7 @@
                     "toolkits"
                 ],
                 "summary": "Deny an access request (human session only)",
-                "description": "Deny a pending access request.",
+                "description": "Deny a pending access request.\n\nPermanently rejects the request. The agent will receive a 403 error if it continues\nto attempt the operation that required the permission. To grant access later, the\nagent must file a new request.\n\nParameters:\n    toolkit_id: Toolkit ID containing the access request\n    req_id: Access request ID (format: areq_xxxxxxxx)\n\nReturns:\n    Updated access request with status='denied' and resolved_at timestamp.\n\nAuth: Requires human session (admin).",
                 "operationId": "deny_access_request_toolkits__toolkit_id__access_requests__req_id__deny_post",
                 "parameters": [
                     {
@@ -3260,8 +3360,10 @@
                         "required": true,
                         "schema": {
                             "type": "string",
+                            "description": "Toolkit ID",
                             "title": "Toolkit Id"
-                        }
+                        },
+                        "description": "Toolkit ID"
                     },
                     {
                         "name": "req_id",
@@ -3269,8 +3371,10 @@
                         "required": true,
                         "schema": {
                             "type": "string",
+                            "description": "Access request ID to deny",
                             "title": "Req Id"
-                        }
+                        },
+                        "description": "Access request ID to deny"
                     }
                 ],
                 "responses": {
@@ -3318,8 +3422,10 @@
                         "required": true,
                         "schema": {
                             "type": "string",
+                            "description": "Toolkit ID",
                             "title": "Toolkit Id"
-                        }
+                        },
+                        "description": "Toolkit ID"
                     },
                     {
                         "name": "cred_id",
@@ -3327,8 +3433,10 @@
                         "required": true,
                         "schema": {
                             "type": "string",
+                            "description": "Credential ID to get permissions for",
                             "title": "Cred Id"
-                        }
+                        },
+                        "description": "Credential ID to get permissions for"
                     }
                 ],
                 "responses": {
@@ -3381,8 +3489,10 @@
                         "required": true,
                         "schema": {
                             "type": "string",
+                            "description": "Toolkit ID",
                             "title": "Toolkit Id"
-                        }
+                        },
+                        "description": "Toolkit ID"
                     },
                     {
                         "name": "cred_id",
@@ -3390,8 +3500,10 @@
                         "required": true,
                         "schema": {
                             "type": "string",
+                            "description": "Credential ID to set permissions for",
                             "title": "Cred Id"
-                        }
+                        },
+                        "description": "Credential ID to set permissions for"
                     }
                 ],
                 "requestBody": {
@@ -3455,8 +3567,10 @@
                         "required": true,
                         "schema": {
                             "type": "string",
+                            "description": "Toolkit ID",
                             "title": "Toolkit Id"
-                        }
+                        },
+                        "description": "Toolkit ID"
                     },
                     {
                         "name": "cred_id",
@@ -3464,8 +3578,10 @@
                         "required": true,
                         "schema": {
                             "type": "string",
+                            "description": "Credential ID to patch permissions for",
                             "title": "Cred Id"
-                        }
+                        },
+                        "description": "Credential ID to patch permissions for"
                     }
                 ],
                 "requestBody": {
@@ -3526,11 +3642,13 @@
                         "required": false,
                         "schema": {
                             "type": "integer",
-                            "maximum": 200,
+                            "maximum": 500,
                             "minimum": 1,
+                            "description": "Maximum number of traces to return (1-500)",
                             "default": 20,
                             "title": "Limit"
-                        }
+                        },
+                        "description": "Maximum number of traces to return (1-500)"
                     },
                     {
                         "name": "offset",
@@ -3539,9 +3657,11 @@
                         "schema": {
                             "type": "integer",
                             "minimum": 0,
+                            "description": "Number of traces to skip for pagination",
                             "default": 0,
                             "title": "Offset"
-                        }
+                        },
+                        "description": "Number of traces to skip for pagination"
                     }
                 ],
                 "responses": {
@@ -3603,8 +3723,10 @@
                         "required": true,
                         "schema": {
                             "type": "string",
+                            "description": "Trace ID (format: exec_{12chars})",
                             "title": "Trace Id"
-                        }
+                        },
+                        "description": "Trace ID (format: exec_{12chars})"
                     }
                 ],
                 "responses": {
@@ -3715,8 +3837,10 @@
                                     "type": "null"
                                 }
                             ],
+                            "description": "Redirect URL after successful login (relative path only)",
                             "title": "Redirect To"
-                        }
+                        },
+                        "description": "Redirect URL after successful login (relative path only)"
                     }
                 ],
                 "responses": {
@@ -3797,7 +3921,7 @@
                     "user"
                 ],
                 "summary": "Check current session status",
-                "description": "Returns current session info. Useful for UI to check if logged in.",
+                "description": "Returns current session info and authentication context.\n\nResponse varies based on authentication method:\n- Human session (JWT cookie): logged_in=true, includes username\n- Trusted subnet (no auth): logged_in=false, admin=true (note about logging in for named session)\n- Agent key (X-Jentic-API-Key): logged_in=false, agent_key=true, includes toolkit_id\n- No auth: logged_in=false, agent_key=false\n\nUseful for UI to determine what features to show and whether to require login.\nAgents can call this to confirm their key is valid and see which toolkit they belong to.\n\nThis endpoint accepts requests with or without authentication (open passthrough).",
                 "operationId": "me_user_me_get",
                 "responses": {
                     "200": {
@@ -3987,8 +4111,10 @@
                         "required": true,
                         "schema": {
                             "type": "string",
+                            "description": "Workflow slug (URL-safe identifier)",
                             "title": "Slug"
-                        }
+                        },
+                        "description": "Workflow slug (URL-safe identifier)"
                     }
                 ],
                 "responses": {
@@ -4070,8 +4196,10 @@
                         "required": true,
                         "schema": {
                             "type": "string",
+                            "description": "Upstream API path (format: host.domain/path, e.g. api.github.com/repos)",
                             "title": "Target"
-                        }
+                        },
+                        "description": "Upstream API path (format: host.domain/path, e.g. api.github.com/repos)"
                     }
                 ],
                 "responses": {
@@ -4970,6 +5098,7 @@
                     "status": {
                         "type": "string",
                         "title": "Status",
+                        "description": "Import status: 'ok' if all sources succeeded, 'partial' if some failed, 'failed' if all failed",
                         "examples": [
                             "imported"
                         ]
@@ -4984,6 +5113,7 @@
                             }
                         ],
                         "title": "Id",
+                        "description": "Registered API ID (for OpenAPI specs) or workflow slug (for Arazzo)",
                         "examples": [
                             "api.github.com"
                         ]
@@ -4998,6 +5128,7 @@
                             }
                         ],
                         "title": "Name",
+                        "description": "Display name extracted from spec (info.title for APIs, workflow.summary for workflows)",
                         "examples": [
                             "GitHub REST API"
                         ]
@@ -5012,6 +5143,7 @@
                             }
                         ],
                         "title": "Operations Indexed",
+                        "description": "Number of operations parsed and indexed in BM25 (OpenAPI specs only)",
                         "examples": [
                             247
                         ]
@@ -5026,6 +5158,7 @@
                             }
                         ],
                         "title": "Type",
+                        "description": "Import type: 'api' for OpenAPI specs, 'workflow' for Arazzo documents",
                         "examples": [
                             "api"
                         ]
@@ -5036,7 +5169,8 @@
                 "required": [
                     "status"
                 ],
-                "title": "ImportOut"
+                "title": "ImportOut",
+                "description": "Result of importing an OpenAPI spec or Arazzo workflow into the catalog.\n\nThe import endpoint (POST /import) accepts specs from URLs, local file paths, or\ninline content. It parses the document, indexes operations/workflows in BM25,\nand stores metadata for broker execution. Returns the registered ID and count\nof indexed operations."
             },
             "ImportRequest": {
                 "properties": {
@@ -5891,6 +6025,7 @@
                     "type": {
                         "type": "string",
                         "title": "Type",
+                        "description": "Result type: 'operation' for API endpoints, 'workflow' for multi-step Arazzo workflows",
                         "examples": [
                             "operation"
                         ]
@@ -5898,6 +6033,7 @@
                     "id": {
                         "type": "string",
                         "title": "Id",
+                        "description": "Capability ID in METHOD/host/path format",
                         "examples": [
                             "GET/api.github.com/repos/{owner}/{repo}/issues"
                         ]
@@ -5912,6 +6048,7 @@
                             }
                         ],
                         "title": "Slug",
+                        "description": "Workflow slug (workflows only) \u2014 used as path segment in POST /workflows/{slug}",
                         "examples": [
                             "github-list-issues"
                         ]
@@ -5926,6 +6063,7 @@
                             }
                         ],
                         "title": "Summary",
+                        "description": "Short description of what this capability does",
                         "examples": [
                             "List repository issues"
                         ]
@@ -5940,6 +6078,7 @@
                             }
                         ],
                         "title": "Description",
+                        "description": "Detailed description from the OpenAPI operation or Arazzo workflow",
                         "examples": [
                             "List issues in a repository"
                         ]
@@ -5947,6 +6086,7 @@
                     "score": {
                         "type": "number",
                         "title": "Score",
+                        "description": "BM25 relevance score (0.0-1.0) \u2014 higher is more relevant to the search query",
                         "examples": [
                             0.85
                         ]
@@ -5957,6 +6097,7 @@
                         },
                         "type": "array",
                         "title": "Involved Apis",
+                        "description": "List of upstream API hosts involved in this capability (for workflows, may list multiple)",
                         "examples": [
                             [
                                 "api.github.com"
@@ -5971,7 +6112,8 @@
                     "id",
                     "score"
                 ],
-                "title": "SearchResult"
+                "title": "SearchResult",
+                "description": "A search result from the BM25 index \u2014 either an operation or workflow capability.\n\nThe BM25 search index covers both API operations (parsed from OpenAPI specs) and\nworkflows (parsed from Arazzo documents). Results are ranked by relevance score.\nUse GET /inspect/{id} to get the full schema for a result before calling it."
             },
             "SyncRequest": {
                 "properties": {

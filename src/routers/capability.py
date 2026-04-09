@@ -17,10 +17,10 @@ import json
 import re
 import yaml
 from pathlib import Path
-from typing import Any
+from typing import Annotated, Any
 from urllib.parse import quote
 
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import APIRouter, HTTPException, Path, Query, Request
 from fastapi.responses import Response
 from src.db import get_db
 from src.config import JENTIC_PUBLIC_HOSTNAME
@@ -281,7 +281,7 @@ _CAPABILITY_CONTENT_TYPES = {
     ),
 )
 async def get_capability(
-    capability_id: str,
+    capability_id: Annotated[str, Path(description="Capability ID (METHOD/host/path format) or workflow slug")],
     request: Request,
     toolkit_id: str | None = Query(None, description="Pass to include credential status for this toolkit"),
 ):
