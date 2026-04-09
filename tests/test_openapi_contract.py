@@ -105,17 +105,30 @@ class TestJenticRequirements:
             if schema_name in schemas:
                 assert "description" in schemas[schema_name], f"{schema_name} missing description"
 
-    def test_token_request_schema_renamed(self, client):
-        """OAuth token schema MUST NOT have ugly auto-generated name (Phase 1)."""
+    def test_token_request_schema_valid(self, client):
+        """OAuth2 token endpoint request schema MUST be properly defined and referenced."""
         spec = client.get("/openapi.json").json()
         schemas = spec["components"]["schemas"]
 
-        # Old ugly name should NOT exist (using OAuth2PasswordRequestForm avoids schema generation)
-        assert "Body_token_user_token_post" not in schemas
+        # Check /user/token endpoint
+        token_op = spec["paths"]["/user/token"]["post"]
+        req_body = token_op.get("requestBody", {})
+        form_schema = req_body.get("content", {}).get("application/x-www-form-urlencoded", {}).get("schema", {})
 
-        # No schemas should have ugly Body_* or token_user_token patterns
-        ugly_schemas = [name for name in schemas if "Body_" in name and "token" in name.lower()]
-        assert len(ugly_schemas) == 0, f"Found ugly schema names: {ugly_schemas}"
+        # Should have a schema reference
+        assert "$ref" in form_schema or "type" in form_schema, "Token endpoint must have a schema"
+
+        # If it uses a $ref, that schema must exist
+        if "$ref" in form_schema:
+            ref = form_schema["$ref"]
+            schema_name = ref.split("/")[-1]
+            assert schema_name in schemas, f"Referenced schema '{schema_name}' must exist in components/schemas"
+
+            # The schema should have required OAuth2 fields
+            schema_def = schemas[schema_name]
+            props = schema_def.get("properties", {})
+            assert "username" in props, "OAuth2 form must have username field"
+            assert "password" in props, "OAuth2 form must have password field"
 
     def test_agent_operations_have_hints(self, client):
         """Agent-facing operations SHOULD have x-agent-hints (Phase 1)."""

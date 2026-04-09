@@ -185,8 +185,7 @@ app = FastAPI(
     },
     license_info={
         "name": "Apache 2.0",
-        "identifier": "Apache-2.0",
-        "url": "https://www.apache.org/licenses/LICENSE-2.0.html"
+        "identifier": "Apache-2.0"
     },
 )
 
@@ -507,12 +506,6 @@ def custom_openapi():
     schema["info"]["license"] = app.license_info
 
     schema.setdefault("components", {})
-
-    # Remove ugly auto-generated schema names (e.g. Body_token_user_token_post)
-    if "schemas" in schema.get("components", {}):
-        schemas_to_remove = [name for name in schema["components"]["schemas"] if name.startswith("Body_") and "token" in name.lower()]
-        for ugly_name in schemas_to_remove:
-            del schema["components"]["schemas"][ugly_name]
 
     schema["components"]["securitySchemes"] = {
         "JenticApiKey": {
