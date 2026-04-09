@@ -364,7 +364,7 @@ async def list_apis(
     - `has_credentials: bool` — whether credentials have been configured for this API
 
     Use `?source=local` or `?source=catalog` to filter. Default returns all.
-    To use a catalog API: call `POST /credentials` with `api_id` set — the spec is imported automatically.
+    To use a catalog API: call `POST /credentials` with `routes` set — the spec is imported automatically.
     """
     from src.routers.catalog import _load_manifest, _catalog_vendor_set, GITHUB_REPO
 
@@ -372,9 +372,19 @@ async def list_apis(
     async with get_db() as db:
         async with db.execute("SELECT id, name, description, spec_path, base_url, created_at FROM apis ORDER BY id") as cur:
             local_rows = await cur.fetchall()
-        # Which local API ids have credentials?
-        async with db.execute("SELECT DISTINCT api_id FROM credentials WHERE api_id IS NOT NULL") as cur:
-            cred_api_ids: set[str] = {r[0] for r in await cur.fetchall()}
+        # Which local API ids have credentials? Check by route prefix match.
+        import json as _json
+        async with db.execute("SELECT routes FROM credentials WHERE routes IS NOT NULL AND routes != '[]'") as cur:
+            all_routes: set[str] = set()
+            for r in await cur.fetchall():
+                try:
+                    all_routes.update(_json.loads(r[0]))
+                except (ValueError, TypeError):
+                    pass
+        # Build a set of API IDs that have at least one credential route matching
+        def _has_cred(api_id: str) -> bool:
+            return any(route.startswith(api_id) or api_id.startswith(route) for route in all_routes)
+        cred_api_ids = _has_cred  # used as a callable below
         # Fetch oauth broker mappings for all local APIs
         local_api_ids = [r[0] for r in local_rows]
         broker_map = await _fetch_oauth_brokers(db, local_api_ids)
@@ -385,7 +395,7 @@ async def list_apis(
             "name": r[1],
             "vendor": _extract_vendor(r[0]),
             "source": "local",
-            "has_credentials": r[0] in cred_api_ids,
+            "has_credentials": cred_api_ids(r[0]),
             "description": r[2],
             "base_url": r[4],
             "created_at": r[5],
@@ -615,8 +625,8 @@ async def get_api(
        - `http bearer` → `secret` (token)
        - `http basic` → `secret` (password) + optional `identity` (username)
        - `apiKey` → `secret` (key value); if compound, check scheme names for Secret/Identity
-    3. Prompt user for values, then `POST /credentials` with `api_id`, `auth_type`, `value` (and `identity` if needed).
-    4. Verify with `GET /credentials?api_id={api_id}`
+    3. Prompt user for values, then `POST /credentials` with `routes`, `auth_type`, `value` (and `identity` if needed).
+    4. Verify with `GET /credentials?route={api_id}`
 
     **Optional sections** (add via `?sections=`):
     - `tags` — tag objects with names and descriptions
@@ -653,7 +663,9 @@ async def get_api(
         # Which security schemes already have at least one credential bound?
         # Used by client UIs to show "configured" vs "missing" per scheme.
         async with db.execute(
-            "SELECT DISTINCT auth_type FROM credentials WHERE api_id=? AND auth_type IS NOT NULL",
+            """SELECT DISTINCT auth_type FROM credentials
+               WHERE auth_type IS NOT NULL
+               AND EXISTS (SELECT 1 FROM json_each(routes) WHERE ? LIKE (value || '%'))""",
             (api_id,),
         ) as cur:
             cred_rows = await cur.fetchall()

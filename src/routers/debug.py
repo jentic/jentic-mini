@@ -317,8 +317,8 @@ async def fix_credentials():
     import uuid as _uuid
     from src.db import get_db, DEFAULT_TOOLKIT_ID
     async with get_db() as db:
-        await db.execute("UPDATE credentials SET api_id='techpreneurs.ie', scheme_name='DiscourseApiKey' WHERE env_var='DISCOURSE_API_KEY'")
-        await db.execute("UPDATE credentials SET api_id='techpreneurs.ie', scheme_name='DiscourseUsername' WHERE env_var='DISCOURSE_API_USERNAME'")
+        await db.execute("UPDATE credentials SET routes='[\"techpreneurs.ie\"]', auth_type='apiKey' WHERE env_var='DISCOURSE_API_KEY'")
+        await db.execute("UPDATE credentials SET routes='[\"techpreneurs.ie\"]', auth_type='apiKey' WHERE env_var='DISCOURSE_API_USERNAME'")
         for ev in ('DISCOURSE_API_KEY', 'DISCOURSE_API_USERNAME', 'DISCOURSE_USERNAME'):
             async with db.execute('SELECT id FROM credentials WHERE env_var=?', (ev,)) as cur:
                 row = await cur.fetchone()
@@ -328,7 +328,7 @@ async def fix_credentials():
                     (str(_uuid.uuid4()), DEFAULT_TOOLKIT_ID, row[0])
                 )
         await db.commit()
-        async with db.execute("SELECT env_var, api_id, scheme_name FROM credentials WHERE api_id IS NOT NULL") as cur:
+        async with db.execute("SELECT env_var, routes, auth_type FROM credentials WHERE routes IS NOT NULL AND routes != '[]'") as cur:
             updated = await cur.fetchall()
     return {"updated": updated}
 
@@ -337,7 +337,7 @@ async def fix_credentials():
 async def check_creds():
     from src.db import get_db, DEFAULT_TOOLKIT_ID
     async with get_db() as db:
-        async with db.execute("SELECT id, env_var, api_id, scheme_name FROM credentials") as cur:
+        async with db.execute("SELECT id, env_var, routes, auth_type FROM credentials") as cur:
             creds = await cur.fetchall()
         async with db.execute("SELECT toolkit_id, credential_id FROM toolkit_credentials WHERE toolkit_id=?", (DEFAULT_TOOLKIT_ID,)) as cur:
             cc = await cur.fetchall()

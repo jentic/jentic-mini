@@ -193,8 +193,8 @@ async def _ensure_internal_credential() -> None:
             label="Jentic Mini Admin Key",
             env_var="JENTIC_MINI_ADMIN_KEY",
             value=raw_key,
-            api_id=_public_hostname(),
-            scheme_name="JenticApiKey",
+            routes=[_public_hostname()],
+            auth_type="JenticApiKey",
         )
 
         # Override the semantic ID to our canonical internal ID (in case slug differs)

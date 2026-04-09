@@ -106,10 +106,28 @@ async def _find_credential_for_host(
     import logging as _log
     _broker_log = _log.getLogger("jentic.broker")
 
-    # Route-based credential lookup — no apis table dependency
-    creds = await vault.get_credentials_for_route(toolkit_id, host, path)
-    _broker_log.debug("CRED LOOKUP: host=%r path=%r → %d cred(s): %s",
-                      host, path, len(creds), [c.get("id") for c in creds])
+    is_ambiguous = False
+
+    if alias:
+        # Alias is a hard override — look up directly by ID, bypass route matching
+        async with get_db() as db:
+            async with db.execute(
+                "SELECT id, env_var, encrypted_value, auth_type, identity FROM credentials WHERE id=?",
+                (alias,),
+            ) as cur:
+                row = await cur.fetchone()
+        if row:
+            creds = [{"id": row[0], "value": vault.decrypt(row[2]), "auth_type": row[3],
+                       "identity": row[4] if len(row) > 4 else None}]
+            _broker_log.debug("CRED LOOKUP: alias %r → direct lookup", alias)
+        else:
+            _broker_log.warning("CRED LOOKUP: alias %r not found", alias)
+            creds = []
+    else:
+        # Route-based credential lookup — no apis table dependency
+        creds = await vault.get_credentials_for_route(toolkit_id, host, path)
+        _broker_log.debug("CRED LOOKUP: host=%r path=%r → %d cred(s): %s",
+                          host, path, len(creds), [c.get("id") for c in creds])
 
     if not creds and toolkit_id:
         raise ValueError(
@@ -120,17 +138,6 @@ async def _find_credential_for_host(
 
     if not creds:
         return {}, None, None, False
-
-    is_ambiguous = False
-
-    if alias and creds:
-        matched = [c for c in creds if c.get("id") == alias]
-        if matched:
-            _broker_log.debug("CRED LOOKUP: alias %r matched → using %r", alias, matched[0].get("id"))
-            creds = matched
-        else:
-            _broker_log.warning("CRED LOOKUP: alias %r not found in %s — falling back to first cred",
-                                alias, [c.get("id") for c in creds])
 
     # Ambiguity: routes-based lookup returns credentials ordered by longest prefix.
     # If the top two have the same prefix length, it's ambiguous.
@@ -281,7 +288,7 @@ async def _find_pipedream_credential_for_host(
     """
     if not toolkit_id:
         return None, None
-    full_path = f"{host}/{path}".rstrip("/")
+    full_path = f"{host}/{path.lstrip('/')}".rstrip("/")
     from src.db import DEFAULT_TOOLKIT_ID
     async with get_db() as db:
         if alias:

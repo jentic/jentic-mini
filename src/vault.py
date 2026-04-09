@@ -137,7 +137,7 @@ async def get_credential_ids_for_route(toolkit_id: str, host: str, path: str) ->
     Ordered by longest matching prefix (most specific first).
     """
     from src.db import DEFAULT_TOOLKIT_ID
-    full_path = f"{host}/{path}".rstrip("/")
+    full_path = f"{host}/{path.lstrip('/')}".rstrip("/")
     async with get_db() as db:
         if toolkit_id == DEFAULT_TOOLKIT_ID:
             async with db.execute(
@@ -179,7 +179,7 @@ async def get_credentials_for_route(toolkit_id: str, host: str, path: str) -> li
     Named toolkits are scoped via toolkit_credentials.
     """
     from src.db import DEFAULT_TOOLKIT_ID
-    full_path = f"{host}/{path}".rstrip("/")
+    full_path = f"{host}/{path.lstrip('/')}".rstrip("/")
     async with get_db() as db:
         if toolkit_id == DEFAULT_TOOLKIT_ID:
             async with db.execute(

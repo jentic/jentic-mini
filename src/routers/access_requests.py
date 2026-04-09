@@ -75,7 +75,7 @@ class AccessRequestBody(NormModel):
     credential_id: str = Field(
         description=(
             "The upstream API credential to act on. "
-            "Discover available IDs and labels via `GET /credentials` or `GET /credentials?api_id=<host>`."
+            "Discover available IDs and labels via `GET /credentials` or `GET /credentials?route=<host>`."
         )
     )
     rules: list[PermissionRule] = Field(
@@ -141,7 +141,7 @@ async def create_access_request(toolkit_id: str, request: Request, body: AccessR
     """Agent submits an access request. A human approves or denies it at the `approve_url`.
 
     **Workflow:**
-    1. `GET /credentials?api_id=<host>` — find the `credential_id` you need
+    1. `GET /credentials?route=<host>` — find the `credential_id` you need
     2. `POST` this endpoint with `type`, `credential_id`, `rules`, and optional `reason`
     3. Return the `approve_url` to your user and poll `status` until `approved` or `denied`
 
@@ -466,7 +466,7 @@ async def _describe_request(req_type: str, payload: dict) -> str:
         if cred_id:
             async with get_db() as db:
                 async with db.execute(
-                    "SELECT label, api_id FROM credentials WHERE id=?", (cred_id,)
+                    "SELECT label, routes FROM credentials WHERE id=?", (cred_id,)
                 ) as cur:
                     row = await cur.fetchone()
             base = f"Grant access to credential '{row[0]}' (for {row[1] or 'unknown API'})" if row else f"Grant access to credential '{cred_id}'"

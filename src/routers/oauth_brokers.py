@@ -727,14 +727,11 @@ async def sync_broker_accounts(broker_id: BrokerIdPath, body: SyncRequest, reque
     # Return the credential IDs created/updated so the caller knows what to provision
     async with get_db() as db:
         async with db.execute(
-            "SELECT id, label, api_id FROM credentials WHERE auth_type='pipedream_oauth' "
-            "AND api_id IN (SELECT api_host FROM oauth_broker_accounts "
-            "WHERE broker_id=? AND external_user_id=?)",
-            (broker_id, body.external_user_id),
+            "SELECT id, label, routes FROM credentials WHERE auth_type='pipedream_oauth'",
         ) as cur:
             cred_rows = await cur.fetchall()
 
-    credentials = [{"id": r[0], "label": r[1], "api_host": r[2]} for r in cred_rows]
+    credentials = [{"id": r[0], "label": r[1], "routes": r[2]} for r in cred_rows]
 
     return {
         "broker_id": broker_id,
