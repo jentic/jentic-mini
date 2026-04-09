@@ -171,11 +171,28 @@ export const api = {
 
 // --- OAuth Brokers (not in generated client — direct fetch) ---
 
+/** Structured API error — carries the parsed JSON body when available. */
+export class ApiError extends Error {
+	constructor(
+		public readonly status: number,
+		public readonly statusText: string,
+		/** Raw response body text */
+		public readonly body: string,
+		/** Parsed JSON body, if the response was JSON */
+		public readonly data: Record<string, any> | null = null,
+	) {
+		super(data?.message ?? `${status} ${statusText}`);
+		this.name = 'ApiError';
+	}
+}
+
 async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
 	const res = await fetch(url, { credentials: 'include', ...init });
 	if (!res.ok) {
 		const body = await res.text().catch(() => '');
-		throw new Error(`${res.status} ${res.statusText}: ${body}`);
+		let data: Record<string, any> | null = null;
+		try { data = JSON.parse(body); } catch { /* not JSON */ }
+		throw new ApiError(res.status, res.statusText, body, data);
 	}
 	const text = await res.text();
 	return text ? JSON.parse(text) : (undefined as unknown as T);
