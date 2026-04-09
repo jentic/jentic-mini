@@ -107,10 +107,10 @@ auth header, forwards to the upstream API, logs a trace, and returns the
 response verbatim.
 
 **Multiple credentials for the same host** (e.g. Google Calendar + Gmail both on
-`www.googleapis.com`): add `X-Jentic-Service: google_calendar` to select by
-service name. The response includes `X-Jentic-Credential-Used` so you can verify
-which credential was injected. If ambiguous, `X-Jentic-Credential-Ambiguous: true`
-is set as a warning.
+`www.googleapis.com`): each credential declares `routes` (host+path prefixes) so
+the broker selects the right one by longest prefix match. Use
+`X-Jentic-Credential: work-gmail` to select explicitly by ID. The response
+includes `X-Jentic-Credential-Used` so you can verify which credential was injected.
 
 ## Workflow Execution
 

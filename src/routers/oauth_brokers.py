@@ -26,7 +26,7 @@ from src.validators import NormModel, NormStr
 from src.utils import build_absolute_url
 
 from src.auth import require_human_session
-from src.brokers.pipedream import api_host_to_pd_slug, broker_credential_id
+from src.brokers.pipedream import api_host_to_pd_slug, pd_slug_to_route
 from src.db import get_db
 from src.oauth_broker import registry as oauth_broker_registry
 import src.vault as vault
@@ -610,7 +610,17 @@ async def connect_callback(
                         old_rows = await cur.fetchall()
 
                 if old_rows:
-                    old_cred_ids = [broker_credential_id(broker_id, replace_account_id, r[0]) for r in old_rows]
+                    # Find credential IDs by route match for the old account's hosts
+                    old_cred_ids = []
+                    for old_r in old_rows:
+                        old_route = pd_slug_to_route("", base_proxy_host=old_r[0])
+                        async with get_db() as _cdb:
+                            async with _cdb.execute(
+                                """SELECT id FROM credentials WHERE auth_type='pipedream_oauth'
+                                   AND EXISTS (SELECT 1 FROM json_each(routes) WHERE value=?)""",
+                                (old_route,),
+                            ) as _ccur:
+                                old_cred_ids.extend([cr[0] for cr in await _ccur.fetchall()])
 
                     # 1. Revoke upstream in Pipedream (best-effort, async)
                     if live_broker is not None:
@@ -805,7 +815,17 @@ async def delete_broker_account(broker_id: BrokerIdPath, account_id: str):
     if not rows:
         raise HTTPException(404, f"No connected account '{account_id}' found for broker '{broker_id}'")
     # An account can map to multiple api_hosts (e.g. Google Sheets → sheets.googleapis.com + googleapis.com/sheets)
-    cred_ids = [broker_credential_id(broker_id, account_id, r[1]) for r in rows]
+    # Find credential IDs by route match for this account's hosts
+    cred_ids = []
+    async with get_db() as db:
+        for r in rows:
+            route = pd_slug_to_route("", base_proxy_host=r[1])
+            async with db.execute(
+                """SELECT id FROM credentials WHERE auth_type='pipedream_oauth'
+                   AND EXISTS (SELECT 1 FROM json_each(routes) WHERE value=?)""",
+                (route,),
+            ) as cur:
+                cred_ids.extend([cr[0] for cr in await cur.fetchall()])
 
     # 1. Revoke upstream in Pipedream
     pipedream_revoked = False
@@ -889,11 +909,20 @@ async def update_broker_account(broker_id: BrokerIdPath, account_id: str, body: 
             "UPDATE oauth_broker_accounts SET label=? WHERE broker_id=? AND account_id=?",
             (new_label.strip(), broker_id, account_id),
         )
-        # Also update the credential label in the vault if it exists
-        await db.execute(
-            "UPDATE credentials SET label=? WHERE id LIKE ?",
-            (new_label.strip(), f"{broker_id}-{account_id}-%"),
-        )
+        # Also update the credential label in the vault — find by route match
+        async with db.execute(
+            "SELECT api_host FROM oauth_broker_accounts WHERE broker_id=? AND account_id=?",
+            (broker_id, account_id),
+        ) as cur:
+            host_rows = await cur.fetchall()
+        for hr in host_rows:
+            route = pd_slug_to_route("", base_proxy_host=hr[0])
+            await db.execute(
+                """UPDATE credentials SET label=?, updated_at=unixepoch()
+                   WHERE auth_type='pipedream_oauth'
+                   AND EXISTS (SELECT 1 FROM json_each(routes) WHERE value=?)""",
+                (new_label.strip(), route),
+            )
         await db.commit()
     return {"account_id": account_id, "label": new_label.strip()}
 
@@ -1013,10 +1042,16 @@ async def delete_oauth_broker(broker_id: BrokerIdPath):
             (broker_id,),
         ) as cur:
             accounts = await cur.fetchall()
-        cred_ids = [
-            broker_credential_id(broker_id, account_id, api_host)
-            for account_id, api_host in accounts
-        ]
+        # Find credential IDs by route match
+        cred_ids = []
+        for account_id, api_host in accounts:
+            route = pd_slug_to_route("", base_proxy_host=api_host)
+            async with db.execute(
+                """SELECT id FROM credentials WHERE auth_type='pipedream_oauth'
+                   AND EXISTS (SELECT 1 FROM json_each(routes) WHERE value=?)""",
+                (route,),
+            ) as cur:
+                cred_ids.extend([cr[0] for cr in await cur.fetchall()])
 
         # Remove toolkit bindings and broker account rows
         for cred_id in cred_ids:
