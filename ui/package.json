@@ -42,7 +42,7 @@
 		"@types/react-dom": "^18.3.7",
 		"@vitejs/plugin-react": "^4.7.0",
 		"@vitest/browser": "^4.1.2",
-		"@vitest/browser-playwright": "^4.1.2",
+		"@vitest/browser-playwright": "^4.1.4",
 		"@vitest/coverage-istanbul": "^4.1.2",
 		"axe-core": "^4.11.1",
 		"eslint": "^9.39.4",
