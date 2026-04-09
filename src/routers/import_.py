@@ -2,12 +2,14 @@
 POST /import — unified intake for APIs (OpenAPI) and workflows (Arazzo).
 
 Source types:
-  - type: "path"   — local file path already on disk (admin)
+  - type: "path"   — local file path already on disk
   - type: "url"    — fetch spec from a remote URL
   - type: "inline" — spec content posted directly in the request
 
 Detects whether the spec is an OpenAPI or Arazzo document and routes accordingly.
 Synchronous (no job queue) — suitable for Jentic's local deployment.
+
+Authentication: requires toolkit key OR human session (agent-accessible).
 """
 import json
 import logging
@@ -28,6 +30,7 @@ from src.db import get_db
 from src.bm25 import get_index
 import src.vault as vault
 from src.models import ImportOut
+from src.openapi_helpers import agent_hints
 
 log = logging.getLogger("jentic")
 router = APIRouter()
@@ -246,10 +249,31 @@ async def _register_arazzo(doc: dict, saved_path: str, slug_hint: str | None = N
 
 # ── Route ─────────────────────────────────────────────────────────────────────
 
-@router.post("/import", summary="Import an API spec or workflow — add to the searchable catalog", response_model=ImportOut)
+@router.post(
+    "/import",
+    summary="Import an API spec or workflow — add to the searchable catalog",
+    response_model=ImportOut,
+    openapi_extra=agent_hints(
+        when_to_use="Use to register a new API (OpenAPI 3.x spec) or workflow (Arazzo document) into the local catalog for searchability and execution. Supports three source types: url (fetch from remote URL), path (local file path), inline (spec content in request body). Automatically detects OpenAPI vs Arazzo, parses operations, computes capability IDs, and indexes for BM25 search. Use when adding a new API not yet in the catalog.",
+        prerequisites=[
+            "Requires authentication (toolkit key or human session)",
+            "Valid OpenAPI 3.x or Arazzo 1.0 document",
+            "For url type: publicly accessible spec URL",
+            "For path type: local file system path (server must have read access)",
+            "For inline type: spec content as JSON or YAML string"
+        ],
+        avoid_when="Do not use for APIs already in the catalog — check GET /apis or GET /catalog first. Do not use to add credentials (use POST /credentials). Do not use to update existing specs — delete and re-import instead.",
+        related_operations=[
+            "GET /apis — check if API is already registered before importing",
+            "GET /catalog — browse available APIs in public catalog before importing",
+            "POST /credentials — add credentials after importing an API",
+            "GET /search — verify imported operations are searchable"
+        ]
+    ),
+)
 async def import_sources(body: ImportRequest):
     """Registers an OpenAPI spec or Arazzo workflow into the catalog and BM25 index.
-    Source types: url (fetch from URL), upload (multipart file), inline (JSON body).
+    Source types: path (local file), url (fetch from URL), inline (spec content in request body).
     For OpenAPI specs: parses operations, computes capability IDs, indexes descriptions.
     For Arazzo workflows: stores definition, extracts input schema and involved APIs.
     Returns the registered API or workflow with its canonical id.

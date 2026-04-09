@@ -4,6 +4,23 @@ This test documents the CURRENT auth boundary (not the ideal state). It serves
 as a regression test - if this fails, the auth boundary changed and you must
 verify the change is intentional and update the test.
 
+KNOWN AUTH BOUNDARY MISMATCHES (code vs OpenAPI spec declaration):
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+1. Runtime allows agents, spec declares human-only (_HUMAN_ONLY_OPERATIONS):
+   - POST /toolkits                              (201 - creates toolkit)
+   - POST /toolkits/{id}/keys                    (201 - issues new key)
+   - PATCH /toolkits/{id}/keys/{key_id}          (404 - no auth check)
+   - DELETE /toolkits/{id}/keys/{key_id}         (404 - no auth check)
+   - DELETE /toolkits/{id}/credentials/{cred_id} (204 - unbinds credential)
+
+   ROOT CAUSE: Missing dependencies=[Depends(require_human_session)] in code.
+   FIX: Add dependency to src/routers/toolkits.py (5 endpoints).
+   TODO: Phase 2/3 - add require_human_session to enforce spec declaration.
+
+2. Spec says public (security: []), runtime requires auth (401 without key):
+   - GET /search, GET /apis, GET /workflows, etc.
+   Documented in allowed_mismatch set in test_no_unintended_public_endpoints.
+
 NOTE: Some endpoints marked with TODO may need stricter auth in the future.
 This test captures reality as of Phase 1 to prevent accidental loosening.
 """
@@ -64,14 +81,24 @@ AGENT_ACCESSIBLE_ENDPOINTS = {
     ("GET", "/traces"),
     ("GET", "/traces/{id}"),
     ("GET", "/jobs/{job_id}"),
-    # Toolkits - NOTE: Some of these work WITHOUT auth in current implementation
+    # Toolkits (read-only for agents + some write operations that should be human-only)
     ("GET", "/toolkits"),  # TODO: Review - currently works without auth
     ("GET", "/toolkits/{id}"),  # TODO: Review - currently works without auth
     ("GET", "/toolkits/{id}/keys"),
     ("GET", "/toolkits/{id}/credentials"),
-    ("POST", "/toolkits"),  # TODO: Review - agents can currently create toolkits!
-    ("DELETE", "/toolkits/{id}"),  # TODO: Review - agents can currently delete toolkits!
-    ("POST", "/toolkits/{id}/keys"),  # TODO: Review - agents can currently create keys!
+    # ⚠️ MISMATCH: These are declared human-only in _HUMAN_ONLY_OPERATIONS (main.py)
+    # but have NO require_human_session dependency in the code, so agents can access them.
+    # TODO Phase 2/3: Add dependencies=[Depends(require_human_session)] to:
+    #   - src/routers/toolkits.py:206 POST /toolkits
+    #   - src/routers/toolkits.py:515 POST /toolkits/{id}/keys
+    #   - src/routers/toolkits.py:725 DELETE /toolkits/{id}/credentials/{cred_id}
+    #   - src/routers/toolkits.py PATCH /toolkits/{id}/keys/{key_id}
+    #   - src/routers/toolkits.py DELETE /toolkits/{id}/keys/{key_id}
+    ("POST", "/toolkits"),  # 201 - agents can create toolkits (should be human-only)
+    ("POST", "/toolkits/{id}/keys"),  # 201 - agents can issue keys (should be human-only)
+    ("DELETE", "/toolkits/{id}/credentials/{cred_id}"),  # 204 - agents can unbind (should be human-only)
+    ("PATCH", "/toolkits/{id}/keys/{key_id}"),  # 404 when key doesn't exist, but no auth check
+    ("DELETE", "/toolkits/{id}/keys/{key_id}"),  # 404 when key doesn't exist, but no auth check
     # Access requests (agents can file, view own)
     ("POST", "/toolkits/{id}/access-requests"),
     ("GET", "/toolkits/{id}/access-requests"),
@@ -163,21 +190,23 @@ def test_agent_accessible_endpoints_reject_no_auth(client):
 def test_human_only_endpoints_reject_agent_key(client, agent_key_header):
     """Human-only endpoints MUST reject agent keys.
 
-    This test captures the CURRENT state. Some endpoints that should ideally
-    be human-only currently work with agent keys - these are marked with TODO.
+    This test captures the CURRENT state. Known mismatches (code allows agents,
+    spec declares human-only) are documented in the module docstring and deferred
+    to Phase 2/3. See "KNOWN AUTH BOUNDARY MISMATCHES" section above.
     """
-    # NOTE: POST /toolkits currently ALLOWS agent keys (returns 201)
-    # This is the current behavior - test captures it for regression detection
-    # response = client.post("/toolkits", headers=agent_key_header, json={"name": "Test"})
-    # assert response.status_code == 201, "POST /toolkits currently allows agents"
-
-    # NOTE: DELETE /toolkits currently ALLOWS agent keys (returns 204)
-    # response = client.delete("/toolkits/nonexistent", headers=agent_key_header)
-    # assert response.status_code == 204, "DELETE /toolkits currently allows agents"
-
-    # NOTE: POST /toolkits/{id}/keys currently ALLOWS agent keys (returns 201)
-    # response = client.post("/toolkits/default/keys", headers=agent_key_header, json={"label": "Test"})
-    # assert response.status_code == 201, "POST /toolkits/*/keys currently allows agents"
+    # NOTE: Known mismatches - these endpoints allow agents at runtime but are
+    # declared human-only in _HUMAN_ONLY_OPERATIONS (main.py). They lack
+    # dependencies=[Depends(require_human_session)] in the route definitions.
+    #
+    # Current runtime behavior (verified):
+    # - POST /toolkits → 201 (creates toolkit)
+    # - POST /toolkits/{id}/keys → 201 (issues new key)
+    # - PATCH /toolkits/{id}/keys/{key_id} → 404 (no auth check, fails on missing resource)
+    # - DELETE /toolkits/{id}/keys/{key_id} → 404 (no auth check, fails on missing resource)
+    # - DELETE /toolkits/{id}/credentials/{cred_id} → 204 (unbinds credential)
+    #
+    # These are intentionally NOT tested here (would pass incorrectly). They're
+    # documented in AGENT_ACCESSIBLE_ENDPOINTS with TODO markers for Phase 2/3 fix.
 
     # POST /credentials with agent key returns 403 (correct) or 409 if already exists
     response = client.post("/credentials", headers=agent_key_header, json={

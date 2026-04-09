@@ -111,6 +111,19 @@
                         }
                     }
                 },
+                "x-agent-hints": {
+                    "when_to_use": "Use when you need to discover available API providers by vendor name, browse registered APIs, or check which APIs have credentials configured. Returns both locally registered APIs (source: local) and available catalog APIs (source: catalog). Use ?q= to filter by API ID or name, ?source= to filter by source type, and ?page=/limit= for pagination.",
+                    "prerequisites": [
+                        "Requires authentication (toolkit key or human session)"
+                    ],
+                    "avoid_when": "Do not use if you already know the API ID \u2014 use GET /apis/{api_id} directly instead. Do not use for natural language capability discovery \u2014 use GET /search for that.",
+                    "related_operations": [
+                        "GET /apis/{api_id} \u2014 get detailed API metadata including security schemes and credential status",
+                        "GET /apis/{api_id}/operations \u2014 list all operations for a specific API",
+                        "GET /search \u2014 search for capabilities across all APIs by natural language intent",
+                        "POST /credentials \u2014 add credentials for an API (imports from catalog if not yet registered)"
+                    ]
+                },
                 "security": []
             }
         },
@@ -186,6 +199,21 @@
                         }
                     }
                 },
+                "x-agent-hints": {
+                    "when_to_use": "Use after finding an API via GET /apis or GET /search to inspect its authentication requirements, security schemes, and available credential setup options. Critical for understanding which auth types need credentials before calling operations. Returns API metadata enriched with OpenAPI spec sections (info, servers, security_schemes). Use ?sections= to request additional spec sections (tags, paths, components).",
+                    "prerequisites": [
+                        "Requires authentication (toolkit key or human session)",
+                        "Valid API ID from GET /apis or catalog (format: hostname or hostname/path)"
+                    ],
+                    "avoid_when": "Do not use to download the full OpenAPI spec \u2014 use GET /apis/{api_id}/openapi.json for that. Do not use to list operations \u2014 use GET /apis/{api_id}/operations instead.",
+                    "related_operations": [
+                        "GET /apis \u2014 list available APIs to find the api_id",
+                        "GET /apis/{api_id}/openapi.json \u2014 download full merged OpenAPI spec with overlays applied",
+                        "GET /apis/{api_id}/operations \u2014 list all operations for this API",
+                        "POST /credentials \u2014 add credentials after inspecting security_schemes",
+                        "GET /credentials?api_id={api_id} \u2014 check which credentials are configured"
+                    ]
+                },
                 "security": []
             }
         },
@@ -227,6 +255,20 @@
                             }
                         }
                     }
+                },
+                "x-agent-hints": {
+                    "when_to_use": "Use when you need the full OpenAPI specification file for an API with all confirmed overlays applied (security scheme corrections, server URL fixes). Returns complete spec as JSON download with Content-Disposition attachment header. Overlay actions with target: $ are deep-merged; other actions listed in x-jentic-unapplied-overlays. Useful for SDK generation, schema analysis, or importing into external tools.",
+                    "prerequisites": [
+                        "Requires authentication (toolkit key or human session)",
+                        "Valid API ID from GET /apis (format: hostname or hostname/path)"
+                    ],
+                    "avoid_when": "Do not use for lightweight API inspection \u2014 use GET /apis/{api_id}?sections=info,servers,security instead. Do not use to browse operations \u2014 use GET /apis/{api_id}/operations for paginated operation list.",
+                    "related_operations": [
+                        "GET /apis/{api_id} \u2014 get API metadata with selective spec sections (no download, lighter weight)",
+                        "GET /apis/{api_id}/operations \u2014 list operations without downloading full spec",
+                        "GET /apis/{api_id}/overlays \u2014 view overlays that are merged into this spec",
+                        "POST /apis/{api_id}/overlays \u2014 submit a new overlay to correct security schemes or servers"
+                    ]
                 },
                 "security": [
                     {
@@ -319,6 +361,20 @@
                         }
                     }
                 },
+                "x-agent-hints": {
+                    "when_to_use": "Use after finding an API via GET /apis to enumerate all available operations (endpoints) for that API. Returns paginated list of capability IDs, summaries, and descriptions. Each operation can then be inspected via GET /inspect/{id} for full parameter schemas and auth requirements before execution. Useful for discovering what actions an API supports.",
+                    "prerequisites": [
+                        "Requires authentication (toolkit key or human session)",
+                        "Valid API ID from GET /apis (format: hostname or hostname/path)"
+                    ],
+                    "avoid_when": "Do not use for natural language capability discovery across all APIs \u2014 use GET /search instead. Do not use to inspect a specific operation's parameters \u2014 use GET /inspect/{id} after finding the capability ID.",
+                    "related_operations": [
+                        "GET /apis \u2014 list available APIs to find the api_id",
+                        "GET /inspect/{id} \u2014 inspect operation details (parameters, request/response schemas, auth)",
+                        "GET /search \u2014 search for specific capabilities by natural language intent instead of browsing",
+                        "GET /{target} (broker) \u2014 execute an operation after finding its capability ID"
+                    ]
+                },
                 "security": [
                     {
                         "JenticApiKey": []
@@ -378,6 +434,21 @@
                         }
                     }
                 },
+                "x-agent-hints": {
+                    "when_to_use": "Use when an API's stored OpenAPI spec is missing security schemes, has incorrect base URLs, or lacks required metadata. Submit an OpenAPI Overlay 1.0 document to patch the spec without modifying the original file. Common use: adding BearerAuth or apiKey schemes when the spec declares no security. Overlay starts as pending and auto-confirms on first successful broker call.",
+                    "prerequisites": [
+                        "Requires authentication (admin/human session)",
+                        "Valid API ID from GET /apis",
+                        "Valid OpenAPI Overlay 1.0 structure (overlay, info, actions array)"
+                    ],
+                    "avoid_when": "Do not use for testing security schemes before adding credentials \u2014 first add credentials via POST /credentials, then submit overlay if authentication fails with 401/403. Do not submit duplicate overlays \u2014 check GET /apis/{api_id}/overlays first.",
+                    "related_operations": [
+                        "GET /apis/{api_id}/overlays \u2014 list existing overlays to avoid duplicates",
+                        "GET /apis/{api_id} \u2014 inspect current security_schemes before patching",
+                        "POST /credentials \u2014 add credentials after overlay is confirmed",
+                        "GET /apis/{api_id}/openapi.json \u2014 download merged spec to verify overlay was applied"
+                    ]
+                },
                 "security": [
                     {
                         "HumanLogin": []
@@ -421,6 +492,20 @@
                             }
                         }
                     }
+                },
+                "x-agent-hints": {
+                    "when_to_use": "Use to inspect existing overlays for an API before submitting a new one (avoids duplicates) or to verify which overlays are confirmed vs pending. Each overlay includes the complete OpenAPI Overlay 1.0 document with all actions, so no second call needed. Confirmed overlays are listed first, then pending, ordered by creation date descending.",
+                    "prerequisites": [
+                        "Requires authentication (toolkit key or human session)",
+                        "Valid API ID from GET /apis"
+                    ],
+                    "avoid_when": "Do not use to download the merged spec \u2014 use GET /apis/{api_id}/openapi.json for that (overlays already applied). Do not use to inspect base security schemes \u2014 use GET /apis/{api_id} instead.",
+                    "related_operations": [
+                        "POST /apis/{api_id}/overlays \u2014 submit a new overlay after checking for duplicates",
+                        "DELETE /apis/{api_id}/overlays/{overlay_id} \u2014 delete an overlay",
+                        "GET /apis/{api_id}/openapi.json \u2014 download merged spec with all confirmed overlays applied",
+                        "GET /apis/{api_id} \u2014 view current security_schemes (includes merged overlays)"
+                    ]
                 },
                 "security": []
             }
@@ -472,6 +557,19 @@
                             }
                         }
                     }
+                },
+                "x-agent-hints": {
+                    "when_to_use": "Use to remove an incorrect or obsolete overlay from an API. Works on both pending and confirmed overlays. After deletion, the merged spec (GET /apis/{api_id}/openapi.json) will no longer include the deleted overlay's patches.",
+                    "prerequisites": [
+                        "Requires authentication (admin/human session)",
+                        "Valid API ID and overlay ID from GET /apis/{api_id}/overlays"
+                    ],
+                    "avoid_when": "Do not use to temporarily disable an overlay \u2014 deletion is permanent. Do not delete overlays that other toolkits may depend on without coordination.",
+                    "related_operations": [
+                        "GET /apis/{api_id}/overlays \u2014 list overlays to find the overlay_id",
+                        "POST /apis/{api_id}/overlays \u2014 submit a replacement overlay after deleting an incorrect one",
+                        "GET /apis/{api_id}/openapi.json \u2014 verify overlay removal by downloading merged spec"
+                    ]
                 },
                 "security": [
                     {
@@ -557,6 +655,19 @@
                         }
                     }
                 },
+                "x-agent-hints": {
+                    "when_to_use": "Use to browse available APIs from the Jentic public catalog (jentic/jentic-public-apis GitHub repo). Returns list of catalog entries with api_id and registration status. Use ?q= to filter by API ID substring, ?registered_only=true to see only locally registered APIs, ?unregistered_only=true to see only APIs not yet imported. Catalog manifest auto-refreshes daily; use POST /catalog/refresh to sync immediately.",
+                    "prerequisites": [
+                        "Requires authentication (toolkit key or human session)"
+                    ],
+                    "avoid_when": "Do not use to list locally registered APIs \u2014 use GET /apis?source=local instead. Do not use for natural language API discovery \u2014 use GET /search for that.",
+                    "related_operations": [
+                        "GET /catalog/{api_id} \u2014 get spec download URL for a catalog API",
+                        "POST /import \u2014 import a catalog API after finding it here",
+                        "POST /catalog/refresh \u2014 refresh catalog manifest from GitHub if empty or stale",
+                        "GET /apis \u2014 list locally registered APIs (includes both local and catalog sources)"
+                    ]
+                },
                 "security": [
                     {
                         "JenticApiKey": []
@@ -585,6 +696,18 @@
                             }
                         }
                     }
+                },
+                "x-agent-hints": {
+                    "when_to_use": "Use when the catalog is empty (GET /catalog returns empty list) or when you need immediate sync after a new API was added to jentic/jentic-public-apis on GitHub. Fetches the curated apis.json index and workflows directory listing from GitHub (two unauthenticated HTTP requests). Manifest auto-refreshes daily on startup, so only call explicitly if you need immediate sync.",
+                    "prerequisites": [
+                        "Requires authentication (admin/human session)"
+                    ],
+                    "avoid_when": "Do not call repeatedly \u2014 safe but unnecessary since manifest auto-refreshes daily. Do not use to import APIs \u2014 use POST /import after refreshing.",
+                    "related_operations": [
+                        "GET /catalog \u2014 list catalog entries after refreshing",
+                        "GET /catalog/{api_id} \u2014 get spec URL for an API after refreshing",
+                        "POST /import \u2014 import an API after finding it in the refreshed catalog"
+                    ]
                 },
                 "security": [
                     {
@@ -635,6 +758,20 @@
                             }
                         }
                     }
+                },
+                "x-agent-hints": {
+                    "when_to_use": "Use after finding an API via GET /catalog to retrieve the spec download URL for import. Returns api_id, registration status, spec_url (GitHub raw file URL), and spec_filename. Use the spec_url with POST /import to register this API locally. Recursively searches the GitHub directory for OpenAPI spec files (openapi.json, openapi.yaml, etc.).",
+                    "prerequisites": [
+                        "Requires authentication (toolkit key or human session)",
+                        "Valid catalog api_id from GET /catalog (format: hostname or hostname/path)"
+                    ],
+                    "avoid_when": "Do not use for APIs already registered locally \u2014 check GET /apis first. Do not use to download the spec directly (use POST /import instead).",
+                    "related_operations": [
+                        "GET /catalog \u2014 browse catalog to find the api_id",
+                        "POST /import \u2014 import the API using the spec_url returned here",
+                        "GET /apis \u2014 check if API is already registered before importing",
+                        "POST /credentials \u2014 add credentials after importing"
+                    ]
                 },
                 "security": [
                     {
@@ -947,7 +1084,7 @@
                     "catalog"
                 ],
                 "summary": "Import an API spec or workflow \u2014 add to the searchable catalog",
-                "description": "Registers an OpenAPI spec or Arazzo workflow into the catalog and BM25 index.\nSource types: url (fetch from URL), upload (multipart file), inline (JSON body).\nFor OpenAPI specs: parses operations, computes capability IDs, indexes descriptions.\nFor Arazzo workflows: stores definition, extracts input schema and involved APIs.\nReturns the registered API or workflow with its canonical id.",
+                "description": "Registers an OpenAPI spec or Arazzo workflow into the catalog and BM25 index.\nSource types: path (local file), url (fetch from URL), inline (spec content in request body).\nFor OpenAPI specs: parses operations, computes capability IDs, indexes descriptions.\nFor Arazzo workflows: stores definition, extracts input schema and involved APIs.\nReturns the registered API or workflow with its canonical id.",
                 "operationId": "import_sources_import_post",
                 "requestBody": {
                     "content": {
@@ -980,6 +1117,23 @@
                             }
                         }
                     }
+                },
+                "x-agent-hints": {
+                    "when_to_use": "Use to register a new API (OpenAPI 3.x spec) or workflow (Arazzo document) into the local catalog for searchability and execution. Supports three source types: url (fetch from remote URL), path (local file path), inline (spec content in request body). Automatically detects OpenAPI vs Arazzo, parses operations, computes capability IDs, and indexes for BM25 search. Use when adding a new API not yet in the catalog.",
+                    "prerequisites": [
+                        "Requires authentication (toolkit key or human session)",
+                        "Valid OpenAPI 3.x or Arazzo 1.0 document",
+                        "For url type: publicly accessible spec URL",
+                        "For path type: local file system path (server must have read access)",
+                        "For inline type: spec content as JSON or YAML string"
+                    ],
+                    "avoid_when": "Do not use for APIs already in the catalog \u2014 check GET /apis or GET /catalog first. Do not use to add credentials (use POST /credentials). Do not use to update existing specs \u2014 delete and re-import instead.",
+                    "related_operations": [
+                        "GET /apis \u2014 check if API is already registered before importing",
+                        "GET /catalog \u2014 browse available APIs in public catalog before importing",
+                        "POST /credentials \u2014 add credentials after importing an API",
+                        "GET /search \u2014 verify imported operations are searchable"
+                    ]
                 },
                 "security": [
                     {
@@ -1210,6 +1364,20 @@
                         }
                     }
                 },
+                "x-agent-hints": {
+                    "when_to_use": "Use after receiving HTTP 202 from a broker call or workflow execution to poll for completion. Job ID comes from Location header (RFC 7240) or X-Jentic-Job-Id header. Poll until status is complete, failed, or upstream_async. Jobs are created when: (1) client sends Prefer: wait=0, (2) execution exceeds Prefer: wait=N timeout, or (3) upstream API returns 202.",
+                    "prerequisites": [
+                        "Requires authentication (toolkit key or human session)",
+                        "Valid job ID from a 202 response (format: job_{12chars})"
+                    ],
+                    "avoid_when": "Do not use for synchronous calls (200 responses) \u2014 those produce traces, not jobs. Do not poll excessively \u2014 implement exponential backoff (start at 1s, max 30s).",
+                    "related_operations": [
+                        "GET /{target} (broker) \u2014 broker call with Prefer: wait=0 returns 202 + job ID",
+                        "POST /workflows/{slug} \u2014 workflow with Prefer: wait=0 returns 202 + job ID",
+                        "GET /traces/{id} \u2014 completed jobs reference a trace via trace_id field",
+                        "DELETE /jobs/{id} \u2014 cancel an outstanding async job"
+                    ]
+                },
                 "security": [
                     {
                         "JenticApiKey": []
@@ -1300,6 +1468,20 @@
                         }
                     }
                 },
+                "x-agent-hints": {
+                    "when_to_use": "Use to report observations about operations, workflows, or APIs that could improve the catalog: auth quirks (non-standard auth requirements), usage hints (tips for effective use), execution feedback (what happened when called), corrections (errors in spec descriptions). Notes feed the Jentic knowledge base for catalog improvement. Link to execution_id for context.",
+                    "prerequisites": [
+                        "Requires authentication (toolkit key or human session)",
+                        "Valid resource identifier (operation_id, api_id, or workflow slug)"
+                    ],
+                    "avoid_when": "Do not use for private execution logs \u2014 use GET /traces instead. Do not use for credential issues \u2014 fix credentials via PATCH /credentials.",
+                    "related_operations": [
+                        "GET /notes \u2014 list existing notes for a resource to avoid duplicates",
+                        "DELETE /notes/{id} \u2014 remove outdated or incorrect notes",
+                        "GET /traces/{id} \u2014 link to execution context when reporting feedback",
+                        "POST /apis/{api_id}/overlays \u2014 submit OpenAPI overlay to fix spec issues"
+                    ]
+                },
                 "security": [
                     {
                         "JenticApiKey": []
@@ -1380,6 +1562,19 @@
                         }
                     }
                 },
+                "x-agent-hints": {
+                    "when_to_use": "Use to retrieve operational knowledge about operations, workflows, or APIs before calling them. Returns notes from previous executions: auth quirks, usage tips, failure patterns, schema corrections. Filter by ?resource={capability_id} to see notes for a specific operation/workflow, or by ?type={category} to filter by note type (auth_quirk, usage_hint, execution_feedback, correction). Limit defaults to 50, ordered by creation date descending.",
+                    "prerequisites": [
+                        "Requires authentication (toolkit key or human session)"
+                    ],
+                    "avoid_when": "Do not use for execution history \u2014 use GET /traces instead. Do not use for credential status \u2014 use GET /credentials.",
+                    "related_operations": [
+                        "POST /notes \u2014 add a note after discovering new operational knowledge",
+                        "DELETE /notes/{id} \u2014 remove outdated notes",
+                        "GET /inspect/{id} \u2014 inspect operation schema before checking notes",
+                        "GET /traces \u2014 view execution history for context"
+                    ]
+                },
                 "security": [
                     {
                         "JenticApiKey": []
@@ -1424,6 +1619,18 @@
                         }
                     }
                 },
+                "x-agent-hints": {
+                    "when_to_use": "Use to remove outdated observations, incorrect annotations, or notes that no longer apply after an API change. Deletion is permanent.",
+                    "prerequisites": [
+                        "Requires authentication (toolkit key or human session)",
+                        "Valid note ID from GET /notes (format: note_{8chars})"
+                    ],
+                    "avoid_when": "Do not use to hide execution errors \u2014 fix the underlying issue instead. Do not delete notes from other users without coordination.",
+                    "related_operations": [
+                        "GET /notes \u2014 list notes to find the note_id",
+                        "POST /notes \u2014 add a replacement note after deleting an incorrect one"
+                    ]
+                },
                 "security": [
                     {
                         "JenticApiKey": []
@@ -1453,6 +1660,19 @@
                             }
                         }
                     }
+                },
+                "x-agent-hints": {
+                    "when_to_use": "Use to discover available OAuth brokers (Pipedream, future: Jentic native) for delegated OAuth credential management. Returns list of registered brokers with type, client_id, project_id, and default_external_user_id. Client_secret is never included. Accessible to both agents (toolkit key) and humans (session). Use before connecting apps or syncing accounts.",
+                    "prerequisites": [
+                        "Requires authentication (toolkit key or human session)"
+                    ],
+                    "avoid_when": "Do not use to retrieve individual broker details \u2014 use GET /oauth-brokers/{broker_id} instead. Do not use to manage OAuth accounts \u2014 use POST /oauth-brokers/{broker_id}/connect-link to initiate OAuth.",
+                    "related_operations": [
+                        "POST /oauth-brokers \u2014 register a new OAuth broker (Pipedream)",
+                        "GET /oauth-brokers/{broker_id} \u2014 get detailed broker configuration and account statistics",
+                        "POST /oauth-brokers/{broker_id}/connect-link \u2014 initiate OAuth flow for an API via broker",
+                        "POST /oauth-brokers/{broker_id}/sync \u2014 pull connected accounts into Jentic after OAuth"
+                    ]
                 },
                 "security": [
                     {
@@ -3346,6 +3566,18 @@
                         }
                     }
                 },
+                "x-agent-hints": {
+                    "when_to_use": "Use when you need to audit recent API calls or workflow executions, review execution history, or debug issues by inspecting recent traces. Returns paginated list of traces with status, HTTP codes, and timing. Use ?limit= and ?offset= for pagination.",
+                    "prerequisites": [
+                        "Requires authentication (toolkit key or human session)"
+                    ],
+                    "avoid_when": "Do not use if you already have a specific trace ID from a broker call (X-Jentic-Execution-Id header) \u2014 use GET /traces/{id} directly instead.",
+                    "related_operations": [
+                        "GET /traces/{id} \u2014 get full trace with step-by-step detail",
+                        "GET /{target} (broker) \u2014 returns X-Jentic-Execution-Id header pointing to trace",
+                        "POST /workflows/{slug} \u2014 workflow execution returns trace_id in response body"
+                    ]
+                },
                 "security": [
                     {
                         "JenticApiKey": []
@@ -3396,6 +3628,19 @@
                             }
                         }
                     }
+                },
+                "x-agent-hints": {
+                    "when_to_use": "Use after executing a broker call or workflow to retrieve the full execution trace with step-by-step details. Essential for debugging workflow failures \u2014 shows which step failed, what inputs were used, and what error was returned. Trace ID comes from X-Jentic-Execution-Id response header (broker calls) or trace_id in response body (workflows).",
+                    "prerequisites": [
+                        "Requires authentication (toolkit key or human session)",
+                        "Valid trace ID from a previous execution (format: exec_{12chars})"
+                    ],
+                    "avoid_when": "Do not use for browsing recent traces \u2014 use GET /traces with pagination instead.",
+                    "related_operations": [
+                        "GET /traces \u2014 list recent traces when you don't have a specific trace ID yet",
+                        "GET /{target} (broker) \u2014 execution returns X-Jentic-Execution-Id header",
+                        "POST /workflows/{slug} \u2014 workflow execution returns trace_id field"
+                    ]
                 },
                 "security": [
                     {
@@ -3711,6 +3956,19 @@
                         }
                     }
                 },
+                "x-agent-hints": {
+                    "when_to_use": "Use when you need to discover multi-step workflows or automated sequences. Lists both registered workflows (source: local) and available catalog workflow sources (source: catalog). Use ?q= to filter by name or API.",
+                    "prerequisites": [
+                        "Requires authentication (toolkit key or human session)"
+                    ],
+                    "avoid_when": "Do not use if you already know the workflow slug \u2014 use GET /workflows/{slug} directly instead.",
+                    "related_operations": [
+                        "GET /workflows/{slug} \u2014 get workflow definition and input schema",
+                        "POST /workflows/{slug} \u2014 execute a workflow via broker",
+                        "GET /search \u2014 search across operations and workflows by natural language intent",
+                        "GET /catalog \u2014 browse available APIs when you know workflows exist for a vendor"
+                    ]
+                },
                 "security": []
             }
         },
@@ -3780,6 +4038,19 @@
                         }
                     }
                 },
+                "x-agent-hints": {
+                    "when_to_use": "Use after finding a workflow via GET /workflows or GET /search to retrieve its full definition, input schema, and step sequence. Returns Arazzo spec with content negotiation (JSON, YAML, Markdown, HTML).",
+                    "prerequisites": [
+                        "Requires authentication (toolkit key or human session)",
+                        "Valid workflow slug (from GET /workflows or GET /search results)"
+                    ],
+                    "avoid_when": "Do not use to execute the workflow \u2014 use POST /workflows/{slug} via broker for execution.",
+                    "related_operations": [
+                        "POST /workflows/{slug} \u2014 execute this workflow with inputs",
+                        "GET /inspect/{id} \u2014 get full capability details (use workflow capability ID format: POST/{host}/workflows/{slug})",
+                        "GET /workflows \u2014 list all workflows when you don't know the slug yet"
+                    ]
+                },
                 "security": []
             }
         },
@@ -3842,6 +4113,23 @@
                             }
                         }
                     }
+                },
+                "x-agent-hints": {
+                    "when_to_use": "Use this after you've inspected an operation via GET /inspect/{id} and are ready to execute it. The broker automatically injects credentials from the toolkit's vault, enforces access policies, and traces all calls. URL format: /{upstream_host}/{path} (e.g., /api.stripe.com/v1/payment_intents). Supports all HTTP methods (GET, POST, PUT, PATCH, DELETE).",
+                    "prerequisites": [
+                        "Requires authentication (toolkit key or human session)",
+                        "Requires registered API with credentials (use POST /credentials to add)",
+                        "Requires credential bound to toolkit (use PUT /toolkits/{id}/credentials/{cred_id})",
+                        "Toolkit credential must allow the operation (governed by access policy)"
+                    ],
+                    "avoid_when": "Do not use for workflows \u2014 use POST /workflows/{slug} instead. Do not use for Jentic internal endpoints \u2014 use direct paths like /apis, /search.",
+                    "related_operations": [
+                        "GET /inspect/{id} \u2014 inspect operation before calling to see parameters and auth requirements",
+                        "GET /traces/{id} \u2014 view execution trace after broker call (use X-Jentic-Execution-Id header)",
+                        "GET /jobs/{id} \u2014 poll async job status when Prefer: wait=0 header is used",
+                        "POST /credentials \u2014 add credentials before calling",
+                        "PUT /toolkits/{id}/credentials/{cred_id} \u2014 bind credentials to toolkit"
+                    ]
                 },
                 "security": [
                     {

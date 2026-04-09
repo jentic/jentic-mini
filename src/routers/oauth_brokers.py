@@ -30,6 +30,7 @@ from src.brokers.pipedream import api_host_to_pd_slug, broker_credential_id
 from src.db import get_db
 from src.oauth_broker import registry as oauth_broker_registry
 import src.vault as vault
+from src.openapi_helpers import agent_hints
 
 log = logging.getLogger("jentic.routers.oauth_brokers")
 
@@ -354,6 +355,17 @@ async def update_oauth_broker(broker_id: BrokerIdPath, body: OAuthBrokerUpdate):
     "",
     summary="List registered OAuth brokers",
     tags=["inspect"],
+    openapi_extra=agent_hints(
+        when_to_use="Use to discover available OAuth brokers (Pipedream, future: Jentic native) for delegated OAuth credential management. Returns list of registered brokers with type, client_id, project_id, and default_external_user_id. Client_secret is never included. Accessible to both agents (toolkit key) and humans (session). Use before connecting apps or syncing accounts.",
+        prerequisites=["Requires authentication (toolkit key or human session)"],
+        avoid_when="Do not use to retrieve individual broker details — use GET /oauth-brokers/{broker_id} instead. Do not use to manage OAuth accounts — use POST /oauth-brokers/{broker_id}/connect-link to initiate OAuth.",
+        related_operations=[
+            "POST /oauth-brokers — register a new OAuth broker (Pipedream)",
+            "GET /oauth-brokers/{broker_id} — get detailed broker configuration and account statistics",
+            "POST /oauth-brokers/{broker_id}/connect-link — initiate OAuth flow for an API via broker",
+            "POST /oauth-brokers/{broker_id}/sync — pull connected accounts into Jentic after OAuth"
+        ]
+    ),
 )
 async def list_oauth_brokers():
     """Return all registered OAuth brokers as a flat list. `client_secret` is never included.

@@ -47,6 +47,7 @@ from src.config import JENTIC_PUBLIC_HOSTNAME
 from src.db import get_db
 import src.vault as vault
 from src.routers.traces import new_trace_id, safe_write_trace
+from src.openapi_helpers import agent_hints
 # Lazy import to avoid circular deps — imported inline where needed
 # from src.routers.workflows import dispatch_workflow
 
@@ -434,6 +435,23 @@ _BROKER_RESPONSES = {
     description=_BROKER_DESCRIPTION,
     responses=_BROKER_RESPONSES,
     operation_id="broker_get",
+    openapi_extra=agent_hints(
+        when_to_use="Use this after you've inspected an operation via GET /inspect/{id} and are ready to execute it. The broker automatically injects credentials from the toolkit's vault, enforces access policies, and traces all calls. URL format: /{upstream_host}/{path} (e.g., /api.stripe.com/v1/payment_intents). Supports all HTTP methods (GET, POST, PUT, PATCH, DELETE).",
+        prerequisites=[
+            "Requires authentication (toolkit key or human session)",
+            "Requires registered API with credentials (use POST /credentials to add)",
+            "Requires credential bound to toolkit (use PUT /toolkits/{id}/credentials/{cred_id})",
+            "Toolkit credential must allow the operation (governed by access policy)"
+        ],
+        avoid_when="Do not use for workflows — use POST /workflows/{slug} instead. Do not use for Jentic internal endpoints — use direct paths like /apis, /search.",
+        related_operations=[
+            "GET /inspect/{id} — inspect operation before calling to see parameters and auth requirements",
+            "GET /traces/{id} — view execution trace after broker call (use X-Jentic-Execution-Id header)",
+            "GET /jobs/{id} — poll async job status when Prefer: wait=0 header is used",
+            "POST /credentials — add credentials before calling",
+            "PUT /toolkits/{id}/credentials/{cred_id} — bind credentials to toolkit"
+        ]
+    ),
 )
 async def broker_doc_stub(request: Request, target: str):
     """Documentation stub — delegates to the real broker handler."""

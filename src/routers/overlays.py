@@ -13,6 +13,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import Field
 from src.validators import NormModel
 from src.db import get_db
+from src.openapi_helpers import agent_hints
 
 router = APIRouter()
 
@@ -81,6 +82,21 @@ class OverlaySubmit(NormModel):
     "/apis/{api_id:path}/overlays",
     status_code=201,
     summary="Submit an OpenAPI overlay — patch the stored spec for this API",
+    openapi_extra=agent_hints(
+        when_to_use="Use when an API's stored OpenAPI spec is missing security schemes, has incorrect base URLs, or lacks required metadata. Submit an OpenAPI Overlay 1.0 document to patch the spec without modifying the original file. Common use: adding BearerAuth or apiKey schemes when the spec declares no security. Overlay starts as pending and auto-confirms on first successful broker call.",
+        prerequisites=[
+            "Requires authentication (admin/human session)",
+            "Valid API ID from GET /apis",
+            "Valid OpenAPI Overlay 1.0 structure (overlay, info, actions array)"
+        ],
+        avoid_when="Do not use for testing security schemes before adding credentials — first add credentials via POST /credentials, then submit overlay if authentication fails with 401/403. Do not submit duplicate overlays — check GET /apis/{api_id}/overlays first.",
+        related_operations=[
+            "GET /apis/{api_id}/overlays — list existing overlays to avoid duplicates",
+            "GET /apis/{api_id} — inspect current security_schemes before patching",
+            "POST /credentials — add credentials after overlay is confirmed",
+            "GET /apis/{api_id}/openapi.json — download merged spec to verify overlay was applied"
+        ]
+    ),
 )
 async def submit_overlay(api_id: str, body: OverlaySubmit):
     """Submit an OpenAPI Overlay 1.0 document to patch the stored spec for this API.
@@ -123,7 +139,24 @@ async def submit_overlay(api_id: str, body: OverlaySubmit):
     }
 
 
-@router.get("/apis/{api_id:path}/overlays", summary="List overlays for an API — returns full overlay documents")
+@router.get(
+    "/apis/{api_id:path}/overlays",
+    summary="List overlays for an API — returns full overlay documents",
+    openapi_extra=agent_hints(
+        when_to_use="Use to inspect existing overlays for an API before submitting a new one (avoids duplicates) or to verify which overlays are confirmed vs pending. Each overlay includes the complete OpenAPI Overlay 1.0 document with all actions, so no second call needed. Confirmed overlays are listed first, then pending, ordered by creation date descending.",
+        prerequisites=[
+            "Requires authentication (toolkit key or human session)",
+            "Valid API ID from GET /apis"
+        ],
+        avoid_when="Do not use to download the merged spec — use GET /apis/{api_id}/openapi.json for that (overlays already applied). Do not use to inspect base security schemes — use GET /apis/{api_id} instead.",
+        related_operations=[
+            "POST /apis/{api_id}/overlays — submit a new overlay after checking for duplicates",
+            "DELETE /apis/{api_id}/overlays/{overlay_id} — delete an overlay",
+            "GET /apis/{api_id}/openapi.json — download merged spec with all confirmed overlays applied",
+            "GET /apis/{api_id} — view current security_schemes (includes merged overlays)"
+        ]
+    ),
+)
 async def list_overlays(api_id: str):
     """Return all overlays for an API, each with its full overlay document included.
 
@@ -156,7 +189,24 @@ async def list_overlays(api_id: str):
     }
 
 
-@router.delete("/apis/{api_id:path}/overlays/{overlay_id}", status_code=200, summary="Delete an overlay")
+@router.delete(
+    "/apis/{api_id:path}/overlays/{overlay_id}",
+    status_code=200,
+    summary="Delete an overlay",
+    openapi_extra=agent_hints(
+        when_to_use="Use to remove an incorrect or obsolete overlay from an API. Works on both pending and confirmed overlays. After deletion, the merged spec (GET /apis/{api_id}/openapi.json) will no longer include the deleted overlay's patches.",
+        prerequisites=[
+            "Requires authentication (admin/human session)",
+            "Valid API ID and overlay ID from GET /apis/{api_id}/overlays"
+        ],
+        avoid_when="Do not use to temporarily disable an overlay — deletion is permanent. Do not delete overlays that other toolkits may depend on without coordination.",
+        related_operations=[
+            "GET /apis/{api_id}/overlays — list overlays to find the overlay_id",
+            "POST /apis/{api_id}/overlays — submit a replacement overlay after deleting an incorrect one",
+            "GET /apis/{api_id}/openapi.json — verify overlay removal by downloading merged spec"
+        ]
+    ),
+)
 async def delete_overlay(api_id: str, overlay_id: str):
     """Delete an overlay by ID. Works on both pending and confirmed overlays."""
     async with get_db() as db:

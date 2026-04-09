@@ -17,6 +17,7 @@ from pydantic import BaseModel
 from src.validators import NormModel, NormStr
 
 from src.db import get_db
+from src.openapi_helpers import agent_hints
 
 router = APIRouter(prefix="/notes")
 
@@ -40,7 +41,25 @@ class NoteCreate(NormModel):
     source: str | None = None       # e.g. 'test run', 'production', 'documentation'
 
 
-@router.post("", status_code=201, summary="Add a note — annotate a capability with feedback or a correction")
+@router.post(
+    "",
+    status_code=201,
+    summary="Add a note — annotate a capability with feedback or a correction",
+    openapi_extra=agent_hints(
+        when_to_use="Use to report observations about operations, workflows, or APIs that could improve the catalog: auth quirks (non-standard auth requirements), usage hints (tips for effective use), execution feedback (what happened when called), corrections (errors in spec descriptions). Notes feed the Jentic knowledge base for catalog improvement. Link to execution_id for context.",
+        prerequisites=[
+            "Requires authentication (toolkit key or human session)",
+            "Valid resource identifier (operation_id, api_id, or workflow slug)"
+        ],
+        avoid_when="Do not use for private execution logs — use GET /traces instead. Do not use for credential issues — fix credentials via PATCH /credentials.",
+        related_operations=[
+            "GET /notes — list existing notes for a resource to avoid duplicates",
+            "DELETE /notes/{id} — remove outdated or incorrect notes",
+            "GET /traces/{id} — link to execution context when reporting feedback",
+            "POST /apis/{api_id}/overlays — submit OpenAPI overlay to fix spec issues"
+        ]
+    ),
+)
 async def create_note(body: NoteCreate):
     """Attaches a note to any capability (operation, workflow, or API). Use to report auth corrections, schema errors, or updated Arazzo workflows. Notes feed back into the catalog improvement loop."""
     note_id = "note_" + str(uuid.uuid4())[:8]
@@ -55,7 +74,21 @@ async def create_note(body: NoteCreate):
     return {"id": note_id, "resource": body.resource, "type": body.type, "created_at": time.time()}
 
 
-@router.get("", summary="List notes for a resource")
+@router.get(
+    "",
+    summary="List notes for a resource",
+    openapi_extra=agent_hints(
+        when_to_use="Use to retrieve operational knowledge about operations, workflows, or APIs before calling them. Returns notes from previous executions: auth quirks, usage tips, failure patterns, schema corrections. Filter by ?resource={capability_id} to see notes for a specific operation/workflow, or by ?type={category} to filter by note type (auth_quirk, usage_hint, execution_feedback, correction). Limit defaults to 50, ordered by creation date descending.",
+        prerequisites=["Requires authentication (toolkit key or human session)"],
+        avoid_when="Do not use for execution history — use GET /traces instead. Do not use for credential status — use GET /credentials.",
+        related_operations=[
+            "POST /notes — add a note after discovering new operational knowledge",
+            "DELETE /notes/{id} — remove outdated notes",
+            "GET /inspect/{id} — inspect operation schema before checking notes",
+            "GET /traces — view execution history for context"
+        ]
+    ),
+)
 async def list_notes(resource: str | None = None, type: str | None = None, limit: int = 50):
     """
     List notes attached to resources (operations, workflows, APIs).
@@ -93,7 +126,23 @@ async def list_notes(resource: str | None = None, type: str | None = None, limit
     ]
 
 
-@router.delete("/{note_id}", status_code=204, summary="Delete a note")
+@router.delete(
+    "/{note_id}",
+    status_code=204,
+    summary="Delete a note",
+    openapi_extra=agent_hints(
+        when_to_use="Use to remove outdated observations, incorrect annotations, or notes that no longer apply after an API change. Deletion is permanent.",
+        prerequisites=[
+            "Requires authentication (toolkit key or human session)",
+            "Valid note ID from GET /notes (format: note_{8chars})"
+        ],
+        avoid_when="Do not use to hide execution errors — fix the underlying issue instead. Do not delete notes from other users without coordination.",
+        related_operations=[
+            "GET /notes — list notes to find the note_id",
+            "POST /notes — add a replacement note after deleting an incorrect one"
+        ]
+    ),
+)
 async def delete_note(note_id: str):
     """
     Permanently delete a note.

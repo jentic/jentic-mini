@@ -35,6 +35,7 @@ from fastapi import APIRouter, HTTPException, Request, Query
 
 from src.db import get_db
 from src.models import JobOut, JobListPage
+from src.openapi_helpers import agent_hints
 
 router = APIRouter(prefix="/jobs", tags=["observe"])
 
@@ -280,6 +281,20 @@ async def list_jobs(
         "Returns `status: upstream_async` when the upstream API itself returned 202 — "
         "check `upstream_job_url` to follow the upstream job. "
         "Returns `status: failed` with `error` and `http_status` on failure."
+    ),
+    openapi_extra=agent_hints(
+        when_to_use="Use after receiving HTTP 202 from a broker call or workflow execution to poll for completion. Job ID comes from Location header (RFC 7240) or X-Jentic-Job-Id header. Poll until status is complete, failed, or upstream_async. Jobs are created when: (1) client sends Prefer: wait=0, (2) execution exceeds Prefer: wait=N timeout, or (3) upstream API returns 202.",
+        prerequisites=[
+            "Requires authentication (toolkit key or human session)",
+            "Valid job ID from a 202 response (format: job_{12chars})"
+        ],
+        avoid_when="Do not use for synchronous calls (200 responses) — those produce traces, not jobs. Do not poll excessively — implement exponential backoff (start at 1s, max 30s).",
+        related_operations=[
+            "GET /{target} (broker) — broker call with Prefer: wait=0 returns 202 + job ID",
+            "POST /workflows/{slug} — workflow with Prefer: wait=0 returns 202 + job ID",
+            "GET /traces/{id} — completed jobs reference a trace via trace_id field",
+            "DELETE /jobs/{id} — cancel an outstanding async job"
+        ]
     ),
 )
 async def get_job_route(job_id: str):
