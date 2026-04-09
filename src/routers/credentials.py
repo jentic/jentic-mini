@@ -6,7 +6,7 @@ from fastapi.responses import JSONResponse
 from src.models import CredentialCreate, CredentialOut, CredentialPatch
 import src.vault as vault
 from src.db import get_db
-from src.auth import _client_ip
+from src.auth import client_ip
 from src.config import JENTIC_PUBLIC_HOSTNAME
 
 log = logging.getLogger("jentic")
@@ -223,7 +223,7 @@ async def create(body: CredentialCreate, request: Request):
         raise HTTPException(400, "Failed to create credential.")
 
     actor = "human" if request.state.is_human_session else f"toolkit={request.state.toolkit_id}"
-    audit_log.info("CREDENTIAL_CREATED id=%s label=%s api_id=%s actor=%s ip=%s", cred["id"], cred["label"], api_id, actor, _client_ip(request))
+    audit_log.info("CREDENTIAL_CREATED id=%s label=%s api_id=%s actor=%s ip=%s", cred["id"], cred["label"], api_id, actor, client_ip(request))
     return cred
 
 
@@ -252,7 +252,7 @@ async def patch(cid: str, body: CredentialPatch, request: Request):
     if not row:
         raise HTTPException(404, "Credential not found")
     actor = "human" if request.state.is_human_session else f"toolkit={request.state.toolkit_id}"
-    audit_log.info("CREDENTIAL_UPDATED id=%s actor=%s ip=%s", cid, actor, _client_ip(request))
+    audit_log.info("CREDENTIAL_UPDATED id=%s actor=%s ip=%s", cid, actor, client_ip(request))
     return row
 
 
@@ -264,7 +264,7 @@ async def delete(cid: str, request: Request):
     if not await vault.delete_credential(cid):
         raise HTTPException(404, "Credential not found")
     actor = "human" if request.state.is_human_session else f"toolkit={request.state.toolkit_id}"
-    audit_log.info("CREDENTIAL_DELETED id=%s actor=%s ip=%s", cid, actor, _client_ip(request))
+    audit_log.info("CREDENTIAL_DELETED id=%s actor=%s ip=%s", cid, actor, client_ip(request))
 
 
 @router.get("", summary="List upstream API credentials — labels and API bindings only, no secret values", response_model=list[CredentialOut])

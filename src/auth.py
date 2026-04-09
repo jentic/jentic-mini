@@ -102,7 +102,7 @@ def _is_open_passthrough(path: str, method: str) -> bool:
     return False
 
 
-def _client_ip(request: Request) -> str:
+def client_ip(request: Request) -> str:
     """Best-effort real client IP (handles X-Forwarded-For from NPM)."""
     xff = request.headers.get("x-forwarded-for", "")
     raw = request.client.host if request.client else ""
@@ -246,7 +246,7 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
         request.state.simulate = False
 
         # Resolve client IP early — used by multiple auth steps below
-        client_ip = _client_ip(request)
+        req_ip = client_ip(request)
 
         # ── Public paths — no auth needed ─────────────────────────────────────
         if _is_public(path, method):
@@ -312,17 +312,17 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
                 row = None
 
             if row:
-                allowed = _ip_allowed(client_ip, row["allowed_ips"])
+                allowed = _ip_allowed(req_ip, row["allowed_ips"])
                 logger.debug(
                     "KEY AUTH: key=%s toolkit=%s client_ip=%r allowed_ips=%s → %s",
-                    provided_key[:12] + "…", row["toolkit_id"], client_ip,
+                    provided_key[:12] + "…", row["toolkit_id"], req_ip,
                     row["allowed_ips"], "ALLOW" if allowed else "DENY"
                 )
                 if not allowed:
                     return JSONResponse(
                         {
                             "error": "ip_not_allowed",
-                            "message": f"This API key is not valid from {client_ip}.",
+                            "message": f"This API key is not valid from {req_ip}.",
                             "hint": (
                                 "Add your IP/subnet to this key's allowed_ips, "
                                 "or add it to JENTIC_TRUSTED_SUBNETS for global access."
@@ -352,9 +352,9 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
         # Determine a helpful hint based on the rejection reason
         # IP check takes priority — if the request isn't from a trusted subnet
         # and has no key, that's the real reason it was rejected.
-        if not is_trusted_ip(client_ip):
+        if not is_trusted_ip(req_ip):
             hint = (
-                f"Requests from {client_ip} are not permitted. "
+                f"Requests from {req_ip} are not permitted. "
                 f"Add your IP/subnet to JENTIC_TRUSTED_SUBNETS, or use an API key whose allowed_ips covers your IP."
             )
         else:

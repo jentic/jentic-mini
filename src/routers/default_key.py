@@ -21,7 +21,7 @@ import uuid
 
 from fastapi import APIRouter, HTTPException, Request, Response
 
-from src.auth import is_trusted_ip, _client_ip, default_allowed_ips
+from src.auth import is_trusted_ip, client_ip, default_allowed_ips
 from src.db import DEFAULT_TOOLKIT_ID, get_db, get_setting, set_setting, setup_state
 from src.utils import build_absolute_url
 
@@ -69,13 +69,13 @@ async def generate_default_key(request: Request, response: Response):
 
     if not already_claimed:
         # Subnet restriction on first (unauthenticated) claim
-        client_ip = _client_ip(request)
-        if not is_trusted_ip(client_ip):
+        req_ip = client_ip(request)
+        if not is_trusted_ip(req_ip):
             raise HTTPException(
                 403,
                 detail={
                     "error": "ip_not_trusted",
-                    "message": f"First-time key generation is restricted to trusted subnets. Your IP: {client_ip}",
+                    "message": f"First-time key generation is restricted to trusted subnets. Your IP: {req_ip}",
                     "hint": "Configure JENTIC_TRUSTED_SUBNETS or access from a local network address.",
                 },
             )

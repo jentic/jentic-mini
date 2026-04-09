@@ -20,7 +20,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from pydantic import BaseModel, field_validator
 from src.validators import NormModel
 
-from src.auth import _client_ip, _make_jwt, JWT_TTL_SECONDS
+from src.auth import client_ip, _make_jwt, JWT_TTL_SECONDS
 from src.db import get_db, get_setting, set_setting, setup_state
 from src.models import UserOut
 
@@ -107,7 +107,7 @@ async def create_user(body: UserCreate, request: Request, response: Response):
         max_age=JWT_TTL_SECONDS,
     )
 
-    audit_log.info("ACCOUNT_CREATED user=%s ip=%s", body.username.strip(), _client_ip(request))
+    audit_log.info("ACCOUNT_CREATED user=%s ip=%s", body.username.strip(), client_ip(request))
 
     return {
         "message": "Admin account created. You are now logged in.",
@@ -169,7 +169,7 @@ async def login(request: Request, response: Response, redirect_to: str | None = 
         ) as cur:
             row = await cur.fetchone()
 
-    ip = _client_ip(request)
+    ip = client_ip(request)
     if not row or not _bcrypt.checkpw(password.encode(), row["password_hash"].encode()):
         audit_log.warning("LOGIN_FAILED user=%s ip=%s", username.strip(), ip)
         raise HTTPException(
@@ -274,7 +274,7 @@ async def logout(request: Request, response: Response):
             username = row[0]
     except Exception:
         pass
-    audit_log.info("LOGOUT user=%s ip=%s", username, _client_ip(request))
+    audit_log.info("LOGOUT user=%s ip=%s", username, client_ip(request))
     response.delete_cookie("jentic_session")
     return {"message": "Logged out."}
 

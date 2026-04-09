@@ -21,7 +21,7 @@ from pydantic import BaseModel, Field
 from src.validators import NormModel
 from typing import Any
 
-from src.auth import _client_ip, default_allowed_ips, require_human_session
+from src.auth import client_ip, default_allowed_ips, require_human_session
 from src.db import get_db, DEFAULT_TOOLKIT_ID
 import src.vault as vault
 from src.models import (
@@ -629,7 +629,7 @@ async def revoke_toolkit_key(toolkit_id: str, key_id: str, request: Request):
             (time.time(), key_id)
         )
         await db.commit()
-    audit_log.info("KEY_REVOKED toolkit=%s key=%s actor=human ip=%s", toolkit_id, key_id, _client_ip(request))
+    audit_log.info("KEY_REVOKED toolkit=%s key=%s actor=human ip=%s", toolkit_id, key_id, client_ip(request))
 
 
 # ── Toolkit Credentials ────────────────────────────────────────────────────
@@ -770,7 +770,7 @@ async def set_credential_permissions(toolkit_id: str, cred_id: str, body: list[P
 
     rules_list = [r.model_dump(exclude_none=True) for r in body]
     result = await _write_credential_permissions(cred_id, rules_list)
-    audit_log.info("PERMISSIONS_SET credential=%s rules=%d actor=human ip=%s", cred_id, len(rules_list), _client_ip(request))
+    audit_log.info("PERMISSIONS_SET credential=%s rules=%d actor=human ip=%s", cred_id, len(rules_list), client_ip(request))
     return result
 
 
@@ -815,7 +815,7 @@ async def patch_credential_permissions(toolkit_id: str, cred_id: str, body: Perm
     result = await _write_credential_permissions(cred_id, current_rules)
     added = len(body.add) if body.add else 0
     removed = len(body.remove) if body.remove else 0
-    audit_log.info("PERMISSIONS_PATCHED credential=%s added=%d removed=%d actor=human ip=%s", cred_id, added, removed, _client_ip(request))
+    audit_log.info("PERMISSIONS_PATCHED credential=%s added=%d removed=%d actor=human ip=%s", cred_id, added, removed, client_ip(request))
     return result
 
 
