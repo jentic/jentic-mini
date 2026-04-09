@@ -21,9 +21,6 @@ Special request headers:
                         bypassing host-matching auto-selection entirely. Required when
                         multiple credentials share the same upstream host (e.g. multiple
                         Google services all routing through googleapis.com).
-  X-Jentic-Service    — service name (Pipedream app_slug, e.g. "google_calendar") to
-                        select the right credential when multiple share a host.
-                        Friendlier alternative to X-Jentic-Credential.
   X-Jentic-Callback   — webhook URL for async result delivery (TODO: phase 2)
 
 Response headers added:
@@ -58,10 +55,6 @@ from src.routers.traces import new_trace_id, safe_write_trace
 router = APIRouter(tags=["execute"])
 
 
-class ServiceNotFoundError(Exception):
-    """Raised when X-Jentic-Service doesn't match any credential for the host."""
-
-
 # Hop-by-hop headers that must NOT be forwarded
 _HOP_BY_HOP = {
     "connection", "keep-alive", "proxy-authenticate", "proxy-authorization",
@@ -73,7 +66,7 @@ _HOP_BY_HOP = {
     "content-length",
     # Jentic-specific — consumed here, not forwarded upstream
     "x-jentic-api-key", "x-jentic-simulate",
-    "x-jentic-credential", "x-jentic-service", "x-jentic-callback",
+    "x-jentic-credential", "x-jentic-callback",
     # Host is set from the target URL
     "host",
     # Reverse-proxy headers injected by nginx/traefik/etc. — these describe
@@ -86,38 +79,13 @@ _HOP_BY_HOP = {
     "x-real-ip", "x-scheme",
 }
 
-# How we detect credentials for a given API host
-# Looks up the api in the apis table by id (which is the scheme-stripped base URL)
-# then finds matching credentials by api_id + auth_type and injects them as HTTP headers.
-async def _resolve_credential_ids(host: str, toolkit_id: str | None) -> tuple[str | None, list[str]]:
-    """Resolve host → (api_id, [credential_ids]) without decrypting anything.
+async def _resolve_credential_ids(host: str, path: str, toolkit_id: str | None) -> list[str]:
+    """Resolve host+path → [credential_ids] via routes, without decrypting anything.
     Used for policy checks before the vault is touched.
     """
-    candidates = [host]
-    parts = host.split(".")
-    if len(parts) > 2:
-        candidates.append(".".join(parts[1:]))
-
-    api_id = None
-    async with get_db() as db:
-        for candidate in candidates:
-            # ORDER BY length(id) DESC ensures longest (most specific) match wins,
-            # making selection deterministic when multiple APIs share a host prefix
-            # (e.g. googleapis.com/calendar vs googleapis.com/gmail).
-            async with db.execute(
-                "SELECT id FROM apis WHERE id=? OR id LIKE ? ORDER BY length(id) DESC LIMIT 1",
-                (candidate, f"{candidate}%"),
-            ) as cur:
-                row = await cur.fetchone()
-            if row:
-                api_id = row[0]
-                break
-
-    if not api_id or not toolkit_id:
-        return api_id, []
-
-    cred_ids = await vault.get_credential_ids_for_api(toolkit_id, api_id)
-    return api_id, cred_ids
+    if not toolkit_id:
+        return []
+    return await vault.get_credential_ids_for_route(toolkit_id, host, path)
 
 
 async def _find_credential_for_host(
@@ -125,136 +93,78 @@ async def _find_credential_for_host(
     path: str,
     toolkit_id: str,
     alias: str | None,
-    service: str | None = None,
 ) -> tuple[dict[str, str], str | None, str | None, bool]:
     """
     Return (headers_to_inject, api_id, credential_id, is_ambiguous) for the given upstream host.
 
-    credential_id is the ID of the first credential used for injection — used by the
-    caller to enforce per-credential policy rules.
+    Credential resolution is based on the `routes` JSON array on each credential —
+    longest-prefix match against host+path. No dependency on the apis table.
 
-    is_ambiguous is True when multiple credentials matched and no alias/service
-    was provided to disambiguate.
+    credential_id is the ID of the first credential used for injection.
+    is_ambiguous is True when multiple credentials matched with the same prefix length.
     """
     import logging as _log
     _broker_log = _log.getLogger("jentic.broker")
 
-    # Resolve host → api_id
-    candidates = [host]
-    parts = host.split(".")
-    if len(parts) > 2:
-        candidates.append(".".join(parts[1:]))
+    is_ambiguous = False
 
-    api_id = None
-    async with get_db() as db:
-        for candidate in candidates:
-            # For subdomain-style hosts (e.g. calendar.googleapis.com), also try
-            # the catalog convention of parent-domain/subdomain (googleapis.com/calendar)
-            # by extracting the leftmost subdomain label as a path hint.
-            sub_hint = host.split(".")[0] if host != candidate else None
-            row = None
-
-            # 1. Exact match
-            async with db.execute("SELECT id FROM apis WHERE id=?", (candidate,)) as cur:
+    if alias:
+        # Alias is a hard override — look up directly by ID, bypass route matching
+        async with get_db() as db:
+            async with db.execute(
+                "SELECT id, env_var, encrypted_value, auth_type, identity FROM credentials WHERE id=?",
+                (alias,),
+            ) as cur:
                 row = await cur.fetchone()
-
-            # 2. Subdomain-hinted prefix match (e.g. googleapis.com/calendar)
-            if not row and sub_hint:
-                async with db.execute(
-                    "SELECT id FROM apis WHERE id LIKE ? ORDER BY length(id) DESC LIMIT 1",
-                    (f"{candidate}/{sub_hint}%",),
-                ) as cur:
-                    row = await cur.fetchone()
-
-            # 3. General longest-prefix match (fallback)
-            if not row:
-                async with db.execute(
-                    "SELECT id FROM apis WHERE id LIKE ? ORDER BY length(id) DESC LIMIT 1",
-                    (f"{candidate}%",),
-                ) as cur:
-                    row = await cur.fetchone()
-
-            if row:
-                api_id = row[0]
-                break
-
-    # Credentials are always stored under api_id (the canonical ID from the apis
-    # table), which matches how POST /credentials stores them and how
-    # _resolve_credential_ids (the policy check path) looks them up.
-    _broker_log.debug("CRED LOOKUP: host=%r → api_id=%r (toolkit=%r alias=%r)", host, api_id, toolkit_id, alias)
-
-    if not api_id:
-        return {}, None, None, False
-
-    # Get credentials bound to this toolkit + api
-    creds = await vault.get_credentials_for_api(toolkit_id, api_id)
-    # TODO: remove hostname fallback once Pipedream credential storage is
-    # updated to use catalog api_id instead of HTTP hostname (see #79).
-    if not creds and host != api_id:
-        creds = await vault.get_credentials_for_api(toolkit_id, host)
-    _broker_log.debug("CRED LOOKUP: %d cred(s) for api_id=%r host=%r: %s", len(creds), api_id, host, [c.get("id") for c in creds])
+        if row:
+            creds = [{"id": row[0], "value": vault.decrypt(row[2]), "auth_type": row[3],
+                       "identity": row[4] if len(row) > 4 else None}]
+            _broker_log.debug("CRED LOOKUP: alias %r → direct lookup", alias)
+        else:
+            _broker_log.warning("CRED LOOKUP: alias %r not found", alias)
+            creds = []
+    else:
+        # Route-based credential lookup — no apis table dependency
+        creds = await vault.get_credentials_for_route(toolkit_id, host, path)
+        _broker_log.debug("CRED LOOKUP: host=%r path=%r → %d cred(s): %s",
+                          host, path, len(creds), [c.get("id") for c in creds])
 
     if not creds and toolkit_id:
         raise ValueError(
-            f"No credentials found for host '{host}' (resolved api_id '{api_id}') "
+            f"No credentials found for host '{host}' path '{path}' "
             f"in toolkit '{toolkit_id}'. "
             f"Use POST /toolkits/{toolkit_id}/access-requests to request access."
         )
 
-    is_ambiguous = False
+    if not creds:
+        return {}, None, None, False
 
-    if alias and creds:
-        matched = [c for c in creds if c.get("id") == alias]
-        if matched:
-            _broker_log.debug("CRED LOOKUP: alias %r matched → using %r", alias, matched[0].get("id"))
-            creds = matched
-        else:
-            _broker_log.warning("CRED LOOKUP: alias %r not found in %s — falling back to first cred", alias, [c.get("id") for c in creds])
-        # If alias doesn't match any credential, fall through with all creds (best-effort)
-
-    elif service and creds and len(creds) > 1:
-        # X-Jentic-Service: select by Pipedream app_slug (e.g. "google_calendar")
-        # Look up which credentials belong to accounts with this app_slug.
-        async with get_db() as db:
-            async with db.execute(
-                "SELECT id FROM credentials WHERE id IN "
-                "(SELECT broker_id || '-' || account_id || '-' || replace(api_host, '.', '-') "
-                " FROM oauth_broker_accounts WHERE app_slug=?)",
-                (service,),
-            ) as cur:
-                service_cred_ids = {r[0] for r in await cur.fetchall()}
-        matched = [c for c in creds if c["id"] in service_cred_ids]
-        if matched:
-            _broker_log.debug("CRED LOOKUP: service %r matched %d cred(s)", service, len(matched))
-            creds = matched
-        else:
-            # Service name doesn't match any credential for this host — fail with
-            # a 409 listing available services so the agent can self-correct.
-            async with get_db() as db:
-                async with db.execute(
-                    "SELECT DISTINCT app_slug FROM oauth_broker_accounts "
-                    "WHERE api_host=? AND app_slug IS NOT NULL",
-                    (host,),
-                ) as cur:
-                    available = [r[0] for r in await cur.fetchall()]
-            raise ServiceNotFoundError(
-                f"Service '{service}' not found for host '{host}'. "
-                f"Available services: {available}"
-            )
-
-    if len(creds) > 1 and not alias and not service:
+    # Ambiguity: routes-based lookup returns credentials ordered by longest prefix.
+    # If the top two have the same prefix length, it's ambiguous.
+    if len(creds) > 1 and not alias:
         is_ambiguous = True
         _broker_log.warning(
-            "CRED AMBIGUITY: %d credentials for host=%r api_id=%r — using first. "
-            "Set X-Jentic-Service or X-Jentic-Credential header to disambiguate. "
+            "CRED AMBIGUITY: %d credentials for host=%r path=%r — using first. "
+            "Set X-Jentic-Credential header to disambiguate. "
             "Credential IDs: %s",
-            len(creds), host, api_id,
+            len(creds), host, path,
             [c.get("id") for c in creds],
         )
 
-    # Get merged security schemes (spec + confirmed overlays)
+    # Resolve api_id from apis table for scheme lookup (best-effort, not required)
+    api_id = None
+    async with get_db() as db:
+        async with db.execute(
+            "SELECT id FROM apis WHERE id=? OR id LIKE ? ORDER BY length(id) DESC LIMIT 1",
+            (host, f"{host}%"),
+        ) as cur:
+            row = await cur.fetchone()
+        if row:
+            api_id = row[0]
+
+    # Get merged security schemes (spec + confirmed overlays) — best-effort
     from src.routers.overlays import get_merged_security_schemes
-    schemes = await get_merged_security_schemes(api_id)
+    schemes = await get_merged_security_schemes(api_id) if api_id else {}
 
     # Note: schemes may be empty if no spec or overlay is registered for this API.
     # That is fine — credentials with an explicit auth_type can still be injected
@@ -370,23 +280,18 @@ async def _find_pipedream_credential_for_host(
     """Return (account_id, credential_id) for a Pipedream-managed credential in this toolkit.
 
     Pipedream credentials have auth_type='pipedream_oauth' and their encrypted value
-    IS the Pipedream account_id (apn_xxx). This bypasses the apis table lookup —
-    Pipedream-connected APIs may not have a spec in the local catalog.
+    IS the Pipedream account_id (apn_xxx).
 
-    Uses longest-prefix matching: the credential whose api_id is the longest prefix
-    of (host + path) wins. This correctly disambiguates googleapis.com/calendar from
-    googleapis.com/gmail when both are provisioned.
-
+    Uses longest-prefix matching against the routes JSON array.
     If alias is specified, only the credential with that ID is considered.
     Returns (None, None) if no Pipedream credential is provisioned for this host+toolkit.
     """
     if not toolkit_id:
         return None, None
-    full_path = host + path  # e.g. "googleapis.com/calendar/v3/calendars/primary"
+    full_path = f"{host}/{path.lstrip('/')}".rstrip("/")
     from src.db import DEFAULT_TOOLKIT_ID
     async with get_db() as db:
         if alias:
-            # Caller specified an exact credential — use it directly if it's Pipedream
             async with db.execute(
                 "SELECT id, encrypted_value FROM credentials "
                 "WHERE id=? AND auth_type='pipedream_oauth'",
@@ -394,22 +299,32 @@ async def _find_pipedream_credential_for_host(
             ) as cur:
                 row = await cur.fetchone()
         elif toolkit_id == DEFAULT_TOOLKIT_ID:
-            # Longest-prefix match: find the credential whose api_id is a prefix of host+path
             async with db.execute(
-                "SELECT id, encrypted_value FROM credentials "
-                "WHERE ? LIKE (api_id || '%') AND auth_type='pipedream_oauth' "
-                "ORDER BY length(api_id) DESC LIMIT 1",
-                (full_path,),
+                """SELECT id, encrypted_value FROM credentials
+                   WHERE auth_type='pipedream_oauth'
+                   AND EXISTS (
+                       SELECT 1 FROM json_each(routes) WHERE ? LIKE (value || '%')
+                   )
+                   ORDER BY (
+                       SELECT MAX(length(value)) FROM json_each(routes)
+                       WHERE ? LIKE (value || '%')
+                   ) DESC LIMIT 1""",
+                (full_path, full_path),
             ) as cur:
                 row = await cur.fetchone()
         else:
             async with db.execute(
                 """SELECT c.id, c.encrypted_value FROM credentials c
                    JOIN toolkit_credentials tc ON tc.credential_id = c.id
-                   WHERE tc.toolkit_id=? AND ? LIKE (c.api_id || '%')
-                   AND c.auth_type='pipedream_oauth'
-                   ORDER BY length(c.api_id) DESC LIMIT 1""",
-                (toolkit_id, full_path),
+                   WHERE tc.toolkit_id=? AND c.auth_type='pipedream_oauth'
+                   AND EXISTS (
+                       SELECT 1 FROM json_each(c.routes) WHERE ? LIKE (value || '%')
+                   )
+                   ORDER BY (
+                       SELECT MAX(length(value)) FROM json_each(c.routes)
+                       WHERE ? LIKE (value || '%')
+                   ) DESC LIMIT 1""",
+                (toolkit_id, full_path, full_path),
             ) as cur:
                 row = await cur.fetchone()
     if not row:
@@ -454,7 +369,6 @@ _BROKER_DESCRIPTION = (
     "**Headers:**\n"
     "- `X-Jentic-Simulate: true` — validate and preview the call without sending it\n"
     "- `X-Jentic-Credential: {alias}` — select a specific credential when multiple exist for an API\n"
-    "- `X-Jentic-Service: {app_slug}` — select by service name (e.g. `google_calendar`, `gmail`) when multiple credentials share a host\n"
     "- `X-Jentic-Dry-Run: true` — alias for Simulate (deprecated)\n\n"
     "Returns upstream response verbatim plus `X-Jentic-Execution-Id` for trace correlation."
 )
@@ -586,7 +500,6 @@ async def broker(request: Request, target: str):
         or request.headers.get("x-jentic-simulate", "").lower() == "true"
     )
     credential_alias = request.headers.get("x-jentic-credential")
-    credential_service = request.headers.get("x-jentic-service")
     callback_url = request.headers.get("x-jentic-callback")
 
     # ── Killswitch: reject all requests for disabled toolkits ─────────────────
@@ -625,24 +538,15 @@ async def broker(request: Request, target: str):
     # (e.g. googleapis.com) where auto-selection would otherwise target the wrong
     # credential (e.g. Calendar when the caller wants Gmail), causing spurious 403s
     # with a misleading credential_id in the error body.
-    _api_id_for_host: str | None = None
     _resolved_cred_ids: list[str] = []
 
     if credential_alias and toolkit_id:
         # Hard override: use the named credential directly for policy enforcement.
-        # Also attempt to resolve api_id for context (error messages etc.) but
-        # never let it change which credential gets checked.
         _resolved_cred_ids = [credential_alias]
-        try:
-            _api_id_for_host, _ = await _resolve_credential_ids(
-                host=upstream_host, toolkit_id=toolkit_id
-            )
-        except Exception:
-            pass
     elif toolkit_id:
         try:
-            _api_id_for_host, _resolved_cred_ids = await _resolve_credential_ids(
-                host=upstream_host, toolkit_id=toolkit_id
+            _resolved_cred_ids = await _resolve_credential_ids(
+                host=upstream_host, path=upstream_path, toolkit_id=toolkit_id
             )
         except Exception:
             # Fail closed: if we can't resolve credentials for policy checking,
@@ -718,15 +622,6 @@ async def broker(request: Request, target: str):
             path=upstream_path,
             toolkit_id=toolkit_id,
             alias=credential_alias,
-            service=credential_service,
-        )
-    except ServiceNotFoundError as e:
-        await _write_trace("error", 409, str(e))
-        return Response(
-            content=json.dumps({"error": "SERVICE_NOT_FOUND", "message": str(e)}),
-            status_code=409,
-            media_type="application/json",
-            headers={"X-Jentic-Error": "true", "X-Jentic-Execution-Id": execution_id},
         )
     except Exception as e:
         log.exception("Credential lookup failed")

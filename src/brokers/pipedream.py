@@ -38,10 +38,11 @@ def broker_account_row_id(broker_id: str, external_user_id: str, api_host: str, 
     return f"{broker_id}:{external_user_id}:{api_host}:{account_id}"
 
 
-def broker_credential_id(broker_id: str, account_id: str, api_host: str) -> str:
-    """Stable credential ID for Pipedream OAuth credentials."""
-    host_slug = api_host.replace(".", "-")
-    return f"{broker_id}-{account_id}-{host_slug}"
+def _slugify(label: str) -> str:
+    """Generate a URL-safe slug from a label for credential IDs."""
+    import re
+    slug = re.sub(r"[^a-z0-9]+", "-", label.lower()).strip("-")
+    return slug or "credential"
 
 
 # ── App slug ↔ api_id mapping ─────────────────────────────────────────────────
@@ -162,6 +163,30 @@ def api_host_to_pd_slug(host: str) -> str | None:
         if host.endswith(pattern) or pattern.endswith(host):
             return slug
     return None
+
+
+def pd_slug_to_route(slug: str, base_proxy_host: str | None = None) -> str:
+    """Derive a route (host+path prefix) from a Pipedream app slug.
+
+    Uses the _API_ID_TO_PD_SLUG reverse mapping. For mapped apps, returns
+    the host+path prefix (e.g. google_calendar → www.googleapis.com/calendar).
+    For unmapped apps, falls back to base_proxy_host (host-only route).
+    """
+    # Reverse lookup: find catalog key for this slug, extract path component
+    for api_key, s in _API_ID_TO_PD_SLUG.items():
+        if s == slug:
+            # api_key is like "googleapis.com/calendar" or "api.github.com"
+            # For path-style keys, prepend www. if no subdomain
+            parts = api_key.split("/", 1)
+            host_part = parts[0]
+            path_part = parts[1] if len(parts) > 1 else ""
+            # Determine the real HTTP host
+            if path_part:
+                # e.g. googleapis.com/calendar → www.googleapis.com/calendar
+                return f"www.{host_part}/{path_part}" if not host_part.startswith("www.") else f"{host_part}/{path_part}"
+            return host_part
+    # Unmapped — use base proxy host or slug as fallback
+    return base_proxy_host or slug
 
 
 def pd_slug_to_hosts(slug: str) -> list[str]:
@@ -576,37 +601,49 @@ class PipedreamOAuthBroker:
 
                     # Upsert a credential in the vault so users can provision it to toolkits.
                     # Label is always copied from oauth_broker_accounts (single source of truth).
-                    host_slug = api_host.replace(".", "-")
-                    cred_id = broker_credential_id(self.broker_id, account_id, api_host)
+                    # Credential ID is a slug derived from the label.
+                    import json as _json
+                    route = pd_slug_to_route(app_slug, base_proxy_host=api_host)
+                    routes_json = _json.dumps([route])
                     enc_account_id = vault.encrypt(account_id)
+
+                    # Find existing credential by route match (not by constructed ID)
                     async with db.execute(
-                        "SELECT id FROM credentials WHERE id=?", (cred_id,)
+                        """SELECT id FROM credentials
+                           WHERE auth_type='pipedream_oauth'
+                           AND EXISTS (SELECT 1 FROM json_each(routes) WHERE value=?)""",
+                        (route,),
                     ) as cur:
                         existing_cred = await cur.fetchone()
 
                     if existing_cred:
-                        # Existing credential: update the encrypted value and sync the label
-                        # from oauth_broker_accounts (the authoritative source). Never read
-                        # the label from credentials — that creates divergence.
+                        cred_id = existing_cred[0]
                         await db.execute(
                             "UPDATE credentials SET label=?, encrypted_value=?, "
-                            "api_id=?, auth_type='pipedream_oauth', "
+                            "routes=?, auth_type='pipedream_oauth', "
                             "updated_at=unixepoch() WHERE id=?",
-                            (effective_label, enc_account_id, api_host, cred_id),
+                            (effective_label, enc_account_id, routes_json, cred_id),
                         )
                     else:
-                        # New credential: use the effective_label from oauth_broker_accounts.
-                        # env_var must be unique per (account_id, api_host) — include
-                        # the host slug so multiple APIs sharing one Pipedream account
-                        # (e.g. googleapis.com/gmail and googleapis.com/calendar) each
-                        # get their own env_var and don't collide on the UNIQUE constraint.
+                        cred_id = _slugify(effective_label)
+                        # Collision-safe: append suffix if slug exists
+                        suffix_n = 2
+                        base_slug = cred_id
+                        while True:
+                            async with db.execute("SELECT id FROM credentials WHERE id=?", (cred_id,)) as cur:
+                                if not await cur.fetchone():
+                                    break
+                            cred_id = f"{base_slug}-{suffix_n}"
+                            suffix_n += 1
+
+                        host_slug = api_host.replace(".", "-")
                         safe_host = host_slug.upper().replace("/", "_").replace("-", "_")
                         env_var = f"PIPEDREAM_{account_id.upper().replace('-', '_')}_{safe_host}"
                         await db.execute(
                             "INSERT INTO credentials "
-                            "(id, label, env_var, encrypted_value, api_id, auth_type) "
+                            "(id, label, env_var, encrypted_value, routes, auth_type) "
                             "VALUES (?, ?, ?, ?, ?, 'pipedream_oauth')",
-                            (cred_id, effective_label, env_var, enc_account_id, api_host),
+                            (cred_id, effective_label, env_var, enc_account_id, routes_json),
                         )
 
                     count += 1
@@ -623,16 +660,28 @@ class PipedreamOAuthBroker:
             for stale_id in stale_ids:
                 # Stale accounts are already gone from Pipedream (not returned by API).
                 # Only clean up local rows — no upstream revoke needed.
-                # Find and remove all credential IDs derived from this account
+                # Find credentials whose routes match this account's api_host
                 async with db.execute(
-                    "SELECT id FROM credentials WHERE id LIKE ?",
-                    (f"{self.broker_id}-{stale_id}-%",),
+                    "SELECT api_host FROM oauth_broker_accounts "
+                    "WHERE broker_id=? AND account_id=?",
+                    (self.broker_id, stale_id),
                 ) as cur:
-                    stale_creds = [r[0] for r in await cur.fetchall()]
-                for cred_id in stale_creds:
-                    await db.execute("DELETE FROM toolkit_credentials WHERE credential_id=?", (cred_id,))
-                    await db.execute("DELETE FROM credentials WHERE id=?", (cred_id,))
-                    log.info("Removed stale credential %s (account %s disconnected)", cred_id, stale_id)
+                    stale_hosts = [r[0] for r in await cur.fetchall()]
+                for stale_host in stale_hosts:
+                    stale_route = pd_slug_to_route(
+                        account_slugs.get(stale_id, ""), base_proxy_host=stale_host
+                    )
+                    async with db.execute(
+                        """SELECT id FROM credentials
+                           WHERE auth_type='pipedream_oauth'
+                           AND EXISTS (SELECT 1 FROM json_each(routes) WHERE value=?)""",
+                        (stale_route,),
+                    ) as cur:
+                        stale_creds = [r[0] for r in await cur.fetchall()]
+                    for cred_id in stale_creds:
+                        await db.execute("DELETE FROM toolkit_credentials WHERE credential_id=?", (cred_id,))
+                        await db.execute("DELETE FROM credentials WHERE id=?", (cred_id,))
+                        log.info("Removed stale credential %s (account %s disconnected)", cred_id, stale_id)
 
                 # Remove account row
                 await db.execute(

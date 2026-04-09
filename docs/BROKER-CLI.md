@@ -36,8 +36,7 @@ Two request headers control credential selection:
 | Header | Purpose |
 |--------|---------|
 | `X-Jentic-API-Key` | Selects your toolkit (required) |
-| `X-Jentic-Credential` | Selects a specific credential by ID (optional; hard override) |
-| `X-Jentic-Service` | Selects by service name, e.g. `google_calendar` (optional; friendlier than `X-Jentic-Credential`) |
+| `X-Jentic-Credential` | Selects a specific credential by ID/slug (optional; hard override) |
 
 ---
 
@@ -173,7 +172,7 @@ Set `identity` on the credential if the API requires a specific username.
 
 | Symptom | Likely cause | Fix |
 |---------|-------------|-----|
-| 403 from upstream | Wrong credential selected | Add `X-Jentic-Service: google_calendar` (or `X-Jentic-Credential`) to select the right one |
+| 403 from upstream | Wrong credential selected | Add `X-Jentic-Credential: work-gmail` to select the right one, or update credential `routes` |
 | 400 from GitHub git push | Wrong BasicAuth encoding | Check the `identity` field on the credential — should be `token` or any non-empty string |
 | No auth injected | Credential not bound to toolkit | `POST /toolkits/{id}/credentials` |
 | No auth injected | API has no security scheme | Submit an overlay via `POST /apis/{api_id}/overlays` |

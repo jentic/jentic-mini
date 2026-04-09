@@ -328,8 +328,8 @@ def _toolkit_to_markdown(data: dict) -> str:
             lines.append(f"### `{cred['credential_id']}`")
             if cred.get("label"):
                 lines.append(f"- **Label:** {cred['label']}")
-            if cred.get("api_id"):
-                lines.append(f"- **API:** `{cred['api_id']}`")
+            if cred.get("routes"):
+                lines.append(f"- **API:** `{cred['routes']}`")
             user_rules = [r for r in cred.get("permissions", []) if not r.get("_system")]
             if user_rules:
                 lines.append("- **Custom permissions:**")
@@ -381,12 +381,12 @@ async def get_toolkit(toolkit_id: str, request: Request):
         if toolkit_id == DEFAULT_TOOLKIT_ID:
             # Default toolkit sees all credentials implicitly
             async with db.execute(
-                "SELECT id, id, label, api_id, created_at FROM credentials ORDER BY created_at DESC",
+                "SELECT id, id, label, routes, created_at FROM credentials ORDER BY created_at DESC",
             ) as cur:
                 cred_rows = await cur.fetchall()
         else:
             async with db.execute(
-                """SELECT cc.id, cc.credential_id, c.label, c.api_id, cc.created_at
+                """SELECT cc.id, cc.credential_id, c.label, c.routes, cc.created_at
                    FROM toolkit_credentials cc
                    JOIN credentials c ON cc.credential_id = c.id
                    WHERE cc.toolkit_id = ?""",
@@ -411,7 +411,7 @@ async def get_toolkit(toolkit_id: str, request: Request):
         {
             "credential_id": r[1],
             "label": r[2],
-            "api_id": r[3],
+            "routes": r[3],
             "bound_at": r[4],
             "permissions": cred_policies.get(r[1], []) + SYSTEM_SAFETY_RULES,
             "_links": {
@@ -682,7 +682,7 @@ async def list_toolkit_credentials(toolkit_id: str, request: Request):
             raise HTTPException(403, "Agents may only list credentials for their own toolkit.")
     async with get_db() as db:
         async with db.execute(
-            """SELECT cc.id, cc.credential_id, c.label, c.api_id, cc.created_at
+            """SELECT cc.id, cc.credential_id, c.label, c.routes, cc.created_at
                FROM toolkit_credentials cc
                JOIN credentials c ON cc.credential_id = c.id
                WHERE cc.toolkit_id = ?""",
@@ -694,7 +694,7 @@ async def list_toolkit_credentials(toolkit_id: str, request: Request):
             "id": r[0],
             "credential_id": r[1],
             "credential_label": r[2],
-            "api_id": r[3],
+            "routes": r[3],
             "created_at": r[4],
         }
         for r in rows
