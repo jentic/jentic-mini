@@ -143,20 +143,18 @@ def _catalog_vendor_set(api_ids: set[str]) -> set[str]:
 
 
 async def ensure_catalog_api_imported(api_id: str) -> str | None:
-    """Lazy-import a catalog API if it isn't already in the local registry.
+    """Import (or re-import) a catalog API into the local registry.
 
-    Called by POST /credentials when the target api_id isn't locally registered.
+    Called by POST/PATCH /credentials so that saving a credential always ensures
+    the API has a fresh, complete local registration including its spec file.
+    Re-imports even if the API row already exists — this self-heals missing or
+    stale spec files without needing a separate repair endpoint.
+
     Returns the locally-registered api_id after import, or None if the api_id
     isn't in the catalog manifest (caller should proceed without import).
 
     Raises HTTPException on import failure.
     """
-    # Already registered?
-    async with get_db() as db:
-        async with db.execute("SELECT id FROM apis WHERE id=?", (api_id,)) as cur:
-            if await cur.fetchone():
-                return api_id  # already local
-
     # In the catalog?
     entries = _load_manifest()
     entry = next((e for e in entries if e["api_id"] == api_id), None)
@@ -350,7 +348,9 @@ def _build_manifest_from_apis_json() -> list[dict] | None:
             continue
         seen.add(api_id)
         path = f"{CATALOG_PATH}/{domain}/{sub}" if sub != domain else f"{CATALOG_PATH}/{domain}"
-        manifest.append({"api_id": api_id, "path": path, "sha": ""})
+        # Derive spec_url from the sub-apis.json URL: replace /apis.json → /openapi.json
+        spec_url = url.replace("/apis.json", "/openapi.json") if url.endswith("/apis.json") else None
+        manifest.append({"api_id": api_id, "path": path, "sha": "", "spec_url": spec_url})
 
     return manifest
 
@@ -436,13 +436,16 @@ def _build_catalog_result(entry: dict, registered_ids: set[str]) -> dict:
         links["operations"] = f"/apis/{api_id}/operations"
     else:
         links["import"] = f"/catalog/{api_id}/import"
-    return {
+    result = {
         "type": "catalog_api",
         "source": "catalog",
         "api_id": api_id,
         "registered": is_reg,
         "_links": links,
     }
+    if entry.get("spec_url"):
+        result["spec_url"] = entry["spec_url"]
+    return result
 
 
 # ── Routes ────────────────────────────────────────────────────────────────────
@@ -508,17 +511,20 @@ async def get_catalog_entry(api_id: str):
         async with db.execute("SELECT 1 FROM apis WHERE id=? LIMIT 1", (api_id,)) as cur:
             is_registered = await cur.fetchone() is not None
 
+    # Use cached spec_url from manifest if available (avoids GitHub API walk)
+    spec_url: str | None = entry.get("spec_url")
     spec_file = None
-    spec_url = None
     spec_error = None
-    try:
-        spec_file = _find_spec_recursive(entry["path"])
-        if spec_file:
-            spec_url = spec_file.get("download_url")
-    except urllib.error.HTTPError as e:
-        spec_error = f"GitHub returned {e.code}: {e.reason}"
-    except Exception as e:
-        spec_error = str(e)
+    if not spec_url:
+        # Fallback: walk GitHub tree (for manifests built before spec_url was added)
+        try:
+            spec_file = _find_spec_recursive(entry["path"])
+            if spec_file:
+                spec_url = spec_file.get("download_url")
+        except urllib.error.HTTPError as e:
+            spec_error = f"GitHub returned {e.code}: {e.reason}"
+        except Exception as e:
+            spec_error = str(e)
 
     links: dict = {
         "github": f"https://github.com/{GITHUB_REPO}/tree/main/{entry['path']}",

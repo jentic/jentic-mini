@@ -22,6 +22,22 @@ class CredentialCreate(NormModel):
     Leave null for Bearer tokens, single-value API keys, and GitHub PAT-style BasicAuth."""
     api_id: str | None = None
     """API this credential belongs to (e.g. 'techpreneurs.ie'). Required for broker injection."""
+    server_variables: dict[str, str] | None = None
+    """Resolved values for OpenAPI server URL template variables.
+
+    Required for self-hosted and multi-tenant APIs whose server URL contains
+    template variables (e.g. ``{host}``, ``{tenant}``, ``{port}``).
+    The broker substitutes these values at routing time before forwarding requests.
+
+    Example for Discourse at ``https://{host}``:
+        ``{"host": "forum.acme.com"}``
+
+    Example for a multi-tenant SaaS at ``https://{tenant}.example.com/api``:
+        ``{"tenant": "acme"}``
+
+    Omit (or set ``null``) for public SaaS APIs whose server URL is fixed.
+    Use ``GET /apis/{api_id}`` to see which variables the spec declares.
+    """
     auth_type: Literal["bearer", "basic", "apiKey"] | None = Field(
         default=None,
         description=(
@@ -35,6 +51,25 @@ class CredentialCreate(NormModel):
             "| `apiKey` | Custom header or query param `= {value}` | API key in a named header (X-API-Key, Api-Key, X-Auth-Key, etc.). For **compound** schemes (e.g. Discourse Api-Key + Api-Username) where the overlay uses canonical `Secret`/`Identity` scheme names, set `identity` to the username/account — a single credential covers both headers. |"
         ),
     )
+    scheme: dict | None = Field(
+        default=None,
+        description=(
+            "Self-describing injection rule. When set, the broker injects the credential "
+            "directly from this blob without looking up the API spec or overlay at runtime. "
+            "Format: {\"in\": \"header\", \"name\": \"Authorization\", \"prefix\": \"Bearer \"} "
+            "or {\"in\": \"header\", \"name\": \"X-Api-Key\"}. "
+            "Supports encode=base64 for Basic auth: {\"in\": \"header\", \"name\": \"Authorization\", \"prefix\": \"Basic \", \"encode\": \"base64\"}. "
+            "For compound schemes: {\"secret\": {\"in\": \"header\", ...}, \"identity\": {\"in\": \"header\", ...}}."
+        ),
+    )
+    routes: list[str] | None = Field(
+        default=None,
+        description=(
+            "Hostnames or host+path patterns this credential should be injected into. "
+            "Each entry is stored as (host, path_prefix) in credential_routes. "
+            "Example: [\"github.com\", \"api.github.com\"]. "
+        ),
+    )
 
 
 class CredentialPatch(NormModel):
@@ -46,6 +81,16 @@ class CredentialPatch(NormModel):
     auth_type: Literal["bearer", "basic", "apiKey"] | None = Field(
         default=None,
         description="Update the auth type for this credential. See `POST /credentials` for valid values and semantics.",
+    )
+    server_variables: dict[str, str] | None = None
+    """Update the resolved server variable values for this credential."""
+    scheme: dict | None = Field(
+        default=None,
+        description="Update the self-describing injection rule. See POST /credentials for format.",
+    )
+    routes: list[str] | None = Field(
+        default=None,
+        description="Update the host+path routing patterns for this credential.",
     )
 
 
@@ -128,6 +173,12 @@ class CredentialOut(BaseModel):
     """Identity field (username, client ID, etc.) — returned so clients can confirm what was stored."""
     api_id: str | None = None
     auth_type: str | None = None
+    server_variables: dict[str, str] | None = None
+    """Resolved server variable values stored with this credential."""
+    scheme: dict | None = None
+    """Self-describing injection rule — when set, broker injects directly without API spec lookup."""
+    routes: list[str] | None = None
+    """Host+path patterns this credential matches — stored in credential_routes table."""
     created_at: float | None = None
     updated_at: float | None = None
     account_id: str | None = None

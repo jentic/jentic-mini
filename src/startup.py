@@ -268,3 +268,42 @@ async def seed_broker_apps(broker_id: str = "pipedream") -> None:
         log.info("seed_broker_apps: %d inserted, %d updated for broker '%s'", inserted, updated, broker_id)
     else:
         log.debug("seed_broker_apps: all mappings already up-to-date for broker '%s'", broker_id)
+
+
+
+async def _backfill_credential_routes() -> None:
+    """Ensure every credential has at least one entry in credential_routes.
+
+    Credentials created before migration 0006 may not have rows in credential_routes.
+    This idempotent backfill adds route entries derived from api_id for any
+    credential with no existing credential_routes rows.
+
+    Runs at every startup — the LEFT JOIN makes it a no-op if already complete.
+    """
+    from src.vault import _parse_route
+    import json as _json
+    async with get_db() as db:
+        async with db.execute(
+            """SELECT c.id, c.api_id
+               FROM credentials c
+               LEFT JOIN credential_routes cr ON c.id = cr.credential_id
+               WHERE cr.credential_id IS NULL"""
+        ) as cur:
+            rows = await cur.fetchall()
+
+    if not rows:
+        log.debug("_backfill_credential_routes: nothing to backfill")
+        return
+
+    log.info("_backfill_credential_routes: backfilling routes for %d credential(s)", len(rows))
+    async with get_db() as db:
+        for cred_id, api_id in rows:
+            if not api_id:
+                continue
+            host, path_prefix = _parse_route(api_id)
+            await db.execute(
+                "INSERT OR IGNORE INTO credential_routes (credential_id, host, path_prefix) VALUES (?,?,?)",
+                (cred_id, host, path_prefix),
+            )
+        await db.commit()
+    log.info("_backfill_credential_routes: done")

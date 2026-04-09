@@ -40,7 +40,7 @@ from src.routers import oauth_brokers as oauth_brokers_router
 from src.routers.apis import rebuild_index_on_startup
 from src.routers.catalog import refresh_catalog_if_stale
 from src.config import APP_VERSION
-from src.startup import self_register, seed_broker_apps
+from src.startup import self_register, seed_broker_apps, _backfill_credential_routes
 from src.utils import build_absolute_url
 
 logging.basicConfig(level=(os.getenv("LOG_LEVEL") or "info").upper())
@@ -55,6 +55,8 @@ log = logging.getLogger("jentic")
 async def lifespan(app: FastAPI):
     log.info("Jentic starting — running migrations")
     run_migrations()
+    log.info("Jentic backfilling credential routes")
+    await _backfill_credential_routes()
     log.info("Jentic building BM25 index")
     await rebuild_index_on_startup()
     log.info("Jentic self-registering")
