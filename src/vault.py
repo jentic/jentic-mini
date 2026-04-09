@@ -1,47 +1,26 @@
 """Fernet-encrypted credential vault."""
+import json
 import os
 import re
-import uuid
 from pathlib import Path
+
 from cryptography.fernet import Fernet, InvalidToken
+
 from src.db import get_db
 
 _KEY_FILE = Path(os.getenv("DB_PATH", "/app/data/jentic-mini.db")).parent / "vault.key"
 
-_COMMON_WORDS = {
-    "api", "key", "token", "secret", "auth", "oauth",
-    "credential", "credentials", "access", "the", "a", "an",
-}
 
-
-def _credential_slug(api_id: str | None, label: str) -> str:
-    """Generate a semantic, URL-safe credential ID from api_id + label.
-
-    Strategy:
-      - Start with api_id (e.g. "api.elevenlabs.io")
-      - Tokenize label; strip tokens appearing in api_id or that are common words
-      - Slugify the remainder and append with '-' separator
-      - If nothing remains, use api_id alone
-      - If no api_id, slugify the label directly
+def _slugify(label: str) -> str:
+    """Generate a URL-safe slug from a label.
 
     Examples:
-      api.elevenlabs.io + "ElevenLabs API Key"  → "api.elevenlabs.io"
-      api.github.com    + "GitHub PAT"          → "api.github.com-pat"
-      api.openai.com    + "OpenAI Org Key"      → "api.openai.com-org"
-      api.stripe.com    + "Stripe Live Secret"  → "api.stripe.com-live"
+      "Work Gmail"       → "work-gmail"
+      "GitHub PAT"       → "github-pat"
+      "My Calendar (v2)" → "my-calendar-v2"
     """
-    if not api_id:
-        slug = re.sub(r"[^a-z0-9.-]+", "-", label.lower()).strip("-")
-        return slug or "credential"
-
-    api_tokens = set(re.split(r"[./\-_]", api_id.lower())) | _COMMON_WORDS
-    label_parts = re.split(r"[\s\-_./]+", label.lower())
-    remainder = [p for p in label_parts if p and p not in api_tokens]
-
-    if remainder:
-        suffix = re.sub(r"[^a-z0-9]+", "-", "-".join(remainder)).strip("-")
-        return f"{api_id}-{suffix}" if suffix else api_id
-    return api_id
+    slug = re.sub(r"[^a-z0-9]+", "-", label.lower()).strip("-")
+    return slug or "credential"
 
 
 def _fernet() -> Fernet:
@@ -76,15 +55,21 @@ async def create_credential(
     label: str,
     env_var: str,
     value: str,
-    api_id: str | None = None,
-    scheme_name: str | None = None,  # legacy param name kept for call-site compat; stored as auth_type
+    routes: list[str] | None = None,
+    auth_type: str | None = None,
     identity: str | None = None,
+    credential_id: str | None = None,
 ) -> dict:
-    base_slug = _credential_slug(api_id, label)
+    """Create a new credential in the vault.
+
+    If credential_id is provided, use it as-is. Otherwise auto-generate from label.
+    """
+    base_slug = credential_id or _slugify(label)
     enc = encrypt(value)
+    routes_json = json.dumps(routes or [])
 
     async with get_db() as db:
-        # Collision-safe semantic ID
+        # Collision-safe ID
         cid = base_slug
         suffix_n = 2
         while True:
@@ -95,8 +80,9 @@ async def create_credential(
             suffix_n += 1
 
         await db.execute(
-            "INSERT INTO credentials (id, label, env_var, encrypted_value, api_id, auth_type, identity) VALUES (?,?,?,?,?,?,?)",
-            (cid, label, env_var, enc, api_id, scheme_name, identity),
+            "INSERT INTO credentials (id, label, env_var, encrypted_value, routes, auth_type, identity) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (cid, label, env_var, enc, routes_json, auth_type, identity),
         )
         await db.commit()
         async with db.execute("SELECT * FROM credentials WHERE id=?", (cid,)) as cur:
@@ -105,7 +91,8 @@ async def create_credential(
 
 
 async def patch_credential(cid: str, label: str | None, value: str | None,
-                           api_id: str | None = None, scheme_name: str | None = None,
+                           routes: list[str] | None = None,
+                           auth_type: str | None = None,
                            identity: str | None = None) -> dict | None:
     async with get_db() as db:
         if label:
@@ -113,10 +100,10 @@ async def patch_credential(cid: str, label: str | None, value: str | None,
         if value:
             enc = encrypt(value)
             await db.execute("UPDATE credentials SET encrypted_value=?, updated_at=unixepoch() WHERE id=?", (enc, cid))
-        if api_id is not None:
-            await db.execute("UPDATE credentials SET api_id=?, updated_at=unixepoch() WHERE id=?", (api_id, cid))
-        if scheme_name is not None:
-            await db.execute("UPDATE credentials SET auth_type=?, updated_at=unixepoch() WHERE id=?", (scheme_name, cid))
+        if routes is not None:
+            await db.execute("UPDATE credentials SET routes=?, updated_at=unixepoch() WHERE id=?", (json.dumps(routes), cid))
+        if auth_type is not None:
+            await db.execute("UPDATE credentials SET auth_type=?, updated_at=unixepoch() WHERE id=?", (auth_type, cid))
         if identity is not None:
             await db.execute("UPDATE credentials SET identity=?, updated_at=unixepoch() WHERE id=?", (identity, cid))
         await db.commit()
@@ -132,12 +119,8 @@ async def delete_credential(cid: str) -> bool:
     return cur.rowcount > 0
 
 
-
 async def get_credential_value(db, vault_id: str) -> str | None:
-    """
-    Return the decrypted value for a credential by UUID.
-    Used by auth_override to resolve vault_id references.
-    """
+    """Return the decrypted value for a credential by ID."""
     async with db.execute(
         "SELECT encrypted_value FROM credentials WHERE id=?", (vault_id,)
     ) as cur:
@@ -147,47 +130,87 @@ async def get_credential_value(db, vault_id: str) -> str | None:
     return decrypt(row[0])
 
 
-async def get_credential_ids_for_api(toolkit_id: str, api_id: str) -> list[str]:
-    """Return credential IDs (no decryption) bound to a toolkit+api. Used for policy checks."""
+async def get_credential_ids_for_route(toolkit_id: str, host: str, path: str) -> list[str]:
+    """Return credential IDs (no decryption) matching a route. Used for policy checks.
+
+    Matches credentials whose routes JSON array contains a prefix of host/path.
+    Ordered by longest matching prefix (most specific first).
+    """
     from src.db import DEFAULT_TOOLKIT_ID
+    full_path = f"{host}/{path}".rstrip("/")
     async with get_db() as db:
         if toolkit_id == DEFAULT_TOOLKIT_ID:
             async with db.execute(
-                "SELECT id FROM credentials WHERE api_id = ?", (api_id,)
+                """SELECT c.id FROM credentials c
+                   WHERE EXISTS (
+                       SELECT 1 FROM json_each(c.routes)
+                       WHERE ? LIKE (value || '%')
+                   )
+                   ORDER BY (
+                       SELECT MAX(length(value)) FROM json_each(c.routes)
+                       WHERE ? LIKE (value || '%')
+                   ) DESC""",
+                (full_path, full_path),
             ) as cur:
                 rows = await cur.fetchall()
         else:
             async with db.execute(
                 """SELECT c.id FROM credentials c
                    JOIN toolkit_credentials cc ON c.id = cc.credential_id
-                   WHERE cc.toolkit_id = ? AND c.api_id = ?""",
-                (toolkit_id, api_id),
+                   WHERE cc.toolkit_id = ?
+                   AND EXISTS (
+                       SELECT 1 FROM json_each(c.routes)
+                       WHERE ? LIKE (value || '%')
+                   )
+                   ORDER BY (
+                       SELECT MAX(length(value)) FROM json_each(c.routes)
+                       WHERE ? LIKE (value || '%')
+                   ) DESC""",
+                (toolkit_id, full_path, full_path),
             ) as cur:
                 rows = await cur.fetchall()
     return [r[0] for r in rows]
 
 
-async def get_credentials_for_api(toolkit_id: str, api_id: str) -> list[dict]:
-    """
-    Return credentials bound to a specific api_id.
+async def get_credentials_for_route(toolkit_id: str, host: str, path: str) -> list[dict]:
+    """Return decrypted credentials matching a route, ordered by longest prefix match.
+
     The default toolkit implicitly contains ALL credentials — no join needed.
     Named toolkits are scoped via toolkit_credentials.
     """
     from src.db import DEFAULT_TOOLKIT_ID
+    full_path = f"{host}/{path}".rstrip("/")
     async with get_db() as db:
         if toolkit_id == DEFAULT_TOOLKIT_ID:
             async with db.execute(
-                "SELECT id, env_var, encrypted_value, auth_type, identity FROM credentials WHERE api_id = ?",
-                (api_id,),
+                """SELECT id, env_var, encrypted_value, auth_type, identity, routes
+                   FROM credentials
+                   WHERE EXISTS (
+                       SELECT 1 FROM json_each(routes)
+                       WHERE ? LIKE (value || '%')
+                   )
+                   ORDER BY (
+                       SELECT MAX(length(value)) FROM json_each(routes)
+                       WHERE ? LIKE (value || '%')
+                   ) DESC""",
+                (full_path, full_path),
             ) as cur:
                 rows = await cur.fetchall()
         else:
             async with db.execute(
-                """SELECT c.id, c.env_var, c.encrypted_value, c.auth_type, c.identity
+                """SELECT c.id, c.env_var, c.encrypted_value, c.auth_type, c.identity, c.routes
                    FROM credentials c
                    JOIN toolkit_credentials cc ON c.id = cc.credential_id
-                   WHERE cc.toolkit_id = ? AND c.api_id = ?""",
-                (toolkit_id, api_id),
+                   WHERE cc.toolkit_id = ?
+                   AND EXISTS (
+                       SELECT 1 FROM json_each(c.routes)
+                       WHERE ? LIKE (value || '%')
+                   )
+                   ORDER BY (
+                       SELECT MAX(length(value)) FROM json_each(c.routes)
+                       WHERE ? LIKE (value || '%')
+                   ) DESC""",
+                (toolkit_id, full_path, full_path),
             ) as cur:
                 rows = await cur.fetchall()
     return [
@@ -202,15 +225,24 @@ async def get_credentials_for_api(toolkit_id: str, api_id: str) -> list[dict]:
 
 
 def _row_to_dict(row) -> dict:
-    # columns: id, label, env_var, encrypted_value, created_at, updated_at, api_id, auth_type, identity
-    # env_var and encrypted_value are internal — not exposed in API responses
+    """Convert a credentials row to a dict for API responses.
+
+    Column order (after migration 0004):
+    0: id, 1: label, 2: env_var, 3: encrypted_value,
+    4: created_at, 5: updated_at, 6: routes, 7: auth_type, 8: identity
+    """
+    routes_raw = row[6] if len(row) > 6 else "[]"
+    try:
+        routes = json.loads(routes_raw) if routes_raw else []
+    except (json.JSONDecodeError, TypeError):
+        routes = []
     return {
         "id": row[0],
         "label": row[1],
         # encrypted_value (row[3]) intentionally omitted
         "created_at": row[4],
         "updated_at": row[5],
-        "api_id": row[6] if len(row) > 6 else None,
+        "routes": routes,
         "auth_type": row[7] if len(row) > 7 else None,
         "identity": row[8] if len(row) > 8 else None,
     }
