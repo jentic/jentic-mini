@@ -16,7 +16,7 @@ config = context.config
 
 # Set up Python logging from .ini
 if config.config_file_name is not None:
-    fileConfig(config.config_file_name)
+    fileConfig(config.config_file_name, disable_existing_loggers=False)
 
 # No SQLAlchemy models — raw SQL migrations only
 target_metadata = None
