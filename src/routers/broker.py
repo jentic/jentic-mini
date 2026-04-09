@@ -48,6 +48,7 @@ from fastapi.routing import APIRoute
 
 log = logging.getLogger("jentic.broker")
 
+from jentic.apitools.openapi.common.uri import is_http_https_url
 from src.config import JENTIC_PUBLIC_HOSTNAME
 from src.db import get_db
 import src.vault as vault
@@ -588,6 +589,8 @@ async def broker(request: Request, target: str):
     credential_alias = request.headers.get("x-jentic-credential")
     credential_service = request.headers.get("x-jentic-service")
     callback_url = request.headers.get("x-jentic-callback")
+    if callback_url and not is_http_https_url(callback_url):
+        raise HTTPException(400, "X-Jentic-Callback must be an http or https URL")
 
     # ── Killswitch: reject all requests for disabled toolkits ─────────────────
     if toolkit_id:

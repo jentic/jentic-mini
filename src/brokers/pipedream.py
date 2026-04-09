@@ -27,6 +27,7 @@ from dataclasses import dataclass, field
 
 import httpx
 
+from jentic.apitools.openapi.common.uri import is_http_https_url
 from src.db import get_db
 import src.vault as vault
 
@@ -698,6 +699,9 @@ class PipedreamOAuthBroker:
                     app_name, support_email,
                 )
 
+            if logo_url and not is_http_https_url(logo_url):
+                log.warning("PipedreamOAuthBroker: skipping logo — not an http(s) URL: %s", logo_url)
+                logo_url = None
             if logo_url:
                 try:
                     logo_resp = await client.get(logo_url, follow_redirects=True, timeout=10.0)

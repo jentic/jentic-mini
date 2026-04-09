@@ -11,3 +11,4 @@ bcrypt==5.0.0
 python-jose[cryptography]==3.5.0
 python-multipart>=0.0.9
 alembic>=1.13,<2
+jentic-openapi-common>=1.0.0a51
