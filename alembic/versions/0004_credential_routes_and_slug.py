@@ -12,6 +12,7 @@ import json
 import re
 
 from alembic import op
+from sqlalchemy import text
 
 revision = "0004"
 down_revision = "0003"
@@ -70,16 +71,16 @@ def upgrade():
     conn = op.get_bind()
 
     # ── 1. Read existing credentials ─────────────────────────────────────
-    rows = conn.execute(
+    rows = conn.execute(text(
         "SELECT id, label, env_var, encrypted_value, created_at, updated_at, "
         "api_id, auth_type, identity FROM credentials"
-    ).fetchall()
+    )).fetchall()
 
     # ── 2. Read oauth_broker_accounts for Pipedream route derivation ─────
     try:
-        broker_accounts = conn.execute(
+        broker_accounts = conn.execute(text(
             "SELECT account_id, api_host, app_slug FROM oauth_broker_accounts"
-        ).fetchall()
+        )).fetchall()
     except Exception:
         broker_accounts = []
 
@@ -138,7 +139,7 @@ def upgrade():
         })
 
     # ── 4. Disable FK checks during table rebuild ────────────────────────
-    conn.execute("PRAGMA foreign_keys = OFF")
+    conn.execute(text("PRAGMA foreign_keys = OFF"))
 
     # ── 5. Recreate credentials table with routes, without api_id ────────
     op.execute("DROP TABLE IF EXISTS credentials_new")
@@ -158,43 +159,41 @@ def upgrade():
 
     # ── 6. Insert migrated data ──────────────────────────────────────────
     for m in migrated:
-        conn.execute(
+        conn.execute(text(
             "INSERT INTO credentials_new "
             "(id, label, env_var, encrypted_value, created_at, updated_at, routes, auth_type, identity) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (m["id"], m["label"], m["env_var"], m["encrypted_value"],
-             m["created_at"], m["updated_at"], m["routes"], m["auth_type"], m["identity"]),
-        )
+            "VALUES (:id, :label, :env_var, :enc, :created, :updated, :routes, :auth_type, :identity)"
+        ), {"id": m["id"], "label": m["label"], "env_var": m["env_var"], "enc": m["encrypted_value"],
+            "created": m["created_at"], "updated": m["updated_at"], "routes": m["routes"],
+            "auth_type": m["auth_type"], "identity": m["identity"]})
 
     # ── 7. Update FK references ──────────────────────────────────────────
     for old_id, new_id in id_mapping.items():
-        conn.execute(
-            "UPDATE toolkit_credentials SET credential_id=? WHERE credential_id=?",
-            (new_id, old_id),
-        )
-        conn.execute(
-            "UPDATE credential_policies SET credential_id=? WHERE credential_id=?",
-            (new_id, old_id),
-        )
+        conn.execute(text(
+            "UPDATE toolkit_credentials SET credential_id=:new WHERE credential_id=:old"
+        ), {"new": new_id, "old": old_id})
+        conn.execute(text(
+            "UPDATE credential_policies SET credential_id=:new WHERE credential_id=:old"
+        ), {"new": new_id, "old": old_id})
 
     # ── 8. Swap tables ───────────────────────────────────────────────────
     op.execute("DROP TABLE credentials")
     op.execute("ALTER TABLE credentials_new RENAME TO credentials")
 
     # ── 9. Re-enable FK checks ───────────────────────────────────────────
-    conn.execute("PRAGMA foreign_keys = ON")
+    conn.execute(text("PRAGMA foreign_keys = ON"))
 
 
 def downgrade():
     """Reverse: add api_id back, remove routes. Slug IDs are kept (no reverse mapping)."""
     conn = op.get_bind()
-    conn.execute("PRAGMA foreign_keys = OFF")
+    conn.execute(text("PRAGMA foreign_keys = OFF"))
 
     # Read current data
-    rows = conn.execute(
+    rows = conn.execute(text(
         "SELECT id, label, env_var, encrypted_value, created_at, updated_at, "
         "routes, auth_type, identity FROM credentials"
-    ).fetchall()
+    )).fetchall()
 
     op.execute("DROP TABLE IF EXISTS credentials_old")
     op.execute("ALTER TABLE credentials RENAME TO credentials_old")
@@ -222,12 +221,13 @@ def downgrade():
             routes = []
         api_id = routes[0] if routes else None
 
-        conn.execute(
+        conn.execute(text(
             "INSERT INTO credentials "
             "(id, label, env_var, encrypted_value, created_at, updated_at, api_id, auth_type, identity) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (cid, label, env_var, enc_val, created, updated, api_id, auth_type, identity),
-        )
+            "VALUES (:id, :label, :env, :enc, :created, :updated, :api_id, :auth, :ident)"
+        ), {"id": cid, "label": label, "env": env_var, "enc": enc_val,
+            "created": created, "updated": updated, "api_id": api_id,
+            "auth": auth_type, "ident": identity})
 
     op.execute("DROP TABLE credentials_old")
-    conn.execute("PRAGMA foreign_keys = ON")
+    conn.execute(text("PRAGMA foreign_keys = ON"))
