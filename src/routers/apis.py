@@ -53,9 +53,10 @@ async def _load_merged_spec(api_id: str, spec_path: str | None) -> dict:
     spec = await _load_spec(spec_path) if spec_path else {}
     unapplied = []
 
+    status_filter = "status IN ('confirmed', 'pending')" if include_pending else "status='confirmed'"
     async with get_db() as db:
         async with db.execute(
-            "SELECT overlay FROM api_overlays WHERE api_id=? AND status='confirmed' ORDER BY created_at ASC",
+            f"SELECT overlay FROM api_overlays WHERE api_id=? AND {status_filter} ORDER BY created_at ASC",
             (api_id,),
         ) as cur:
             rows = await cur.fetchall()
@@ -244,18 +245,6 @@ def _parse_operations(api_id: str, spec_path: str, base_url: str | None = None) 
             })
     return ops
 
-
-def _load_base_url_from_spec(spec_path: str) -> str | None:
-    """Load and extract base URL from a spec file."""
-    p = Path(spec_path)
-    if not p.exists():
-        return None
-    try:
-        raw = p.read_text()
-        doc = yaml.safe_load(raw) if spec_path.endswith((".yaml", ".yml")) else json.loads(raw)
-        return _extract_base_url(doc)
-    except Exception:
-        return None
 
 
 async def _rebuild_index():
@@ -750,44 +739,6 @@ async def delete_api(
         await _rebuild_index()
 
 
-
-    """
-    Called at startup. Also backfills jentic_id for existing operations
-    that were registered before this field was added.
-    """
-    # Backfill jentic_id for existing operations missing it
-    async with get_db() as db:
-        # Get all APIs with their spec paths and base URLs
-        async with db.execute(
-            "SELECT id, spec_path, base_url FROM apis WHERE spec_path IS NOT NULL"
-        ) as cur:
-            apis = await cur.fetchall()
-
-        for api_id, spec_path, stored_base_url in apis:
-            # Resolve base URL: use stored or re-extract from spec
-            base_url = stored_base_url or _load_base_url_from_spec(spec_path)
-
-            # Update stored base_url if we just resolved it
-            if base_url and not stored_base_url:
-                await db.execute(
-                    "UPDATE apis SET base_url=? WHERE id=?", (base_url, api_id)
-                )
-
-            # Get operations missing jentic_id for this API
-            async with db.execute(
-                "SELECT id, method, path FROM operations WHERE api_id=? AND (jentic_id IS NULL OR jentic_id='')",
-                (api_id,)
-            ) as cur:
-                stale_ops = await cur.fetchall()
-
-            for op_id, method, path in stale_ops:
-                jentic_id = _compute_jentic_id(method or "GET", base_url, path or "/")
-                await db.execute(
-                    "UPDATE operations SET jentic_id=? WHERE id=?", (jentic_id, op_id)
-                )
-
-        await db.commit()
-
     await _rebuild_index()
 
 
@@ -844,104 +795,6 @@ async def purge_old_api_ids():
         "apis_remaining": api_count,
         "operations_indexed": op_count,
     }
-
-
-@router.post("/admin/migrate-version-ids", status_code=200, include_in_schema=False)
-async def migrate_version_ids():
-    """Re-derive all API IDs stripping trailing version segments.
-
-    e.g.  api.openai.com/v1 -> api.openai.com
-          api.zoom.us/v2    -> api.zoom.us
-          discord.com/api/v10 -> discord.com/api
-
-    On collision (old api.twitter.com/1.1 -> api.twitter.com already exists),
-    the conflicting API is deleted rather than renamed.
-    """
-    renames = []
-    deletes = []
-
-    async with get_db() as db:
-        async with db.execute("SELECT id, name, base_url FROM apis WHERE base_url IS NOT NULL") as cur:
-            rows = await cur.fetchall()
-        existing_ids = {r[0] for r in rows}
-
-        for old_id, name, base_url in rows:
-            new_id = _derive_api_id(base_url)
-            if new_id == old_id:
-                continue
-            if new_id in existing_ids:
-                # Collision — drop the old/versioned duplicate
-                deletes.append(old_id)
-            else:
-                renames.append((old_id, new_id))
-
-        for old_id in deletes:
-            await db.execute("DELETE FROM operations WHERE api_id=?", (old_id,))
-            await db.execute("DELETE FROM apis WHERE id=?", (old_id,))
-
-        for old_id, new_id in renames:
-            await db.execute("UPDATE operations SET api_id=? WHERE api_id=?", (new_id, old_id))
-            await db.execute("UPDATE apis SET id=? WHERE id=?", (new_id, old_id))
-
-        await db.commit()
-
-    await _rebuild_index()
-
-    async with get_db() as db:
-        async with db.execute("SELECT COUNT(*) FROM apis") as cur:
-            api_count = (await cur.fetchone())[0]
-        async with db.execute("SELECT COUNT(*) FROM operations") as cur:
-            op_count = (await cur.fetchone())[0]
-
-    return {
-        "status": "ok",
-        "renamed": [{"from": o, "to": n} for o, n in renames],
-        "deleted_collisions": deletes,
-        "apis_remaining": api_count,
-        "operations_indexed": op_count,
-    }
-
-
-@router.post("/admin/migrate-capability-ids", status_code=200, include_in_schema=False)
-async def migrate_capability_ids():
-    """Migrate operation jentic_ids to the current single-slash format: METHOD/host/path.
-
-    Handles two legacy formats:
-      - Old: "METHOD https://host/path"   (original format)
-      - Mid: "METHOD//host/path"          (double-slash, now superseded)
-
-    Safe to re-run — skips IDs already in the correct single-slash format.
-    Rebuilds BM25 index after migration.
-    """
-    import re as _re
-    old_https_re = _re.compile(
-        r"^(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)\s+https?://(.+)$", _re.I
-    )
-    old_dslash_re = _re.compile(
-        r"^(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)//(.+)$", _re.I
-    )
-    migrated = 0
-    skipped = 0
-
-    async with get_db() as db:
-        async with db.execute("SELECT id, jentic_id FROM operations") as cur:
-            rows = await cur.fetchall()
-
-        for (row_id, jentic_id) in rows:
-            m = old_https_re.match(jentic_id) or old_dslash_re.match(jentic_id)
-            if not m:
-                skipped += 1
-                continue
-            new_id = f"{m.group(1).upper()}/{m.group(2)}"
-            await db.execute(
-                "UPDATE operations SET jentic_id=? WHERE id=?", (new_id, row_id)
-            )
-            migrated += 1
-
-        await db.commit()
-
-    await _rebuild_index()
-    return {"status": "ok", "migrated": migrated, "skipped_already_new": skipped}
 
 
 # Alias used by main.py lifespan startup

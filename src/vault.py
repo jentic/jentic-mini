@@ -396,12 +396,14 @@ async def get_credential_value(db, vault_id: str) -> str | None:
         return None
     return decrypt(row[0])
 async def get_credential_ids_for_route(toolkit_id: str, host: str, path: str = "/") -> list[str]:
-    """Return credential IDs matching the given host+path via credential_routes.
+    """Return credential IDs matching host+path, longest path_prefix first.
 
-    O(log N) host lookup via index, then a small linear scan over path_prefix rows.
-    No decryption. Used for policy checks in broker._resolve_credential_ids.
+    O(log N) host index lookup, then a small linear scan over path_prefix rows.
+    No decryption. Used for policy checks.
     """
     from src.db import DEFAULT_TOOLKIT_ID
+    req_path = path if path.startswith("/") else "/" + path
+
     async with get_db() as db:
         if toolkit_id == DEFAULT_TOOLKIT_ID:
             async with db.execute(
@@ -419,12 +421,12 @@ async def get_credential_ids_for_route(toolkit_id: str, host: str, path: str = "
             ) as cur:
                 rows = await cur.fetchall()
 
-    req_path = path if path.startswith("/") else "/" + path
     candidates = [
         (cid, pp) for cid, pp in rows
-        if req_path.startswith(pp if pp.endswith("/") else pp + "/") or req_path == pp or pp == "/"
+        if req_path.startswith(pp if pp.endswith("/") else pp + "/")
+        or req_path == pp
+        or pp == "/"
     ]
-    # Unique credential IDs, longest (most specific) path_prefix first
     seen: set[str] = set()
     result: list[str] = []
     for cid, _ in sorted(candidates, key=lambda x: len(x[1]), reverse=True):
@@ -437,60 +439,44 @@ async def get_credential_ids_for_route(toolkit_id: str, host: str, path: str = "
 async def get_credentials_for_route(toolkit_id: str, host: str, path: str) -> list[dict]:
     """Return full credential dicts (with decrypted value) for the given host+path.
 
-    O(log N) host lookup via credential_routes index, then linear scan over
-    path_prefix rows. Results sorted longest-match first.
+    Calls get_credential_ids_for_route for the ID list (path matching, no decrypt),
+    then fetches and decrypts only the matched credentials.
+    Results are in longest path_prefix first order.
     """
-    from src.db import DEFAULT_TOOLKIT_ID
-    req_path = path if path.startswith("/") else "/" + path
+    ids = await get_credential_ids_for_route(toolkit_id, host, path)
+    if not ids:
+        return []
 
+    placeholders = ",".join("?" * len(ids))
     async with get_db() as db:
-        if toolkit_id == DEFAULT_TOOLKIT_ID:
-            async with db.execute(
-                """SELECT c.id, c.encrypted_value, c.auth_type, c.identity,
-                          c.server_variables, c.scheme, cr.path_prefix
-                   FROM credential_routes cr
-                   JOIN credentials c ON cr.credential_id = c.id
-                   WHERE cr.host=?""",
-                (host,),
-            ) as cur:
-                rows = await cur.fetchall()
-        else:
-            async with db.execute(
-                """SELECT c.id, c.encrypted_value, c.auth_type, c.identity,
-                          c.server_variables, c.scheme, cr.path_prefix
-                   FROM credential_routes cr
-                   JOIN credentials c ON cr.credential_id = c.id
-                   JOIN toolkit_credentials tc ON c.id = tc.credential_id
-                   WHERE cr.host=? AND tc.toolkit_id=?""",
-                (host, toolkit_id),
-            ) as cur:
-                rows = await cur.fetchall()
+        async with db.execute(
+            f"""SELECT id, encrypted_value, auth_type, identity, server_variables, scheme
+                FROM credentials WHERE id IN ({placeholders})""",
+            ids,
+        ) as cur:
+            rows = await cur.fetchall()
 
-    results: list[tuple[int, dict]] = []
-    seen: set[str] = set()
-    for cid, enc_val, auth_type, identity, sv_raw, scheme_raw, path_prefix in rows:
-        if cid in seen:
+    # Preserve the longest-match order from get_credential_ids_for_route
+    row_by_id = {row[0]: row for row in rows}
+    result = []
+    for cid in ids:
+        row = row_by_id.get(cid)
+        if not row:
             continue
-        if not (req_path.startswith(path_prefix if path_prefix.endswith("/") else path_prefix + "/")
-                or req_path == path_prefix
-                or path_prefix == "/"):
-            continue
-        seen.add(cid)
+        cid, enc_val, auth_type, identity, sv_raw, scheme_raw = row
         try:
             server_variables = _json.loads(sv_raw) if sv_raw else None
         except Exception:
             server_variables = None
-        results.append((len(path_prefix), {
+        result.append({
             "id": cid,
             "value": decrypt(enc_val),
             "auth_type": auth_type,
             "identity": identity,
             "server_variables": server_variables,
             "scheme": _json.loads(scheme_raw) if scheme_raw else None,
-        }))
-
-    results.sort(key=lambda x: x[0], reverse=True)
-    return [r[1] for r in results]
+        })
+    return result
 
 
 def _row_to_dict(row) -> dict:
