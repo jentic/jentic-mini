@@ -13,11 +13,11 @@ router = APIRouter(prefix="/debug", tags=["debug"], include_in_schema=False)
 @router.get("/whoami")
 async def whoami(request: Request):
     """Return IP detection diagnostics — use to verify source IP is not masked by Docker/NPM."""
-    from src.auth import _client_ip, is_trusted_ip, _trusted_subnets, default_allowed_ips
+    from src.auth import client_ip, is_trusted_ip, _trusted_subnets, default_allowed_ips
     raw_client = request.client.host if request.client else None
     xff = request.headers.get("x-forwarded-for", None)
     x_real_ip = request.headers.get("x-real-ip", None)
-    resolved_ip = _client_ip(request)
+    resolved_ip = client_ip(request)
     return {
         "resolved_ip": resolved_ip,
         "is_trusted": is_trusted_ip(resolved_ip),
