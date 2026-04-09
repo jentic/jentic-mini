@@ -15,6 +15,7 @@ echo "[entrypoint] Starting server..."
 exec uvicorn src.main:app \
     --host 0.0.0.0 \
     --port 8900 \
+    --log-level "${LOG_LEVEL:-info}" \
     --reload \
     --reload-dir /app/src \
     --reload-include "*.py"
