@@ -8,6 +8,7 @@ A toolkit is the central agent identity in Jentic:
 This models the Jentic v2 design spec's toolkits concept exactly.
 """
 import json
+import logging
 import re as _re
 import secrets
 import time
@@ -20,7 +21,7 @@ from pydantic import BaseModel, Field
 from src.validators import NormModel
 from typing import Any
 
-from src.auth import default_allowed_ips, require_human_session
+from src.auth import _client_ip, default_allowed_ips, require_human_session
 from src.db import get_db, DEFAULT_TOOLKIT_ID
 import src.vault as vault
 from src.models import (
@@ -28,6 +29,7 @@ from src.models import (
     CredentialBindingOut, PermissionRule, PermissionRuleOut, PermissionsPatch,
 )
 
+audit_log = logging.getLogger("jentic.audit")
 router = APIRouter(prefix="/toolkits")
 policy_router = APIRouter()  # mounted separately with tags=["permissions"], prefix="/toolkits" added at include time
 
@@ -608,7 +610,7 @@ async def patch_toolkit_key(toolkit_id: str, key_id: str, body: KeyCreate):
 
 
 @router.delete("/{toolkit_id}/keys/{key_id}", status_code=204, summary="Revoke a client API key")
-async def revoke_toolkit_key(toolkit_id: str, key_id: str):
+async def revoke_toolkit_key(toolkit_id: str, key_id: str, request: Request):
     """
     Revoke a single access key.
 
@@ -627,6 +629,7 @@ async def revoke_toolkit_key(toolkit_id: str, key_id: str):
             (time.time(), key_id)
         )
         await db.commit()
+    audit_log.info("KEY_REVOKED toolkit=%s key=%s actor=human ip=%s", toolkit_id, key_id, _client_ip(request))
 
 
 # ── Toolkit Credentials ────────────────────────────────────────────────────
@@ -755,7 +758,7 @@ async def get_credential_permissions(toolkit_id: str, cred_id: str):
     response_model=list[PermissionRuleOut],
     dependencies=[Depends(require_human_session)],
 )
-async def set_credential_permissions(toolkit_id: str, cred_id: str, body: list[PolicyRule]):
+async def set_credential_permissions(toolkit_id: str, cred_id: str, body: list[PolicyRule], request: Request):
     """Replaces the entire agent rule list for this credential.
     System safety rules are always appended server-side and cannot be removed.
     Use `PATCH` to add or remove individual rules without replacing the full list.
@@ -766,7 +769,9 @@ async def set_credential_permissions(toolkit_id: str, cred_id: str, body: list[P
                 raise HTTPException(404, f"Credential '{cred_id}' not found")
 
     rules_list = [r.model_dump(exclude_none=True) for r in body]
-    return await _write_credential_permissions(cred_id, rules_list)
+    result = await _write_credential_permissions(cred_id, rules_list)
+    audit_log.info("PERMISSIONS_SET credential=%s rules=%d actor=human ip=%s", cred_id, len(rules_list), _client_ip(request))
+    return result
 
 
 @policy_router.patch(
@@ -776,7 +781,7 @@ async def set_credential_permissions(toolkit_id: str, cred_id: str, body: list[P
     response_model=list[PermissionRuleOut],
     dependencies=[Depends(require_human_session)],
 )
-async def patch_credential_permissions(toolkit_id: str, cred_id: str, body: PermissionsPatch):
+async def patch_credential_permissions(toolkit_id: str, cred_id: str, body: PermissionsPatch, request: Request):
     """Incrementally update rules for this credential without replacing the full list.
 
     - `add`: rules appended (deduplicated)
@@ -807,7 +812,11 @@ async def patch_credential_permissions(toolkit_id: str, cred_id: str, body: Perm
                 current_rules.append(rule_dict)
                 existing.add(json.dumps(rule_dict, sort_keys=True))
 
-    return await _write_credential_permissions(cred_id, current_rules)
+    result = await _write_credential_permissions(cred_id, current_rules)
+    added = len(body.add) if body.add else 0
+    removed = len(body.remove) if body.remove else 0
+    audit_log.info("PERMISSIONS_PATCHED credential=%s added=%d removed=%d actor=human ip=%s", cred_id, added, removed, _client_ip(request))
+    return result
 
 
 async def _write_credential_permissions(credential_id: str, rules_list: list[dict]) -> list:
