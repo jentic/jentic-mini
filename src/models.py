@@ -12,16 +12,25 @@ from src.validators import NormModel, NormStr
 
 class CredentialCreate(NormModel):
     label: str
+    """Human-readable name. Also used to derive the credential ID (slug) if `id` is not provided."""
     value: str
     """Plain-text secret; encrypted before storage. Always the primary credential — token, password, API key."""
+    id: str | None = None
+    """Optional custom ID (slug). If omitted, auto-generated from `label`. Immutable once set."""
     identity: str | None = None
     """Optional identity field — username, client ID, account SID etc.
     Required for http/basic and http/digest schemes (username + password).
     For compound apiKey schemes (overlay uses canonical 'Secret'/'Identity' names), the
     Identity scheme header is injected from this field.
     Leave null for Bearer tokens, single-value API keys, and GitHub PAT-style BasicAuth."""
-    api_id: str | None = None
-    """API this credential belongs to (e.g. 'techpreneurs.ie'). Required for broker injection."""
+    routes: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Host+path prefixes this credential covers. The broker matches requests "
+            "by longest prefix — e.g. `['www.googleapis.com/calendar']` matches "
+            "`www.googleapis.com/calendar/v3/events`. Multiple entries supported."
+        ),
+    )
     auth_type: Literal["bearer", "basic", "apiKey"] | None = Field(
         default=None,
         description=(
@@ -31,7 +40,7 @@ class CredentialCreate(NormModel):
             "| Value | Injects as | When to use |\n"
             "|---|---|---|\n"
             "| `bearer` | `Authorization: Bearer {value}` | REST APIs, OAuth access tokens, JWTs. GitHub REST API, Deepgram, Slack, etc. |\n"
-            "| `basic` | `Authorization: Basic base64({identity??'token'}:{value})` | HTTP Basic auth, git-over-HTTPS. Set `identity` to the username; omit for GitHub PATs (any username accepted). |\n"
+            "| `basic` | `Authorization: Basic base64({identity or 'token'}:{value})` | HTTP Basic auth, git-over-HTTPS. Set `identity` to the username; omit for GitHub PATs (any username accepted). |\n"
             "| `apiKey` | Custom header or query param `= {value}` | API key in a named header (X-API-Key, Api-Key, X-Auth-Key, etc.). For **compound** schemes (e.g. Discourse Api-Key + Api-Username) where the overlay uses canonical `Secret`/`Identity` scheme names, set `identity` to the username/account — a single credential covers both headers. |"
         ),
     )
@@ -42,7 +51,8 @@ class CredentialPatch(NormModel):
     value: str | None = None
     identity: str | None = None
     """Update the identity (username / client ID) for this credential."""
-    api_id: str | None = None
+    routes: list[str] | None = None
+    """Update the host+path prefixes this credential covers."""
     auth_type: Literal["bearer", "basic", "apiKey"] | None = Field(
         default=None,
         description="Update the auth type for this credential. See `POST /credentials` for valid values and semantics.",
@@ -123,16 +133,15 @@ class CapabilityOut(BaseModel):
 class CredentialOut(BaseModel):
     model_config = {"extra": "ignore"}
     id: str
+    """Human-readable slug (e.g. 'work-gmail'). Immutable, set at creation."""
     label: str
     identity: str | None = None
     """Identity field (username, client ID, etc.) — returned so clients can confirm what was stored."""
-    api_id: str | None = None
+    routes: list[str] = Field(default_factory=list)
+    """Host+path prefixes this credential covers."""
     auth_type: str | None = None
     created_at: float | None = None
     updated_at: float | None = None
-    account_id: str | None = None
-    app_slug: str | None = None
-    synced_at: float | None = None
 
 
 # ── Toolkits (output) ─────────────────────────────────────────────────────────
