@@ -40,7 +40,7 @@ import logging
 import time
 import asyncio
 from typing import Optional
-from urllib.parse import unquote, urlparse
+from urllib.parse import unquote
 
 import httpx
 import aiohttp
@@ -791,21 +791,11 @@ async def broker(request: Request, target: str):
     if credential_ambiguous:
         _cred_headers["X-Jentic-Credential-Ambiguous"] = "true"
 
-    # ── Compute routing host (used by both main and Pipedream paths) ──────────
-    # Look up base_url from the apis table for the matched api_id. This decouples
-    # the api_id (e.g. googleapis.com/calendar) from the real HTTP host
-    # (www.googleapis.com). Falls back to upstream_host if no base_url found.
+    # ── Routing host ──────────────────────────────────────────────────────────
+    # upstream_host is the host the caller addressed in the broker URL. With
+    # credential_routes, callers are expected to use the credential's resolved
+    # route host directly — no further remapping needed.
     routing_host = upstream_host
-    if api_id and not _is_self:
-        async with get_db() as _rdb:
-            async with _rdb.execute("SELECT base_url FROM apis WHERE id=?", (api_id,)) as _rcur:
-                _rrow = await _rcur.fetchone()
-            if _rrow and _rrow[0]:
-                _parsed = urlparse(_rrow[0])
-                # Use netloc (host:port) so non-default ports are preserved.
-                _parsed_host = _parsed.netloc or _parsed.hostname
-                if _parsed_host:
-                    routing_host = _parsed_host
 
     # ── Pipedream credential path ─────────────────────────────────────────────
     # If the vault lookup yielded no headers, check for an explicitly-provisioned
@@ -916,7 +906,6 @@ async def broker(request: Request, target: str):
                     )
 
     # ── Build upstream URL ────────────────────────────────────────────────────
-    # routing_host was computed above from base_url lookup — use it here too.
     import os as _os2
     import re as _re2
     _internal_port = int(_os2.environ.get("JENTIC_INTERNAL_PORT", "8900"))
