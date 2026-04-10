@@ -1,6 +1,9 @@
 """Upstream API credentials vault routes."""
+import json
 import logging
 import uuid
+
+import yaml
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse
 from src.models import CredentialCreate, CredentialOut, CredentialPatch
@@ -61,10 +64,8 @@ async def _get_confirmed_scheme(api_id: str, scheme_name: str | None) -> dict | 
     return row
 
 
-async def _api_has_native_scheme(api_id: str) -> bool:
+async def api_has_native_scheme(api_id: str) -> bool:
     """True if the API's own OpenAPI spec defines at least one security scheme."""
-    import json as _json
-    import yaml as _yaml
     async with get_db() as db:
         async with db.execute("SELECT spec_path FROM apis WHERE id=?", (api_id,)) as cur:
             row = await cur.fetchone()
@@ -74,12 +75,12 @@ async def _api_has_native_scheme(api_id: str) -> bool:
         with open(row[0]) as f:
             raw = f.read()
         if row[0].endswith((".yaml", ".yml")):
-            spec = _yaml.safe_load(raw)
+            spec = yaml.safe_load(raw)
         else:
             try:
-                spec = _json.loads(raw)
-            except _json.JSONDecodeError:
-                spec = _yaml.safe_load(raw)
+                spec = json.loads(raw)
+            except json.JSONDecodeError:
+                spec = yaml.safe_load(raw)
         schemes = spec.get("components", {}).get("securitySchemes", {})
         return bool(schemes)
     except Exception:
@@ -153,7 +154,7 @@ async def create(body: CredentialCreate, request: Request):
             log.warning("Workflow auto-import failed for '%s' (non-fatal): %s", api_id, _wf_err)
 
         # Check native spec first
-        has_native = await _api_has_native_scheme(api_id)
+        has_native = await api_has_native_scheme(api_id)
         if not has_native:
             # Check for any overlay (pending OR confirmed) — pending is enough to proceed.
             # The first successful broker call will confirm it. This is intentional bootstrap flow:

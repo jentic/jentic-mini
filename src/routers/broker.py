@@ -51,6 +51,7 @@ log = logging.getLogger("jentic.broker")
 from jentic.apitools.openapi.common.uri import is_http_https_url
 from src.config import JENTIC_PUBLIC_HOSTNAME
 from src.db import get_db
+from src.routers.credentials import api_has_native_scheme
 import src.vault as vault
 from src.routers.traces import new_trace_id, safe_write_trace
 # Lazy import to avoid circular deps — imported inline where needed
@@ -196,11 +197,15 @@ async def _find_credential_for_host(
     _broker_log.debug("CRED LOOKUP: %d cred(s) for api_id=%r host=%r: %s", len(creds), api_id, host, [c.get("id") for c in creds])
 
     if not creds and toolkit_id:
-        raise ValueError(
-            f"No credentials found for host '{host}' (resolved api_id '{api_id}') "
-            f"in toolkit '{toolkit_id}'. "
-            f"Use POST /toolkits/{toolkit_id}/access-requests to request access."
-        )
+        # Don't block no-auth APIs — only raise if the API spec defines security schemes.
+        # If someone added an overlay with security schemes, they'd also have created
+        # a credential — so creds wouldn't be empty and we'd never reach this branch.
+        if await api_has_native_scheme(api_id):
+            raise ValueError(
+                f"No credentials found for host '{host}' (resolved api_id '{api_id}') "
+                f"in toolkit '{toolkit_id}'. "
+                f"Use POST /toolkits/{toolkit_id}/access-requests to request access."
+            )
 
     is_ambiguous = False
 
