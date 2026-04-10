@@ -26,6 +26,7 @@ from fastapi import APIRouter, Body, HTTPException
 from pydantic import BaseModel, Field
 from src.validators import NormModel, NormStr
 
+from jentic.apitools.openapi.common.uri import is_http_https_url
 from src.db import get_db
 from src.bm25 import get_index
 import src.vault as vault
@@ -70,6 +71,8 @@ def _load_doc(source: ImportSource) -> tuple[dict, str | None]:
     elif source.type == "url":
         if not source.url:
             raise ValueError("url required for type=url")
+        if not is_http_https_url(source.url):
+            raise ValueError("Only http and https URLs are allowed")
         req = urllib.request.Request(source.url, headers={"User-Agent": "Jentic/0.2"})
         with urllib.request.urlopen(req, timeout=30) as resp:
             raw = resp.read().decode("utf-8", errors="replace")

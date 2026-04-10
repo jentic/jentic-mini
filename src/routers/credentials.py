@@ -1,15 +1,20 @@
 """Upstream API credentials vault routes."""
+import json
 import logging
 import uuid
 from typing import Annotated
+
+import yaml
 from fastapi import APIRouter, Body, HTTPException, Path, Query, Request
 from fastapi.responses import JSONResponse
 from src.models import CredentialCreate, CredentialOut, CredentialPatch
 import src.vault as vault
 from src.db import get_db
+from src.auth import client_ip
 from src.config import JENTIC_PUBLIC_HOSTNAME
 
 log = logging.getLogger("jentic")
+audit_log = logging.getLogger("jentic.audit")
 
 
 def _self_api_id() -> str:
@@ -60,10 +65,8 @@ async def _get_confirmed_scheme(api_id: str, scheme_name: str | None) -> dict | 
     return row
 
 
-async def _api_has_native_scheme(api_id: str) -> bool:
+async def api_has_native_scheme(api_id: str) -> bool:
     """True if the API's own OpenAPI spec defines at least one security scheme."""
-    import json as _json
-    import yaml as _yaml
     async with get_db() as db:
         async with db.execute("SELECT spec_path FROM apis WHERE id=?", (api_id,)) as cur:
             row = await cur.fetchone()
@@ -73,12 +76,12 @@ async def _api_has_native_scheme(api_id: str) -> bool:
         with open(row[0]) as f:
             raw = f.read()
         if row[0].endswith((".yaml", ".yml")):
-            spec = _yaml.safe_load(raw)
+            spec = yaml.safe_load(raw)
         else:
             try:
-                spec = _json.loads(raw)
-            except _json.JSONDecodeError:
-                spec = _yaml.safe_load(raw)
+                spec = json.loads(raw)
+            except json.JSONDecodeError:
+                spec = yaml.safe_load(raw)
         schemes = spec.get("components", {}).get("securitySchemes", {})
         return bool(schemes)
     except Exception:
@@ -158,7 +161,7 @@ async def create(body: CredentialCreate, request: Request):
             log.warning("Workflow auto-import failed for '%s' (non-fatal): %s", api_id, _wf_err)
 
         # Check native spec first
-        has_native = await _api_has_native_scheme(api_id)
+        has_native = await api_has_native_scheme(api_id)
         if not has_native:
             # Check for any overlay (pending OR confirmed) — pending is enough to proceed.
             # The first successful broker call will confirm it. This is intentional bootstrap flow:
@@ -227,6 +230,8 @@ async def create(body: CredentialCreate, request: Request):
         log.exception("Failed to create credential")
         raise HTTPException(400, "Failed to create credential.")
 
+    actor = "human" if request.state.is_human_session else f"toolkit={request.state.toolkit_id}"
+    audit_log.info("CREDENTIAL_CREATED id=%s label=%s api_id=%s actor=%s ip=%s", cred["id"], cred["label"], api_id, actor, client_ip(request))
     return cred
 
 
@@ -289,6 +294,8 @@ async def patch(
                                        identity=getattr(body, "identity", None))
     if not row:
         raise HTTPException(404, "Credential not found")
+    actor = "human" if request.state.is_human_session else f"toolkit={request.state.toolkit_id}"
+    audit_log.info("CREDENTIAL_UPDATED id=%s actor=%s ip=%s", cid, actor, client_ip(request))
     return row
 
 
@@ -309,6 +316,8 @@ async def delete(cid: Annotated[str, Path(description="Credential ID to delete")
             raise HTTPException(status_code=403, detail="Deleting credentials requires a human session, or an agent key with an explicit DELETE /credentials allow rule on the jentic-mini credential.")
     if not await vault.delete_credential(cid):
         raise HTTPException(404, "Credential not found")
+    actor = "human" if request.state.is_human_session else f"toolkit={request.state.toolkit_id}"
+    audit_log.info("CREDENTIAL_DELETED id=%s actor=%s ip=%s", cid, actor, client_ip(request))
 
 
 @router.get("", summary="List upstream API credentials — labels and API bindings only, no secret values", response_model=list[CredentialOut])

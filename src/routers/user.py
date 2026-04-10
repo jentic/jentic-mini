@@ -11,6 +11,7 @@ Endpoints:
 Password reset is CLI-only:
   docker exec jentic-mini python3 -m jentic reset-password
 """
+import logging
 import time
 import uuid
 from typing import Annotated
@@ -21,12 +22,13 @@ from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import BaseModel, Field, field_validator
 from src.validators import NormModel
 
-from src.auth import _make_jwt, JWT_TTL_SECONDS
+from src.auth import client_ip, _make_jwt, JWT_TTL_SECONDS
 from src.db import get_db, get_setting, set_setting, setup_state
 from src.models import TokenRequest, UserOut
 
 import bcrypt as _bcrypt
 
+audit_log = logging.getLogger("jentic.audit")
 router = APIRouter(prefix="/user", tags=["user"])
 
 
@@ -61,7 +63,7 @@ class UserLogin(BaseModel):
     summary="Create the root admin account (one-time setup)",
     openapi_extra={"requestBody": {"description": "Account credentials: username (trimmed of whitespace) and password (stored as bcrypt hash) for the root admin"}},
 )
-async def create_user(body: UserCreate, response: Response):
+async def create_user(body: UserCreate, request: Request, response: Response):
     """Create the single root account for this instance.
 
     This endpoint is available **once only**. After the first call it returns
@@ -108,6 +110,8 @@ async def create_user(body: UserCreate, response: Response):
         samesite="strict",
         max_age=JWT_TTL_SECONDS,
     )
+
+    audit_log.info("ACCOUNT_CREATED user=%s ip=%s", body.username.strip(), client_ip(request))
 
     return {
         "message": "Admin account created. You are now logged in.",
@@ -174,7 +178,9 @@ async def login(
         ) as cur:
             row = await cur.fetchone()
 
+    ip = client_ip(request)
     if not row or not _bcrypt.checkpw(password.encode(), row["password_hash"].encode()):
+        audit_log.warning("LOGIN_FAILED user=%s ip=%s", username.strip(), ip)
         raise HTTPException(
             401,
             detail={
@@ -183,6 +189,7 @@ async def login(
             },
         )
 
+    audit_log.info("LOGIN_SUCCESS user=%s ip=%s", username.strip(), ip)
     state = await setup_state()
     token = _make_jwt(state["jwt_secret"])
 
@@ -263,6 +270,16 @@ async def logout(request: Request, response: Response):
     """
     if not getattr(request.state, "is_human_session", False):
         raise HTTPException(401, "Not logged in.")
+    username = "unknown"
+    try:
+        async with get_db() as db:
+            async with db.execute("SELECT username FROM users LIMIT 1") as cur:
+                row = await cur.fetchone()
+        if row:
+            username = row[0]
+    except Exception:
+        pass
+    audit_log.info("LOGOUT user=%s ip=%s", username, client_ip(request))
     response.delete_cookie("jentic_session")
     return {"message": "Logged out."}
 

@@ -23,6 +23,7 @@ from typing import Annotated, Any
 from fastapi import APIRouter, HTTPException, Path, Query, Request
 from fastapi.responses import HTMLResponse, Response
 
+from jentic.apitools.openapi.common.uri import is_http_https_url
 from src.db import get_db
 from src.utils import workflow_has_async_steps
 from src.models import WorkflowOut
@@ -487,8 +488,10 @@ async def dispatch_workflow(
             toolkit_id=toolkit_id,
             inputs=inputs,
         )
-        # Store callback URL if provided
+        # Store callback URL if provided (http/https only — prevent SSRF)
         if callback_url:
+            if not is_http_https_url(callback_url):
+                raise HTTPException(400, "X-Jentic-Callback must be an http or https URL")
             async with get_db() as db:
                 await db.execute(
                     "UPDATE jobs SET callback_url=? WHERE id=?",

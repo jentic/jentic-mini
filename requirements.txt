@@ -1,7 +1,7 @@
 fastapi==0.135.3
 uvicorn[standard]==0.44.0
 httpx==0.28.1
-cryptography==46.0.6
+cryptography==46.0.7
 rank-bm25==0.2.2
 pyyaml==6.0.3
 aiofiles==25.1.0
@@ -11,3 +11,4 @@ bcrypt==5.0.0
 python-jose[cryptography]==3.5.0
 python-multipart>=0.0.9
 alembic>=1.13,<2
+jentic-openapi-common>=1.0.0a51
