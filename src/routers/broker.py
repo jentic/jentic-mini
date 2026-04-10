@@ -93,39 +93,14 @@ _HOP_BY_HOP_RESPONSE = _HOP_BY_HOP
 # How we detect credentials for a given API host
 # Looks up the api in the apis table by id (which is the scheme-stripped base URL)
 # then finds matching credentials by api_id + auth_type and injects them as HTTP headers.
-async def _resolve_credential_ids(host: str, toolkit_id: str | None, path: str = "/") -> tuple[str | None, list[str]]:
-    """Resolve host → (api_id, [credential_ids]) without decrypting anything.
+async def _resolve_credential_ids(host: str, toolkit_id: str | None, path: str = "/") -> list[str]:
+    """Resolve host → [credential_ids] without decrypting anything.
     Used for policy checks before the vault is touched.
-
-    api_id is resolved from the apis table (for routing_host/base_url lookup).
-    Credentials are resolved solely by routes — the single canonical lookup path.
-    path is passed to route matching so that api_id-style routes (e.g. "api.groq.com/openai")
-    match correctly against the full request path.
+    Resolution is purely route-based via credential_routes.
     """
-    candidates = [host]
-    parts = host.split(".")
-    if len(parts) > 2:
-        candidates.append(".".join(parts[1:]))
-
-    api_id = None
-    async with get_db() as db:
-        for candidate in candidates:
-            # ORDER BY length(id) DESC ensures longest (most specific) match wins
-            # (e.g. googleapis.com/calendar vs googleapis.com/gmail).
-            async with db.execute(
-                "SELECT id FROM apis WHERE id=? OR id LIKE ? ORDER BY length(id) DESC LIMIT 1",
-                (candidate, f"{candidate}%"),
-            ) as cur:
-                row = await cur.fetchone()
-            if row:
-                api_id = row[0]
-                break
-
     if not toolkit_id:
-        return api_id, []
-
-    cred_ids = await vault.get_credential_ids_for_route(toolkit_id, host, path)
-    return api_id, cred_ids
+        return []
+    return await vault.get_credential_ids_for_route(toolkit_id, host, path)
 
 
 async def _find_credential_for_host(
@@ -140,6 +115,7 @@ async def _find_credential_for_host(
 
     credential_id is the ID of the first credential used for injection — used by the
     caller to enforce per-credential policy rules.
+    api_id is taken from the credential record — not resolved via the apis table.
 
     is_ambiguous is True when multiple credentials matched and no alias/service
     was provided to disambiguate.
@@ -147,49 +123,8 @@ async def _find_credential_for_host(
     import logging as _log
     _broker_log = _log.getLogger("jentic.broker")
 
-    # Resolve host → api_id
-    candidates = [host]
-    parts = host.split(".")
-    if len(parts) > 2:
-        candidates.append(".".join(parts[1:]))
-
-    api_id = None
-    async with get_db() as db:
-        for candidate in candidates:
-            # For subdomain-style hosts (e.g. calendar.googleapis.com), also try
-            # the catalog convention of parent-domain/subdomain (googleapis.com/calendar)
-            # by extracting the leftmost subdomain label as a path hint.
-            sub_hint = host.split(".")[0] if host != candidate else None
-            row = None
-
-            # 1. Exact match
-            async with db.execute("SELECT id FROM apis WHERE id=?", (candidate,)) as cur:
-                row = await cur.fetchone()
-
-            # 2. Subdomain-hinted prefix match (e.g. googleapis.com/calendar)
-            if not row and sub_hint:
-                async with db.execute(
-                    "SELECT id FROM apis WHERE id LIKE ? ORDER BY length(id) DESC LIMIT 1",
-                    (f"{candidate}/{sub_hint}%",),
-                ) as cur:
-                    row = await cur.fetchone()
-
-            # 3. General longest-prefix match (fallback)
-            if not row:
-                async with db.execute(
-                    "SELECT id FROM apis WHERE id LIKE ? ORDER BY length(id) DESC LIMIT 1",
-                    (f"{candidate}%",),
-                ) as cur:
-                    row = await cur.fetchone()
-
-            if row:
-                api_id = row[0]
-                break
-
-    # Credentials are looked up by routes — the canonical single lookup path.
-    # api_id is still resolved above for routing_host computation (base_url lookup)
-    # but credential resolution is routes-first, not api_id-first.
-    _broker_log.debug("CRED LOOKUP: host=%r path=%r api_id=%r toolkit=%r alias=%r", host, path, api_id, toolkit_id, alias)
+    api_id = None  # populated from credential record below
+    _broker_log.debug("CRED LOOKUP: host=%r path=%r toolkit=%r alias=%r", host, path, toolkit_id, alias)
 
     creds = await vault.get_credentials_for_route(toolkit_id, host, path)
     _broker_log.debug("CRED LOOKUP: %d cred(s) via route for host=%r: %s", len(creds), host, [c.get("id") for c in creds])
@@ -249,17 +184,22 @@ async def _find_credential_for_host(
     if len(creds) > 1 and not alias and not service:
         is_ambiguous = True
         _broker_log.warning(
-            "CRED AMBIGUITY: %d credentials for host=%r api_id=%r — using first. "
+            "CRED AMBIGUITY: %d credentials for host=%r — using first. "
             "Set X-Jentic-Service or X-Jentic-Credential header to disambiguate. "
             "Credential IDs: %s",
-            len(creds), host, api_id,
+            len(creds), host,
             [c.get("id") for c in creds],
         )
 
-    # Get merged security schemes (spec + overlays) — used only as fallback
-    # when a credential has no pre-computed scheme blob.
-    from src.routers.overlays import get_merged_security_schemes
-    schemes = await get_merged_security_schemes(api_id)
+    # api_id comes from the credential record — not resolved via the apis table.
+    api_id = creds[0].get("api_id") if creds else None
+
+    # Get merged security schemes (spec + overlays) — fallback only for the rare
+    # credential that has no pre-computed scheme blob (e.g. created before migration 0007).
+    schemes: dict = {}
+    if api_id and any(not c.get("scheme") for c in creds):
+        from src.routers.overlays import get_merged_security_schemes
+        schemes = await get_merged_security_schemes(api_id)
 
     headers = {}
     first_credential_id: str | None = None
@@ -653,23 +593,14 @@ async def broker(request: Request, target: str):
     # (e.g. googleapis.com) where auto-selection would otherwise target the wrong
     # credential (e.g. Calendar when the caller wants Gmail), causing spurious 403s
     # with a misleading credential_id in the error body.
-    _api_id_for_host: str | None = None
     _resolved_cred_ids: list[str] = []
 
     if credential_alias and toolkit_id:
         # Hard override: use the named credential directly for policy enforcement.
-        # Also attempt to resolve api_id for context (error messages etc.) but
-        # never let it change which credential gets checked.
         _resolved_cred_ids = [credential_alias]
-        try:
-            _api_id_for_host, _ = await _resolve_credential_ids(
-                host=upstream_host, toolkit_id=toolkit_id, path=upstream_path
-            )
-        except Exception:
-            pass
     elif toolkit_id:
         try:
-            _api_id_for_host, _resolved_cred_ids = await _resolve_credential_ids(
+            _resolved_cred_ids = await _resolve_credential_ids(
                 host=upstream_host, toolkit_id=toolkit_id, path=upstream_path
             )
         except Exception:
@@ -909,13 +840,9 @@ async def broker(request: Request, target: str):
     import os as _os2
     import re as _re2
     _internal_port = int(_os2.environ.get("JENTIC_INTERNAL_PORT", "8900"))
-    if _is_self:
-        upstream_url = f"http://localhost:{_internal_port}{upstream_path}"
-    else:
-        upstream_url = f"https://{routing_host}{upstream_path}"
-
     # Disable TLS verification for private/local addresses (self-signed certs)
     _routing_host_bare = routing_host.split(":")[0]
+    _routing_host_port = int(routing_host.split(":")[1]) if ":" in routing_host else None
     _is_private_host = (
         _routing_host_bare in ("localhost", "127.0.0.1")
         or _routing_host_bare.startswith("10.")
@@ -923,6 +850,15 @@ async def broker(request: Request, target: str):
         or bool(_re2.match(r"172\.(1[6-9]|2[0-9]|3[0-1])\.", _routing_host_bare))
     )
     _ssl_verify = not _is_private_host
+    # Private hosts use https only on standard TLS ports (443, 8443);
+    # all other ports are assumed plain HTTP (e.g. HA on 8123, NPM on 81).
+    _SSL_PORTS = {443, 8443, 9443}
+    _use_https = not _is_private_host or (_routing_host_port in _SSL_PORTS)
+    if _is_self:
+        upstream_url = f"http://localhost:{_internal_port}{upstream_path}"
+    else:
+        _scheme = "https" if _use_https else "http"
+        upstream_url = f"{_scheme}://{routing_host}{upstream_path}"
     if request.url.query:
         upstream_url += f"?{request.url.query}"
 
