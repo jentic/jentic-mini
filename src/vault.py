@@ -415,6 +415,9 @@ async def patch_credential(cid: str, label: str | None, value: str | None,
 
 async def delete_credential(cid: str) -> bool:
     async with get_db() as db:
+        # Explicitly remove routes first (ON DELETE CASCADE requires PRAGMA foreign_keys=ON
+        # which is not guaranteed per-connection in aiosqlite).
+        await db.execute("DELETE FROM credential_routes WHERE credential_id=?", (cid,))
         cur = await db.execute("DELETE FROM credentials WHERE id=?", (cid,))
         await db.commit()
     return cur.rowcount > 0
