@@ -148,7 +148,9 @@ See [docs/CATALOG.md](https://github.com/jentic/jentic-mini/blob/main/docs/CATAL
 
 ## Updating
 
-If you used `docker run`:
+Pull the latest image from whichever registry you originally used, then recreate the container.
+
+If you used `docker run` (replace the image name with `ghcr.io/jentic/jentic-mini` if you used GHCR):
 
 ```bash
 docker pull jentic/jentic-mini:latest
@@ -162,7 +164,7 @@ If you used `docker compose`:
 docker compose pull jentic-mini && docker compose up -d jentic-mini
 ```
 
-Database migrations run automatically on startup, so your data is preserved across updates. To disable the GitHub version check, set `JENTIC_TELEMETRY=off`.
+Database migrations run automatically on startup, so your data is preserved across updates.
 
 ## Browser Requirements
 
