@@ -25,7 +25,13 @@ export class ObserveService {
          * Filter by status
          */
         status?: (string | null),
+        /**
+         * Page number (1-indexed)
+         */
         page?: number,
+        /**
+         * Results per page (1-100)
+         */
         limit?: number,
     }): CancelablePromise<JobListPage> {
         return __request(OpenAPI, {
@@ -50,6 +56,9 @@ export class ObserveService {
     public static getJobRouteJobsJobIdGet({
         jobId,
     }: {
+        /**
+         * Job ID (format: job_{12chars})
+         */
         jobId: string,
     }): CancelablePromise<JobOut> {
         return __request(OpenAPI, {
@@ -72,6 +81,9 @@ export class ObserveService {
     public static cancelJobJobsJobIdDelete({
         jobId,
     }: {
+        /**
+         * Job ID to cancel
+         */
         jobId: string,
     }): CancelablePromise<void> {
         return __request(OpenAPI, {
@@ -95,7 +107,13 @@ export class ObserveService {
         limit = 20,
         offset,
     }: {
+        /**
+         * Maximum number of traces to return (1-500)
+         */
         limit?: number,
+        /**
+         * Number of traces to skip for pagination
+         */
         offset?: number,
     }): CancelablePromise<TraceListPage> {
         return __request(OpenAPI, {
@@ -119,6 +137,9 @@ export class ObserveService {
     public static getTraceTracesTraceIdGet({
         traceId,
     }: {
+        /**
+         * Trace ID (format: exec_{12chars})
+         */
         traceId: string,
     }): CancelablePromise<TraceOut> {
         return __request(OpenAPI, {

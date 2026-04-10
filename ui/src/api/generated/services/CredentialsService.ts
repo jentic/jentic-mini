@@ -2,12 +2,14 @@
 /* istanbul ignore file */
 /* tslint:disable */
 /* eslint-disable */
+import type { AccountUpdate } from '../models/AccountUpdate';
 import type { ConnectLinkRequest } from '../models/ConnectLinkRequest';
 import type { CredentialCreate } from '../models/CredentialCreate';
 import type { CredentialOut } from '../models/CredentialOut';
 import type { CredentialPatch } from '../models/CredentialPatch';
 import type { OAuthBrokerCreate } from '../models/OAuthBrokerCreate';
 import type { OAuthBrokerOut } from '../models/OAuthBrokerOut';
+import type { OAuthBrokerUpdate } from '../models/OAuthBrokerUpdate';
 import type { SyncRequest } from '../models/SyncRequest';
 import type { CancelablePromise } from '../core/CancelablePromise';
 import { OpenAPI } from '../core/OpenAPI';
@@ -31,7 +33,7 @@ export class CredentialsService {
      * | `auth_type` | Status | Broker injects | `value` | `identity` |
      * |---|---|---|---|---|
      * | `bearer` | ✅ implemented | `Authorization: Bearer {value}` | Token, PAT, or OAuth access token | Not used |
-     * | `basic` | ✅ implemented | `Authorization: Basic base64({identity\|"token"}:{value})` | Password or PAT | Username (optional — defaults to `"token"` if omitted, works for GitHub PATs) |
+     * | `basic` | ✅ implemented | `Authorization: Basic base64({identity or "token"}:{value})` | Password or PAT | Username (optional — defaults to `"token"` if omitted, works for GitHub PATs) |
      * | `apiKey` | ✅ implemented | Custom header or query param `= {value}` | API key | For **compound schemes** (e.g. Discourse `Api-Key` + `Api-Username`): set `identity` to the username — one credential covers both headers when the overlay uses canonical `Secret`/`Identity` scheme names |
      * | `oauth2` | ⚠️ partial | `Authorization: Bearer {value}` — token must be pre-obtained | Access token (Pipedream-managed flows only via `pipedream_oauth`) | Not used |
      * | `digest` | 🔲 planned | RFC 2617 challenge-response (nonce/HMAC handshake) | Password | Username |
@@ -63,6 +65,9 @@ export class CredentialsService {
     public static createCredentialsPost({
         requestBody,
     }: {
+        /**
+         * Credential details: label for identification, encrypted value (API key/token/password), optional identity (username/client ID), API ID, and auth type
+         */
         requestBody: CredentialCreate,
     }): CancelablePromise<CredentialOut> {
         return __request(OpenAPI, {
@@ -92,6 +97,9 @@ export class CredentialsService {
     public static listCredentialsCredentialsGet({
         apiId,
     }: {
+        /**
+         * Filter credentials by API ID (hostname)
+         */
         apiId?: (string | null),
     }): CancelablePromise<Array<CredentialOut>> {
         return __request(OpenAPI, {
@@ -107,13 +115,28 @@ export class CredentialsService {
     }
     /**
      * Get an upstream API credential by ID
-     * Retrieve metadata for a single credential. Value is never returned.
+     * Retrieve metadata for a single credential.
+     *
+     * Returns the credential's label, API binding, auth type, and identity field (if set).
+     * The secret value is never returned after creation for security.
+     *
+     * Parameters:
+     * cid: Credential ID (format: hostname or hostname/path, e.g. 'api.github.com')
+     *
+     * Returns:
+     * Credential metadata including id, label, api_id, auth_type, timestamps, and identity.
+     *
+     * Use this to confirm a credential exists before binding it to a toolkit or to inspect
+     * its configuration before making authenticated calls.
      * @returns CredentialOut Successful Response
      * @throws ApiError
      */
     public static getCredentialCredentialsCidGet({
         cid,
     }: {
+        /**
+         * Credential ID (format: hostname or hostname/path)
+         */
         cid: string,
     }): CancelablePromise<CredentialOut> {
         return __request(OpenAPI, {
@@ -129,6 +152,17 @@ export class CredentialsService {
     }
     /**
      * Update an upstream API credential — rotate a secret or fix its API binding
+     * Update a credential's label, secret value, identity field, API binding, or auth_type.
+     *
+     * Common use cases:
+     * - Rotate an expired token or password (update `value`)
+     * - Fix incorrect API binding (update `api_id`)
+     * - Add username to existing credential (update `identity`)
+     * - Relabel for clarity (update `label`)
+     *
+     * Only changed fields need to be included in the request body. Omitted fields are left unchanged.
+     *
+     * **Auth:** Requires human session OR agent key with explicit `PATCH /credentials` allow rule on jentic-mini credential.
      * @returns CredentialOut Successful Response
      * @throws ApiError
      */
@@ -136,7 +170,13 @@ export class CredentialsService {
         cid,
         requestBody,
     }: {
+        /**
+         * Credential ID to update
+         */
         cid: string,
+        /**
+         * Fields to update: label, value (for rotation), identity, api_id, or auth_type — only provided fields are changed
+         */
         requestBody: CredentialPatch,
     }): CancelablePromise<CredentialOut> {
         return __request(OpenAPI, {
@@ -154,12 +194,23 @@ export class CredentialsService {
     }
     /**
      * Delete an upstream API credential
+     * Permanently delete a credential.
+     *
+     * The credential is removed from the vault and unbound from all toolkits that reference it.
+     * Agents using toolkits with this credential will immediately lose access to the upstream API.
+     *
+     * **Auth:** Requires human session OR agent key with explicit `DELETE /credentials` allow rule on jentic-mini credential.
+     *
+     * **Warning:** This operation cannot be undone. The secret value is irrecoverably destroyed.
      * @returns void
      * @throws ApiError
      */
     public static deleteCredentialsCidDelete({
         cid,
     }: {
+        /**
+         * Credential ID to delete
+         */
         cid: string,
     }): CancelablePromise<void> {
         return __request(OpenAPI, {
@@ -246,6 +297,9 @@ export class CredentialsService {
             public static createOauthBrokerOauthBrokersPost({
                 requestBody,
             }: {
+                /**
+                 * Broker configuration: type (e.g. 'pipedream'), provider-specific config, and encrypted credentials
+                 */
                 requestBody: OAuthBrokerCreate,
             }): CancelablePromise<OAuthBrokerOut> {
                 return __request(OpenAPI, {
@@ -259,7 +313,47 @@ export class CredentialsService {
                 });
             }
             /**
+             * Update an OAuth broker configuration
+             * Update client_id, client_secret, and/or project_id for an existing broker.
+             *
+             * Only supplied fields are changed. client_secret is re-encrypted if provided.
+             * @returns OAuthBrokerOut Successful Response
+             * @throws ApiError
+             */
+            public static updateOauthBrokerOauthBrokersBrokerIdPatch({
+                brokerId,
+                requestBody,
+            }: {
+                /**
+                 * The broker ID
+                 */
+                brokerId: string,
+                /**
+                 * Fields to update: type, config, or encrypted credentials — only provided fields are changed
+                 */
+                requestBody: OAuthBrokerUpdate,
+            }): CancelablePromise<OAuthBrokerOut> {
+                return __request(OpenAPI, {
+                    method: 'PATCH',
+                    url: '/oauth-brokers/{broker_id}',
+                    path: {
+                        'broker_id': brokerId,
+                    },
+                    body: requestBody,
+                    mediaType: 'application/json',
+                    errors: {
+                        422: `Validation Error`,
+                    },
+                });
+            }
+            /**
              * Get an OAuth broker
+             * Retrieve OAuth broker configuration and metadata.
+             *
+             * Returns broker type, client ID, project ID, and connected account statistics.
+             * Use this to verify a broker is registered before creating connect links or syncing accounts.
+             *
+             * For connected account details, use `GET /oauth-brokers/{broker_id}/accounts`.
              * @returns any Successful Response
              * @throws ApiError
              */
@@ -284,9 +378,10 @@ export class CredentialsService {
             }
             /**
              * Remove an OAuth broker
-             * Remove a broker and all its connected account mappings.
+             * Remove a broker and all its connected accounts and credentials.
              *
-             * Does not revoke tokens on the provider side — do that in the provider's dashboard.
+             * Cascades through oauth_broker_accounts -> toolkit_credentials -> vault.
+             * Does not revoke tokens on the provider side - do that in the provider's dashboard.
              * @returns any Successful Response
              * @throws ApiError
              */
@@ -374,6 +469,9 @@ export class CredentialsService {
                  * The broker ID
                  */
                 brokerId: string,
+                /**
+                 * Connect link request: API slug, optional external ID for tracking, optional OAuth scopes, and return URL
+                 */
                 requestBody: ConnectLinkRequest,
             }): CancelablePromise<any> {
                 return __request(OpenAPI, {
@@ -412,6 +510,9 @@ export class CredentialsService {
                  * The broker ID
                  */
                 brokerId: string,
+                /**
+                 * Sync request: list of API slugs to sync accounts for (fetches connected accounts from broker and imports as Jentic credentials)
+                 */
                 requestBody: SyncRequest,
             }): CancelablePromise<any> {
                 return __request(OpenAPI, {
@@ -440,30 +541,121 @@ export class CredentialsService {
              * @returns any Successful Response
              * @throws ApiError
              */
-            public static deleteBrokerAccountOauthBrokersBrokerIdAccountsApiHostDelete({
+            public static deleteBrokerAccountOauthBrokersBrokerIdAccountsAccountIdDelete({
                 brokerId,
-                apiHost,
-                externalUserId,
+                accountId,
             }: {
                 /**
                  * The broker ID
                  */
                 brokerId: string,
-                apiHost: string,
                 /**
-                 * Filter by external user ID
+                 * Connected account ID to delete
                  */
-                externalUserId?: (string | null),
+                accountId: string,
             }): CancelablePromise<any> {
                 return __request(OpenAPI, {
                     method: 'DELETE',
-                    url: '/oauth-brokers/{broker_id}/accounts/{api_host}',
+                    url: '/oauth-brokers/{broker_id}/accounts/{account_id}',
                     path: {
                         'broker_id': brokerId,
-                        'api_host': apiHost,
+                        'account_id': accountId,
                     },
-                    query: {
-                        'external_user_id': externalUserId,
+                    errors: {
+                        422: `Validation Error`,
+                    },
+                });
+            }
+            /**
+             * Update a connected account (e.g. rename label)
+             * Patch a connected account record.
+             *
+             * Updates the display label for a connected OAuth account. The account remains linked
+             * to the same external OAuth identity and credentials are not affected. Label changes
+             * are reflected in both the oauth_broker_accounts table and any associated credentials
+             * in the vault.
+             *
+             * Parameters:
+             * broker_id: OAuth broker ID (e.g. 'pipedream')
+             * account_id: Connected account ID from the broker
+             * body: Update request containing the new label
+             *
+             * Returns:
+             * Updated account_id and label.
+             *
+             * Auth: Requires human session (admin only).
+             *
+             * Currently supports updating label only. Future versions may support updating
+             * additional account metadata.
+             * @returns any Successful Response
+             * @throws ApiError
+             */
+            public static updateBrokerAccountOauthBrokersBrokerIdAccountsAccountIdPatch({
+                brokerId,
+                accountId,
+                requestBody,
+            }: {
+                /**
+                 * The broker ID
+                 */
+                brokerId: string,
+                /**
+                 * Connected account ID to update
+                 */
+                accountId: string,
+                /**
+                 * Account update: new display label for this connected OAuth account
+                 */
+                requestBody: AccountUpdate,
+            }): CancelablePromise<any> {
+                return __request(OpenAPI, {
+                    method: 'PATCH',
+                    url: '/oauth-brokers/{broker_id}/accounts/{account_id}',
+                    path: {
+                        'broker_id': brokerId,
+                        'account_id': accountId,
+                    },
+                    body: requestBody,
+                    mediaType: 'application/json',
+                    errors: {
+                        422: `Validation Error`,
+                    },
+                });
+            }
+            /**
+             * Get a reconnect link for an existing connected account
+             * Generate a new OAuth connect link for an existing connected account.
+             *
+             * The returned URL sends the user through the Pipedream OAuth flow for the
+             * same app slug.  On completion, the callback will:
+             *
+             * 1. Sync the broker (discovering the new account).
+             * 2. If the new account is confirmed present, delete the old account.
+             *
+             * This allows a user to re-authorise a broken connection without losing the
+             * existing credential until the replacement is confirmed.
+             * @returns any Successful Response
+             * @throws ApiError
+             */
+            public static reconnectAccountLinkOauthBrokersBrokerIdAccountsAccountIdReconnectLinkPost({
+                brokerId,
+                accountId,
+            }: {
+                /**
+                 * The broker ID
+                 */
+                brokerId: string,
+                /**
+                 * OAuth broker account ID to reconnect
+                 */
+                accountId: string,
+            }): CancelablePromise<any> {
+                return __request(OpenAPI, {
+                    method: 'POST',
+                    url: '/oauth-brokers/{broker_id}/accounts/{account_id}/reconnect-link',
+                    path: {
+                        'broker_id': brokerId,
+                        'account_id': accountId,
                     },
                     errors: {
                         422: `Validation Error`,
