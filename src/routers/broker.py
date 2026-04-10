@@ -682,10 +682,38 @@ async def broker(request: Request, target: str):
         )
 
     # ── Routing host ──────────────────────────────────────────────────────────
-    # upstream_host is the host the caller addressed in the broker URL. With
-    # credential_routes, callers are expected to use the credential's resolved
-    # route host directly — no further remapping needed.
+    # upstream_host is the host the caller addressed in the broker URL.
+    # For .local self-hosted APIs, the upstream_host is a semantic routing key
+    # (e.g. 'bedroom.go2rtc.local') — not a real DNS name. Resolve the actual
+    # upstream from the matched credential's server_variables.
     routing_host = upstream_host
+    if upstream_host.endswith(".local"):
+        # Find the credential's server_variables and resolve via the API's
+        # confirmed overlay server URL template.
+        _local_cred = None
+        if inject_headers is not None:
+            # Try to get the credential record that produced inject_headers
+            if credential_id:
+                _local_cred = await vault.get_credential(credential_id)
+        if _local_cred is None and credential_id:
+            _local_cred = await vault.get_credential(credential_id)
+        if _local_cred:
+            _sv = _local_cred.get("server_variables") or {}
+            _cred_api_id = _local_cred.get("api_id")
+            if _sv:
+                _resolved = await vault._resolve_server_url(_cred_api_id, _sv)
+                if _resolved:
+                    from urllib.parse import urlparse as _urlparse2
+                    _p = _urlparse2(_resolved)
+                    routing_host = _p.netloc or routing_host
+                    log.debug("broker: .local route %r resolved to upstream %r via server_variables",
+                              upstream_host, routing_host)
+                else:
+                    log.warning("broker: .local route %r — could not resolve upstream from server_variables %r",
+                                upstream_host, _sv)
+            elif _sv is not None:
+                log.warning("broker: .local route %r — credential %r has no server_variables; cannot resolve upstream",
+                            upstream_host, credential_id)
 
     # ── Pipedream credential path ─────────────────────────────────────────────
     # If the vault lookup yielded no headers, check for an explicitly-provisioned
@@ -807,6 +835,7 @@ async def broker(request: Request, target: str):
         or _routing_host_bare.startswith("10.")
         or _routing_host_bare.startswith("192.168.")
         or bool(_re2.match(r"172\.(1[6-9]|2[0-9]|3[0-1])\.", _routing_host_bare))
+        or _routing_host_bare.endswith(".local")  # self-hosted semantic routes never resolve via DNS
     )
     _ssl_verify = not _is_private_host
     # Private hosts use https only on standard TLS ports (443, 8443);

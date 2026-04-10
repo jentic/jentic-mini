@@ -280,11 +280,18 @@ async def create_credential(
 
         # Derive routes if not explicitly provided
         if routes is None:
-            resolved_host = await _resolve_server_url(api_id, server_variables)
-            if resolved_host:
-                routes = [resolved_host]
-            elif api_id:
-                routes = [api_id]
+            if api_id and api_id.endswith(".local"):
+                # Self-hosted API: route is {label-slug}.{api_id} — instance subdomain form.
+                # e.g. api_id='go2rtc.local', label='Bedroom' → 'bedroom.go2rtc.local'
+                _label_slug = re.sub(r"[^a-z0-9]+", "-", label.lower()).strip("-")
+                _label_slug = re.sub(r"-+", "-", _label_slug)
+                routes = [f"{_label_slug}.{api_id}"]
+            else:
+                resolved_host = await _resolve_server_url(api_id, server_variables)
+                if resolved_host:
+                    routes = [resolved_host]
+                elif api_id:
+                    routes = [api_id]
 
         # Auto-derive scheme if not explicitly provided
         if scheme is None:

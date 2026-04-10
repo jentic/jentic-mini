@@ -134,7 +134,50 @@ def _strip_version_suffix(path: str) -> str:
     return re.sub(r"(/v\d+(\.\d+)*|/\d{4}-\d{2}-\d{2}|/\d+\.\d+|/\d+)$", "", path)
 
 
-def _derive_api_id(base_url: str) -> str:
+def _is_private_server_url(url: str) -> bool:
+    """Return True if the URL's host is a private/localhost address.
+
+    Detects: localhost, 127.x, 10.x, 192.168.x, 172.16-31.x, bare 'localhost'
+    without scheme, and pure template-variable hostnames like http://{host}.
+    """
+    if not url:
+        return False
+    from urllib.parse import urlparse as _up
+    parsed = _up(url)
+    host = parsed.hostname or parsed.netloc or ""
+    # Strip port
+    host = host.split(":")[0].lower()
+    if not host:
+        return False
+    # Pure template variable host — e.g. http://{host} — treat as self-hosted
+    if host.startswith("{") and host.endswith("}"):
+        return True
+    if host in ("localhost", "127.0.0.1", "0.0.0.0"):
+        return True
+    if host.startswith("10."):
+        return True
+    if host.startswith("192.168."):
+        return True
+    import re as _re
+    if _re.match(r"172\.(1[6-9]|2[0-9]|3[0-1])\.", host):
+        return True
+    return False
+
+
+def _title_to_local_api_id(title: str) -> str:
+    """Convert an OpenAPI info.title to a .local api_id slug.
+
+    Examples:
+      'go2RTC'          → 'go2rtc.local'
+      'Home Assistant'  → 'home-assistant.local'
+      'Portainer CE'    → 'portainer-ce.local'
+    """
+    slug = re.sub(r"[^a-z0-9]+", "-", title.lower()).strip("-")
+    slug = re.sub(r"-+", "-", slug)
+    return f"{slug}.local"
+
+
+def _derive_api_id(base_url: str, title: str | None = None) -> str:
     """
     Derive a canonical API ID from its base URL. This is the single function
     used for all api_id generation — direct imports and catalog lazy-imports alike.
@@ -145,6 +188,12 @@ def _derive_api_id(base_url: str) -> str:
       3. Strip trailing version suffix from path
       4. Strip leading "www." from hostname (www carries no semantic meaning
          and diverges from the catalog directory convention)
+
+    Special case — self-hosted APIs:
+      If the server URL's host is a private/localhost address (or a pure template
+      variable like {host}), the api_id is derived from info.title instead,
+      with a .local suffix: e.g. 'go2rtc.local', 'home-assistant.local'.
+      If no title is available, falls back to hostname-based derivation.
 
     The broker uses the stored base_url column for actual HTTP routing, so the
     api_id host portion does not need to be a verbatim proxy target.
@@ -157,11 +206,17 @@ def _derive_api_id(base_url: str) -> str:
       https://www.googleapis.com/calendar/v3 → googleapis.com/calendar
       https://www.googleapis.com/gmail/v1    → googleapis.com/gmail
       https://techpreneurs.ie                → techpreneurs.ie
+      http://localhost:1984  (title=go2RTC)  → go2rtc.local
+      http://{host}  (title=Home Assistant)  → home-assistant.local
 
     Template variables stripped:
       https://{dc}.api.mailchimp.com/3.0     → api.mailchimp.com
       https://{your-domain}.atlassian.net    → atlassian.net
     """
+    # Self-hosted: private/localhost/template-variable server URL → use title slug
+    if _is_private_server_url(base_url) and title:
+        return _title_to_local_api_id(title)
+
     parsed = urlparse(base_url)
     host = parsed.hostname or parsed.netloc or ""
     path = parsed.path.rstrip("/")
