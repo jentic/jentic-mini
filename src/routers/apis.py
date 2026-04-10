@@ -42,7 +42,7 @@ async def _load_spec(spec_path: str) -> dict:
         return {}
 
 
-async def _load_merged_spec(api_id: str, spec_path: str | None) -> dict:
+async def _load_merged_spec(api_id: str, spec_path: str | None, include_pending: bool = False) -> dict:
     """
     Return the base spec with all confirmed overlays applied.
 
