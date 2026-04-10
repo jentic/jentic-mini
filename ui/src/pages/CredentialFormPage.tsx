@@ -8,6 +8,7 @@ import { BackButton } from '@/components/ui/BackButton';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
+import { Select } from '@/components/ui/Select';
 import { Textarea } from '@/components/ui/Textarea';
 import { Label } from '@/components/ui/Label';
 import { ErrorAlert } from '@/components/ui/ErrorAlert';
@@ -26,7 +27,10 @@ function useDebounce<T>(value: T, ms: number): T {
 
 type SchemeType = 'bearer' | 'basic' | 'apiKey' | 'oauth2' | 'unknown';
 
-type RawSchemes = Record<string, { type?: string; scheme?: string; in?: string; name?: string }> | null | undefined;
+type RawSchemes =
+	| Record<string, { type?: string; scheme?: string; in?: string; name?: string }>
+	| null
+	| undefined;
 
 /** Returns true when the scheme map uses the canonical compound pattern: a 'Secret' + 'Identity' apiKey pair. */
 function isCompoundApiKey(schemes: RawSchemes): boolean {
@@ -143,7 +147,12 @@ function useApiServerVarDefs(
  *  - catalog API: fetch catalog entry → get spec_url → fetch spec → parse securitySchemes
  *  Returns { schemes, loading }
  */
-function useApiSchemes(selectedApi: ApiOut | null): { schemes: RawSchemes; loading: boolean; localDetail: ApiOut | null; spec: any } {
+function useApiSchemes(selectedApi: ApiOut | null): {
+	schemes: RawSchemes;
+	loading: boolean;
+	localDetail: ApiOut | null;
+	spec: any;
+} {
 	const isCatalog = selectedApi?.source === 'catalog';
 	const isLocal = selectedApi?.source === 'local' || (!!selectedApi && !selectedApi.source);
 
@@ -177,12 +186,22 @@ function useApiSchemes(selectedApi: ApiOut | null): { schemes: RawSchemes; loadi
 
 	if (isLocal) {
 		const schemes = (localDetail as any)?.security_schemes as RawSchemes;
-		return { schemes, loading: localLoading, localDetail: (localDetail as ApiOut) ?? null, spec: null };
+		return {
+			schemes,
+			loading: localLoading,
+			localDetail: (localDetail as ApiOut) ?? null,
+			spec: null,
+		};
 	}
 
 	if (isCatalog) {
 		const schemes = (spec as any)?.components?.securitySchemes as RawSchemes;
-		return { schemes, loading: entryLoading || specLoading, localDetail: null, spec: spec ?? null };
+		return {
+			schemes,
+			loading: entryLoading || specLoading,
+			localDetail: null,
+			spec: spec ?? null,
+		};
 	}
 
 	return { schemes: null, loading: false, localDetail: null, spec: null };
@@ -315,7 +334,14 @@ interface CredFieldsProps {
 	};
 }
 
-function CredentialFields({ selectedApi, onBack, onSaved, editId, existing, prefill }: CredFieldsProps) {
+function CredentialFields({
+	selectedApi,
+	onBack,
+	onSaved,
+	editId,
+	existing,
+	prefill,
+}: CredFieldsProps) {
 	const queryClient = useQueryClient();
 	const isEdit = !!editId;
 
@@ -348,9 +374,12 @@ function CredentialFields({ selectedApi, onBack, onSaved, editId, existing, pref
 			serverVarDefs.forEach((v) => {
 				if (v.default) defaults[v.name] = v.default;
 			});
-			if (Object.keys(defaults).length > 0) setServerVars((prev) =>
-				Object.keys(prev).length > 0 ? prev : { ...defaults, ...(prefill?.serverVars ?? {}) }
-			);
+			if (Object.keys(defaults).length > 0)
+				setServerVars((prev) =>
+					Object.keys(prev).length > 0
+						? prev
+						: { ...defaults, ...(prefill?.serverVars ?? {}) },
+				);
 		}
 	}, [serverVarDefs]);
 
@@ -375,21 +404,21 @@ function CredentialFields({ selectedApi, onBack, onSaved, editId, existing, pref
 	const compound = isCompoundApiKey(schemes);
 	const { secretLabel, identityLabel } = compoundLabels(schemes);
 
-	const [label, setLabel] = useState(prefill?.label ?? existing?.label ?? selectedApi.name ?? selectedApi.id);
+	const [label, setLabel] = useState(
+		prefill?.label ?? existing?.label ?? selectedApi.name ?? selectedApi.id,
+	);
 	const [value, setValue] = useState(prefill?.value ?? '');
 	const [identity, setIdentity] = useState(prefill?.identity ?? existing?.identity ?? '');
 	const [error, setError] = useState<string | Error | null>(null);
 
 	// Advanced broker fields
 	const [schemeJson, setSchemeJson] = useState(
-		existing?.scheme ? JSON.stringify(existing.scheme, null, 2) : ''
+		existing?.scheme ? JSON.stringify(existing.scheme, null, 2) : '',
 	);
 	const [routesText, setRoutesText] = useState(
-		existing?.routes ? (existing.routes as string[]).join('\n') : ''
+		existing?.routes ? (existing.routes as string[]).join('\n') : '',
 	);
-	const [showAdvanced, setShowAdvanced] = useState(
-		!!(existing?.scheme || existing?.routes)
-	);
+	const [showAdvanced, setShowAdvanced] = useState(!!(existing?.scheme || existing?.routes));
 
 	// For OAuth, check if any broker is configured
 	const { data: brokers, isLoading: brokersLoading } = useQuery({
@@ -440,19 +469,17 @@ function CredentialFields({ selectedApi, onBack, onSaved, editId, existing, pref
 		setError(null);
 
 		// Validate required server variables
-		const missingVars = serverVarDefs.filter(
-			(v) => v.required && !serverVars[v.name]?.trim()
-		);
+		const missingVars = serverVarDefs.filter((v) => v.required && !serverVars[v.name]?.trim());
 		if (missingVars.length > 0) {
-			setError(`Required server variables missing: ${missingVars.map((v) => v.name).join(', ')}`);
+			setError(
+				`Required server variables missing: ${missingVars.map((v) => v.name).join(', ')}`,
+			);
 			return;
 		}
 
 		const cleanedVars =
 			Object.keys(serverVars).length > 0
-				? Object.fromEntries(
-						Object.entries(serverVars).filter(([, v]) => v.trim())
-				  )
+				? Object.fromEntries(Object.entries(serverVars).filter(([, v]) => v.trim()))
 				: null;
 
 		// Derive auth_type from scheme
@@ -476,7 +503,10 @@ function CredentialFields({ selectedApi, onBack, onSaved, editId, existing, pref
 				}
 			}
 			const parsedRoutes = routesText.trim()
-				? routesText.split('\n').map((r) => r.trim()).filter(Boolean)
+				? routesText
+						.split('\n')
+						.map((r) => r.trim())
+						.filter(Boolean)
 				: null;
 
 			updateMutation.mutate({
@@ -570,7 +600,8 @@ function CredentialFields({ selectedApi, onBack, onSaved, editId, existing, pref
 					<div>
 						<p className="text-foreground text-sm font-medium">Server configuration</p>
 						<p className="text-muted-foreground mt-0.5 text-xs">
-							This API uses a templated base URL. Fill in the values for your instance.
+							This API uses a templated base URL. Fill in the values for your
+							instance.
 						</p>
 					</div>
 					{serverVarDefs.map((varDef) => (
@@ -585,28 +616,38 @@ function CredentialFields({ selectedApi, onBack, onSaved, editId, existing, pref
 								)}
 							</Label>
 							{varDef.description && (
-								<p className="text-muted-foreground mb-1 text-xs">{varDef.description}</p>
+								<p className="text-muted-foreground mb-1 text-xs">
+									{varDef.description}
+								</p>
 							)}
 							{varDef.enum && varDef.enum.length > 0 ? (
-								<select
+								<Select
 									id={`svar-${varDef.name}`}
 									value={serverVars[varDef.name] ?? varDef.default ?? ''}
 									onChange={(e) =>
-										setServerVars((prev) => ({ ...prev, [varDef.name]: e.target.value }))
+										setServerVars((prev) => ({
+											...prev,
+											[varDef.name]: e.target.value,
+										}))
 									}
 									className="bg-background border-border text-foreground w-full rounded-md border px-3 py-2 text-sm"
 								>
 									{varDef.enum.map((opt) => (
-										<option key={opt} value={opt}>{opt}</option>
+										<option key={opt} value={opt}>
+											{opt}
+										</option>
 									))}
-								</select>
+								</Select>
 							) : (
 								<Input
 									id={`svar-${varDef.name}`}
 									type="text"
 									value={serverVars[varDef.name] ?? ''}
 									onChange={(e) =>
-										setServerVars((prev) => ({ ...prev, [varDef.name]: e.target.value }))
+										setServerVars((prev) => ({
+											...prev,
+											[varDef.name]: e.target.value,
+										}))
 									}
 									placeholder={varDef.default ?? `Enter ${varDef.name}`}
 									className="bg-background font-mono"
@@ -812,7 +853,8 @@ function CredentialFields({ selectedApi, onBack, onSaved, editId, existing, pref
 										: 'Credential Value'}
 							{isEdit && (
 								<span className="text-muted-foreground/60">
-									{' '}(leave blank to keep existing)
+									{' '}
+									(leave blank to keep existing)
 								</span>
 							)}
 						</Label>
@@ -827,8 +869,8 @@ function CredentialFields({ selectedApi, onBack, onSaved, editId, existing, pref
 							className="bg-background font-mono"
 						/>
 						<p className="text-muted-foreground mt-1 text-xs">
-							<AlertTriangle className="-mt-0.5 inline h-3 w-3" /> Stored encrypted. Never
-							shown again after saving.
+							<AlertTriangle className="-mt-0.5 inline h-3 w-3" /> Stored encrypted.
+							Never shown again after saving.
 						</p>
 					</div>
 				</>
@@ -839,7 +881,8 @@ function CredentialFields({ selectedApi, onBack, onSaved, editId, existing, pref
 			{/* Advanced: scheme / routes (edit mode) */}
 			{isEdit && (
 				<div className="border-border rounded-lg border">
-					<button
+					<Button
+						variant="ghost"
 						type="button"
 						className="text-muted-foreground hover:text-foreground flex w-full items-center justify-between px-4 py-3 text-xs font-medium transition-colors"
 						onClick={() => setShowAdvanced((v) => !v)}
@@ -848,14 +891,18 @@ function CredentialFields({ selectedApi, onBack, onSaved, editId, existing, pref
 						<ChevronRight
 							className={`h-3.5 w-3.5 transition-transform ${showAdvanced ? 'rotate-90' : ''}`}
 						/>
-					</button>
+					</Button>
 					{showAdvanced && (
-						<div className="border-border space-y-4 border-t px-4 pb-4 pt-3">
+						<div className="border-border space-y-4 border-t px-4 pt-3 pb-4">
 							<p className="text-muted-foreground text-xs">
-								Override how the broker injects this credential. Leave blank to use spec-based inference.
+								Override how the broker injects this credential. Leave blank to use
+								spec-based inference.
 							</p>
-						<div>
-								<Label htmlFor="cred-scheme" className="text-muted-foreground mb-1 block text-xs">
+							<div>
+								<Label
+									htmlFor="cred-scheme"
+									className="text-muted-foreground mb-1 block text-xs"
+								>
 									Scheme (JSON)
 								</Label>
 								<Textarea
@@ -863,13 +910,16 @@ function CredentialFields({ selectedApi, onBack, onSaved, editId, existing, pref
 									value={schemeJson}
 									onChange={(e) => setSchemeJson(e.target.value)}
 									rows={4}
-									placeholder={'{"in":"header","name":"X-API-KEY"}'}
+									placeholder='{"in":"header","name":"X-API-KEY"}'
 									resizable="vertical"
 									className="bg-background font-mono text-xs"
 								/>
 							</div>
 							<div>
-								<Label htmlFor="cred-routes" className="text-muted-foreground mb-1 block text-xs">
+								<Label
+									htmlFor="cred-routes"
+									className="text-muted-foreground mb-1 block text-xs"
+								>
 									Routes (one per line)
 								</Label>
 								<Textarea
@@ -918,17 +968,19 @@ export default function CredentialFormPage() {
 	// ready for the user to paste — but the agent can omit it and only prefill
 	// the non-sensitive fields.
 	const paramApiId = searchParams.get('api_id');
-	const prefill = paramApiId ? {
-		label: searchParams.get('label') ?? undefined,
-		value: searchParams.get('value') ?? undefined,
-		identity: searchParams.get('identity') ?? undefined,
-		serverVars: Array.from(searchParams.entries())
-			.filter(([k]) => k.startsWith('server_vars[') && k.endsWith(']'))
-			.reduce<Record<string, string>>((acc, [k, v]) => {
-				acc[k.slice('server_vars['.length, -1)] = v;
-				return acc;
-			}, {}),
-	} : undefined;
+	const prefill = paramApiId
+		? {
+				label: searchParams.get('label') ?? undefined,
+				value: searchParams.get('value') ?? undefined,
+				identity: searchParams.get('identity') ?? undefined,
+				serverVars: Array.from(searchParams.entries())
+					.filter(([k]) => k.startsWith('server_vars[') && k.endsWith(']'))
+					.reduce<Record<string, string>>((acc, [k, v]) => {
+						acc[k.slice('server_vars['.length, -1)] = v;
+						return acc;
+					}, {}),
+			}
+		: undefined;
 
 	const [selectedApi, setSelectedApi] = useState<ApiOut | null>(null);
 	const [step, setStep] = useState<'pick' | 'fill'>(isEdit || !!paramApiId ? 'fill' : 'pick');

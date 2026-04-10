@@ -1,7 +1,8 @@
 import { AlertTriangle, Copy, Check } from 'lucide-react';
-import { cn } from '@/lib/utils';
-import { useState } from 'react';
+import React, { useState } from 'react';
 import { ApiError } from '@/api/client';
+import { Button } from '@/components/ui/Button';
+import { cn } from '@/lib/utils';
 
 interface ErrorAlertProps {
 	/** Either a raw message string or an Error / ApiError instance */
@@ -35,7 +36,9 @@ function buildNoSchemeMarkdown(data: Record<string, any>): string {
 		lines.push('');
 		lines.push('### Overlay examples');
 		lines.push('');
-		lines.push('Pick the pattern that matches how this API authenticates, fill in the real header/parameter names, and POST it to the endpoint above.');
+		lines.push(
+			'Pick the pattern that matches how this API authenticates, fill in the real header/parameter names, and POST it to the endpoint above.',
+		);
 
 		for (const key of exampleKeys) {
 			const ex = { ...examples[key] };
@@ -79,8 +82,10 @@ function NoSchemeError({ data }: { data: Record<string, any> }) {
 		<div className="space-y-3 text-xs">
 			{/* Header row */}
 			<div className="flex items-start justify-between gap-2">
-				<p className="text-sm font-medium leading-snug">{data.message}</p>
-				<button
+				<p className="text-sm leading-snug font-medium">{data.message}</p>
+				<Button
+					variant="outline"
+					size="sm"
 					type="button"
 					onClick={copy}
 					title="Copy everything as markdown"
@@ -93,26 +98,32 @@ function NoSchemeError({ data }: { data: Record<string, any> }) {
 				>
 					{copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
 					{copied ? 'Copied' : 'Copy as markdown'}
-				</button>
+				</Button>
 			</div>
 
 			{/* Instructions */}
-			<div className="bg-background/60 rounded-md border border-border/50 p-3 space-y-1.5">
-				<p className="text-muted-foreground font-semibold uppercase tracking-wide text-[10px]">Instructions for your agent</p>
+			<div className="bg-background/60 border-border/50 space-y-1.5 rounded-md border p-3">
+				<p className="text-muted-foreground text-[10px] font-semibold tracking-wide uppercase">
+					Instructions for your agent
+				</p>
 				<p className="leading-relaxed">{data.instructions}</p>
 				<p className="text-muted-foreground">
 					Submit to:{' '}
-					<code className="bg-muted rounded px-1 py-0.5 font-mono text-foreground">{overlayEndpoint}</code>
+					<code className="bg-muted text-foreground rounded px-1 py-0.5 font-mono">
+						{overlayEndpoint}
+					</code>
 				</p>
 				{data.note && (
-					<p className="text-muted-foreground italic border-t border-border/40 pt-1.5 mt-1.5">{data.note}</p>
+					<p className="text-muted-foreground border-border/40 mt-1.5 border-t pt-1.5 italic">
+						{data.note}
+					</p>
 				)}
 			</div>
 
 			{/* Examples */}
 			{exampleKeys.length > 0 && (
 				<div className="space-y-2">
-					<p className="text-muted-foreground font-semibold uppercase tracking-wide text-[10px]">
+					<p className="text-muted-foreground text-[10px] font-semibold tracking-wide uppercase">
 						Overlay examples — pick the right pattern, fill in header names, submit
 					</p>
 					{exampleKeys.map((key) => {
@@ -121,12 +132,21 @@ function NoSchemeError({ data }: { data: Record<string, any> }) {
 						delete ex._note;
 						const label = key.replaceAll('_', ' ');
 						return (
-							<div key={key} className="rounded-md border border-border/40 bg-muted/30 overflow-hidden">
-								<div className="bg-muted/60 px-3 py-1.5 border-b border-border/30">
-									<span className="font-mono font-semibold text-[11px] text-foreground">{label}</span>
-									{prose && <p className="text-muted-foreground mt-0.5 leading-relaxed">{prose}</p>}
+							<div
+								key={key}
+								className="border-border/40 bg-muted/30 overflow-hidden rounded-md border"
+							>
+								<div className="bg-muted/60 border-border/30 border-b px-3 py-1.5">
+									<span className="text-foreground font-mono text-[11px] font-semibold">
+										{label}
+									</span>
+									{prose && (
+										<p className="text-muted-foreground mt-0.5 leading-relaxed">
+											{prose}
+										</p>
+									)}
 								</div>
-								<pre className="p-3 text-[11px] leading-relaxed overflow-x-auto">
+								<pre className="overflow-x-auto p-3 text-[11px] leading-relaxed">
 									{JSON.stringify(ex, null, 2)}
 								</pre>
 							</div>
