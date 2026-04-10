@@ -146,6 +146,24 @@ GET /workflows?source=local&q=slack
 
 See [docs/CATALOG.md](https://github.com/jentic/jentic-mini/blob/main/docs/CATALOG.md) for full details.
 
+## Updating
+
+If you used `docker run`:
+
+```bash
+docker pull jentic/jentic-mini:latest
+docker stop jentic-mini && docker rm jentic-mini
+docker run -d --name jentic-mini -p 8900:8900 -v jentic-mini-data:/app/data jentic/jentic-mini
+```
+
+If you used `docker compose`:
+
+```bash
+docker compose pull jentic-mini && docker compose up -d jentic-mini
+```
+
+Database migrations run automatically on startup, so your data is preserved across updates. To disable the GitHub version check, set `JENTIC_TELEMETRY=off`.
+
 ## Browser Requirements
 
 The admin UI targets modern browsers: **Chrome 107+**, **Firefox 104+**, **Safari 16+**, **Edge 107+**.
