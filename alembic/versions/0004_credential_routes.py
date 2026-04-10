@@ -260,6 +260,15 @@ def upgrade() -> None:
                 {"scheme": scheme_json, "cred_id": cred_id},
             )
 
+    # Special case: jentic-mini self-credential uses X-Jentic-API-Key header.
+    # derive_scheme_for_credential may not have resolved this at creation time
+    # (self-spec may not exist yet), so we hard-code it here.
+    JENTIC_MINI_SCHEME = json.dumps({"in": "header", "name": "X-Jentic-API-Key"})
+    conn.execute(
+        text("UPDATE credentials SET scheme = :scheme WHERE id = 'jentic-mini' AND scheme IS NULL"),
+        {"scheme": JENTIC_MINI_SCHEME},
+    )
+
     # 5. Backfill credential_routes from server_variables (preferred), API spec base URL, or api_id
     cred_rows = conn.execute(
         text("SELECT id, api_id, server_variables FROM credentials")
