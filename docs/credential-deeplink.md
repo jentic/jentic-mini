@@ -21,6 +21,14 @@ complete only the secret — keeping sensitive values out of the conversation.
 | `server_vars[<name>]` | Pre-fills a server variable. Repeat for multiple variables. Example: `server_vars[defaultHost]=techpreneurs.ie` |
 | `value` | Pre-fills the secret/token field. **Avoid passing real secrets** — send the URL without `value` and let the user paste the secret in the browser. |
 
+## Example — OpenAI (simple API key)
+
+```
+https://jentic-mini.home.seanblanchfield.com/credentials/new?api_id=api.openai.com&label=OpenAI+API+Key
+```
+
+The user opens the link, pastes their OpenAI key, and clicks Save.
+
 ## Example — Discourse (compound auth + server variable)
 
 The agent constructs this URL and sends it to the user:
