@@ -219,9 +219,9 @@ async def derive_scheme_for_credential(
 
 async def create_credential(
     label: str,
-    env_var: str,
     value: str,
     api_id: str | None = None,
+    env_var: str | None = None,  # legacy param, now derived from cid if omitted
     scheme_name: str | None = None,  # legacy param name kept for call-site compat; stored as auth_type
     identity: str | None = None,
     server_variables: dict[str, str] | None = None,
@@ -241,6 +241,12 @@ async def create_credential(
                     break
             cid = f"{base_slug}-{suffix_n}"
             suffix_n += 1
+
+        # env_var must also be unique — derive from cid (already deduplicated above)
+        # If caller passed an explicit env_var, use it; otherwise derive from cid
+        import re as _re
+        if not env_var:
+            env_var = _re.sub(r"[^a-zA-Z0-9]+", "_", cid).strip("_").upper()
 
         import json as _json
         sv_json = _json.dumps(server_variables) if server_variables else None

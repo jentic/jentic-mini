@@ -224,17 +224,15 @@ async def create(body: CredentialCreate, request: Request):
                 )
 
     try:
-        # Auto-generate a stable internal slug (not exposed via API)
-        import re
-        slug = re.sub(r"[^a-zA-Z0-9]+", "_", f"{body.api_id or ''}_{body.label}").strip("_").upper()
-        env_var = slug or f"CRED_{uuid.uuid4().hex[:8].upper()}"
         cred = await vault.create_credential(
             body.label,
-            env_var,
             body.value,
             api_id=api_id,
             scheme_name=scheme_name,
             identity=getattr(body, "identity", None),
+            server_variables=getattr(body, "server_variables", None),
+            scheme=getattr(body, "scheme", None),
+            routes=getattr(body, "routes", None),
         )
     except Exception as e:
         log.exception("Failed to create credential")

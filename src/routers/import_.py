@@ -114,9 +114,10 @@ async def _register_openapi(doc: dict, saved_path: str, force_api_id: str | None
     """Register an OpenAPI spec as an API + operations in Jentic."""
     # Import the heavy lifting from apis.py
     from src.routers.apis import (
-        _load_base_url_from_spec, _derive_api_id, _parse_operations,
+        _extract_base_url, _derive_api_id, _parse_operations,
         _rebuild_index,
     )
+    _load_base_url_from_spec = _extract_base_url  # alias for compat
 
     base_url = None
     servers = doc.get("servers", [])
