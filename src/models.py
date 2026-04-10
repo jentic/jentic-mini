@@ -12,8 +12,9 @@ from src.validators import NormModel, NormStr
 
 class CredentialCreate(NormModel):
     label: str
-    value: str
-    """Plain-text secret; encrypted before storage. Always the primary credential — token, password, API key."""
+    value: str = ""
+    """Plain-text secret; encrypted before storage. Always the primary credential — token, password, API key.
+    May be empty string for no-auth APIs where the credential exists only to carry server_variables."""
     identity: str | None = None
     """Optional identity field — username, client ID, account SID etc.
     Required for http/basic and http/digest schemes (username + password).
@@ -38,7 +39,7 @@ class CredentialCreate(NormModel):
     Omit (or set ``null``) for public SaaS APIs whose server URL is fixed.
     Use ``GET /apis/{api_id}`` to see which variables the spec declares.
     """
-    auth_type: Literal["bearer", "basic", "apiKey"] | None = Field(
+    auth_type: Literal["bearer", "basic", "apiKey", "none"] | None = Field(
         default=None,
         description=(
             "How this credential maps to the upstream API's authentication scheme. "
@@ -48,7 +49,8 @@ class CredentialCreate(NormModel):
             "|---|---|---|\n"
             "| `bearer` | `Authorization: Bearer {value}` | REST APIs, OAuth access tokens, JWTs. GitHub REST API, Deepgram, Slack, etc. |\n"
             "| `basic` | `Authorization: Basic base64({identity??'token'}:{value})` | HTTP Basic auth, git-over-HTTPS. Set `identity` to the username; omit for GitHub PATs (any username accepted). |\n"
-            "| `apiKey` | Custom header or query param `= {value}` | API key in a named header (X-API-Key, Api-Key, X-Auth-Key, etc.). For **compound** schemes (e.g. Discourse Api-Key + Api-Username) where the overlay uses canonical `Secret`/`Identity` scheme names, set `identity` to the username/account — a single credential covers both headers. |"
+            "| `apiKey` | Custom header or query param `= {value}` | API key in a named header (X-API-Key, Api-Key, X-Auth-Key, etc.). For **compound** schemes (e.g. Discourse Api-Key + Api-Username) where the overlay uses canonical `Secret`/`Identity` scheme names, set `identity` to the username/account — a single credential covers both headers. |\n"
+            "| `none` | *(nothing injected)* | No-auth APIs where the credential exists only to carry `server_variables` for routing. |"
         ),
     )
     scheme: dict | None = Field(
@@ -78,7 +80,7 @@ class CredentialPatch(NormModel):
     identity: str | None = None
     """Update the identity (username / client ID) for this credential."""
     api_id: str | None = None
-    auth_type: Literal["bearer", "basic", "apiKey"] | None = Field(
+    auth_type: Literal["bearer", "basic", "apiKey", "none"] | None = Field(
         default=None,
         description="Update the auth type for this credential. See `POST /credentials` for valid values and semantics.",
     )

@@ -202,6 +202,10 @@ async def _find_credential_for_host(
         if not first_credential_id:
             first_credential_id = cred["id"]
 
+        # No-auth credential: exists only for server_variables routing — skip injection.
+        if auth_type == "none":
+            continue
+
         # Fast path: use the pre-computed scheme blob if available.
         # This is the canonical path after migration 0007 — no spec lookup needed.
         if cred_scheme:
