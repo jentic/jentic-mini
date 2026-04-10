@@ -39,38 +39,35 @@ def _parse_route(route: str) -> tuple[str, str]:
     return r, "/"
 
 
-async def _compute_instance_host(api_id: str | None, server_variables: dict[str, str] | None) -> str | None:
-    """Resolve base_url template for the api_id using server_variables.
+async def _resolve_server_url(api_id: str | None, server_variables: dict[str, str] | None) -> str | None:
+    """Resolve the canonical server URL for api_id, substituting any OpenAPI server
+    template variables (e.g. {defaultHost}) with values from server_variables.
 
-    Returns the resolved hostname (e.g. 'techpreneurs.ie') if the base_url
-    contains template variables that are all satisfied by server_variables,
-    otherwise returns None.
+    Returns the resolved URL string (e.g. 'https://10.0.0.2:9443/api',
+    'https://techpreneurs.ie/') suitable for passing directly to _parse_route.
+    Returns None if no base_url is available in the spec.
     """
-    if not api_id or not server_variables:
-        _vault_log.debug("_compute_instance_host: skipping — api_id=%r sv=%r", api_id, server_variables)
+    if not api_id:
         return None
     async with get_db() as db:
         async with db.execute("SELECT base_url FROM apis WHERE id=?", (api_id,)) as cur:
             row = await cur.fetchone()
     if not row or not row[0]:
-        _vault_log.debug("_compute_instance_host: no base_url for api_id=%r", api_id)
+        _vault_log.debug("_resolve_server_url: no base_url for api_id=%r", api_id)
         return None
-    base_url = row[0]
-    template_vars = re.findall(r"\{([^}]+)\}", base_url)
-    if not template_vars:
-        _vault_log.debug("_compute_instance_host: no template vars in base_url=%r", base_url)
+    resolved = row[0]
+    # Substitute any OpenAPI server template variables (e.g. {defaultHost})
+    if server_variables:
+        template_vars = re.findall(r"\{([^}]+)\}", resolved)
+        for var in template_vars:
+            if var in server_variables:
+                resolved = resolved.replace(f"{{{var}}}", server_variables[var])
+    # If unresolved template vars remain, the URL is not fully qualified — skip
+    if "{" in resolved:
+        _vault_log.debug("_resolve_server_url: unresolved template vars in %r — skipping", resolved)
         return None
-    resolved = base_url
-    for var in template_vars:
-        if var not in server_variables:
-            _vault_log.debug("_compute_instance_host: missing var %r in sv=%r", var, server_variables)
-            return None  # Not fully resolved — can't produce a stable host
-        resolved = resolved.replace(f"{{{var}}}", server_variables[var])
-    parsed = urlparse(resolved)
-    host = parsed.hostname
-    _vault_log.debug("_compute_instance_host: api_id=%r resolved=%r host=%r", api_id, resolved, host)
-    # Strip port if present (store host only, port is in the URL path for routing)
-    return host if host and "{" not in host else None
+    _vault_log.debug("_resolve_server_url: api_id=%r resolved=%r", api_id, resolved)
+    return resolved
 
 
 def _credential_slug(api_id: str | None, label: str) -> str:
@@ -250,7 +247,7 @@ async def create_credential(
 
         # Derive routes if not explicitly provided
         if routes is None:
-            resolved_host = await _compute_instance_host(api_id, server_variables)
+            resolved_host = await _resolve_server_url(api_id, server_variables)
             if resolved_host:
                 routes = [resolved_host]
             elif api_id:
@@ -280,9 +277,17 @@ async def create_credential(
     return _row_to_dict(row)
 
 
+# Explicit column list — insulates _row_to_dict from schema churn.
+# If a column is added/removed, only this query and _row_to_dict need updating.
+_CREDENTIAL_COLS = (
+    "id, label, created_at, updated_at, api_id, auth_type, identity, server_variables, scheme"
+)
+
 async def _fetch_credential_row(db, cid: str):
     """Fetch a credential row plus its routes as a synthetic last column."""
-    async with db.execute("SELECT * FROM credentials WHERE id=?", (cid,)) as cur:
+    async with db.execute(
+        f"SELECT {_CREDENTIAL_COLS} FROM credentials WHERE id=?", (cid,)
+    ) as cur:
         row = await cur.fetchone()
     if row is None:
         return None
@@ -360,7 +365,7 @@ async def patch_credential(cid: str, label: str | None, value: str | None,
                 _current_api_id = api_id if api_id is not None else _row[0]
                 _current_sv_raw = _json.dumps(server_variables) if server_variables is not None else _row[1]
                 _current_sv = _json.loads(_current_sv_raw) if _current_sv_raw else None
-                computed_host = await _compute_instance_host(_current_api_id, _current_sv)
+                computed_host = await _resolve_server_url(_current_api_id, _current_sv)
                 new_route = computed_host or _current_api_id
                 if new_route:
                     await db.execute("DELETE FROM credential_routes WHERE credential_id=?", (cid,))
@@ -480,28 +485,26 @@ async def get_credentials_for_route(toolkit_id: str, host: str, path: str) -> li
 
 
 def _row_to_dict(row) -> dict:
-    # DB columns (SELECT * from credentials after migration 0006):
-    # 0:id, 1:label, 2:env_var, 3:encrypted_value, 4:created_at, 5:updated_at,
-    # 6:api_id, 7:auth_type, 8:source, 9:identity, 10:scheme_name,
-    # 11:server_variables, 12:scheme
+    # Columns from _CREDENTIAL_COLS (explicit SELECT — immune to schema churn):
+    # 0:id, 1:label, 2:created_at, 3:updated_at, 4:api_id, 5:auth_type,
+    # 6:identity, 7:server_variables, 8:scheme
     # routes is synthetic — appended by _fetch_credential_row as the last element
-    # env_var, encrypted_value, source, scheme_name are internal — not exposed
-    sv_raw = row[11] if len(row) > 11 else None
+    sv_raw = row[7] if len(row) > 7 else None
     try:
         server_variables = _json.loads(sv_raw) if sv_raw else None
     except Exception:
         server_variables = None
-    scheme_raw = row[12] if len(row) > 12 else None
+    scheme_raw = row[8] if len(row) > 8 else None
     # routes is the synthetic last element added by _fetch_credential_row
-    routes = row[-1] if len(row) > 13 and isinstance(row[-1], list) else None
+    routes = row[-1] if len(row) > 9 and isinstance(row[-1], list) else None
     return {
         "id": row[0],
         "label": row[1],
-        "created_at": row[4],
-        "updated_at": row[5],
-        "api_id": row[6] if len(row) > 6 else None,
-        "auth_type": row[7] if len(row) > 7 else None,
-        "identity": row[9] if len(row) > 9 else None,
+        "created_at": row[2],
+        "updated_at": row[3],
+        "api_id": row[4] if len(row) > 4 else None,
+        "auth_type": row[5] if len(row) > 5 else None,
+        "identity": row[6] if len(row) > 6 else None,
         "server_variables": server_variables,
         "scheme": _json.loads(scheme_raw) if scheme_raw else None,
         "routes": routes,

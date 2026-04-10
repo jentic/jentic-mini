@@ -195,15 +195,21 @@ def _parse_route(route: str) -> tuple[str, str]:
 def upgrade() -> None:
     conn = op.get_bind()
 
-    # 1. server_variables column
-    op.execute(
-        "ALTER TABLE credentials ADD COLUMN server_variables TEXT DEFAULT NULL"
-    )
+    # 1. server_variables column (defensive — may already exist if migrating from pre-squash branch)
+    try:
+        op.execute(
+            "ALTER TABLE credentials ADD COLUMN server_variables TEXT DEFAULT NULL"
+        )
+    except Exception:
+        pass  # column already exists
 
-    # 2. scheme column
-    op.execute(
-        "ALTER TABLE credentials ADD COLUMN scheme TEXT DEFAULT NULL"
-    )
+    # 2. scheme column (defensive)
+    try:
+        op.execute(
+            "ALTER TABLE credentials ADD COLUMN scheme TEXT DEFAULT NULL"
+        )
+    except Exception:
+        pass  # column already exists
 
     # 3. credential_routes table
     op.execute("""
@@ -254,15 +260,56 @@ def upgrade() -> None:
                 {"scheme": scheme_json, "cred_id": cred_id},
             )
 
-    # 5. Backfill credential_routes from api_id (fresh installs have no other source)
+    # 5. Backfill credential_routes from server_variables (preferred), API spec base URL, or api_id
     cred_rows = conn.execute(
-        text("SELECT id, api_id FROM credentials")
+        text("SELECT id, api_id, server_variables FROM credentials")
     ).fetchall()
 
-    for cred_id, api_id in cred_rows:
-        if not api_id:
-            continue
-        host, path_prefix = _parse_route(api_id)
+    for cred_id, api_id, sv_json in cred_rows:
+        route_host_raw = None
+
+        # 1. Try server_variables: pick first value that looks like a hostname
+        if sv_json:
+            try:
+                sv = json.loads(sv_json)
+                for v in sv.values():
+                    if isinstance(v, str) and ('.' in v or ':' in v):
+                        route_host_raw = v
+                        break
+            except Exception:
+                pass
+
+        # 2. Try API spec base URL as a full route (resolves overlays like portainer)
+        if not route_host_raw and api_id:
+            try:
+                doc = _load_api_desc(conn, api_id)
+                servers = (doc.get("servers") or
+                           ([{"url": f"https://{doc['host']}"}] if doc.get("host") else []))
+                if servers:
+                    base_url = servers[0].get("url", "")
+                    # Substitute any server template variables from credential sv
+                    if sv_json and '{' in base_url:
+                        try:
+                            sv = json.loads(sv_json)
+                            import re as _re
+                            for var in _re.findall(r'\{([^}]+)\}', base_url):
+                                if var in sv:
+                                    base_url = base_url.replace(f'{{{var}}}', sv[var])
+                        except Exception:
+                            pass
+                    # Only use if fully resolved and not a generic example host
+                    if base_url and '{' not in base_url and 'example.com' not in base_url:
+                        route_host_raw = base_url  # full URL, _parse_route will strip scheme
+            except Exception:
+                pass
+
+        # 3. Fall back to api_id
+        if not route_host_raw:
+            if not api_id:
+                continue
+            route_host_raw = api_id
+
+        host, path_prefix = _parse_route(route_host_raw)
         conn.execute(
             text(
                 "INSERT OR IGNORE INTO credential_routes "

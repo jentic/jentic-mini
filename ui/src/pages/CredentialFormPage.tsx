@@ -854,7 +854,7 @@ function CredentialFields({ selectedApi, onBack, onSaved, editId, existing, pref
 							<p className="text-muted-foreground text-xs">
 								Override how the broker injects this credential. Leave blank to use spec-based inference.
 							</p>
-						<div>	<div>
+						<div>
 								<Label htmlFor="cred-scheme" className="text-muted-foreground mb-1 block text-xs">
 									Scheme (JSON)
 								</Label>
