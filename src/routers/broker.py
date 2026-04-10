@@ -191,13 +191,6 @@ async def _find_credential_for_host(
     # api_id comes from the credential record — not resolved via the apis table.
     api_id = creds[0].get("api_id") if creds else None
 
-    # Get merged security schemes (spec + overlays) — fallback only for the rare
-    # credential that has no pre-computed scheme blob (e.g. created before migration 0007).
-    schemes: dict = {}
-    if api_id and any(not c.get("scheme") for c in creds):
-        from src.routers.overlays import get_merged_security_schemes
-        schemes = await get_merged_security_schemes(api_id)
-
     headers = {}
     first_credential_id: str | None = None
     for cred in creds:
@@ -233,61 +226,18 @@ async def _find_credential_for_host(
                     headers[cred_scheme["identity_name"]] = identity
             continue
 
-        # Fallback: derive from auth_type + spec schemes (pre-migration credentials).
-        if not auth_type:
-            _basic_key = next(
-                (k for k, v in schemes.items() if v.get("type") == "http" and v.get("scheme", "").lower() == "basic"),
-                None,
-            )
-            _bearer_key = next(
-                (k for k, v in schemes.items() if v.get("type") == "http" and v.get("scheme", "").lower() == "bearer"),
-                None,
-            )
-            _apikey_key = next(
-                (k for k, v in schemes.items() if v.get("type") == "apiKey"),
-                None,
-            )
-            if _basic_key:
-                auth_type = "basic"
-            elif _bearer_key:
-                auth_type = "bearer"
-            elif _apikey_key:
-                auth_type = "apiKey"
-
-        if not auth_type:
-            continue
-
-        # Find the matching scheme(s) in the spec by auth_type
-        if auth_type == "bearer":
-            # Find any HTTP auth scheme that isn't basic/digest.
-            # Use the actual scheme name from the spec/overlay — e.g. "bearer" → "Bearer",
-            # "token" → "Token". This lets vendor-specific prefixes (Deepgram "Token",
-            # GitHub "Bearer", etc.) work without touching the credential.
-            scheme = next(
-                (v for v in schemes.values()
-                 if v.get("type") == "http" and v.get("scheme", "").lower() not in ("basic", "digest")),
-                None,
-            )
-            if scheme:
-                scheme_prefix = scheme.get("scheme", "bearer").capitalize()
-                headers["Authorization"] = f"{scheme_prefix} {value}"
-            else:
-                # No overlay/spec scheme found — fall back to Bearer (most common)
-                headers["Authorization"] = f"Bearer {value}"
-
+        # No pre-computed scheme blob — minimal no-spec fallback.
+        # All credentials created since migration 0005 have a scheme blob; this path
+        # is only reachable for manually-inserted or very old credentials.
+        import logging as _fblog
+        _fblog.getLogger("jentic.broker").warning(
+            "CRED INJECT: credential %r has no scheme blob — attempting auth_type fallback",
+            cred.get("id"),
+        )
+        if auth_type == "bearer" or auth_type == "oauth2":
+            headers["Authorization"] = f"Bearer {value}"
         elif auth_type == "basic":
-            scheme = next(
-                (v for v in schemes.values() if v.get("type") == "http" and v.get("scheme", "").lower() in ("basic", "digest")),
-                None,
-            )
-            # Inject Basic auth regardless of whether a scheme is found in the spec.
-            # auth_type on the credential is authoritative — no spec/overlay required.
-            # (scheme lookup is kept for future use, e.g. digest challenge-response)
             import base64 as _b64
-            # BasicAuth/DigestAuth credential construction (RFC 7617):
-            # 1. value contains ":" → treat as pre-formatted "username:password"
-            # 2. identity is set → base64("{identity}:{value}")
-            # 3. fallback → base64("token:{value}") — works for PAT-style APIs like GitHub
             if ":" in value:
                 _raw = value
             elif identity:
@@ -295,30 +245,12 @@ async def _find_credential_for_host(
             else:
                 _raw = f"token:{value}"
             headers["Authorization"] = f"Basic {_b64.b64encode(_raw.encode()).decode()}"
-
-        elif auth_type == "apiKey":
-            # Collect all apiKey schemes from the spec
-            apikey_schemes = {k: v for k, v in schemes.items() if v.get("type") == "apiKey"}
-            if not apikey_schemes:
-                continue
-
-            # Canonical compound apiKey: overlay uses scheme names 'Secret' and 'Identity'
-            secret_scheme = apikey_schemes.get("Secret")
-            identity_scheme = apikey_schemes.get("Identity")
-            if secret_scheme and identity_scheme:
-                # Compound: Secret → cred.value, Identity → cred.identity
-                if secret_scheme.get("in") == "header":
-                    headers[secret_scheme["name"]] = value
-                if identity_scheme.get("in") == "header" and identity:
-                    headers[identity_scheme["name"]] = identity
-            else:
-                # Single apiKey: inject value into every apiKey header scheme
-                for scheme in apikey_schemes.values():
-                    if scheme.get("in") == "header":
-                        headers[scheme["name"]] = value
-
-        elif auth_type == "oauth2":
-            headers["Authorization"] = f"Bearer {value}"
+        else:
+            # apiKey and others require a header name — can't inject without scheme blob.
+            _fblog.getLogger("jentic.broker").error(
+                "CRED INJECT: credential %r auth_type=%r has no scheme blob and no spec fallback — skipping injection",
+                cred.get("id"), auth_type,
+            )
 
     _broker_log.debug("CRED INJECT: api_id=%r injecting headers=%s using cred=%r ambiguous=%s", api_id, list(headers.keys()), first_credential_id, is_ambiguous)
     return headers, api_id, first_credential_id, is_ambiguous
