@@ -18,7 +18,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Form, HTTPException, Path, Query, Request, Response
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.security import OAuth2PasswordRequestForm
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
 from src.validators import NormModel
 
 from src.auth import _make_jwt, JWT_TTL_SECONDS
@@ -33,8 +33,9 @@ router = APIRouter(prefix="/user", tags=["user"])
 # ── Models ────────────────────────────────────────────────────────────────────
 
 class UserCreate(BaseModel):
-    username: str
-    password: str
+    """Request body for creating the root admin account. One-time only — POST /user/create returns 410 after first use."""
+    username: str = Field(description="Admin account username (will be trimmed of whitespace)")
+    password: str = Field(description="Admin account password (stored as bcrypt hash)")
 
     @field_validator("username", mode="before")
     @classmethod
@@ -58,6 +59,7 @@ class UserLogin(BaseModel):
     "/create",
     status_code=201,
     summary="Create the root admin account (one-time setup)",
+    openapi_extra={"requestBody": {"description": "Account credentials: username (trimmed of whitespace) and password (stored as bcrypt hash) for the root admin"}},
 )
 async def create_user(body: UserCreate, response: Response):
     """Create the single root account for this instance.
@@ -119,6 +121,7 @@ async def create_user(body: UserCreate, response: Response):
     summary="Log in and receive a session cookie",
     openapi_extra={
         "requestBody": {
+            "description": "Login credentials: username and password for the root admin account",
             "required": True,
             "content": {
                 "application/json": {
@@ -206,6 +209,7 @@ async def login(
     "/token",
     summary="OAuth2 password grant — returns Bearer JWT",
     response_description="Access token for use in Authorization: Bearer header",
+    openapi_extra={"requestBody": {"description": "OAuth2 password grant form: username, password, and grant_type='password' (form-urlencoded format)"}},
 )
 async def token(form_data: OAuth2PasswordRequestForm = Depends()):
     """OAuth2 password grant endpoint.

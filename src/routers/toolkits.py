@@ -35,21 +35,24 @@ policy_router = APIRouter()  # mounted separately with tags=["permissions"], pre
 # ── Models ────────────────────────────────────────────────────────────────────
 
 class ToolkitCreate(NormModel):
-    name: str
-    description: str | None = None
-    simulate: bool = False
+    """Create a new toolkit with scoped credentials and access control. Optionally generates first API key."""
+    name: str = Field(description="Toolkit name for identification")
+    description: str | None = Field(default=None, description="Optional description of this toolkit's purpose")
+    simulate: bool = Field(default=False, description="If true, toolkit operates in dry-run mode (no real API calls)")
     initial_key_label: str | None = Field(None, description="Label for the first key created with this toolkit (e.g. 'Agent A')")
     initial_key_allowed_ips: list[str] | None = Field(None, description="IP allowlist for the first key. NULL = unrestricted.")
 
 
 class ToolkitPatch(NormModel):
-    name: str | None = None
-    description: str | None = None
-    simulate: bool | None = None
-    disabled: bool | None = None
+    """Update toolkit metadata or toggle disabled/simulate flags. Only provided fields are changed."""
+    name: str | None = Field(default=None, description="New toolkit name (optional)")
+    description: str | None = Field(default=None, description="New description (optional)")
+    simulate: bool | None = Field(default=None, description="Toggle dry-run mode (optional)")
+    disabled: bool | None = Field(default=None, description="Toggle toolkit disabled state (optional)")
 
 
 class KeyCreate(NormModel):
+    """Create a new API key for this toolkit. The full key value is only returned once at creation time."""
     label: str | None = Field(None, description="Human-readable label, e.g. 'Agent A', 'Staging bot'")
     allowed_ips: list[str] | None = Field(None, description="IP allowlist for this key only. NULL = unrestricted.")
 
@@ -64,7 +67,8 @@ class KeyOut(BaseModel):
 
 
 class ToolkitCredentialAdd(NormModel):
-    credential_id: str
+    """Bind an existing credential to this toolkit. Agent rules apply; system safety rules are always active."""
+    credential_id: str = Field(description="Credential ID to bind to this toolkit (format: cred_{12chars})")
 
 
 
@@ -203,7 +207,13 @@ def _strip_key(d: dict) -> dict:
     return {k: v for k, v in d.items() if k != "api_key"}
 
 
-@router.post("", status_code=201, summary="Create a toolkit — scoped bundle of upstream API credentials with a client API key", response_model=ToolkitOut)
+@router.post(
+    "",
+    status_code=201,
+    summary="Create a toolkit — scoped bundle of upstream API credentials with a client API key",
+    response_model=ToolkitOut,
+    openapi_extra={"requestBody": {"description": "Toolkit details: name, optional description, simulate flag for dry-run mode, and optional first API key configuration"}},
+)
 async def create_toolkit(body: ToolkitCreate):
     """Creates a toolkit: a named bundle of upstream API credentials with a scoped client API key for the agent.
     Returns a toolkit API key (tk_xxx) — shown once, not recoverable.
@@ -458,7 +468,11 @@ async def get_toolkit(toolkit_id: Annotated[str, Path(description="Toolkit ID (e
     return data
 
 
-@router.patch("/{toolkit_id}", summary="Update toolkit — rename or update description", response_model=ToolkitOut,
+@router.patch(
+    "/{toolkit_id}",
+    summary="Update toolkit — rename or update description",
+    response_model=ToolkitOut,
+    openapi_extra={"requestBody": {"description": "Fields to update: name, description, simulate flag, or disabled flag — only provided fields are changed"}},
               dependencies=[Depends(require_human_session)])
 async def patch_toolkit(toolkit_id: Annotated[str, Path(description="Toolkit ID to update")], body: ToolkitPatch, request: Request):
     """
@@ -523,7 +537,13 @@ async def delete_toolkit(toolkit_id: Annotated[str, Path(description="Toolkit ID
 # Each key can be individually revoked without affecting other agents.
 # IP restrictions live at the key level, not the toolkit level.
 
-@router.post("/{toolkit_id}/keys", status_code=201, summary="Issue a new client API key for this toolkit", response_model=ToolkitKeyCreated)
+@router.post(
+    "/{toolkit_id}/keys",
+    status_code=201,
+    summary="Issue a new client API key for this toolkit",
+    response_model=ToolkitKeyCreated,
+    openapi_extra={"requestBody": {"description": "Key configuration: optional label and optional IP allowlist (CIDR ranges)"}},
+)
 async def create_toolkit_key(toolkit_id: Annotated[str, Path(description="Toolkit ID to issue key for")], body: KeyCreate):
     """Issues an additional client API key (tk_xxx) for this toolkit. Hand this key to the agent. Optionally restrict by IP (CIDR list). Returned once — not recoverable."""
     async with get_db() as db:
@@ -599,7 +619,12 @@ async def list_toolkit_keys(toolkit_id: Annotated[str, Path(description="Toolkit
     }
 
 
-@router.patch("/{toolkit_id}/keys/{key_id}", summary="Update a client API key — rename or change IP restrictions", response_model=ToolkitKeyOut)
+@router.patch(
+    "/{toolkit_id}/keys/{key_id}",
+    summary="Update a client API key — rename or change IP restrictions",
+    response_model=ToolkitKeyOut,
+    openapi_extra={"requestBody": {"description": "Fields to update: label or IP allowlist — only provided fields are changed"}},
+)
 async def patch_toolkit_key(toolkit_id: Annotated[str, Path(description="Toolkit ID")], key_id: Annotated[str, Path(description="Key ID to update")], body: KeyCreate):
     """Update label or IP restrictions on a client API key.
 
@@ -682,7 +707,13 @@ async def revoke_toolkit_key(toolkit_id: Annotated[str, Path(description="Toolki
 
 # ── Toolkit Credentials ────────────────────────────────────────────────────
 
-@router.post("/{toolkit_id}/credentials", status_code=201, summary="Bind an upstream API credential to this toolkit — enable broker injection", response_model=CredentialBindingOut)
+@router.post(
+    "/{toolkit_id}/credentials",
+    status_code=201,
+    summary="Bind an upstream API credential to this toolkit — enable broker injection",
+    response_model=CredentialBindingOut,
+    openapi_extra={"requestBody": {"description": "Credential binding: credential_id to bind to this toolkit (enables broker to inject auth for that API)"}},
+)
 async def add_credential_to_toolkit(toolkit_id: Annotated[str, Path(description="Toolkit ID to bind credential to")], body: ToolkitCredentialAdd, request: Request):
     """Enrolls an existing upstream API credential in this toolkit. The broker automatically injects it into outbound calls for the API it's bound to, when the agent calls using this toolkit's client API key."""
     if not getattr(request.state, "is_admin", False):
@@ -813,6 +844,7 @@ async def get_credential_permissions(toolkit_id: Annotated[str, Path(description
     tags=["toolkits"],
     response_model=list[PermissionRuleOut],
     dependencies=[Depends(require_human_session)],
+    openapi_extra={"requestBody": {"description": "Array of permission rules to replace the entire agent rule list for this credential — each rule specifies effect (allow/deny), optional methods, optional path regex, and optional operation IDs"}},
 )
 async def set_credential_permissions(toolkit_id: Annotated[str, Path(description="Toolkit ID")], cred_id: Annotated[str, Path(description="Credential ID to set permissions for")], body: list[PolicyRule]):
     """Replaces the entire agent rule list for this credential.
@@ -834,6 +866,7 @@ async def set_credential_permissions(toolkit_id: Annotated[str, Path(description
     tags=["toolkits"],
     response_model=list[PermissionRuleOut],
     dependencies=[Depends(require_human_session)],
+    openapi_extra={"requestBody": {"description": "Incremental update: arrays of rules to add and/or remove from this credential's policy — rules are matched by exact equality for removal"}},
 )
 async def patch_credential_permissions(toolkit_id: Annotated[str, Path(description="Toolkit ID")], cred_id: Annotated[str, Path(description="Credential ID to patch permissions for")], body: PermissionsPatch):
     """Incrementally update rules for this credential without replacing the full list.

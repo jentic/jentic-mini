@@ -10,7 +10,7 @@ call that uses them.
 import json
 import uuid
 from typing import Annotated
-from fastapi import APIRouter, HTTPException, Path
+from fastapi import APIRouter, Body, HTTPException, Path
 from pydantic import Field
 from src.validators import NormModel
 from src.db import get_db
@@ -75,31 +75,38 @@ The broker resolves these by canonical name without needing further annotation.\
 # ── Raw overlay endpoint ───────────────────────────────────────────────────
 
 class OverlaySubmit(NormModel):
+    """Submit an OpenAPI Overlay 1.0 document to patch an API spec. Commonly used to add missing security schemes."""
     overlay: dict = Field(..., description=_OVERLAY_FIELD_DESCRIPTION)
-    contributed_by: str | None = None
+    contributed_by: str | None = Field(default=None, description="Optional contributor identifier (username, agent ID, etc.) for tracking overlay source")
 
 
 @router.post(
     "/apis/{api_id:path}/overlays",
     status_code=201,
     summary="Submit an OpenAPI overlay — patch the stored spec for this API",
-    openapi_extra=agent_hints(
-        when_to_use="Use when an API's stored OpenAPI spec is missing security schemes, has incorrect base URLs, or lacks required metadata. Submit an OpenAPI Overlay 1.0 document to patch the spec without modifying the original file. Common use: adding BearerAuth or apiKey schemes when the spec declares no security. Overlay starts as pending and auto-confirms on first successful broker call.",
-        prerequisites=[
-            "Requires authentication (admin/human session)",
-            "Valid API ID from GET /apis",
-            "Valid OpenAPI Overlay 1.0 structure (overlay, info, actions array)"
-        ],
-        avoid_when="Do not use for testing security schemes before adding credentials — first add credentials via POST /credentials, then submit overlay if authentication fails with 401/403. Do not submit duplicate overlays — check GET /apis/{api_id}/overlays first.",
-        related_operations=[
-            "GET /apis/{api_id}/overlays — list existing overlays to avoid duplicates",
-            "GET /apis/{api_id} — inspect current security_schemes before patching",
-            "POST /credentials — add credentials after overlay is confirmed",
-            "GET /apis/{api_id}/openapi.json — download merged spec to verify overlay was applied"
-        ]
-    ),
+    openapi_extra={
+        **agent_hints(
+            when_to_use="Use when an API's stored OpenAPI spec is missing security schemes, has incorrect base URLs, or lacks required metadata. Submit an OpenAPI Overlay 1.0 document to patch the spec without modifying the original file. Common use: adding BearerAuth or apiKey schemes when the spec declares no security. Overlay starts as pending and auto-confirms on first successful broker call.",
+            prerequisites=[
+                "Requires authentication (admin/human session)",
+                "Valid API ID from GET /apis",
+                "Valid OpenAPI Overlay 1.0 structure (overlay, info, actions array)"
+            ],
+            avoid_when="Do not use for testing security schemes before adding credentials — first add credentials via POST /credentials, then submit overlay if authentication fails with 401/403. Do not submit duplicate overlays — check GET /apis/{api_id}/overlays first.",
+            related_operations=[
+                "GET /apis/{api_id}/overlays — list existing overlays to avoid duplicates",
+                "GET /apis/{api_id} — inspect current security_schemes before patching",
+                "POST /credentials — add credentials after overlay is confirmed",
+                "GET /apis/{api_id}/openapi.json — download merged spec to verify overlay was applied"
+            ]
+        ),
+        "requestBody": {"description": "OpenAPI Overlay 1.0 document to patch the stored spec — adds security schemes, corrects base URLs, or enriches operation metadata"}
+    },
 )
-async def submit_overlay(api_id: Annotated[str, Path(description="API ID to submit overlay for")], body: OverlaySubmit):
+async def submit_overlay(
+    api_id: Annotated[str, Path(description="API ID to submit overlay for")],
+    body: OverlaySubmit,
+):
     """Submit an OpenAPI Overlay 1.0 document to patch the stored spec for this API.
 
     Overlays are additive and ordered — later overlays override matching keys from

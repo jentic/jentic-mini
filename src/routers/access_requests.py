@@ -134,9 +134,14 @@ class AccessRequestBody(NormModel):
 
 # ── Routes ────────────────────────────────────────────────────────────────────
 
-@router.post("/{toolkit_id}/access-requests", status_code=202,
-             summary="Request access — ask a human to grant a credential or adjust permissions",
-             tags=["toolkits"], response_model=AccessRequestOut)
+@router.post(
+    "/{toolkit_id}/access-requests",
+    status_code=202,
+    summary="Request access — ask a human to grant a credential or adjust permissions",
+    tags=["toolkits"],
+    response_model=AccessRequestOut,
+    openapi_extra={"requestBody": {"description": "Access request: type (grant/modify_permissions), credential_id, optional permission rules, and optional reason explaining why access is needed"}},
+)
 async def create_access_request(toolkit_id: Annotated[str, Path(description="Toolkit ID")], request: Request, body: AccessRequestBody):
     """Agent submits an access request. A human approves or denies it at the `approve_url`.
 

@@ -113,6 +113,7 @@ automatically proxied with the user's OAuth token injected server-side.
 
 
 class OAuthBrokerCreate(NormModel):
+    """Register a new OAuth broker for delegated credential management via Pipedream or other providers."""
     id: str | None = Field(None, description="Optional custom broker ID. Auto-generated from type if omitted.")
     type: str = Field(..., description="Broker backend type. Currently supported: `pipedream`.")
     config: dict[str, Any] = Field(
@@ -131,14 +132,16 @@ class OAuthBrokerCreate(NormModel):
 
 
 class OAuthBrokerOut(BaseModel):
-    id: str
-    type: str
-    config: dict[str, Any]          # provider-specific, never includes secret
-    created_at: float
-    accounts_discovered: int = 0
+    """OAuth broker configuration with discovered accounts count. Config excludes sensitive fields."""
+    id: str = Field(examples=["broker_abc123xyz"], description="Broker ID (format: broker_{12chars})")
+    type: str = Field(examples=["pipedream"], description="Broker type: 'pipedream' or other provider")
+    config: dict[str, Any] = Field(description="Public broker configuration (excludes encrypted secret fields)")
+    created_at: float = Field(examples=[1609459200], description="Unix timestamp when broker was registered")
+    accounts_discovered: int = Field(default=0, examples=[3], description="Number of OAuth accounts discovered from this broker")
 
 
 class SyncRequest(NormModel):
+    """Request body for syncing discovered OAuth accounts from a broker into Jentic credentials."""
     external_user_id: str = Field(
         "default",
         description=(
@@ -203,6 +206,7 @@ def _extract_pipedream_config(config: dict) -> tuple[str, str, str, str | None, 
     summary="Register an OAuth broker",
     description=_CREATE_DESCRIPTION,
     dependencies=[Depends(require_human_session)],
+    openapi_extra={"requestBody": {"description": "Broker configuration: type (e.g. 'pipedream'), provider-specific config, and encrypted credentials"}},
 )
 async def create_oauth_broker(body: OAuthBrokerCreate):
     if body.type not in _SUPPORTED_TYPES:
@@ -268,6 +272,7 @@ async def create_oauth_broker(body: OAuthBrokerCreate):
 
 
 class OAuthBrokerUpdate(NormModel):
+    """Update OAuth broker configuration. Only provided fields are changed; secrets remain encrypted."""
     config: dict[str, Any] = Field(
         ...,
         description=(
@@ -285,6 +290,7 @@ class OAuthBrokerUpdate(NormModel):
     response_model=OAuthBrokerOut,
     summary="Update an OAuth broker configuration",
     dependencies=[Depends(require_human_session)],
+    openapi_extra={"requestBody": {"description": "Fields to update: type, config, or encrypted credentials — only provided fields are changed"}},
 )
 async def update_oauth_broker(broker_id: BrokerIdPath, body: OAuthBrokerUpdate):
     """Update client_id, client_secret, and/or project_id for an existing broker.
@@ -408,6 +414,7 @@ async def get_oauth_broker(broker_id: BrokerIdPath):
 
 
 class ConnectLinkRequest(NormModel):
+    """Generate a Pipedream Connect Link for authorizing a new OAuth account. Returns URL for user authorization."""
     app: str = Field(
         ...,
         description=(
@@ -446,6 +453,7 @@ class ConnectLinkRequest(NormModel):
 @router.post(
     "/{broker_id}/connect-link",
     summary="Generate a Pipedream Connect Link for authorising apps",
+    openapi_extra={"requestBody": {"description": "Connect link request: API slug, optional external ID for tracking, optional OAuth scopes, and return URL"}},
 )
 async def create_connect_link(broker_id: BrokerIdPath, body: ConnectLinkRequest, request: Request):
     """Generate a short-lived Pipedream Connect Link URL.
@@ -689,6 +697,7 @@ async def connect_callback(
 @router.post(
     "/{broker_id}/sync",
     summary="Sync connected accounts from the OAuth broker",
+    openapi_extra={"requestBody": {"description": "Sync request: list of API slugs to sync accounts for (fetches connected accounts from broker and imports as Jentic credentials)"}},
 )
 async def sync_broker_accounts(broker_id: BrokerIdPath, body: SyncRequest, request: Request):
     """Re-fetch connected accounts from the provider and update local mappings.
@@ -887,12 +896,14 @@ async def delete_broker_account(broker_id: BrokerIdPath, account_id: Annotated[s
 
 
 class AccountUpdate(NormModel):
+    """Rename a connected OAuth account. Label is used in UI and credential binding displays."""
     label: str = Field(..., min_length=1, description="New display label for this account")
 
 
 @router.patch(
     "/{broker_id}/accounts/{account_id}",
     summary="Update a connected account (e.g. rename label)",
+    openapi_extra={"requestBody": {"description": "Account update: new display label for this connected OAuth account"}},
     dependencies=[Depends(require_human_session)],
 )
 async def update_broker_account(broker_id: BrokerIdPath, account_id: Annotated[str, Path(description="Connected account ID to update")], body: AccountUpdate):

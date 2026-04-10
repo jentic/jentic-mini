@@ -11,17 +11,11 @@ from src.validators import NormModel, NormStr
 # ── Credentials (input) ───────────────────────────────────────────────────────
 
 class CredentialCreate(NormModel):
-    label: str = Field(examples=["GitHub PAT for jentic-mini"])
-    value: str = Field(examples=["ghp_1234567890abcdefghijklmnopqrstu"])
-    """Plain-text secret; encrypted before storage. Always the primary credential — token, password, API key."""
-    identity: str | None = Field(default=None, examples=["alice", "client_abc123"])
-    """Optional identity field — username, client ID, account SID etc.
-    Required for http/basic and http/digest schemes (username + password).
-    For compound apiKey schemes (overlay uses canonical 'Secret'/'Identity' names), the
-    Identity scheme header is injected from this field.
-    Leave null for Bearer tokens, single-value API keys, and GitHub PAT-style BasicAuth."""
-    api_id: str | None = Field(default=None, examples=["api.github.com"])
-    """API this credential belongs to (e.g. 'techpreneurs.ie'). Required for broker injection."""
+    """Request body for storing a new upstream API credential. Values are encrypted at rest and never returned."""
+    label: str = Field(examples=["GitHub PAT for jentic-mini"], description="User-assigned credential label for identification")
+    value: str = Field(examples=["ghp_1234567890abcdefghijklmnopqrstu"], description="Raw credential value (API key, token, password) - encrypted before storage")
+    identity: str | None = Field(default=None, examples=["alice", "client_abc123"], description="Optional username, client ID, or other identity value (required for basic auth, optional for compound apiKey schemes)")
+    api_id: str | None = Field(default=None, examples=["api.github.com"], description="API ID to bind this credential to")
     auth_type: Literal["bearer", "basic", "apiKey"] | None = Field(
         default=None,
         examples=["bearer"],
@@ -39,11 +33,11 @@ class CredentialCreate(NormModel):
 
 
 class CredentialPatch(NormModel):
-    label: str | None = None
-    value: str | None = None
-    identity: str | None = None
-    """Update the identity (username / client ID) for this credential."""
-    api_id: str | None = None
+    """Update an existing credential. Only provided fields are changed. Rotates secrets without rebinding."""
+    label: str | None = Field(default=None, description="New credential label (optional)")
+    value: str | None = Field(default=None, description="New credential value for rotation (optional, encrypted before storage)")
+    identity: str | None = Field(default=None, description="New identity value (optional)")
+    api_id: str | None = Field(default=None, description="New API ID to rebind this credential (optional)")
     auth_type: Literal["bearer", "basic", "apiKey"] | None = Field(
         default=None,
         description="Update the auth type for this credential. See `POST /credentials` for valid values and semantics.",
@@ -54,41 +48,43 @@ class CredentialPatch(NormModel):
 
 class Page(BaseModel):
     """Generic paginated envelope."""
-    page: int = Field(examples=[1])
-    limit: int = Field(examples=[50])
-    total: int = Field(examples=[247])
-    total_pages: int = Field(examples=[5])
-    has_more: bool = Field(examples=[True])
+    page: int = Field(examples=[1], description="Current page number (1-indexed)")
+    limit: int = Field(examples=[50], description="Results per page")
+    total: int = Field(examples=[247], description="Total number of items matching query")
+    total_pages: int = Field(examples=[5], description="Total pages available")
+    has_more: bool = Field(examples=[True], description="True if more pages exist after current page")
     model_config = {"extra": "allow"}
 
 
 # ── APIs (output) ─────────────────────────────────────────────────────────────
 
 class ApiOut(BaseModel):
-    id: str = Field(examples=["api.github.com"])
-    name: str | None = Field(default=None, examples=["GitHub REST API"])
-    vendor: str | None = Field(default=None, examples=["GitHub"])
-    description: str | None = Field(default=None, examples=["GitHub's REST API for managing repositories, issues, and pull requests"])
-    base_url: str | None = Field(default=None, examples=["https://api.github.com"])
-    created_at: float | None = Field(default=None, examples=[1672531200.0])
+    """API provider metadata including ID, name, vendor, and base URL."""
+    id: str = Field(examples=["api.github.com"], description="API ID (typically the base domain)")
+    name: str | None = Field(default=None, examples=["GitHub REST API"], description="Human-readable API name from spec info.title")
+    vendor: str | None = Field(default=None, examples=["GitHub"], description="API vendor or maintainer organization")
+    description: str | None = Field(default=None, examples=["GitHub's REST API for managing repositories, issues, and pull requests"], description="API description from spec info.description")
+    base_url: str | None = Field(default=None, examples=["https://api.github.com"], description="Primary base URL from spec servers array")
+    created_at: float | None = Field(default=None, examples=[1672531200.0], description="Unix timestamp when API was imported")
     model_config = {"extra": "allow"}
 
 
 class OperationOut(BaseModel):
     """A single API operation. id encodes method/host/path (capability ID format)."""
-    id: str = Field(examples=["GET/api.github.com/repos/{owner}/{repo}/issues"])
-    summary: str | None = Field(default=None, examples=["List repository issues"])
-    description: str | None = Field(default=None, examples=["List issues in a repository. Only issues assigned to the authenticated user are returned."])
+    id: str = Field(examples=["GET/api.github.com/repos/{owner}/{repo}/issues"], description="Capability ID in METHOD/host/path format")
+    summary: str | None = Field(default=None, examples=["List repository issues"], description="Short description of what this operation does")
+    description: str | None = Field(default=None, examples=["List issues in a repository. Only issues assigned to the authenticated user are returned."], description="Detailed description from the OpenAPI spec")
     model_config = {"extra": "allow"}
 
 
 class ApiListPage(Page):
     """Paginated list of API providers registered in the catalog."""
-    data: list[ApiOut]
+    data: list[ApiOut] = Field(description="Array of API records for this page")
 
 
 class OperationListPage(Page):
-    data: list[OperationOut]
+    """Paginated list of API operations with method, path, and summary."""
+    data: list[OperationOut] = Field(description="Array of operation records for this page")
 
 
 # ── Search (output) ───────────────────────────────────────────────────────────
@@ -113,16 +109,16 @@ class SearchResult(BaseModel):
 # ── Capability / inspect (output) ─────────────────────────────────────────────
 
 class CapabilityOut(BaseModel):
-    id: str = Field(examples=["GET/api.github.com/repos/{owner}/{repo}/issues"])
-    type: str | None = Field(default=None, examples=["operation"])
-    summary: str | None = Field(default=None, examples=["List repository issues"])
-    description: str | None = Field(default=None, examples=["List issues in a repository. Only issues assigned to the authenticated user are returned."])
-    method: str | None = Field(default=None, examples=["GET"])
-    path: str | None = Field(default=None, examples=["/repos/{owner}/{repo}/issues"])
-    parameters: list[dict] | None = Field(default=None, examples=[[{"name": "owner", "in": "path", "required": True}]])
-    request_body: dict | None = Field(default=None, examples=[None])
-    responses: dict | None = Field(default=None, examples=[{"200": {"description": "Success"}}])
-    security: list[dict] | None = Field(default=None, examples=[[{"bearer": []}]])
+    id: str = Field(examples=["GET/api.github.com/repos/{owner}/{repo}/issues"], description="Capability ID in METHOD/host/path format")
+    type: str | None = Field(default=None, examples=["operation"], description="Capability type: 'operation' for API endpoints, 'workflow' for multi-step Arazzo workflows")
+    summary: str | None = Field(default=None, examples=["List repository issues"], description="Short description of what this capability does")
+    description: str | None = Field(default=None, examples=["List issues in a repository. Only issues assigned to the authenticated user are returned."], description="Detailed description from the OpenAPI spec or Arazzo workflow")
+    method: str | None = Field(default=None, examples=["GET"], description="HTTP method (operations only)")
+    path: str | None = Field(default=None, examples=["/repos/{owner}/{repo}/issues"], description="URL path template (operations only)")
+    parameters: list[dict] | None = Field(default=None, examples=[[{"name": "owner", "in": "path", "required": True}]], description="Parameter schemas from OpenAPI spec (operations only)")
+    request_body: dict | None = Field(default=None, examples=[None], description="Request body schema from OpenAPI spec (operations only)")
+    responses: dict | None = Field(default=None, examples=[{"200": {"description": "Success"}}], description="Response schemas by status code from OpenAPI spec (operations only)")
+    security: list[dict] | None = Field(default=None, examples=[[{"bearer": []}]], description="Security requirement objects from OpenAPI spec (operations only)")
     model_config = {"extra": "allow"}
 
 
@@ -131,56 +127,57 @@ class CapabilityOut(BaseModel):
 class CredentialOut(BaseModel):
     """Upstream API credential metadata. Secret values are never returned after creation."""
     model_config = {"extra": "ignore"}
-    id: str = Field(examples=["cred_abc123xyz"])
-    label: str = Field(examples=["GitHub PAT for jentic-mini"])
-    identity: str | None = Field(default=None, examples=["alice"])
-    """Identity field (username, client ID, etc.) — returned so clients can confirm what was stored."""
-    api_id: str | None = Field(default=None, examples=["api.github.com"])
-    auth_type: str | None = Field(default=None, examples=["bearer"])
-    created_at: float | None = Field(default=None, examples=[1672531200.0])
-    updated_at: float | None = Field(default=None, examples=[1672531200.0])
-    account_id: str | None = Field(default=None, examples=["oauth_abc123"])
-    app_slug: str | None = Field(default=None, examples=["pipedream"])
-    synced_at: float | None = Field(default=None, examples=[1672531200.0])
+    id: str = Field(examples=["cred_abc123xyz"], description="Credential ID")
+    label: str = Field(examples=["GitHub PAT for jentic-mini"], description="Human-readable label for this credential")
+    identity: str | None = Field(default=None, examples=["alice"], description="Identity field (username, client ID, etc.) for basic auth or compound API key schemes")
+    api_id: str | None = Field(default=None, examples=["api.github.com"], description="API this credential is bound to")
+    auth_type: str | None = Field(default=None, examples=["bearer"], description="Auth type: bearer, basic, or apiKey")
+    created_at: float | None = Field(default=None, examples=[1672531200.0], description="Unix timestamp when created")
+    updated_at: float | None = Field(default=None, examples=[1672531200.0], description="Unix timestamp of last update")
+    account_id: str | None = Field(default=None, examples=["oauth_abc123"], description="OAuth broker account ID (if from OAuth broker)")
+    app_slug: str | None = Field(default=None, examples=["pipedream"], description="OAuth app slug (if from OAuth broker)")
+    synced_at: float | None = Field(default=None, examples=[1672531200.0], description="Unix timestamp of last OAuth sync")
 
 
 # ── Toolkits (output) ─────────────────────────────────────────────────────────
 
 class ToolkitKeyOut(BaseModel):
-    id: str = Field(examples=["key_abc123xyz"])
-    name: str | None = Field(default=None, examples=["Production agent key"])
-    prefix: str | None = Field(default=None, examples=["jent_"])
-    allowed_ips: list[str] | None = Field(default=None, examples=[["192.168.1.0/24"]])
-    revoked: bool = Field(default=False, examples=[False])
-    created_at: float | None = Field(default=None, examples=[1672531200.0])
+    """Toolkit API key metadata. The full key value is only returned at creation time."""
+    id: str = Field(examples=["key_abc123xyz"], description="Key ID (format: key_{12chars})")
+    name: str | None = Field(default=None, examples=["Production agent key"], description="User-assigned key name for identification")
+    prefix: str | None = Field(default=None, examples=["jent_"], description="Key prefix (always 'jent_' for Jentic keys)")
+    allowed_ips: list[str] | None = Field(default=None, examples=[["192.168.1.0/24"]], description="IP CIDR ranges allowed to use this key (null = no IP restriction)")
+    revoked: bool = Field(default=False, examples=[False], description="True if this key has been revoked and can no longer authenticate")
+    created_at: float | None = Field(default=None, examples=[1672531200.0], description="Unix timestamp when key was created")
     model_config = {"extra": "allow"}
 
 
 class ToolkitKeyCreated(ToolkitKeyOut):
     """Returned only at key creation — includes the full key value (never returned again)."""
-    key: str = Field(examples=["jent_1234567890abcdefghijklmnopqrstuvwxyz"])
+    key: str = Field(examples=["jent_1234567890abcdefghijklmnopqrstuvwxyz"], description="Full API key value (format: jent_{40chars}) - only shown once at creation")
 
 
 class CredentialBindingOut(BaseModel):
-    credential_id: str = Field(examples=["cred_abc123xyz"])
-    label: str | None = Field(default=None, examples=["GitHub PAT for jentic-mini"])
-    api_id: str | None = Field(default=None, examples=["api.github.com"])
-    auth_type: str | None = Field(default=None, examples=["bearer"])
+    """Credential bound to a toolkit with access control rules. Includes label and API binding info."""
+    credential_id: str = Field(examples=["cred_abc123xyz"], description="Credential ID (format: cred_{12chars})")
+    label: str | None = Field(default=None, examples=["GitHub PAT for jentic-mini"], description="User-assigned credential label")
+    api_id: str | None = Field(default=None, examples=["api.github.com"], description="API ID this credential is for")
+    auth_type: str | None = Field(default=None, examples=["bearer"], description="Auth scheme type: bearer, basic, apiKey, oauth2, etc")
     model_config = {"extra": "allow"}
 
 
 class ToolkitOut(BaseModel):
     """Toolkit configuration with scoped credentials and access control policies."""
-    id: str = Field(examples=["default"])
-    name: str = Field(examples=["Default Toolkit"])
-    description: str | None = Field(default=None, examples=["Default toolkit for general-purpose API access"])
-    created_at: float | None = Field(default=None, examples=[1672531200.0])
-    disabled: bool = Field(default=False, examples=[False])
-    key_count: int | None = Field(default=None, examples=[3])
-    credential_count: int | None = Field(default=None, examples=[5])
-    keys: list[ToolkitKeyOut] = Field(default_factory=list, examples=[[]])
-    credentials: list[CredentialBindingOut] = Field(default_factory=list, examples=[[]])
-    permissions: list[dict] = Field(default_factory=list, examples=[[{"effect": "allow", "methods": ["GET"]}]])
+    id: str = Field(examples=["default"], description="Toolkit ID")
+    name: str = Field(examples=["Default Toolkit"], description="Human-readable toolkit name")
+    description: str | None = Field(default=None, examples=["Default toolkit for general-purpose API access"], description="Optional description of this toolkit's purpose")
+    created_at: float | None = Field(default=None, examples=[1672531200.0], description="Unix timestamp when created")
+    disabled: bool = Field(default=False, examples=[False], description="If true, all API keys for this toolkit are revoked")
+    key_count: int | None = Field(default=None, examples=[3], description="Number of API keys issued for this toolkit")
+    credential_count: int | None = Field(default=None, examples=[5], description="Number of credentials bound to this toolkit")
+    keys: list[ToolkitKeyOut] = Field(default_factory=list, examples=[[]], description="API keys for this toolkit (if expanded)")
+    credentials: list[CredentialBindingOut] = Field(default_factory=list, examples=[[]], description="Credentials bound to this toolkit (if expanded)")
+    permissions: list[dict] = Field(default_factory=list, examples=[[{"effect": "allow", "methods": ["GET"]}]], description="Access control rules for this toolkit")
     model_config = {"extra": "allow"}
 
 
@@ -269,8 +266,8 @@ class PermissionRule(BaseModel):
 
 class PermissionRuleOut(PermissionRule):
     """Permission rule as returned by the API — includes read-only server fields."""
-    system: bool | None = Field(default=None, alias="_system")
-    comment: str | None = Field(default=None, alias="_comment")
+    system: bool | None = Field(default=None, alias="_system", description="True if this is a system safety rule (cannot be removed)")
+    comment: str | None = Field(default=None, alias="_comment", description="Human-readable explanation of this rule's purpose (system rules only)")
     model_config = {
         "extra": "allow",
         "populate_by_name": True,
@@ -335,71 +332,76 @@ class AccessRequestOut(BaseModel):
 # ── Jobs (output) ─────────────────────────────────────────────────────────────
 
 class JobOut(BaseModel):
-    id: str = Field(examples=["job_abc123xyz"])
-    kind: str | None = Field(default=None, examples=["workflow"])
-    slug_or_id: str | None = Field(default=None, examples=["github-create-issue"])
-    toolkit_id: str | None = Field(default=None, examples=["default"])
-    status: str = Field(examples=["completed"])
-    result: Any = Field(default=None, examples=[{"issue_number": 42, "url": "https://github.com/jentic/jentic-mini/issues/42"}])
-    error: str | None = Field(default=None, examples=[None])
-    http_status: int | None = Field(default=None, examples=[201])
-    upstream_async: bool = Field(default=False, examples=[False])
-    upstream_job_url: str | None = Field(default=None, examples=[None])
-    trace_id: str | None = Field(default=None, examples=["trace_xyz789"])
-    created_at: float | None = Field(default=None, examples=[1672531200.0])
-    completed_at: float | None = Field(default=None, examples=[1672531205.0])
+    """Async job handle for operations that couldn't complete synchronously. Poll for status and result."""
+    id: str = Field(examples=["job_abc123xyz"], description="Job ID (format: job_{12chars})")
+    kind: str | None = Field(default=None, examples=["workflow"], description="Job type: 'workflow' or 'broker'")
+    slug_or_id: str | None = Field(default=None, examples=["github-create-issue"], description="Workflow slug or capability ID")
+    toolkit_id: str | None = Field(default=None, examples=["default"], description="Toolkit that initiated this job")
+    status: str = Field(examples=["completed"], description="Job status: pending, running, complete, failed, or upstream_async")
+    result: Any = Field(default=None, examples=[{"issue_number": 42, "url": "https://github.com/jentic/jentic-mini/issues/42"}], description="Job result (only present when status is complete or upstream_async)")
+    error: str | None = Field(default=None, examples=[None], description="Error message (only present when status is failed)")
+    http_status: int | None = Field(default=None, examples=[201], description="HTTP status code from upstream API")
+    upstream_async: bool = Field(default=False, examples=[False], description="True if upstream API itself returned 202 (async)")
+    upstream_job_url: str | None = Field(default=None, examples=[None], description="Upstream job polling URL (when upstream_async is true)")
+    trace_id: str | None = Field(default=None, examples=["trace_xyz789"], description="Execution trace ID for this job")
+    created_at: float | None = Field(default=None, examples=[1672531200.0], description="Unix timestamp when job was created")
+    completed_at: float | None = Field(default=None, examples=[1672531205.0], description="Unix timestamp when job finished")
     model_config = {"extra": "allow"}
 
 
 class JobListPage(Page):
-    data: list[JobOut]
+    """Paginated list of async job handles with status, capability, and timing info."""
+    data: list[JobOut] = Field(description="Array of job records for this page")
 
 
 # ── Traces (output) ───────────────────────────────────────────────────────────
 
 class TraceStepOut(BaseModel):
-    id: str | None = Field(default=None, examples=["step_1"])
-    step_id: str | None = Field(default=None, examples=["getRepo"])
-    operation: str | None = Field(default=None, examples=["GET/api.github.com/repos/{owner}/{repo}"])
-    status: str | None = Field(default=None, examples=["success"])
-    http_status: int | None = Field(default=None, examples=[200])
-    output: Any = Field(default=None, examples=[{"name": "jentic-mini", "stars": 42}])
-    detail: Any = Field(default=None, examples=[None])
-    error: str | None = Field(default=None, examples=[None])
-    started_at: float | None = Field(default=None, examples=[1672531200.0])
-    completed_at: float | None = Field(default=None, examples=[1672531201.0])
+    """Individual workflow step execution details including inputs, outputs, and timing."""
+    id: str | None = Field(default=None, examples=["step_1"], description="Internal step record ID")
+    step_id: str | None = Field(default=None, examples=["getRepo"], description="Step identifier from the Arazzo workflow")
+    operation: str | None = Field(default=None, examples=["GET/api.github.com/repos/{owner}/{repo}"], description="Operation capability ID executed in this step")
+    status: str | None = Field(default=None, examples=["success"], description="Step status: success or failed")
+    http_status: int | None = Field(default=None, examples=[200], description="HTTP status code from this step's API call")
+    output: Any = Field(default=None, examples=[{"name": "jentic-mini", "stars": 42}], description="Step output data")
+    detail: Any = Field(default=None, examples=[None], description="Additional step metadata or runner context")
+    error: str | None = Field(default=None, examples=[None], description="Error message if step failed")
+    started_at: float | None = Field(default=None, examples=[1672531200.0], description="Unix timestamp when step started")
+    completed_at: float | None = Field(default=None, examples=[1672531201.0], description="Unix timestamp when step completed")
     model_config = {"extra": "allow"}
 
 
 class TraceOut(BaseModel):
-    id: str = Field(examples=["trace_abc123xyz"])
-    toolkit_id: str | None = Field(default=None, examples=["default"])
-    operation_id: str | None = Field(default=None, examples=["GET/api.github.com/repos/{owner}/{repo}"])
-    workflow_id: str | None = Field(default=None, examples=[None])
-    spec_path: str | None = Field(default=None, examples=["api.github.com/openapi.json"])
-    status: str = Field(examples=["success"])
-    http_status: int | None = Field(default=None, examples=[200])
-    duration_ms: int | None = Field(default=None, examples=[1234])
-    error: str | None = Field(default=None, examples=[None])
-    created_at: float | None = Field(default=None, examples=[1672531200.0])
-    completed_at: float | None = Field(default=None, examples=[1672531201.0])
-    steps: list[TraceStepOut] = Field(default_factory=list, examples=[[]])
+    """Complete execution trace with status, timing, and step-by-step results for debugging."""
+    id: str = Field(examples=["trace_abc123xyz"], description="Trace ID (format: exec_{12chars})")
+    toolkit_id: str | None = Field(default=None, examples=["default"], description="Toolkit that executed this capability")
+    operation_id: str | None = Field(default=None, examples=["GET/api.github.com/repos/{owner}/{repo}"], description="Operation capability ID (for single API calls)")
+    workflow_id: str | None = Field(default=None, examples=[None], description="Workflow capability ID (for multi-step workflows)")
+    spec_path: str | None = Field(default=None, examples=["api.github.com/openapi.json"], description="Path to the OpenAPI spec or Arazzo workflow file")
+    status: str = Field(examples=["success"], description="Execution status: success, failed, or pending")
+    http_status: int | None = Field(default=None, examples=[200], description="Final HTTP status code from upstream")
+    duration_ms: int | None = Field(default=None, examples=[1234], description="Total execution duration in milliseconds")
+    error: str | None = Field(default=None, examples=[None], description="Error message if execution failed")
+    created_at: float | None = Field(default=None, examples=[1672531200.0], description="Unix timestamp when execution started")
+    completed_at: float | None = Field(default=None, examples=[1672531201.0], description="Unix timestamp when execution completed")
+    steps: list[TraceStepOut] = Field(default_factory=list, examples=[[]], description="Step-by-step execution log (for workflows)")
     model_config = {"extra": "allow"}
 
 
 class TraceListPage(BaseModel):
-    total: int = Field(examples=[247])
-    limit: int = Field(examples=[50])
-    offset: int = Field(examples=[0])
-    traces: list[TraceOut] = Field(examples=[[]])
+    """Paginated list of execution traces for auditing recent broker and workflow calls."""
+    total: int = Field(examples=[247], description="Total number of traces matching the query")
+    limit: int = Field(examples=[50], description="Maximum traces returned in this response")
+    offset: int = Field(examples=[0], description="Starting offset for pagination (0-indexed)")
+    traces: list[TraceOut] = Field(examples=[[]], description="Array of trace records for this page")
 
 
 # ── Workflows (output) ────────────────────────────────────────────────────────
 
 class WorkflowStepOut(BaseModel):
-    id: str | None = Field(default=None, examples=["getRepo"])
-    operation: str | None = Field(default=None, examples=["GET/api.github.com/repos/{owner}/{repo}"])
-    description: str | None = Field(default=None, examples=["Fetch repository metadata"])
+    id: str | None = Field(default=None, examples=["getRepo"], description="Step ID from the Arazzo workflow definition")
+    operation: str | None = Field(default=None, examples=["GET/api.github.com/repos/{owner}/{repo}"], description="Capability ID of the operation called by this step")
+    description: str | None = Field(default=None, examples=["Fetch repository metadata"], description="Step description from the Arazzo workflow")
     model_config = {"extra": "allow"}
 
 
@@ -423,8 +425,8 @@ class WorkflowOut(BaseModel):
 
 
 class WorkflowDetail(WorkflowOut):
-    steps: list[WorkflowStepOut] = Field(default_factory=list, examples=[[]])
-    input_schema: dict | None = Field(default=None, examples=[{"type": "object", "properties": {"title": {"type": "string"}}}])
+    steps: list[WorkflowStepOut] = Field(default_factory=list, examples=[[]], description="Sequence of workflow steps from the Arazzo definition")
+    input_schema: dict | None = Field(default=None, examples=[{"type": "object", "properties": {"title": {"type": "string"}}}], description="JSON Schema for workflow input parameters (from Arazzo workflow.inputs)")
 
 
 # ── Import (output) ───────────────────────────────────────────────────────────
@@ -448,10 +450,10 @@ class ImportOut(BaseModel):
 # ── Default API key (output) ──────────────────────────────────────────────────
 
 class DefaultKeyOut(BaseModel):
-    key: str = Field(examples=["jent_1234567890abcdefghijklmnopqrstuvwxyz"])
-    toolkit_id: str = Field(examples=["default"])
-    setup_url: str | None = Field(default=None, examples=["http://localhost:8900/setup"])
-    message: str | None = Field(default=None, examples=["First-time setup key generated. Save this key securely."])
+    key: str = Field(examples=["jent_1234567890abcdefghijklmnopqrstuvwxyz"], description="Generated API key for the default toolkit (format: jent_{40chars})")
+    toolkit_id: str = Field(examples=["default"], description="Toolkit ID this key is bound to")
+    setup_url: str | None = Field(default=None, examples=["http://localhost:8900/setup"], description="URL for first-time setup wizard (if applicable)")
+    message: str | None = Field(default=None, examples=["First-time setup key generated. Save this key securely."], description="Human-readable message about key generation")
     model_config = {"extra": "allow"}
 
 
@@ -466,9 +468,10 @@ class TokenRequest(BaseModel):
 
 
 class UserOut(BaseModel):
-    logged_in: bool = Field(default=False, examples=[True])
-    username: str | None = Field(default=None, examples=["admin"])
-    is_admin: bool = Field(default=False, examples=[True])
-    toolkit_id: str | None = Field(default=None, examples=["default"])
-    trusted_subnet: bool = Field(default=False, examples=[True])
+    """Current session status including authentication method and context (human session, agent key, or trusted subnet)."""
+    logged_in: bool = Field(default=False, examples=[True], description="True if valid session exists")
+    username: str | None = Field(default=None, examples=["admin"], description="Username of authenticated user, null if not logged in")
+    is_admin: bool = Field(default=False, examples=[True], description="True if user has admin privileges")
+    toolkit_id: str | None = Field(default=None, examples=["default"], description="Associated toolkit ID for this user, null if admin")
+    trusted_subnet: bool = Field(default=False, examples=[True], description="True if request originated from trusted subnet (127.0.0.0/8 or 10.0.0.0/8)")
     model_config = {"extra": "allow"}

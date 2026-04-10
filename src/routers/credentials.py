@@ -2,7 +2,7 @@
 import logging
 import uuid
 from typing import Annotated
-from fastapi import APIRouter, HTTPException, Path, Query, Request
+from fastapi import APIRouter, Body, HTTPException, Path, Query, Request
 from fastapi.responses import JSONResponse
 from src.models import CredentialCreate, CredentialOut, CredentialPatch
 import src.vault as vault
@@ -85,7 +85,13 @@ async def _api_has_native_scheme(api_id: str) -> bool:
         return False
 
 
-@router.post("", response_model=CredentialOut, status_code=201, summary="Store an upstream API credential — add a secret to the vault for broker injection")
+@router.post(
+    "",
+    response_model=CredentialOut,
+    status_code=201,
+    summary="Store an upstream API credential — add a secret to the vault for broker injection",
+    openapi_extra={"requestBody": {"description": "Credential details: label for identification, encrypted value (API key/token/password), optional identity (username/client ID), API ID, and auth type"}},
+)
 async def create(body: CredentialCreate, request: Request):
     """Store an encrypted credential in the vault for automatic broker injection.
 
@@ -252,8 +258,17 @@ async def get_credential(cid: Annotated[str, Path(description="Credential ID (fo
             "created_at": row[4], "updated_at": row[5], "identity": row[6] if len(row) > 6 else None}
 
 
-@router.patch("/{cid:path}", response_model=CredentialOut, summary="Update an upstream API credential — rotate a secret or fix its API binding")
-async def patch(cid: Annotated[str, Path(description="Credential ID to update")], body: CredentialPatch, request: Request):
+@router.patch(
+    "/{cid:path}",
+    response_model=CredentialOut,
+    summary="Update an upstream API credential — rotate a secret or fix its API binding",
+    openapi_extra={"requestBody": {"description": "Fields to update: label, value (for rotation), identity, api_id, or auth_type — only provided fields are changed"}},
+)
+async def patch(
+    cid: Annotated[str, Path(description="Credential ID to update")],
+    body: CredentialPatch,
+    request: Request,
+):
     """
     Update a credential's label, secret value, identity field, API binding, or auth_type.
 

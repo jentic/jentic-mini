@@ -13,8 +13,8 @@ import time
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, HTTPException, Path, Query
-from pydantic import BaseModel
+from fastapi import APIRouter, Body, HTTPException, Path, Query
+from pydantic import BaseModel, Field
 from src.validators import NormModel, NormStr
 
 from src.db import get_db
@@ -24,42 +24,36 @@ router = APIRouter(prefix="/notes")
 
 
 class NoteCreate(NormModel):
-    """
-    Create a note on any Jentic resource.
-
-    resource: the resource identifier (operation_id, api_id, workflow slug)
-    type: categorize the note for filtering and analysis
-    note: the content — be specific and actionable
-    execution_id: link to a specific execution (optional)
-    confidence: how certain are you?
-    source: where did you observe this?
-    """
-    resource: str
-    type: NormStr | None = None   # 'auth_quirk' | 'usage_hint' | 'execution_feedback' | 'correction'
-    note: str
-    execution_id: str | None = None
-    confidence: NormStr | None = None   # 'observed' | 'suspected' | 'verified'
-    source: str | None = None       # e.g. 'test run', 'production', 'documentation'
+    """Create a note on any Jentic resource for knowledge accumulation and catalog improvement."""
+    resource: str = Field(description="Resource identifier: operation_id (METHOD/host/path), api_id, or workflow slug")
+    type: NormStr | None = Field(default=None, description="Note category: 'auth_quirk', 'usage_hint', 'execution_feedback', or 'correction'")
+    note: str = Field(description="Note content — be specific and actionable")
+    execution_id: str | None = Field(default=None, description="Link to specific execution for context (optional)")
+    confidence: NormStr | None = Field(default=None, description="Confidence level: 'observed', 'suspected', or 'verified'")
+    source: str | None = Field(default=None, description="Observation source, e.g. 'test run', 'production', 'documentation'")
 
 
 @router.post(
     "",
     status_code=201,
     summary="Add a note — annotate a capability with feedback or a correction",
-    openapi_extra=agent_hints(
-        when_to_use="Use to report observations about operations, workflows, or APIs that could improve the catalog: auth quirks (non-standard auth requirements), usage hints (tips for effective use), execution feedback (what happened when called), corrections (errors in spec descriptions). Notes feed the Jentic knowledge base for catalog improvement. Link to execution_id for context.",
-        prerequisites=[
-            "Requires authentication (toolkit key or human session)",
-            "Valid resource identifier (operation_id, api_id, or workflow slug)"
-        ],
-        avoid_when="Do not use for private execution logs — use GET /traces instead. Do not use for credential issues — fix credentials via PATCH /credentials.",
-        related_operations=[
-            "GET /notes — list existing notes for a resource to avoid duplicates",
-            "DELETE /notes/{id} — remove outdated or incorrect notes",
-            "GET /traces/{id} — link to execution context when reporting feedback",
-            "POST /apis/{api_id}/overlays — submit OpenAPI overlay to fix spec issues"
-        ]
-    ),
+    openapi_extra={
+        **agent_hints(
+            when_to_use="Use to report observations about operations, workflows, or APIs that could improve the catalog: auth quirks (non-standard auth requirements), usage hints (tips for effective use), execution feedback (what happened when called), corrections (errors in spec descriptions). Notes feed the Jentic knowledge base for catalog improvement. Link to execution_id for context.",
+            prerequisites=[
+                "Requires authentication (toolkit key or human session)",
+                "Valid resource identifier (operation_id, api_id, or workflow slug)"
+            ],
+            avoid_when="Do not use for private execution logs — use GET /traces instead. Do not use for credential issues — fix credentials via PATCH /credentials.",
+            related_operations=[
+                "GET /notes — list existing notes for a resource to avoid duplicates",
+                "DELETE /notes/{id} — remove outdated or incorrect notes",
+                "GET /traces/{id} — link to execution context when reporting feedback",
+                "POST /apis/{api_id}/overlays — submit OpenAPI overlay to fix spec issues"
+            ]
+        ),
+        "requestBody": {"description": "Note details: resource ID, note type (auth_quirk/usage_hint/execution_feedback/correction), content, optional execution link, confidence level, and source"}
+    },
 )
 async def create_note(body: NoteCreate):
     """Attaches a note to any capability (operation, workflow, or API). Use to report auth corrections, schema errors, or updated Arazzo workflows. Notes feed back into the catalog improvement loop."""
