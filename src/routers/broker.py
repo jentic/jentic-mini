@@ -205,6 +205,18 @@ async def _find_credential_for_host(
         # Fast path: use the pre-computed scheme blob if available.
         # This is the canonical path after migration 0007 — no spec lookup needed.
         if cred_scheme:
+            # Compound scheme: {"secret": {"in":...,"name":...}, "identity": {"in":...,"name":...}}
+            if "secret" in cred_scheme:
+                s = cred_scheme["secret"]
+                s_pfx = s.get("prefix", "")
+                if s.get("in") == "header":
+                    headers[s["name"]] = f"{s_pfx}{value}"
+                if "identity" in cred_scheme and identity:
+                    si = cred_scheme["identity"]
+                    if si.get("in") == "header":
+                        headers[si["name"]] = identity
+                continue
+
             s_in   = cred_scheme.get("in")
             s_name = cred_scheme.get("name", "Authorization")
             s_pfx  = cred_scheme.get("prefix", "")
