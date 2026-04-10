@@ -666,6 +666,20 @@ async def broker(request: Request, target: str):
         _cred_headers["X-Jentic-Credential-Used"] = credential_id
     if credential_ambiguous:
         _cred_headers["X-Jentic-Credential-Ambiguous"] = "true"
+        await _write_trace("error", 409, "Ambiguous credential")
+        return Response(
+            content=json.dumps({
+                "error": "CREDENTIAL_AMBIGUOUS",
+                "message": (
+                    f"Multiple credentials match host '{upstream_host}'. "
+                    "Use X-Jentic-Credential to specify which one, "
+                    "or X-Jentic-Service to select by service name."
+                ),
+            }),
+            status_code=409,
+            media_type="application/json",
+            headers={"X-Jentic-Error": "true", "X-Jentic-Execution-Id": execution_id, **_cred_headers},
+        )
 
     # ── Routing host ──────────────────────────────────────────────────────────
     # upstream_host is the host the caller addressed in the broker URL. With
