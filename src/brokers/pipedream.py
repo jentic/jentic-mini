@@ -633,7 +633,7 @@ class PipedreamOAuthBroker:
                         route_hosts.append(user_api_id)
                     for route_host in route_hosts:
                         await db.execute(
-                            "INSERT OR IGNORE INTO credential_routes (credential_id, route) "
+                            "INSERT OR IGNORE INTO credential_routes (credential_id, host) "
                             "VALUES (?, ?)",
                             (cred_id, route_host),
                         )
