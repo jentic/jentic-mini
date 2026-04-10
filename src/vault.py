@@ -43,6 +43,15 @@ async def _resolve_server_url(api_id: str | None, server_variables: dict[str, st
     """Resolve the canonical server URL for api_id, substituting any OpenAPI server
     template variables (e.g. {defaultHost}) with values from server_variables.
 
+    Priority:
+    1. If server_variables contain a value that looks like a real host (has '.' or ':'),
+       substitute it into the spec base_url template.  If the spec URL has *no* template
+       vars (i.e. a hardcoded default like 'http://localhost:1984'), we replace the
+       entire authority with the user-supplied host so that the stored route reflects
+       where the user's instance actually lives, not the spec's example default.
+    2. Fall back to the spec base_url as-is (no server_variables given, or none look
+       like a real host).
+
     Returns the resolved URL string (e.g. 'https://10.0.0.2:9443/api',
     'https://techpreneurs.ie/') suitable for passing directly to _parse_route.
     Returns None if no base_url is available in the spec.
@@ -56,12 +65,30 @@ async def _resolve_server_url(api_id: str | None, server_variables: dict[str, st
         _vault_log.debug("_resolve_server_url: no base_url for api_id=%r", api_id)
         return None
     resolved = row[0]
-    # Substitute any OpenAPI server template variables (e.g. {defaultHost})
     if server_variables:
         template_vars = re.findall(r"\{([^}]+)\}", resolved)
-        for var in template_vars:
-            if var in server_variables:
-                resolved = resolved.replace(f"{{{var}}}", server_variables[var])
+        if template_vars:
+            # Normal path: substitute named template variables
+            for var in template_vars:
+                if var in server_variables:
+                    resolved = resolved.replace(f"{{{var}}}", server_variables[var])
+        else:
+            # Spec has a hardcoded URL (e.g. http://localhost:1984).
+            # If any server_variable value looks like a real host, prefer it over
+            # the spec's hardcoded default by replacing the authority in the URL.
+            real_host = next(
+                (v for v in server_variables.values() if "." in v or ("+" not in v and ":" in v)),
+                None,
+            )
+            if real_host:
+                # Rebuild URL: keep scheme + path, replace authority with real_host
+                from urllib.parse import urlparse, urlunparse
+                parsed = urlparse(resolved)
+                resolved = urlunparse(parsed._replace(netloc=real_host))
+                _vault_log.debug(
+                    "_resolve_server_url: replaced hardcoded authority with server_variable host=%r → %r",
+                    real_host, resolved,
+                )
     # If unresolved template vars remain, the URL is not fully qualified — skip
     if "{" in resolved:
         _vault_log.debug("_resolve_server_url: unresolved template vars in %r — skipping", resolved)
