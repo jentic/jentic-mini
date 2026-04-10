@@ -90,9 +90,6 @@ _HOP_BY_HOP = {
 # response bodies, so content-encoding passes through correctly.
 _HOP_BY_HOP_RESPONSE = _HOP_BY_HOP
 
-# How we detect credentials for a given API host
-# Looks up the api in the apis table by id (which is the scheme-stripped base URL)
-# then finds matching credentials by api_id + auth_type and injects them as HTTP headers.
 async def _resolve_credential_ids(host: str, toolkit_id: str | None, path: str = "/") -> list[str]:
     """Resolve host → [credential_ids] without decrypting anything.
     Used for policy checks before the vault is touched.
