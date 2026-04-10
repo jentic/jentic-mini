@@ -1009,7 +1009,7 @@ async def broker(request: Request, target: str):
                 await update_job(job_id, status="running")
                 fwd_hdrs = {k: v for k, v in request.headers.items() if k.lower() not in _HOP_BY_HOP}
                 fwd_hdrs.update(inject_headers)
-                _connector = aiohttp.TCPConnector(ssl=_ssl_verify or None)
+                _connector = aiohttp.TCPConnector(ssl=False if not _ssl_verify else None)
                 async with aiohttp.ClientSession(connector=_connector) as cl:
                     async with cl.request(
                         request.method, upstream_url,
@@ -1061,7 +1061,7 @@ async def broker(request: Request, target: str):
         )
 
     try:
-        _connector = aiohttp.TCPConnector(ssl=_ssl_verify or None)
+        _connector = aiohttp.TCPConnector(ssl=False if not _ssl_verify else None)
         async with aiohttp.ClientSession(connector=_connector) as client:
             async with client.request(
                 method=request.method,
