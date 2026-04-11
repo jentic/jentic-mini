@@ -3,7 +3,16 @@
 	"info": {
 		"title": "Jentic Mini",
 		"description": "**Jentic Mini** is the open-source, self-hosted implementation of the Jentic API \u2014 fully API-compatible with the [Jentic hosted and VPC editions](https://jentic.com).\n\n## What is Jentic Mini?\nJentic Mini gives any agent a local execution layer: search a catalog of registered APIs, broker authenticated requests without exposing credentials to the agent, enforce access policies, and observe every execution. It is designed to be dropped in as a self-hosted alternative to the Jentic cloud service.\n\n## Hosted vs Self-hosted\nThe **Jentic hosted and VPC editions** offer deeper implementations across three areas:\n\n| Capability | Jentic Mini (this) | Jentic hosted / VPC |\n|------------|-------------------|---------------------|\n| **Search** | BM25 full-text search | Advanced semantic search (~64% accuracy improvement over BM25) |\n| **Request brokering** | In-process credential injection | Scalable AWS Lambda-based broker with encryption at rest and in-transit, SOC 2-grade security, and 3rd-party credential vault integrations (HashiCorp Vault, AWS Secrets Manager, etc.) |\n| **Simulation** | Basic simulate mode | Full sandbox for simulating API calls and toolkit behaviour (enterprise-only) |\n| **Catalog** | Local registry only | Central catalog \u2014 aggregates the collective know-how of agents across API definitions and Arazzo workflows |\n\n## Authentication\n**Agents** \u2014 provide `X-Jentic-API-Key: tk_xxx` header.\n**Humans** \u2014 [log in here](/login) for a session cookie (required for admin operations).\nFirst time? Call `POST /default-api-key/generate` from a trusted subnet to get your agent key.\n\n## Tag groups\n| Tag | Who uses it | Purpose |\n|-----|-------------|----------|\n| **search** | Agents | Full-text search \u2014 the main entrypoint |\n| **inspect** | Agents | Inspect capabilities, list APIs and operations |\n| **execute** | Agents | Transparent request broker \u2014 runs API operations and Arazzo workflows. Credential injection, policy enforcement, and simulate mode built-in. |\n| **toolkits** | Agents/Humans | Toolkits, access keys, permissions, access requests |\n| **observe** | Agents | Read execution traces |\n| **catalog** | Humans/admin | Register APIs, upload specs, overlays, notes |\n| **credentials** | Humans only | Manage the credentials vault |\n\nAgents with a toolkit key need: **search**, **inspect**, **execute**, **toolkits** (read), **observe**.",
-		"version": "0.4.5"
+		"version": "0.7.5",
+		"contact": {
+			"name": "Jentic Mini Support",
+			"url": "https://github.com/jentic/jentic-mini",
+			"email": "hello@jentic.com"
+		},
+		"license": {
+			"name": "Apache 2.0",
+			"identifier": "Apache-2.0"
+		}
 	},
 	"paths": {
 		"/apis": {
@@ -99,6 +108,17 @@
 						}
 					}
 				},
+				"x-agent-hints": {
+					"when_to_use": "Use when you need to discover available API providers by vendor name, browse registered APIs, or check which APIs have credentials configured. Returns both locally registered APIs (source: local) and available catalog APIs (source: catalog). Use ?q= to filter by API ID or name, ?source= to filter by source type, and ?page=/limit= for pagination.",
+					"prerequisites": ["Requires authentication (toolkit key or human session)"],
+					"avoid_when": "Do not use if you already know the API ID \u2014 use GET /apis/{api_id} directly instead. Do not use for natural language capability discovery \u2014 use GET /search for that.",
+					"related_operations": [
+						"GET /apis/{api_id} \u2014 get detailed API metadata including security schemes and credential status",
+						"GET /apis/{api_id}/operations \u2014 list all operations for a specific API",
+						"GET /search \u2014 search for capabilities across all APIs by natural language intent",
+						"POST /credentials \u2014 add credentials for an API (imports from catalog if not yet registered)"
+					]
+				},
 				"security": []
 			}
 		},
@@ -115,8 +135,10 @@
 						"required": true,
 						"schema": {
 							"type": "string",
+							"description": "API ID (hostname or hostname/path format)",
 							"title": "Api Id"
-						}
+						},
+						"description": "API ID (hostname or hostname/path format)"
 					},
 					{
 						"name": "sections",
@@ -172,6 +194,21 @@
 						}
 					}
 				},
+				"x-agent-hints": {
+					"when_to_use": "Use after finding an API via GET /apis or GET /search to inspect its authentication requirements, security schemes, and available credential setup options. Critical for understanding which auth types need credentials before calling operations. Returns API metadata enriched with OpenAPI spec sections (info, servers, security_schemes). Use ?sections= to request additional spec sections (tags, paths, components).",
+					"prerequisites": [
+						"Requires authentication (toolkit key or human session)",
+						"Valid API ID from GET /apis or catalog (format: hostname or hostname/path)"
+					],
+					"avoid_when": "Do not use to download the full OpenAPI spec \u2014 use GET /apis/{api_id}/openapi.json for that. Do not use to list operations \u2014 use GET /apis/{api_id}/operations instead.",
+					"related_operations": [
+						"GET /apis \u2014 list available APIs to find the api_id",
+						"GET /apis/{api_id}/openapi.json \u2014 download full merged OpenAPI spec with overlays applied",
+						"GET /apis/{api_id}/operations \u2014 list all operations for this API",
+						"POST /credentials \u2014 add credentials after inspecting security_schemes",
+						"GET /credentials?api_id={api_id} \u2014 check which credentials are configured"
+					]
+				},
 				"security": []
 			}
 		},
@@ -188,8 +225,10 @@
 						"required": true,
 						"schema": {
 							"type": "string",
+							"description": "API ID (hostname or hostname/path format)",
 							"title": "Api Id"
-						}
+						},
+						"description": "API ID (hostname or hostname/path format)"
 					}
 				],
 				"responses": {
@@ -211,7 +250,29 @@
 							}
 						}
 					}
-				}
+				},
+				"x-agent-hints": {
+					"when_to_use": "Use when you need the full OpenAPI specification file for an API with all confirmed overlays applied (security scheme corrections, server URL fixes). Returns complete spec as JSON download with Content-Disposition attachment header. Overlay actions with target: $ are deep-merged; other actions listed in x-jentic-unapplied-overlays. Useful for SDK generation, schema analysis, or importing into external tools.",
+					"prerequisites": [
+						"Requires authentication (toolkit key or human session)",
+						"Valid API ID from GET /apis (format: hostname or hostname/path)"
+					],
+					"avoid_when": "Do not use for lightweight API inspection \u2014 use GET /apis/{api_id}?sections=info,servers,security instead. Do not use to browse operations \u2014 use GET /apis/{api_id}/operations for paginated operation list.",
+					"related_operations": [
+						"GET /apis/{api_id} \u2014 get API metadata with selective spec sections (no download, lighter weight)",
+						"GET /apis/{api_id}/operations \u2014 list operations without downloading full spec",
+						"GET /apis/{api_id}/overlays \u2014 view overlays that are merged into this spec",
+						"POST /apis/{api_id}/overlays \u2014 submit a new overlay to correct security schemes or servers"
+					]
+				},
+				"security": [
+					{
+						"JenticApiKey": []
+					},
+					{
+						"HumanLogin": []
+					}
+				]
 			}
 		},
 		"/apis/{api_id}/operations": {
@@ -227,8 +288,10 @@
 						"required": true,
 						"schema": {
 							"type": "string",
+							"description": "API ID to list operations for",
 							"title": "Api Id"
-						}
+						},
+						"description": "API ID to list operations for"
 					},
 					{
 						"name": "page",
@@ -292,7 +355,29 @@
 							}
 						}
 					}
-				}
+				},
+				"x-agent-hints": {
+					"when_to_use": "Use after finding an API via GET /apis to enumerate all available operations (endpoints) for that API. Returns paginated list of capability IDs, summaries, and descriptions. Each operation can then be inspected via GET /inspect/{id} for full parameter schemas and auth requirements before execution. Useful for discovering what actions an API supports.",
+					"prerequisites": [
+						"Requires authentication (toolkit key or human session)",
+						"Valid API ID from GET /apis (format: hostname or hostname/path)"
+					],
+					"avoid_when": "Do not use for natural language capability discovery across all APIs \u2014 use GET /search instead. Do not use to inspect a specific operation's parameters \u2014 use GET /inspect/{id} after finding the capability ID.",
+					"related_operations": [
+						"GET /apis \u2014 list available APIs to find the api_id",
+						"GET /inspect/{id} \u2014 inspect operation details (parameters, request/response schemas, auth)",
+						"GET /search \u2014 search for specific capabilities by natural language intent instead of browsing",
+						"GET /{target} (broker) \u2014 execute an operation after finding its capability ID"
+					]
+				},
+				"security": [
+					{
+						"JenticApiKey": []
+					},
+					{
+						"HumanLogin": []
+					}
+				]
 			}
 		},
 		"/apis/{api_id}/overlays": {
@@ -308,8 +393,10 @@
 						"required": true,
 						"schema": {
 							"type": "string",
+							"description": "API ID to submit overlay for",
 							"title": "Api Id"
-						}
+						},
+						"description": "API ID to submit overlay for"
 					}
 				],
 				"requestBody": {
@@ -320,7 +407,8 @@
 								"$ref": "#/components/schemas/OverlaySubmit"
 							}
 						}
-					}
+					},
+					"description": "OpenAPI Overlay 1.0 document to patch the stored spec \u2014 adds security schemes, corrects base URLs, or enriches operation metadata"
 				},
 				"responses": {
 					"201": {
@@ -341,7 +429,27 @@
 							}
 						}
 					}
-				}
+				},
+				"x-agent-hints": {
+					"when_to_use": "Use when an API's stored OpenAPI spec is missing security schemes, has incorrect base URLs, or lacks required metadata. Submit an OpenAPI Overlay 1.0 document to patch the spec without modifying the original file. Common use: adding BearerAuth or apiKey schemes when the spec declares no security. Overlay starts as pending and auto-confirms on first successful broker call.",
+					"prerequisites": [
+						"Requires authentication (admin/human session)",
+						"Valid API ID from GET /apis",
+						"Valid OpenAPI Overlay 1.0 structure (overlay, info, actions array)"
+					],
+					"avoid_when": "Do not use for testing security schemes before adding credentials \u2014 first add credentials via POST /credentials, then submit overlay if authentication fails with 401/403. Do not submit duplicate overlays \u2014 check GET /apis/{api_id}/overlays first.",
+					"related_operations": [
+						"GET /apis/{api_id}/overlays \u2014 list existing overlays to avoid duplicates",
+						"GET /apis/{api_id} \u2014 inspect current security_schemes before patching",
+						"POST /credentials \u2014 add credentials after overlay is confirmed",
+						"GET /apis/{api_id}/openapi.json \u2014 download merged spec to verify overlay was applied"
+					]
+				},
+				"security": [
+					{
+						"HumanLogin": []
+					}
+				]
 			},
 			"get": {
 				"tags": ["catalog"],
@@ -355,8 +463,10 @@
 						"required": true,
 						"schema": {
 							"type": "string",
+							"description": "API ID to list overlays for",
 							"title": "Api Id"
-						}
+						},
+						"description": "API ID to list overlays for"
 					}
 				],
 				"responses": {
@@ -379,6 +489,20 @@
 						}
 					}
 				},
+				"x-agent-hints": {
+					"when_to_use": "Use to inspect existing overlays for an API before submitting a new one (avoids duplicates) or to verify which overlays are confirmed vs pending. Each overlay includes the complete OpenAPI Overlay 1.0 document with all actions, so no second call needed. Confirmed overlays are listed first, then pending, ordered by creation date descending.",
+					"prerequisites": [
+						"Requires authentication (toolkit key or human session)",
+						"Valid API ID from GET /apis"
+					],
+					"avoid_when": "Do not use to download the merged spec \u2014 use GET /apis/{api_id}/openapi.json for that (overlays already applied). Do not use to inspect base security schemes \u2014 use GET /apis/{api_id} instead.",
+					"related_operations": [
+						"POST /apis/{api_id}/overlays \u2014 submit a new overlay after checking for duplicates",
+						"DELETE /apis/{api_id}/overlays/{overlay_id} \u2014 delete an overlay",
+						"GET /apis/{api_id}/openapi.json \u2014 download merged spec with all confirmed overlays applied",
+						"GET /apis/{api_id} \u2014 view current security_schemes (includes merged overlays)"
+					]
+				},
 				"security": []
 			}
 		},
@@ -386,7 +510,7 @@
 			"delete": {
 				"tags": ["catalog"],
 				"summary": "Delete an overlay",
-				"description": "Delete an overlay by ID. Works on both pending and confirmed overlays.",
+				"description": "Delete an overlay by ID.\n\nPermanently removes the overlay from the database. Works on both pending and confirmed\noverlays. If the overlay was confirmed and actively patching the spec, the next\nbroker call will use the spec without this overlay's changes.\n\nParameters:\n    api_id: API ID that owns this overlay\n    overlay_id: Overlay ID to delete (format: overlay_xxxxxxxx)\n\nReturns:\n    Confirmation with deleted overlay_id and api_id.\n\nUse when an overlay was submitted incorrectly or is no longer needed. To replace\nan incorrect overlay, delete it first, then submit a corrected version.",
 				"operationId": "delete_overlay_apis__api_id__overlays__overlay_id__delete",
 				"parameters": [
 					{
@@ -395,8 +519,10 @@
 						"required": true,
 						"schema": {
 							"type": "string",
+							"description": "API ID",
 							"title": "Api Id"
-						}
+						},
+						"description": "API ID"
 					},
 					{
 						"name": "overlay_id",
@@ -404,8 +530,10 @@
 						"required": true,
 						"schema": {
 							"type": "string",
+							"description": "Overlay ID to delete",
 							"title": "Overlay Id"
-						}
+						},
+						"description": "Overlay ID to delete"
 					}
 				],
 				"responses": {
@@ -427,7 +555,25 @@
 							}
 						}
 					}
-				}
+				},
+				"x-agent-hints": {
+					"when_to_use": "Use to remove an incorrect or obsolete overlay from an API. Works on both pending and confirmed overlays. After deletion, the merged spec (GET /apis/{api_id}/openapi.json) will no longer include the deleted overlay's patches.",
+					"prerequisites": [
+						"Requires authentication (admin/human session)",
+						"Valid API ID and overlay ID from GET /apis/{api_id}/overlays"
+					],
+					"avoid_when": "Do not use to temporarily disable an overlay \u2014 deletion is permanent. Do not delete overlays that other toolkits may depend on without coordination.",
+					"related_operations": [
+						"GET /apis/{api_id}/overlays \u2014 list overlays to find the overlay_id",
+						"POST /apis/{api_id}/overlays \u2014 submit a replacement overlay after deleting an incorrect one",
+						"GET /apis/{api_id}/openapi.json \u2014 verify overlay removal by downloading merged spec"
+					]
+				},
+				"security": [
+					{
+						"HumanLogin": []
+					}
+				]
 			}
 		},
 		"/catalog": {
@@ -450,8 +596,10 @@
 									"type": "null"
 								}
 							],
+							"description": "Search term to filter APIs by name or description",
 							"title": "Q"
-						}
+						},
+						"description": "Search term to filter APIs by name or description"
 					},
 					{
 						"name": "limit",
@@ -459,9 +607,13 @@
 						"required": false,
 						"schema": {
 							"type": "integer",
+							"maximum": 500,
+							"minimum": 1,
+							"description": "Maximum number of results (1-500)",
 							"default": 50,
 							"title": "Limit"
-						}
+						},
+						"description": "Maximum number of results (1-500)"
 					},
 					{
 						"name": "registered_only",
@@ -469,9 +621,11 @@
 						"required": false,
 						"schema": {
 							"type": "boolean",
+							"description": "Return only APIs already registered locally",
 							"default": false,
 							"title": "Registered Only"
-						}
+						},
+						"description": "Return only APIs already registered locally"
 					},
 					{
 						"name": "unregistered_only",
@@ -479,9 +633,11 @@
 						"required": false,
 						"schema": {
 							"type": "boolean",
+							"description": "Return only APIs not yet registered locally",
 							"default": false,
 							"title": "Unregistered Only"
-						}
+						},
+						"description": "Return only APIs not yet registered locally"
 					}
 				],
 				"responses": {
@@ -503,14 +659,33 @@
 							}
 						}
 					}
-				}
+				},
+				"x-agent-hints": {
+					"when_to_use": "Use to browse available APIs from the Jentic public catalog (jentic/jentic-public-apis GitHub repo). Returns list of catalog entries with api_id and registration status. Use ?q= to filter by API ID substring, ?registered_only=true to see only locally registered APIs, ?unregistered_only=true to see only APIs not yet imported. Catalog manifest auto-refreshes daily; use POST /catalog/refresh to sync immediately.",
+					"prerequisites": ["Requires authentication (toolkit key or human session)"],
+					"avoid_when": "Do not use to list locally registered APIs \u2014 use GET /apis?source=local instead. Do not use for natural language API discovery \u2014 use GET /search for that.",
+					"related_operations": [
+						"GET /catalog/{api_id} \u2014 get spec download URL for a catalog API",
+						"POST /import \u2014 import a catalog API after finding it here",
+						"POST /catalog/refresh \u2014 refresh catalog manifest from GitHub if empty or stale",
+						"GET /apis \u2014 list locally registered APIs (includes both local and catalog sources)"
+					]
+				},
+				"security": [
+					{
+						"JenticApiKey": []
+					},
+					{
+						"HumanLogin": []
+					}
+				]
 			}
 		},
 		"/catalog/refresh": {
 			"post": {
 				"tags": ["catalog", "admin"],
 				"summary": "Refresh the API catalog manifest from GitHub",
-				"description": "Rebuilds the internal catalog manifest from the jentic/jentic-public-apis repository.\nThe manifest is used by lazy import \u2014 when you `POST /credentials` for an API not yet in\nyour local registry, Jentic Mini resolves the spec from this manifest automatically.\n\nTakes ~2\u20135 seconds (two unauthenticated GitHub API calls). Safe to call repeatedly.\nThe manifest auto-refreshes daily; only call this explicitly if you need immediate sync\nafter a new API has been added to the public catalog.",
+				"description": "Rebuilds the internal catalog manifest from the jentic/jentic-public-apis repository.\nThe manifest is used by lazy import \u2014 when you `POST /credentials` for an API not yet in\nyour local registry, Jentic Mini resolves the spec from this manifest automatically.\n\nFetches the curated apis.json index and the workflows directory listing\n(two unauthenticated HTTP requests). Safe to call repeatedly.\nThe manifest auto-refreshes daily; only call this explicitly if you need immediate sync\nafter a new API has been added to the public catalog.",
 				"operationId": "refresh_catalog_catalog_refresh_post",
 				"responses": {
 					"200": {
@@ -521,7 +696,25 @@
 							}
 						}
 					}
-				}
+				},
+				"x-agent-hints": {
+					"when_to_use": "Use when the catalog is empty (GET /catalog returns empty list) or when you need immediate sync after a new API was added to jentic/jentic-public-apis on GitHub. Fetches the curated apis.json index and workflows directory listing from GitHub (two unauthenticated HTTP requests). Manifest auto-refreshes daily on startup, so only call explicitly if you need immediate sync.",
+					"prerequisites": ["Requires authentication (admin/human session)"],
+					"avoid_when": "Do not call repeatedly \u2014 safe but unnecessary since manifest auto-refreshes daily. Do not use to import APIs \u2014 use POST /import after refreshing.",
+					"related_operations": [
+						"GET /catalog \u2014 list catalog entries after refreshing",
+						"GET /catalog/{api_id} \u2014 get spec URL for an API after refreshing",
+						"POST /import \u2014 import an API after finding it in the refreshed catalog"
+					]
+				},
+				"security": [
+					{
+						"JenticApiKey": []
+					},
+					{
+						"HumanLogin": []
+					}
+				]
 			}
 		},
 		"/catalog/{api_id}": {
@@ -537,8 +730,10 @@
 						"required": true,
 						"schema": {
 							"type": "string",
+							"description": "API ID from catalog to retrieve",
 							"title": "Api Id"
-						}
+						},
+						"description": "API ID from catalog to retrieve"
 					}
 				],
 				"responses": {
@@ -560,14 +755,36 @@
 							}
 						}
 					}
-				}
+				},
+				"x-agent-hints": {
+					"when_to_use": "Use after finding an API via GET /catalog to retrieve the spec download URL for import. Returns api_id, registration status, spec_url (GitHub raw file URL), and spec_filename. Use the spec_url with POST /import to register this API locally. Recursively searches the GitHub directory for OpenAPI spec files (openapi.json, openapi.yaml, etc.).",
+					"prerequisites": [
+						"Requires authentication (toolkit key or human session)",
+						"Valid catalog api_id from GET /catalog (format: hostname or hostname/path)"
+					],
+					"avoid_when": "Do not use for APIs already registered locally \u2014 check GET /apis first. Do not use to download the spec directly (use POST /import instead).",
+					"related_operations": [
+						"GET /catalog \u2014 browse catalog to find the api_id",
+						"POST /import \u2014 import the API using the spec_url returned here",
+						"GET /apis \u2014 check if API is already registered before importing",
+						"POST /credentials \u2014 add credentials after importing"
+					]
+				},
+				"security": [
+					{
+						"JenticApiKey": []
+					},
+					{
+						"HumanLogin": []
+					}
+				]
 			}
 		},
 		"/credentials": {
 			"post": {
 				"tags": ["credentials"],
 				"summary": "Store an upstream API credential \u2014 add a secret to the vault for broker injection",
-				"description": "Store an encrypted credential in the vault for automatic broker injection.\n\nValues are encrypted at rest and **never returned** after creation. Set `api_id` to\nbind the credential to an API; the broker will inject it automatically when proxying\ncalls to that API.\n\n---\n\n### `auth_type` reference\n\nSet `auth_type` to tell the broker how to inject the credential into upstream requests.\nBased on the [Postman auth type taxonomy](https://learning.postman.com/docs/sending-requests/authorization/authorization-types/).\n\n| `auth_type` | Status | Broker injects | `value` | `identity` |\n|---|---|---|---|---|\n| `bearer` | \u2705 implemented | `Authorization: Bearer {value}` | Token, PAT, or OAuth access token | Not used |\n| `basic` | \u2705 implemented | `Authorization: Basic base64({identity\\|\"token\"}:{value})` | Password or PAT | Username (optional \u2014 defaults to `\"token\"` if omitted, works for GitHub PATs) |\n| `apiKey` | \u2705 implemented | Custom header or query param `= {value}` | API key | For **compound schemes** (e.g. Discourse `Api-Key` + `Api-Username`): set `identity` to the username \u2014 one credential covers both headers when the overlay uses canonical `Secret`/`Identity` scheme names |\n| `oauth2` | \u26a0\ufe0f partial | `Authorization: Bearer {value}` \u2014 token must be pre-obtained | Access token (Pipedream-managed flows only via `pipedream_oauth`) | Not used |\n| `digest` | \ud83d\udd32 planned | RFC 2617 challenge-response (nonce/HMAC handshake) | Password | Username |\n| `jwt` | \ud83d\udd32 planned | `Authorization: Bearer {signed_jwt}` \u2014 auto-generated from signing key | Private key or secret | Key ID (`kid`) \u2014 signing algorithm and claims go in `context` |\n| `aws_sig4` | \ud83d\udd32 planned | `Authorization: AWS4-HMAC-SHA256 ...` signed headers | AWS Secret Access Key | AWS Access Key ID \u2014 region and service go in `context` |\n| `oauth1` | \ud83d\udd32 planned | HMAC-SHA1 signed request (nonce + timestamp) | OAuth secret | OAuth consumer key |\n| `hawk` | \ud83d\udd32 planned | `Authorization: Hawk ...` HMAC request signing | Hawk secret | Hawk key ID |\n| `ntlm` | \ud83d\udd32 not planned | Windows NTLM challenge-response | Password | Username + domain |\n| `akamai_edgegrid` | \ud83d\udd32 not planned | Akamai EdgeGrid signing | Client secret | Client token + access token in `context` |\n\n**Notes:**\n- `pipedream_oauth` is a reserved value written by the Pipedream integration \u2014 do not set it manually.\n- For `oauth2` full flows (auth code, client credentials, PKCE, token refresh) see the roadmap.\n- `context` (not yet exposed) will hold auxiliary fields for multi-value schemes (JWT claims, AWS region/service, etc.).\n\n---\n\n### Workflow\n\n1. Call `GET /apis/{api_id}` \u2014 check `security_schemes` and `credentials_configured` to find gaps.\n2. Post this endpoint with `api_id`, `auth_type`, `value` (and `identity` if needed).\n3. The broker injects the credential automatically on every proxied call to that API.\n4. To scope a credential to a specific toolkit: `POST /toolkits/{id}/credentials`.\n\nIf the API has no registered security scheme yet, submit an overlay first: `POST /apis/{api_id}/overlays`.",
+				"description": "Store an encrypted credential in the vault for automatic broker injection.\n\nValues are encrypted at rest and **never returned** after creation. Set `api_id` to\nbind the credential to an API; the broker will inject it automatically when proxying\ncalls to that API.\n\n---\n\n### `auth_type` reference\n\nSet `auth_type` to tell the broker how to inject the credential into upstream requests.\nBased on the [Postman auth type taxonomy](https://learning.postman.com/docs/sending-requests/authorization/authorization-types/).\n\n| `auth_type` | Status | Broker injects | `value` | `identity` |\n|---|---|---|---|---|\n| `bearer` | \u2705 implemented | `Authorization: Bearer {value}` | Token, PAT, or OAuth access token | Not used |\n| `basic` | \u2705 implemented | `Authorization: Basic base64({identity or \"token\"}:{value})` | Password or PAT | Username (optional \u2014 defaults to `\"token\"` if omitted, works for GitHub PATs) |\n| `apiKey` | \u2705 implemented | Custom header or query param `= {value}` | API key | For **compound schemes** (e.g. Discourse `Api-Key` + `Api-Username`): set `identity` to the username \u2014 one credential covers both headers when the overlay uses canonical `Secret`/`Identity` scheme names |\n| `oauth2` | \u26a0\ufe0f partial | `Authorization: Bearer {value}` \u2014 token must be pre-obtained | Access token (Pipedream-managed flows only via `pipedream_oauth`) | Not used |\n| `digest` | \ud83d\udd32 planned | RFC 2617 challenge-response (nonce/HMAC handshake) | Password | Username |\n| `jwt` | \ud83d\udd32 planned | `Authorization: Bearer {signed_jwt}` \u2014 auto-generated from signing key | Private key or secret | Key ID (`kid`) \u2014 signing algorithm and claims go in `context` |\n| `aws_sig4` | \ud83d\udd32 planned | `Authorization: AWS4-HMAC-SHA256 ...` signed headers | AWS Secret Access Key | AWS Access Key ID \u2014 region and service go in `context` |\n| `oauth1` | \ud83d\udd32 planned | HMAC-SHA1 signed request (nonce + timestamp) | OAuth secret | OAuth consumer key |\n| `hawk` | \ud83d\udd32 planned | `Authorization: Hawk ...` HMAC request signing | Hawk secret | Hawk key ID |\n| `ntlm` | \ud83d\udd32 not planned | Windows NTLM challenge-response | Password | Username + domain |\n| `akamai_edgegrid` | \ud83d\udd32 not planned | Akamai EdgeGrid signing | Client secret | Client token + access token in `context` |\n\n**Notes:**\n- `pipedream_oauth` is a reserved value written by the Pipedream integration \u2014 do not set it manually.\n- For `oauth2` full flows (auth code, client credentials, PKCE, token refresh) see the roadmap.\n- `context` (not yet exposed) will hold auxiliary fields for multi-value schemes (JWT claims, AWS region/service, etc.).\n\n---\n\n### Workflow\n\n1. Call `GET /apis/{api_id}` \u2014 check `security_schemes` and `credentials_configured` to find gaps.\n2. Post this endpoint with `api_id`, `auth_type`, `value` (and `identity` if needed).\n3. The broker injects the credential automatically on every proxied call to that API.\n4. To scope a credential to a specific toolkit: `POST /toolkits/{id}/credentials`.\n\nIf the API has no registered security scheme yet, submit an overlay first: `POST /apis/{api_id}/overlays`.",
 				"operationId": "create_credentials_post",
 				"requestBody": {
 					"required": true,
@@ -577,7 +794,8 @@
 								"$ref": "#/components/schemas/CredentialCreate"
 							}
 						}
-					}
+					},
+					"description": "Credential details: label for identification, encrypted value (API key/token/password), optional identity (username/client ID), API ID, and auth type"
 				},
 				"responses": {
 					"201": {
@@ -600,7 +818,12 @@
 							}
 						}
 					}
-				}
+				},
+				"security": [
+					{
+						"HumanLogin": []
+					}
+				]
 			},
 			"get": {
 				"tags": ["credentials"],
@@ -621,8 +844,10 @@
 									"type": "null"
 								}
 							],
+							"description": "Filter credentials by API ID (hostname)",
 							"title": "Api Id"
-						}
+						},
+						"description": "Filter credentials by API ID (hostname)"
 					}
 				],
 				"responses": {
@@ -650,14 +875,22 @@
 							}
 						}
 					}
-				}
+				},
+				"security": [
+					{
+						"JenticApiKey": []
+					},
+					{
+						"HumanLogin": []
+					}
+				]
 			}
 		},
 		"/credentials/{cid}": {
 			"get": {
 				"tags": ["credentials"],
 				"summary": "Get an upstream API credential by ID",
-				"description": "Retrieve metadata for a single credential. Value is never returned.",
+				"description": "Retrieve metadata for a single credential.\n\nReturns the credential's label, API binding, auth type, and identity field (if set).\nThe secret value is never returned after creation for security.\n\nParameters:\n    cid: Credential ID (format: hostname or hostname/path, e.g. 'api.github.com')\n\nReturns:\n    Credential metadata including id, label, api_id, auth_type, timestamps, and identity.\n\nUse this to confirm a credential exists before binding it to a toolkit or to inspect\nits configuration before making authenticated calls.",
 				"operationId": "get_credential_credentials__cid__get",
 				"parameters": [
 					{
@@ -666,8 +899,10 @@
 						"required": true,
 						"schema": {
 							"type": "string",
+							"description": "Credential ID (format: hostname or hostname/path)",
 							"title": "Cid"
-						}
+						},
+						"description": "Credential ID (format: hostname or hostname/path)"
 					}
 				],
 				"responses": {
@@ -691,11 +926,20 @@
 							}
 						}
 					}
-				}
+				},
+				"security": [
+					{
+						"JenticApiKey": []
+					},
+					{
+						"HumanLogin": []
+					}
+				]
 			},
 			"patch": {
 				"tags": ["credentials"],
 				"summary": "Update an upstream API credential \u2014 rotate a secret or fix its API binding",
+				"description": "Update a credential's label, secret value, identity field, API binding, or auth_type.\n\nCommon use cases:\n- Rotate an expired token or password (update `value`)\n- Fix incorrect API binding (update `api_id`)\n- Add username to existing credential (update `identity`)\n- Relabel for clarity (update `label`)\n\nOnly changed fields need to be included in the request body. Omitted fields are left unchanged.\n\n**Auth:** Requires human session OR agent key with explicit `PATCH /credentials` allow rule on jentic-mini credential.",
 				"operationId": "patch_credentials__cid__patch",
 				"parameters": [
 					{
@@ -704,8 +948,10 @@
 						"required": true,
 						"schema": {
 							"type": "string",
+							"description": "Credential ID to update",
 							"title": "Cid"
-						}
+						},
+						"description": "Credential ID to update"
 					}
 				],
 				"requestBody": {
@@ -716,7 +962,8 @@
 								"$ref": "#/components/schemas/CredentialPatch"
 							}
 						}
-					}
+					},
+					"description": "Fields to update: label, value (for rotation), identity, api_id, or auth_type \u2014 only provided fields are changed"
 				},
 				"responses": {
 					"200": {
@@ -739,11 +986,17 @@
 							}
 						}
 					}
-				}
+				},
+				"security": [
+					{
+						"HumanLogin": []
+					}
+				]
 			},
 			"delete": {
 				"tags": ["credentials"],
 				"summary": "Delete an upstream API credential",
+				"description": "Permanently delete a credential.\n\nThe credential is removed from the vault and unbound from all toolkits that reference it.\nAgents using toolkits with this credential will immediately lose access to the upstream API.\n\n**Auth:** Requires human session OR agent key with explicit `DELETE /credentials` allow rule on jentic-mini credential.\n\n**Warning:** This operation cannot be undone. The secret value is irrecoverably destroyed.",
 				"operationId": "delete_credentials__cid__delete",
 				"parameters": [
 					{
@@ -752,8 +1005,10 @@
 						"required": true,
 						"schema": {
 							"type": "string",
+							"description": "Credential ID to delete",
 							"title": "Cid"
-						}
+						},
+						"description": "Credential ID to delete"
 					}
 				],
 				"responses": {
@@ -770,7 +1025,12 @@
 							}
 						}
 					}
-				}
+				},
+				"security": [
+					{
+						"HumanLogin": []
+					}
+				]
 			}
 		},
 		"/default-api-key/generate": {
@@ -796,7 +1056,7 @@
 			"get": {
 				"tags": ["meta"],
 				"summary": "Health",
-				"description": "Returns current setup state with explicit instructions for agents.",
+				"description": "Returns current setup state with explicit instructions for agents and UI.\n\nResponse varies based on setup progress:\n- status='setup_required': No default API key claimed yet \u2192 agent should call POST /default-api-key/generate\n- status='account_required': Agent key active, admin account not created \u2192 user should visit setup_url\n- status='ok': Fully set up \u2192 includes version and apis_registered count\n\nThis endpoint is always public (no auth required) so agents can check setup state before\nattempting authenticated calls. UI uses this to determine whether to show setup wizard.\n\nReturns:\n    Setup status, version, and context-specific next steps or operational metrics.",
 				"operationId": "health_health_get",
 				"responses": {
 					"200": {
@@ -815,9 +1075,10 @@
 			"post": {
 				"tags": ["catalog"],
 				"summary": "Import an API spec or workflow \u2014 add to the searchable catalog",
-				"description": "Registers an OpenAPI spec or Arazzo workflow into the catalog and BM25 index.\nSource types: url (fetch from URL), upload (multipart file), inline (JSON body).\nFor OpenAPI specs: parses operations, computes capability IDs, indexes descriptions.\nFor Arazzo workflows: stores definition, extracts input schema and involved APIs.\nReturns the registered API or workflow with its canonical id.",
+				"description": "Registers an OpenAPI spec or Arazzo workflow into the catalog and BM25 index.\nSource types: path (local file), url (fetch from URL), inline (spec content in request body).\nFor OpenAPI specs: parses operations, computes capability IDs, indexes descriptions.\nFor Arazzo workflows: stores definition, extracts input schema and involved APIs.\nReturns the registered API or workflow with its canonical id.",
 				"operationId": "import_sources_import_post",
 				"requestBody": {
+					"description": "Array of import sources (local file paths, URLs, or inline spec content) to register in the catalog \u2014 supports OpenAPI 3.x and Arazzo 1.0",
 					"content": {
 						"application/json": {
 							"schema": {
@@ -848,7 +1109,32 @@
 							}
 						}
 					}
-				}
+				},
+				"x-agent-hints": {
+					"when_to_use": "Use to register a new API (OpenAPI 3.x spec) or workflow (Arazzo document) into the local catalog for searchability and execution. Supports three source types: url (fetch from remote URL), path (local file path), inline (spec content in request body). Automatically detects OpenAPI vs Arazzo, parses operations, computes capability IDs, and indexes for BM25 search. Use when adding a new API not yet in the catalog.",
+					"prerequisites": [
+						"Requires authentication (toolkit key or human session)",
+						"Valid OpenAPI 3.x or Arazzo 1.0 document",
+						"For url type: publicly accessible spec URL",
+						"For path type: local file system path (server must have read access)",
+						"For inline type: spec content as JSON or YAML string"
+					],
+					"avoid_when": "Do not use for APIs already in the catalog \u2014 check GET /apis or GET /catalog first. Do not use to add credentials (use POST /credentials). Do not use to update existing specs \u2014 delete and re-import instead.",
+					"related_operations": [
+						"GET /apis \u2014 check if API is already registered before importing",
+						"GET /catalog \u2014 browse available APIs in public catalog before importing",
+						"POST /credentials \u2014 add credentials after importing an API",
+						"GET /search \u2014 verify imported operations are searchable"
+					]
+				},
+				"security": [
+					{
+						"JenticApiKey": []
+					},
+					{
+						"HumanLogin": []
+					}
+				]
 			}
 		},
 		"/inspect/{capability_id}": {
@@ -864,8 +1150,10 @@
 						"required": true,
 						"schema": {
 							"type": "string",
+							"description": "Capability ID (METHOD/host/path format) or workflow slug",
 							"title": "Capability Id"
-						}
+						},
+						"description": "Capability ID (METHOD/host/path format) or workflow slug"
 					},
 					{
 						"name": "toolkit_id",
@@ -920,7 +1208,28 @@
 							}
 						}
 					}
-				}
+				},
+				"x-agent-hints": {
+					"when_to_use": "Use after finding an operation via GET /search when you need complete parameter schemas, authentication requirements, and response formats before making the actual call. Essential step between discovery and execution.",
+					"prerequisites": [
+						"Valid capability ID from GET /search results (format: METHOD/host/path)",
+						"Optional: Pass ?toolkit_id={id} to check credential configuration status"
+					],
+					"avoid_when": "Do not use for bulk inspection \u2014 prefer GET /apis/{api_id}/operations when browsing an entire API's operation list.",
+					"related_operations": [
+						"GET /search \u2014 find capabilities by natural language query first",
+						"GET /{target} \u2014 execute the operation after inspecting",
+						"GET /apis/{api_id}/operations \u2014 list all operations for an API"
+					]
+				},
+				"security": [
+					{
+						"JenticApiKey": []
+					},
+					{
+						"HumanLogin": []
+					}
+				]
 			}
 		},
 		"/jobs": {
@@ -955,9 +1264,11 @@
 						"schema": {
 							"type": "integer",
 							"minimum": 1,
+							"description": "Page number (1-indexed)",
 							"default": 1,
 							"title": "Page"
-						}
+						},
+						"description": "Page number (1-indexed)"
 					},
 					{
 						"name": "limit",
@@ -967,9 +1278,11 @@
 							"type": "integer",
 							"maximum": 100,
 							"minimum": 1,
+							"description": "Results per page (1-100)",
 							"default": 20,
 							"title": "Limit"
-						}
+						},
+						"description": "Results per page (1-100)"
 					}
 				],
 				"responses": {
@@ -993,7 +1306,15 @@
 							}
 						}
 					}
-				}
+				},
+				"security": [
+					{
+						"JenticApiKey": []
+					},
+					{
+						"HumanLogin": []
+					}
+				]
 			}
 		},
 		"/jobs/{job_id}": {
@@ -1009,8 +1330,10 @@
 						"required": true,
 						"schema": {
 							"type": "string",
+							"description": "Job ID (format: job_{12chars})",
 							"title": "Job Id"
-						}
+						},
+						"description": "Job ID (format: job_{12chars})"
 					}
 				],
 				"responses": {
@@ -1034,7 +1357,29 @@
 							}
 						}
 					}
-				}
+				},
+				"x-agent-hints": {
+					"when_to_use": "Use after receiving HTTP 202 from a broker call or workflow execution to poll for completion. Job ID comes from Location header (RFC 7240) or X-Jentic-Job-Id header. Poll until status is complete, failed, or upstream_async. Jobs are created when: (1) client sends Prefer: wait=0, (2) execution exceeds Prefer: wait=N timeout, or (3) upstream API returns 202.",
+					"prerequisites": [
+						"Requires authentication (toolkit key or human session)",
+						"Valid job ID from a 202 response (format: job_{12chars})"
+					],
+					"avoid_when": "Do not use for synchronous calls (200 responses) \u2014 those produce traces, not jobs. Do not poll excessively \u2014 implement exponential backoff (start at 1s, max 30s).",
+					"related_operations": [
+						"GET /{target} (broker) \u2014 broker call with Prefer: wait=0 returns 202 + job ID",
+						"POST /workflows/{slug} \u2014 workflow with Prefer: wait=0 returns 202 + job ID",
+						"GET /traces/{id} \u2014 completed jobs reference a trace via trace_id field",
+						"DELETE /jobs/{id} \u2014 cancel an outstanding async job"
+					]
+				},
+				"security": [
+					{
+						"JenticApiKey": []
+					},
+					{
+						"HumanLogin": []
+					}
+				]
 			},
 			"delete": {
 				"tags": ["observe"],
@@ -1048,8 +1393,10 @@
 						"required": true,
 						"schema": {
 							"type": "string",
+							"description": "Job ID to cancel",
 							"title": "Job Id"
-						}
+						},
+						"description": "Job ID to cancel"
 					}
 				],
 				"responses": {
@@ -1066,7 +1413,15 @@
 							}
 						}
 					}
-				}
+				},
+				"security": [
+					{
+						"JenticApiKey": []
+					},
+					{
+						"HumanLogin": []
+					}
+				]
 			}
 		},
 		"/notes": {
@@ -1083,7 +1438,8 @@
 								"$ref": "#/components/schemas/NoteCreate"
 							}
 						}
-					}
+					},
+					"description": "Note details: resource ID, note type (auth_quirk/usage_hint/execution_feedback/correction), content, optional execution link, confidence level, and source"
 				},
 				"responses": {
 					"201": {
@@ -1104,11 +1460,34 @@
 							}
 						}
 					}
-				}
+				},
+				"x-agent-hints": {
+					"when_to_use": "Use to report observations about operations, workflows, or APIs that could improve the catalog: auth quirks (non-standard auth requirements), usage hints (tips for effective use), execution feedback (what happened when called), corrections (errors in spec descriptions). Notes feed the Jentic knowledge base for catalog improvement. Link to execution_id for context.",
+					"prerequisites": [
+						"Requires authentication (toolkit key or human session)",
+						"Valid resource identifier (operation_id, api_id, or workflow slug)"
+					],
+					"avoid_when": "Do not use for private execution logs \u2014 use GET /traces instead. Do not use for credential issues \u2014 fix credentials via PATCH /credentials.",
+					"related_operations": [
+						"GET /notes \u2014 list existing notes for a resource to avoid duplicates",
+						"DELETE /notes/{id} \u2014 remove outdated or incorrect notes",
+						"GET /traces/{id} \u2014 link to execution context when reporting feedback",
+						"POST /apis/{api_id}/overlays \u2014 submit OpenAPI overlay to fix spec issues"
+					]
+				},
+				"security": [
+					{
+						"JenticApiKey": []
+					},
+					{
+						"HumanLogin": []
+					}
+				]
 			},
 			"get": {
 				"tags": ["catalog"],
 				"summary": "List notes for a resource",
+				"description": "List notes attached to resources (operations, workflows, APIs).\n\nNotes capture observations from execution \u2014 success signals, failure patterns,\ndata validation findings, and human annotations. Agents use notes to build\noperational knowledge and improve reliability over time.\n\nFilter by `?resource={id}` to see notes for a specific operation/workflow,\nor by `?type={type}` to filter by note category (e.g., \"success\", \"error\", \"validation\").",
 				"operationId": "list_notes_notes_get",
 				"parameters": [
 					{
@@ -1124,8 +1503,10 @@
 									"type": "null"
 								}
 							],
+							"description": "Filter notes by resource ID (capability_id, api_id, or workflow slug)",
 							"title": "Resource"
-						}
+						},
+						"description": "Filter notes by resource ID (capability_id, api_id, or workflow slug)"
 					},
 					{
 						"name": "type",
@@ -1140,8 +1521,10 @@
 									"type": "null"
 								}
 							],
+							"description": "Filter notes by type (auth_quirk, usage_hint, execution_feedback, correction)",
 							"title": "Type"
-						}
+						},
+						"description": "Filter notes by type (auth_quirk, usage_hint, execution_feedback, correction)"
 					},
 					{
 						"name": "limit",
@@ -1149,9 +1532,13 @@
 						"required": false,
 						"schema": {
 							"type": "integer",
+							"maximum": 500,
+							"minimum": 1,
+							"description": "Maximum number of notes to return (1-500)",
 							"default": 50,
 							"title": "Limit"
-						}
+						},
+						"description": "Maximum number of notes to return (1-500)"
 					}
 				],
 				"responses": {
@@ -1173,13 +1560,33 @@
 							}
 						}
 					}
-				}
+				},
+				"x-agent-hints": {
+					"when_to_use": "Use to retrieve operational knowledge about operations, workflows, or APIs before calling them. Returns notes from previous executions: auth quirks, usage tips, failure patterns, schema corrections. Filter by ?resource={capability_id} to see notes for a specific operation/workflow, or by ?type={category} to filter by note type (auth_quirk, usage_hint, execution_feedback, correction). Limit defaults to 50, ordered by creation date descending.",
+					"prerequisites": ["Requires authentication (toolkit key or human session)"],
+					"avoid_when": "Do not use for execution history \u2014 use GET /traces instead. Do not use for credential status \u2014 use GET /credentials.",
+					"related_operations": [
+						"POST /notes \u2014 add a note after discovering new operational knowledge",
+						"DELETE /notes/{id} \u2014 remove outdated notes",
+						"GET /inspect/{id} \u2014 inspect operation schema before checking notes",
+						"GET /traces \u2014 view execution history for context"
+					]
+				},
+				"security": [
+					{
+						"JenticApiKey": []
+					},
+					{
+						"HumanLogin": []
+					}
+				]
 			}
 		},
 		"/notes/{note_id}": {
 			"delete": {
 				"tags": ["catalog"],
 				"summary": "Delete a note",
+				"description": "Permanently delete a note.\n\nUse this to remove outdated observations, incorrect annotations, or\nnotes that no longer apply after an API change.",
 				"operationId": "delete_note_notes__note_id__delete",
 				"parameters": [
 					{
@@ -1188,8 +1595,10 @@
 						"required": true,
 						"schema": {
 							"type": "string",
+							"description": "Note ID to delete (format: note_{8chars})",
 							"title": "Note Id"
-						}
+						},
+						"description": "Note ID to delete (format: note_{8chars})"
 					}
 				],
 				"responses": {
@@ -1206,7 +1615,27 @@
 							}
 						}
 					}
-				}
+				},
+				"x-agent-hints": {
+					"when_to_use": "Use to remove outdated observations, incorrect annotations, or notes that no longer apply after an API change. Deletion is permanent.",
+					"prerequisites": [
+						"Requires authentication (toolkit key or human session)",
+						"Valid note ID from GET /notes (format: note_{8chars})"
+					],
+					"avoid_when": "Do not use to hide execution errors \u2014 fix the underlying issue instead. Do not delete notes from other users without coordination.",
+					"related_operations": [
+						"GET /notes \u2014 list notes to find the note_id",
+						"POST /notes \u2014 add a replacement note after deleting an incorrect one"
+					]
+				},
+				"security": [
+					{
+						"JenticApiKey": []
+					},
+					{
+						"HumanLogin": []
+					}
+				]
 			}
 		},
 		"/oauth-brokers": {
@@ -1224,7 +1653,26 @@
 							}
 						}
 					}
-				}
+				},
+				"x-agent-hints": {
+					"when_to_use": "Use to discover available OAuth brokers (Pipedream, future: Jentic native) for delegated OAuth credential management. Returns list of registered brokers with type, client_id, project_id, and default_external_user_id. Client_secret is never included. Accessible to both agents (toolkit key) and humans (session). Use before connecting apps or syncing accounts.",
+					"prerequisites": ["Requires authentication (toolkit key or human session)"],
+					"avoid_when": "Do not use to retrieve individual broker details \u2014 use GET /oauth-brokers/{broker_id} instead. Do not use to manage OAuth accounts \u2014 use POST /oauth-brokers/{broker_id}/connect-link to initiate OAuth.",
+					"related_operations": [
+						"POST /oauth-brokers \u2014 register a new OAuth broker (Pipedream)",
+						"GET /oauth-brokers/{broker_id} \u2014 get detailed broker configuration and account statistics",
+						"POST /oauth-brokers/{broker_id}/connect-link \u2014 initiate OAuth flow for an API via broker",
+						"POST /oauth-brokers/{broker_id}/sync \u2014 pull connected accounts into Jentic after OAuth"
+					]
+				},
+				"security": [
+					{
+						"JenticApiKey": []
+					},
+					{
+						"HumanLogin": []
+					}
+				]
 			},
 			"post": {
 				"tags": ["credentials", "credentials"],
@@ -1232,6 +1680,7 @@
 				"description": "Register a delegated OAuth broker. Currently supported type: `pipedream`.\n\n---\n\n### Pipedream \u2014 one-time setup\n\nBefore registering, complete these steps in the Pipedream UI:\n\n**1.** Go to [pipedream.com](https://pipedream.com) and sign in or create an account.\n\n**2.** Go to **Settings** (main menu) \u2192 **API** \u2192 click **+ New OAuth Client**.\nName it \"Jentic\". Store the **client ID** and **client secret** safely \u2014 the secret is not shown again.\n\n**3.** Go to **Projects** (main menu) and click **+ New Project**. Name it \"Jentic\".\n\n**4.** Go to **Projects \u2192 Jentic \u2192 Settings** and note the **project ID** (format: `proj_xxx`).\n\nThat's it. Register the broker below \u2014 Jentic automatically configures the Connect\napplication name, support email, and logo in Pipedream on your behalf, so you don't\nneed to touch the Connect \u2192 Configuration screen manually.\n\n---\n\n### Registration\n\n```json\n{\n  \"type\": \"pipedream\",\n  \"config\": {\n    \"client_id\": \"oa_abc123\",\n    \"client_secret\": \"pd_secret_xxxx\",\n    \"project_id\": \"proj_abc123\",\n    \"support_email\": \"support@example.com\"\n  }\n}\n```\n\n`support_email` is optional but recommended \u2014 it is displayed to end users in the\nPipedream OAuth consent UI.\n\n`client_secret` is write-only \u2014 Fernet-encrypted at rest, never returned.\n\n---\n\n### After registration\n\nOnce registered, connect individual apps with `POST /oauth-brokers/{id}/connect-link`\n(pass `app` as the Pipedream app slug, e.g. `gmail`, `google_calendar`, `slack`).\nAfter the user completes OAuth, call `POST /oauth-brokers/{id}/sync` to pull the\nconnected account into Jentic. From that point, requests to that API's host are\nautomatically proxied with the user's OAuth token injected server-side.",
 				"operationId": "create_oauth_broker_oauth_brokers_post",
 				"requestBody": {
+					"description": "Broker configuration: type (e.g. 'pipedream'), provider-specific config, and encrypted credentials",
 					"content": {
 						"application/json": {
 							"schema": {
@@ -1262,13 +1711,77 @@
 							}
 						}
 					}
-				}
+				},
+				"security": [
+					{
+						"HumanLogin": []
+					}
+				]
 			}
 		},
 		"/oauth-brokers/{broker_id}": {
+			"patch": {
+				"tags": ["credentials", "credentials"],
+				"summary": "Update an OAuth broker configuration",
+				"description": "Update client_id, client_secret, and/or project_id for an existing broker.\n\nOnly supplied fields are changed. client_secret is re-encrypted if provided.",
+				"operationId": "update_oauth_broker_oauth_brokers__broker_id__patch",
+				"parameters": [
+					{
+						"name": "broker_id",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string",
+							"description": "The broker ID",
+							"examples": ["pipedream"],
+							"title": "Broker Id"
+						},
+						"description": "The broker ID"
+					}
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/OAuthBrokerUpdate"
+							}
+						}
+					},
+					"description": "Fields to update: type, config, or encrypted credentials \u2014 only provided fields are changed"
+				},
+				"responses": {
+					"200": {
+						"description": "Successful Response",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/OAuthBrokerOut"
+								}
+							}
+						}
+					},
+					"422": {
+						"description": "Validation Error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/HTTPValidationError"
+								}
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"HumanLogin": []
+					}
+				]
+			},
 			"get": {
 				"tags": ["credentials", "credentials", "inspect"],
 				"summary": "Get an OAuth broker",
+				"description": "Retrieve OAuth broker configuration and metadata.\n\nReturns broker type, client ID, project ID, and connected account statistics.\nUse this to verify a broker is registered before creating connect links or syncing accounts.\n\nFor connected account details, use `GET /oauth-brokers/{broker_id}/accounts`.",
 				"operationId": "get_oauth_broker_oauth_brokers__broker_id__get",
 				"parameters": [
 					{
@@ -1278,10 +1791,10 @@
 						"schema": {
 							"type": "string",
 							"description": "The broker ID",
+							"examples": ["pipedream"],
 							"title": "Broker Id"
 						},
-						"description": "The broker ID",
-						"example": "pipedream"
+						"description": "The broker ID"
 					}
 				],
 				"responses": {
@@ -1303,12 +1816,20 @@
 							}
 						}
 					}
-				}
+				},
+				"security": [
+					{
+						"JenticApiKey": []
+					},
+					{
+						"HumanLogin": []
+					}
+				]
 			},
 			"delete": {
 				"tags": ["credentials", "credentials"],
 				"summary": "Remove an OAuth broker",
-				"description": "Remove a broker and all its connected account mappings.\n\nDoes not revoke tokens on the provider side \u2014 do that in the provider's dashboard.",
+				"description": "Remove a broker and all its connected accounts and credentials.\n\nCascades through oauth_broker_accounts -> toolkit_credentials -> vault.\nDoes not revoke tokens on the provider side - do that in the provider's dashboard.",
 				"operationId": "delete_oauth_broker_oauth_brokers__broker_id__delete",
 				"parameters": [
 					{
@@ -1318,10 +1839,10 @@
 						"schema": {
 							"type": "string",
 							"description": "The broker ID",
+							"examples": ["pipedream"],
 							"title": "Broker Id"
 						},
-						"description": "The broker ID",
-						"example": "pipedream"
+						"description": "The broker ID"
 					}
 				],
 				"responses": {
@@ -1343,7 +1864,12 @@
 							}
 						}
 					}
-				}
+				},
+				"security": [
+					{
+						"HumanLogin": []
+					}
+				]
 			}
 		},
 		"/oauth-brokers/{broker_id}/accounts": {
@@ -1360,10 +1886,10 @@
 						"schema": {
 							"type": "string",
 							"description": "The broker ID",
+							"examples": ["pipedream"],
 							"title": "Broker Id"
 						},
-						"description": "The broker ID",
-						"example": "pipedream"
+						"description": "The broker ID"
 					},
 					{
 						"name": "external_user_id",
@@ -1379,10 +1905,10 @@
 								}
 							],
 							"description": "Filter by external user ID",
+							"examples": ["default"],
 							"title": "External User Id"
 						},
-						"description": "Filter by external user ID",
-						"example": "default"
+						"description": "Filter by external user ID"
 					}
 				],
 				"responses": {
@@ -1404,7 +1930,15 @@
 							}
 						}
 					}
-				}
+				},
+				"security": [
+					{
+						"JenticApiKey": []
+					},
+					{
+						"HumanLogin": []
+					}
+				]
 			}
 		},
 		"/oauth-brokers/{broker_id}/connect-link": {
@@ -1421,10 +1955,10 @@
 						"schema": {
 							"type": "string",
 							"description": "The broker ID",
+							"examples": ["pipedream"],
 							"title": "Broker Id"
 						},
-						"description": "The broker ID",
-						"example": "pipedream"
+						"description": "The broker ID"
 					}
 				],
 				"requestBody": {
@@ -1435,7 +1969,8 @@
 								"$ref": "#/components/schemas/ConnectLinkRequest"
 							}
 						}
-					}
+					},
+					"description": "Connect link request: API slug, optional external ID for tracking, optional OAuth scopes, and return URL"
 				},
 				"responses": {
 					"200": {
@@ -1456,7 +1991,15 @@
 							}
 						}
 					}
-				}
+				},
+				"security": [
+					{
+						"JenticApiKey": []
+					},
+					{
+						"HumanLogin": []
+					}
+				]
 			}
 		},
 		"/oauth-brokers/{broker_id}/sync": {
@@ -1473,10 +2016,10 @@
 						"schema": {
 							"type": "string",
 							"description": "The broker ID",
+							"examples": ["pipedream"],
 							"title": "Broker Id"
 						},
-						"description": "The broker ID",
-						"example": "pipedream"
+						"description": "The broker ID"
 					}
 				],
 				"requestBody": {
@@ -1487,7 +2030,8 @@
 								"$ref": "#/components/schemas/SyncRequest"
 							}
 						}
-					}
+					},
+					"description": "Sync request: list of API slugs to sync accounts for (fetches connected accounts from broker and imports as Jentic credentials)"
 				},
 				"responses": {
 					"200": {
@@ -1508,15 +2052,23 @@
 							}
 						}
 					}
-				}
+				},
+				"security": [
+					{
+						"JenticApiKey": []
+					},
+					{
+						"HumanLogin": []
+					}
+				]
 			}
 		},
-		"/oauth-brokers/{broker_id}/accounts/{api_host}": {
+		"/oauth-brokers/{broker_id}/accounts/{account_id}": {
 			"delete": {
 				"tags": ["credentials", "credentials"],
 				"summary": "Remove a connected account from an OAuth broker",
 				"description": "Remove a specific connected account from this broker.\n\nThis performs three actions in order:\n1. Revokes the account in the upstream provider (Pipedream) via their API\n2. Removes the associated credential from all toolkit provisioning\n3. Deletes the credential from the vault and the account from the local DB\n\nIf the Pipedream revoke fails, the local cleanup still proceeds (with a warning).",
-				"operationId": "delete_broker_account_oauth_brokers__broker_id__accounts__api_host__delete",
+				"operationId": "delete_broker_account_oauth_brokers__broker_id__accounts__account_id__delete",
 				"parameters": [
 					{
 						"name": "broker_id",
@@ -1525,38 +2077,21 @@
 						"schema": {
 							"type": "string",
 							"description": "The broker ID",
+							"examples": ["pipedream"],
 							"title": "Broker Id"
 						},
-						"description": "The broker ID",
-						"example": "pipedream"
+						"description": "The broker ID"
 					},
 					{
-						"name": "api_host",
+						"name": "account_id",
 						"in": "path",
 						"required": true,
 						"schema": {
 							"type": "string",
-							"title": "Api Host"
-						}
-					},
-					{
-						"name": "external_user_id",
-						"in": "query",
-						"required": false,
-						"schema": {
-							"anyOf": [
-								{
-									"type": "string"
-								},
-								{
-									"type": "null"
-								}
-							],
-							"description": "Filter by external user ID",
-							"title": "External User Id"
+							"description": "Connected account ID to delete",
+							"title": "Account Id"
 						},
-						"description": "Filter by external user ID",
-						"example": "default"
+						"description": "Connected account ID to delete"
 					}
 				],
 				"responses": {
@@ -1578,7 +2113,140 @@
 							}
 						}
 					}
-				}
+				},
+				"security": [
+					{
+						"JenticApiKey": []
+					},
+					{
+						"HumanLogin": []
+					}
+				]
+			},
+			"patch": {
+				"tags": ["credentials", "credentials"],
+				"summary": "Update a connected account (e.g. rename label)",
+				"description": "Patch a connected account record.\n\nUpdates the display label for a connected OAuth account. The account remains linked\nto the same external OAuth identity and credentials are not affected. Label changes\nare reflected in both the oauth_broker_accounts table and any associated credentials\nin the vault.\n\nParameters:\n    broker_id: OAuth broker ID (e.g. 'pipedream')\n    account_id: Connected account ID from the broker\n    body: Update request containing the new label\n\nReturns:\n    Updated account_id and label.\n\nAuth: Requires human session (admin only).\n\nCurrently supports updating label only. Future versions may support updating\nadditional account metadata.",
+				"operationId": "update_broker_account_oauth_brokers__broker_id__accounts__account_id__patch",
+				"parameters": [
+					{
+						"name": "broker_id",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string",
+							"description": "The broker ID",
+							"examples": ["pipedream"],
+							"title": "Broker Id"
+						},
+						"description": "The broker ID"
+					},
+					{
+						"name": "account_id",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string",
+							"description": "Connected account ID to update",
+							"title": "Account Id"
+						},
+						"description": "Connected account ID to update"
+					}
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/AccountUpdate"
+							}
+						}
+					},
+					"description": "Account update: new display label for this connected OAuth account"
+				},
+				"responses": {
+					"200": {
+						"description": "Successful Response",
+						"content": {
+							"application/json": {
+								"schema": {}
+							}
+						}
+					},
+					"422": {
+						"description": "Validation Error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/HTTPValidationError"
+								}
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"HumanLogin": []
+					}
+				]
+			}
+		},
+		"/oauth-brokers/{broker_id}/accounts/{account_id}/reconnect-link": {
+			"post": {
+				"tags": ["credentials", "credentials"],
+				"summary": "Get a reconnect link for an existing connected account",
+				"description": "Generate a new OAuth connect link for an existing connected account.\n\nThe returned URL sends the user through the Pipedream OAuth flow for the\nsame app slug.  On completion, the callback will:\n\n1. Sync the broker (discovering the new account).\n2. If the new account is confirmed present, delete the old account.\n\nThis allows a user to re-authorise a broken connection without losing the\nexisting credential until the replacement is confirmed.",
+				"operationId": "reconnect_account_link_oauth_brokers__broker_id__accounts__account_id__reconnect_link_post",
+				"parameters": [
+					{
+						"name": "broker_id",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string",
+							"description": "The broker ID",
+							"examples": ["pipedream"],
+							"title": "Broker Id"
+						},
+						"description": "The broker ID"
+					},
+					{
+						"name": "account_id",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string",
+							"description": "OAuth broker account ID to reconnect",
+							"title": "Account Id"
+						},
+						"description": "OAuth broker account ID to reconnect"
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "Successful Response",
+						"content": {
+							"application/json": {
+								"schema": {}
+							}
+						}
+					},
+					"422": {
+						"description": "Validation Error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/HTTPValidationError"
+								}
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"HumanLogin": []
+					}
+				]
 			}
 		},
 		"/search": {
@@ -1640,6 +2308,16 @@
 						}
 					}
 				},
+				"x-agent-hints": {
+					"when_to_use": "Use when you need to discover APIs or workflows based on a natural language description of what you want to do. Primary entry point for finding capabilities \u2014 search first before exploring individual APIs.",
+					"prerequisites": ["Requires authentication (toolkit key or human session)"],
+					"avoid_when": "Do not use if you already know the exact operation ID or workflow slug \u2014 use GET /inspect/{id} directly instead.",
+					"related_operations": [
+						"GET /inspect/{id} \u2014 get full operation details after finding it via search",
+						"GET /apis \u2014 browse APIs by provider when you know the vendor",
+						"GET /workflows \u2014 list all workflows when browsing by category"
+					]
+				},
 				"security": []
 			}
 		},
@@ -1647,7 +2325,7 @@
 			"get": {
 				"tags": ["toolkits"],
 				"summary": "List toolkits",
-				"description": "List all toolkits.",
+				"description": "List all toolkits with metadata summary.\n\nReturns all toolkits visible to the caller with key counts and bound credential counts.\nAdmin users see all toolkits. Agents see only their own toolkit.\n\nEach toolkit includes:\n- Metadata (name, description, disabled state, simulation mode)\n- Active key count (revoked keys excluded)\n- Bound credential count (upstream API credentials available to this toolkit)\n\nThe default toolkit implicitly has access to all credentials without explicit binding.",
 				"operationId": "list_toolkits_toolkits_get",
 				"responses": {
 					"200": {
@@ -1664,7 +2342,15 @@
 							}
 						}
 					}
-				}
+				},
+				"security": [
+					{
+						"JenticApiKey": []
+					},
+					{
+						"HumanLogin": []
+					}
+				]
 			},
 			"post": {
 				"tags": ["toolkits"],
@@ -1672,6 +2358,7 @@
 				"description": "Creates a toolkit: a named bundle of upstream API credentials with a scoped client API key for the agent.\nReturns a toolkit API key (tk_xxx) \u2014 shown once, not recoverable.\nBind credentials via POST /toolkits/{id}/credentials.\nSet access policy via PUT /toolkits/{id}/credentials/{cred_id}/permissions.\nAgents use toolkit keys to call the broker; only bound credentials are injected.",
 				"operationId": "create_toolkit_toolkits_post",
 				"requestBody": {
+					"description": "Toolkit details: name, optional description, simulate flag for dry-run mode, and optional first API key configuration",
 					"content": {
 						"application/json": {
 							"schema": {
@@ -1702,7 +2389,12 @@
 							}
 						}
 					}
-				}
+				},
+				"security": [
+					{
+						"HumanLogin": []
+					}
+				]
 			}
 		},
 		"/toolkits/{toolkit_id}": {
@@ -1718,8 +2410,10 @@
 						"required": true,
 						"schema": {
 							"type": "string",
+							"description": "Toolkit ID (e.g. 'default' or custom toolkit identifier)",
 							"title": "Toolkit Id"
-						}
+						},
+						"description": "Toolkit ID (e.g. 'default' or custom toolkit identifier)"
 					}
 				],
 				"responses": {
@@ -1755,11 +2449,20 @@
 							}
 						}
 					}
-				}
+				},
+				"security": [
+					{
+						"JenticApiKey": []
+					},
+					{
+						"HumanLogin": []
+					}
+				]
 			},
 			"patch": {
 				"tags": ["toolkits"],
 				"summary": "Update toolkit \u2014 rename or update description",
+				"description": "Update toolkit metadata \u2014 name, description, disabled state, or simulation mode.\n\nOnly changed fields need to be included in the request body. Omitted fields are left unchanged.\n\n**Note:** The default toolkit's name and description cannot be modified (403 error).\n\n**Auth:** Requires human session (admin).",
 				"operationId": "patch_toolkit_toolkits__toolkit_id__patch",
 				"parameters": [
 					{
@@ -1768,8 +2471,10 @@
 						"required": true,
 						"schema": {
 							"type": "string",
+							"description": "Toolkit ID to update",
 							"title": "Toolkit Id"
-						}
+						},
+						"description": "Toolkit ID to update"
 					}
 				],
 				"requestBody": {
@@ -1780,7 +2485,8 @@
 								"$ref": "#/components/schemas/ToolkitPatch"
 							}
 						}
-					}
+					},
+					"description": "Fields to update: name, description, simulate flag, or disabled flag \u2014 only provided fields are changed"
 				},
 				"responses": {
 					"200": {
@@ -1803,11 +2509,17 @@
 							}
 						}
 					}
-				}
+				},
+				"security": [
+					{
+						"HumanLogin": []
+					}
+				]
 			},
 			"delete": {
 				"tags": ["toolkits"],
 				"summary": "Delete toolkit and revoke all its client API keys",
+				"description": "Permanently delete a toolkit and revoke all its access keys.\n\nAll agents using keys from this toolkit will immediately receive 401 errors.\nCredential bindings are removed, but the credentials themselves remain in the vault.\n\n**Note:** The default toolkit cannot be deleted (403 error).\n\n**Auth:** Requires human session (admin).\n\n**Warning:** This operation cannot be undone.",
 				"operationId": "delete_toolkit_toolkits__toolkit_id__delete",
 				"parameters": [
 					{
@@ -1816,8 +2528,10 @@
 						"required": true,
 						"schema": {
 							"type": "string",
+							"description": "Toolkit ID to delete",
 							"title": "Toolkit Id"
-						}
+						},
+						"description": "Toolkit ID to delete"
 					}
 				],
 				"responses": {
@@ -1834,7 +2548,12 @@
 							}
 						}
 					}
-				}
+				},
+				"security": [
+					{
+						"HumanLogin": []
+					}
+				]
 			}
 		},
 		"/toolkits/{toolkit_id}/access-requests": {
@@ -1850,8 +2569,10 @@
 						"required": true,
 						"schema": {
 							"type": "string",
+							"description": "Toolkit ID",
 							"title": "Toolkit Id"
-						}
+						},
+						"description": "Toolkit ID"
 					}
 				],
 				"requestBody": {
@@ -1862,7 +2583,8 @@
 								"$ref": "#/components/schemas/AccessRequestBody"
 							}
 						}
-					}
+					},
+					"description": "Access request: type (grant/modify_permissions), credential_id, optional permission rules, and optional reason explaining why access is needed"
 				},
 				"responses": {
 					"202": {
@@ -1885,7 +2607,15 @@
 							}
 						}
 					}
-				}
+				},
+				"security": [
+					{
+						"JenticApiKey": []
+					},
+					{
+						"HumanLogin": []
+					}
+				]
 			},
 			"get": {
 				"tags": ["toolkits", "toolkits"],
@@ -1899,8 +2629,10 @@
 						"required": true,
 						"schema": {
 							"type": "string",
+							"description": "Toolkit ID",
 							"title": "Toolkit Id"
-						}
+						},
+						"description": "Toolkit ID"
 					},
 					{
 						"name": "status",
@@ -1915,8 +2647,10 @@
 									"type": "null"
 								}
 							],
+							"description": "Filter by status (pending, approved, denied)",
 							"title": "Status"
-						}
+						},
+						"description": "Filter by status (pending, approved, denied)"
 					}
 				],
 				"responses": {
@@ -1944,7 +2678,15 @@
 							}
 						}
 					}
-				}
+				},
+				"security": [
+					{
+						"JenticApiKey": []
+					},
+					{
+						"HumanLogin": []
+					}
+				]
 			}
 		},
 		"/toolkits/{toolkit_id}/credentials": {
@@ -1960,8 +2702,10 @@
 						"required": true,
 						"schema": {
 							"type": "string",
+							"description": "Toolkit ID to bind credential to",
 							"title": "Toolkit Id"
-						}
+						},
+						"description": "Toolkit ID to bind credential to"
 					}
 				],
 				"requestBody": {
@@ -1972,7 +2716,8 @@
 								"$ref": "#/components/schemas/ToolkitCredentialAdd"
 							}
 						}
-					}
+					},
+					"description": "Credential binding: credential_id to bind to this toolkit (enables broker to inject auth for that API)"
 				},
 				"responses": {
 					"201": {
@@ -1995,7 +2740,12 @@
 							}
 						}
 					}
-				}
+				},
+				"security": [
+					{
+						"HumanLogin": []
+					}
+				]
 			},
 			"get": {
 				"tags": ["toolkits"],
@@ -2009,8 +2759,10 @@
 						"required": true,
 						"schema": {
 							"type": "string",
+							"description": "Toolkit ID to list credentials for",
 							"title": "Toolkit Id"
-						}
+						},
+						"description": "Toolkit ID to list credentials for"
 					}
 				],
 				"responses": {
@@ -2038,7 +2790,15 @@
 							}
 						}
 					}
-				}
+				},
+				"security": [
+					{
+						"JenticApiKey": []
+					},
+					{
+						"HumanLogin": []
+					}
+				]
 			}
 		},
 		"/toolkits/{toolkit_id}/keys": {
@@ -2054,8 +2814,10 @@
 						"required": true,
 						"schema": {
 							"type": "string",
+							"description": "Toolkit ID to issue key for",
 							"title": "Toolkit Id"
-						}
+						},
+						"description": "Toolkit ID to issue key for"
 					}
 				],
 				"requestBody": {
@@ -2066,7 +2828,8 @@
 								"$ref": "#/components/schemas/KeyCreate"
 							}
 						}
-					}
+					},
+					"description": "Key configuration: optional label and optional IP allowlist (CIDR ranges)"
 				},
 				"responses": {
 					"201": {
@@ -2089,7 +2852,12 @@
 							}
 						}
 					}
-				}
+				},
+				"security": [
+					{
+						"HumanLogin": []
+					}
+				]
 			},
 			"get": {
 				"tags": ["toolkits"],
@@ -2103,8 +2871,10 @@
 						"required": true,
 						"schema": {
 							"type": "string",
+							"description": "Toolkit ID to list keys for",
 							"title": "Toolkit Id"
-						}
+						},
+						"description": "Toolkit ID to list keys for"
 					}
 				],
 				"responses": {
@@ -2126,7 +2896,15 @@
 							}
 						}
 					}
-				}
+				},
+				"security": [
+					{
+						"JenticApiKey": []
+					},
+					{
+						"HumanLogin": []
+					}
+				]
 			}
 		},
 		"/toolkits/{toolkit_id}/access-requests/{req_id}": {
@@ -2142,8 +2920,10 @@
 						"required": true,
 						"schema": {
 							"type": "string",
+							"description": "Toolkit ID",
 							"title": "Toolkit Id"
-						}
+						},
+						"description": "Toolkit ID"
 					},
 					{
 						"name": "req_id",
@@ -2151,8 +2931,10 @@
 						"required": true,
 						"schema": {
 							"type": "string",
+							"description": "Access request ID (format: areq_xxxxxxxx)",
 							"title": "Req Id"
-						}
+						},
+						"description": "Access request ID (format: areq_xxxxxxxx)"
 					}
 				],
 				"responses": {
@@ -2176,13 +2958,22 @@
 							}
 						}
 					}
-				}
+				},
+				"security": [
+					{
+						"JenticApiKey": []
+					},
+					{
+						"HumanLogin": []
+					}
+				]
 			}
 		},
 		"/toolkits/{toolkit_id}/credentials/{credential_id}": {
 			"delete": {
 				"tags": ["toolkits"],
 				"summary": "Unbind an upstream API credential from this toolkit",
+				"description": "Unbind a credential from this toolkit.\n\nAgents using this toolkit will immediately lose access to the upstream API.\nThe credential remains in the vault and can be bound to other toolkits.\n\nTo delete the credential entirely (from all toolkits), use `DELETE /credentials/{id}`.",
 				"operationId": "remove_credential_from_toolkit_toolkits__toolkit_id__credentials__credential_id__delete",
 				"parameters": [
 					{
@@ -2191,8 +2982,10 @@
 						"required": true,
 						"schema": {
 							"type": "string",
+							"description": "Toolkit ID",
 							"title": "Toolkit Id"
-						}
+						},
+						"description": "Toolkit ID"
 					},
 					{
 						"name": "credential_id",
@@ -2200,8 +2993,10 @@
 						"required": true,
 						"schema": {
 							"type": "string",
+							"description": "Credential ID to unbind",
 							"title": "Credential Id"
-						}
+						},
+						"description": "Credential ID to unbind"
 					}
 				],
 				"responses": {
@@ -2218,14 +3013,19 @@
 							}
 						}
 					}
-				}
+				},
+				"security": [
+					{
+						"HumanLogin": []
+					}
+				]
 			}
 		},
 		"/toolkits/{toolkit_id}/keys/{key_id}": {
 			"patch": {
 				"tags": ["toolkits"],
 				"summary": "Update a client API key \u2014 rename or change IP restrictions",
-				"description": "Update label or IP restrictions on a client API key. Cannot change the key value itself.",
+				"description": "Update label or IP restrictions on a client API key.\n\nModifies the metadata for an existing toolkit key. The key value itself cannot be\nchanged - to rotate a key, revoke the old one and create a new one.\n\nParameters:\n    toolkit_id: Toolkit ID containing the key\n    key_id: Key ID to update (format: ck_xxxxxxxx)\n    body: Update request with optional label and/or allowed_ips\n\nUpdatable fields:\n    - label: Human-readable name (e.g. \"Production bot\", \"Staging agent\")\n    - allowed_ips: IP allowlist in CIDR notation (e.g. [\"192.168.1.0/24\"]).\n      Set to null or empty array to allow all IPs.\n\nReturns:\n    Updated key metadata including new label and IP restrictions.\n\nThe key remains active with its original value. Changes take effect immediately.",
 				"operationId": "patch_toolkit_key_toolkits__toolkit_id__keys__key_id__patch",
 				"parameters": [
 					{
@@ -2234,8 +3034,10 @@
 						"required": true,
 						"schema": {
 							"type": "string",
+							"description": "Toolkit ID",
 							"title": "Toolkit Id"
-						}
+						},
+						"description": "Toolkit ID"
 					},
 					{
 						"name": "key_id",
@@ -2243,8 +3045,10 @@
 						"required": true,
 						"schema": {
 							"type": "string",
+							"description": "Key ID to update",
 							"title": "Key Id"
-						}
+						},
+						"description": "Key ID to update"
 					}
 				],
 				"requestBody": {
@@ -2255,7 +3059,8 @@
 								"$ref": "#/components/schemas/KeyCreate"
 							}
 						}
-					}
+					},
+					"description": "Fields to update: label or IP allowlist \u2014 only provided fields are changed"
 				},
 				"responses": {
 					"200": {
@@ -2278,7 +3083,12 @@
 							}
 						}
 					}
-				}
+				},
+				"security": [
+					{
+						"HumanLogin": []
+					}
+				]
 			},
 			"delete": {
 				"tags": ["toolkits"],
@@ -2292,8 +3102,10 @@
 						"required": true,
 						"schema": {
 							"type": "string",
+							"description": "Toolkit ID",
 							"title": "Toolkit Id"
-						}
+						},
+						"description": "Toolkit ID"
 					},
 					{
 						"name": "key_id",
@@ -2301,8 +3113,10 @@
 						"required": true,
 						"schema": {
 							"type": "string",
+							"description": "Key ID to revoke",
 							"title": "Key Id"
-						}
+						},
+						"description": "Key ID to revoke"
 					}
 				],
 				"responses": {
@@ -2319,7 +3133,12 @@
 							}
 						}
 					}
-				}
+				},
+				"security": [
+					{
+						"HumanLogin": []
+					}
+				]
 			}
 		},
 		"/toolkits/{toolkit_id}/access-requests/{req_id}/approve": {
@@ -2335,8 +3154,10 @@
 						"required": true,
 						"schema": {
 							"type": "string",
+							"description": "Toolkit ID",
 							"title": "Toolkit Id"
-						}
+						},
+						"description": "Toolkit ID"
 					},
 					{
 						"name": "req_id",
@@ -2344,8 +3165,10 @@
 						"required": true,
 						"schema": {
 							"type": "string",
+							"description": "Access request ID to approve",
 							"title": "Req Id"
-						}
+						},
+						"description": "Access request ID to approve"
 					}
 				],
 				"responses": {
@@ -2369,14 +3192,19 @@
 							}
 						}
 					}
-				}
+				},
+				"security": [
+					{
+						"HumanLogin": []
+					}
+				]
 			}
 		},
 		"/toolkits/{toolkit_id}/access-requests/{req_id}/deny": {
 			"post": {
 				"tags": ["toolkits", "toolkits"],
 				"summary": "Deny an access request (human session only)",
-				"description": "Deny a pending access request.",
+				"description": "Deny a pending access request.\n\nPermanently rejects the request. The agent will receive a 403 error if it continues\nto attempt the operation that required the permission. To grant access later, the\nagent must file a new request.\n\nParameters:\n    toolkit_id: Toolkit ID containing the access request\n    req_id: Access request ID (format: areq_xxxxxxxx)\n\nReturns:\n    Updated access request with status='denied' and resolved_at timestamp.\n\nAuth: Requires human session (admin).",
 				"operationId": "deny_access_request_toolkits__toolkit_id__access_requests__req_id__deny_post",
 				"parameters": [
 					{
@@ -2385,8 +3213,10 @@
 						"required": true,
 						"schema": {
 							"type": "string",
+							"description": "Toolkit ID",
 							"title": "Toolkit Id"
-						}
+						},
+						"description": "Toolkit ID"
 					},
 					{
 						"name": "req_id",
@@ -2394,8 +3224,10 @@
 						"required": true,
 						"schema": {
 							"type": "string",
+							"description": "Access request ID to deny",
 							"title": "Req Id"
-						}
+						},
+						"description": "Access request ID to deny"
 					}
 				],
 				"responses": {
@@ -2419,7 +3251,12 @@
 							}
 						}
 					}
-				}
+				},
+				"security": [
+					{
+						"HumanLogin": []
+					}
+				]
 			}
 		},
 		"/toolkits/{toolkit_id}/credentials/{cred_id}/permissions": {
@@ -2435,8 +3272,10 @@
 						"required": true,
 						"schema": {
 							"type": "string",
+							"description": "Toolkit ID",
 							"title": "Toolkit Id"
-						}
+						},
+						"description": "Toolkit ID"
 					},
 					{
 						"name": "cred_id",
@@ -2444,8 +3283,10 @@
 						"required": true,
 						"schema": {
 							"type": "string",
+							"description": "Credential ID to get permissions for",
 							"title": "Cred Id"
-						}
+						},
+						"description": "Credential ID to get permissions for"
 					}
 				],
 				"responses": {
@@ -2473,7 +3314,15 @@
 							}
 						}
 					}
-				}
+				},
+				"security": [
+					{
+						"JenticApiKey": []
+					},
+					{
+						"HumanLogin": []
+					}
+				]
 			},
 			"put": {
 				"tags": ["toolkits", "toolkits"],
@@ -2487,8 +3336,10 @@
 						"required": true,
 						"schema": {
 							"type": "string",
+							"description": "Toolkit ID",
 							"title": "Toolkit Id"
-						}
+						},
+						"description": "Toolkit ID"
 					},
 					{
 						"name": "cred_id",
@@ -2496,8 +3347,10 @@
 						"required": true,
 						"schema": {
 							"type": "string",
+							"description": "Credential ID to set permissions for",
 							"title": "Cred Id"
-						}
+						},
+						"description": "Credential ID to set permissions for"
 					}
 				],
 				"requestBody": {
@@ -2512,7 +3365,8 @@
 								"title": "Body"
 							}
 						}
-					}
+					},
+					"description": "Array of permission rules to replace the entire agent rule list for this credential \u2014 each rule specifies effect (allow/deny), optional methods, optional path regex, and optional operation IDs"
 				},
 				"responses": {
 					"200": {
@@ -2539,7 +3393,12 @@
 							}
 						}
 					}
-				}
+				},
+				"security": [
+					{
+						"HumanLogin": []
+					}
+				]
 			},
 			"patch": {
 				"tags": ["toolkits", "toolkits"],
@@ -2553,8 +3412,10 @@
 						"required": true,
 						"schema": {
 							"type": "string",
+							"description": "Toolkit ID",
 							"title": "Toolkit Id"
-						}
+						},
+						"description": "Toolkit ID"
 					},
 					{
 						"name": "cred_id",
@@ -2562,8 +3423,10 @@
 						"required": true,
 						"schema": {
 							"type": "string",
+							"description": "Credential ID to patch permissions for",
 							"title": "Cred Id"
-						}
+						},
+						"description": "Credential ID to patch permissions for"
 					}
 				],
 				"requestBody": {
@@ -2574,7 +3437,8 @@
 								"$ref": "#/components/schemas/PermissionsPatch"
 							}
 						}
-					}
+					},
+					"description": "Incremental update: arrays of rules to add and/or remove from this credential's policy \u2014 rules are matched by exact equality for removal"
 				},
 				"responses": {
 					"200": {
@@ -2601,7 +3465,12 @@
 							}
 						}
 					}
-				}
+				},
+				"security": [
+					{
+						"HumanLogin": []
+					}
+				]
 			}
 		},
 		"/traces": {
@@ -2617,11 +3486,13 @@
 						"required": false,
 						"schema": {
 							"type": "integer",
-							"maximum": 200,
+							"maximum": 500,
 							"minimum": 1,
+							"description": "Maximum number of traces to return (1-500)",
 							"default": 20,
 							"title": "Limit"
-						}
+						},
+						"description": "Maximum number of traces to return (1-500)"
 					},
 					{
 						"name": "offset",
@@ -2630,9 +3501,11 @@
 						"schema": {
 							"type": "integer",
 							"minimum": 0,
+							"description": "Number of traces to skip for pagination",
 							"default": 0,
 							"title": "Offset"
-						}
+						},
+						"description": "Number of traces to skip for pagination"
 					}
 				],
 				"responses": {
@@ -2656,7 +3529,25 @@
 							}
 						}
 					}
-				}
+				},
+				"x-agent-hints": {
+					"when_to_use": "Use when you need to audit recent API calls or workflow executions, review execution history, or debug issues by inspecting recent traces. Returns paginated list of traces with status, HTTP codes, and timing. Use ?limit= and ?offset= for pagination.",
+					"prerequisites": ["Requires authentication (toolkit key or human session)"],
+					"avoid_when": "Do not use if you already have a specific trace ID from a broker call (X-Jentic-Execution-Id header) \u2014 use GET /traces/{id} directly instead.",
+					"related_operations": [
+						"GET /traces/{id} \u2014 get full trace with step-by-step detail",
+						"GET /{target} (broker) \u2014 returns X-Jentic-Execution-Id header pointing to trace",
+						"POST /workflows/{slug} \u2014 workflow execution returns trace_id in response body"
+					]
+				},
+				"security": [
+					{
+						"JenticApiKey": []
+					},
+					{
+						"HumanLogin": []
+					}
+				]
 			}
 		},
 		"/traces/{trace_id}": {
@@ -2672,8 +3563,10 @@
 						"required": true,
 						"schema": {
 							"type": "string",
+							"description": "Trace ID (format: exec_{12chars})",
 							"title": "Trace Id"
-						}
+						},
+						"description": "Trace ID (format: exec_{12chars})"
 					}
 				],
 				"responses": {
@@ -2697,7 +3590,28 @@
 							}
 						}
 					}
-				}
+				},
+				"x-agent-hints": {
+					"when_to_use": "Use after executing a broker call or workflow to retrieve the full execution trace with step-by-step details. Essential for debugging workflow failures \u2014 shows which step failed, what inputs were used, and what error was returned. Trace ID comes from X-Jentic-Execution-Id response header (broker calls) or trace_id in response body (workflows).",
+					"prerequisites": [
+						"Requires authentication (toolkit key or human session)",
+						"Valid trace ID from a previous execution (format: exec_{12chars})"
+					],
+					"avoid_when": "Do not use for browsing recent traces \u2014 use GET /traces with pagination instead.",
+					"related_operations": [
+						"GET /traces \u2014 list recent traces when you don't have a specific trace ID yet",
+						"GET /{target} (broker) \u2014 execution returns X-Jentic-Execution-Id header",
+						"POST /workflows/{slug} \u2014 workflow execution returns trace_id field"
+					]
+				},
+				"security": [
+					{
+						"JenticApiKey": []
+					},
+					{
+						"HumanLogin": []
+					}
+				]
 			}
 		},
 		"/user/create": {
@@ -2707,6 +3621,7 @@
 				"description": "Create the single root account for this instance.\n\nThis endpoint is available **once only**. After the first call it returns\n`410 Gone`. There is no multi-user system \u2014 one human owns this instance.\n\nRequires `bcrypt` installed (bundled in Docker image).",
 				"operationId": "create_user_user_create_post",
 				"requestBody": {
+					"description": "Account credentials: username (trimmed of whitespace) and password (stored as bcrypt hash) for the root admin",
 					"content": {
 						"application/json": {
 							"schema": {
@@ -2759,8 +3674,10 @@
 									"type": "null"
 								}
 							],
+							"description": "Redirect URL after successful login (relative path only)",
 							"title": "Redirect To"
-						}
+						},
+						"description": "Redirect URL after successful login (relative path only)"
 					}
 				],
 				"responses": {
@@ -2784,6 +3701,7 @@
 					}
 				},
 				"requestBody": {
+					"description": "Login credentials: username and password for the root admin account",
 					"required": true,
 					"content": {
 						"application/json": {
@@ -2822,14 +3740,19 @@
 							}
 						}
 					}
-				}
+				},
+				"security": [
+					{
+						"HumanLogin": []
+					}
+				]
 			}
 		},
 		"/user/me": {
 			"get": {
 				"tags": ["user"],
 				"summary": "Check current session status",
-				"description": "Returns current session info. Useful for UI to check if logged in.",
+				"description": "Returns current session info and authentication context.\n\nResponse varies based on authentication method:\n- Human session (JWT cookie): logged_in=true, includes username\n- Trusted subnet (no auth): logged_in=false, admin=true (note about logging in for named session)\n- Agent key (X-Jentic-API-Key): logged_in=false, agent_key=true, includes toolkit_id\n- No auth: logged_in=false, agent_key=false\n\nUseful for UI to determine what features to show and whether to require login.\nAgents can call this to confirm their key is valid and see which toolkit they belong to.\n\nThis endpoint accepts requests with or without authentication (open passthrough).",
 				"operationId": "me_user_me_get",
 				"responses": {
 					"200": {
@@ -2842,7 +3765,15 @@
 							}
 						}
 					}
-				}
+				},
+				"security": [
+					{
+						"JenticApiKey": []
+					},
+					{
+						"HumanLogin": []
+					}
+				]
 			}
 		},
 		"/user/token": {
@@ -2852,6 +3783,7 @@
 				"description": "OAuth2 password grant endpoint.\n\nSwagger UI's **Authorize** dialog uses this automatically when you fill in\nthe *HumanLogin* username + password fields. Returns a Bearer JWT that\nSwagger UI injects as `Authorization: Bearer ...` on all subsequent calls.\n\nThis is functionally equivalent to `POST /user/login` but returns the token\nin the response body rather than as a cookie \u2014 the standard OAuth2 pattern\nexpected by Swagger UI.",
 				"operationId": "token_user_token_post",
 				"requestBody": {
+					"description": "OAuth2 password grant form: username, password, and grant_type='password' (form-urlencoded format)",
 					"content": {
 						"application/x-www-form-urlencoded": {
 							"schema": {
@@ -2899,7 +3831,15 @@
 							}
 						}
 					}
-				}
+				},
+				"security": [
+					{
+						"JenticApiKey": []
+					},
+					{
+						"HumanLogin": []
+					}
+				]
 			}
 		},
 		"/workflows": {
@@ -2966,6 +3906,17 @@
 						}
 					}
 				},
+				"x-agent-hints": {
+					"when_to_use": "Use when you need to discover multi-step workflows or automated sequences. Lists both registered workflows (source: local) and available catalog workflow sources (source: catalog). Use ?q= to filter by name or API.",
+					"prerequisites": ["Requires authentication (toolkit key or human session)"],
+					"avoid_when": "Do not use if you already know the workflow slug \u2014 use GET /workflows/{slug} directly instead.",
+					"related_operations": [
+						"GET /workflows/{slug} \u2014 get workflow definition and input schema",
+						"POST /workflows/{slug} \u2014 execute a workflow via broker",
+						"GET /search \u2014 search across operations and workflows by natural language intent",
+						"GET /catalog \u2014 browse available APIs when you know workflows exist for a vendor"
+					]
+				},
 				"security": []
 			}
 		},
@@ -2982,8 +3933,10 @@
 						"required": true,
 						"schema": {
 							"type": "string",
+							"description": "Workflow slug (URL-safe identifier)",
 							"title": "Slug"
-						}
+						},
+						"description": "Workflow slug (URL-safe identifier)"
 					}
 				],
 				"responses": {
@@ -3033,6 +3986,19 @@
 						}
 					}
 				},
+				"x-agent-hints": {
+					"when_to_use": "Use after finding a workflow via GET /workflows or GET /search to retrieve its full definition, input schema, and step sequence. Returns Arazzo spec with content negotiation (JSON, YAML, Markdown, HTML).",
+					"prerequisites": [
+						"Requires authentication (toolkit key or human session)",
+						"Valid workflow slug (from GET /workflows or GET /search results)"
+					],
+					"avoid_when": "Do not use to execute the workflow \u2014 use POST /workflows/{slug} via broker for execution.",
+					"related_operations": [
+						"POST /workflows/{slug} \u2014 execute this workflow with inputs",
+						"GET /inspect/{id} \u2014 get full capability details (use workflow capability ID format: POST/{host}/workflows/{slug})",
+						"GET /workflows \u2014 list all workflows when you don't know the slug yet"
+					]
+				},
 				"security": []
 			}
 		},
@@ -3040,7 +4006,7 @@
 			"get": {
 				"tags": ["execute", "execute"],
 				"summary": "Broker \u2014 proxy a call to any registered API with automatic credential injection",
-				"description": "Routes any HTTP request to the upstream API, injecting credentials automatically.\n\nURL shape: `/{upstream_host}/{path}` \u2014 e.g. `/api.stripe.com/v1/customers`\n\nAll HTTP methods supported; Swagger UI shows GET as representative.\n\n**Headers:**\n- `X-Jentic-Simulate: true` \u2014 validate and preview the call without sending it\n- `X-Jentic-Credential: {alias}` \u2014 select a specific credential when multiple exist for an API\n- `X-Jentic-Dry-Run: true` \u2014 alias for Simulate (deprecated)\n\nReturns upstream response verbatim plus `X-Jentic-Execution-Id` for trace correlation.",
+				"description": "Routes any HTTP request to the upstream API, injecting credentials automatically.\n\nURL shape: `/{upstream_host}/{path}` \u2014 e.g. `/api.stripe.com/v1/customers`\n\nAll HTTP methods supported; Swagger UI shows GET as representative.\n\n**Headers:**\n- `X-Jentic-Simulate: true` \u2014 validate and preview the call without sending it\n- `X-Jentic-Credential: {alias}` \u2014 select a specific credential when multiple exist for an API\n- `X-Jentic-Service: {app_slug}` \u2014 select by service name (e.g. `google_calendar`, `gmail`) when multiple credentials share a host\n- `X-Jentic-Dry-Run: true` \u2014 alias for Simulate (deprecated)\n\nReturns upstream response verbatim plus `X-Jentic-Execution-Id` for trace correlation.",
 				"operationId": "broker_get",
 				"parameters": [
 					{
@@ -3049,8 +4015,10 @@
 						"required": true,
 						"schema": {
 							"type": "string",
+							"description": "Upstream API path (format: host.domain/path, e.g. api.github.com/repos)",
 							"title": "Target"
-						}
+						},
+						"description": "Upstream API path (format: host.domain/path, e.g. api.github.com/repos)"
 					}
 				],
 				"responses": {
@@ -3092,7 +4060,32 @@
 							}
 						}
 					}
-				}
+				},
+				"x-agent-hints": {
+					"when_to_use": "Use this after you've inspected an operation via GET /inspect/{id} and are ready to execute it. The broker automatically injects credentials from the toolkit's vault, enforces access policies, and traces all calls. URL format: /{upstream_host}/{path} (e.g., /api.stripe.com/v1/payment_intents). Supports all HTTP methods (GET, POST, PUT, PATCH, DELETE).",
+					"prerequisites": [
+						"Requires authentication (toolkit key or human session)",
+						"Requires registered API with credentials (use POST /credentials to add)",
+						"Requires credential bound to toolkit (use PUT /toolkits/{id}/credentials/{cred_id})",
+						"Toolkit credential must allow the operation (governed by access policy)"
+					],
+					"avoid_when": "Do not use for workflows \u2014 use POST /workflows/{slug} instead. Do not use for Jentic internal endpoints \u2014 use direct paths like /apis, /search.",
+					"related_operations": [
+						"GET /inspect/{id} \u2014 inspect operation before calling to see parameters and auth requirements",
+						"GET /traces/{id} \u2014 view execution trace after broker call (use X-Jentic-Execution-Id header)",
+						"GET /jobs/{id} \u2014 poll async job status when Prefer: wait=0 header is used",
+						"POST /credentials \u2014 add credentials before calling",
+						"PUT /toolkits/{id}/credentials/{cred_id} \u2014 bind credentials to toolkit"
+					]
+				},
+				"security": [
+					{
+						"JenticApiKey": []
+					},
+					{
+						"HumanLogin": []
+					}
+				]
 			}
 		}
 	},
@@ -3185,30 +4178,45 @@
 					"id": {
 						"type": "string",
 						"title": "Id",
-						"description": "Unique request ID (areq_xxxxxxxx)"
+						"description": "Unique request ID (areq_xxxxxxxx)",
+						"examples": ["areq_abc123xyz"]
 					},
 					"toolkit_id": {
 						"type": "string",
 						"title": "Toolkit Id",
-						"description": "The toolkit this request belongs to"
+						"description": "The toolkit this request belongs to",
+						"examples": ["default"]
 					},
 					"type": {
 						"type": "string",
 						"enum": ["grant", "modify_permissions", "add_scope"],
 						"title": "Type",
-						"description": "`grant` \u2014 bind a new upstream API credential to this toolkit (and optionally set permission rules). `modify_permissions` \u2014 update the permission rules on a credential already bound to this toolkit. `add_scope` \u2014 legacy alias for `grant` (deprecated)."
+						"description": "`grant` \u2014 bind a new upstream API credential to this toolkit (and optionally set permission rules). `modify_permissions` \u2014 update the permission rules on a credential already bound to this toolkit. `add_scope` \u2014 legacy alias for `grant` (deprecated).",
+						"examples": ["grant"]
 					},
 					"payload": {
 						"additionalProperties": true,
 						"type": "object",
 						"title": "Payload",
-						"description": "Request-type-specific data. For `grant`: `{credential_id, rules?, api_id?}`. For `modify_permissions`: `{credential_id, rules}`."
+						"description": "Request-type-specific data. For `grant`: `{credential_id, rules?, api_id?}`. For `modify_permissions`: `{credential_id, rules}`.",
+						"examples": [
+							{
+								"credential_id": "api.github.com",
+								"rules": [
+									{
+										"effect": "allow",
+										"methods": ["GET"]
+									}
+								]
+							}
+						]
 					},
 					"status": {
 						"type": "string",
 						"enum": ["pending", "approved", "denied"],
 						"title": "Status",
-						"description": "Current approval state. Poll until `approved` or `denied`."
+						"description": "Current approval state. Poll until `approved` or `denied`.",
+						"examples": ["pending"]
 					},
 					"reason": {
 						"anyOf": [
@@ -3220,7 +4228,8 @@
 							}
 						],
 						"title": "Reason",
-						"description": "Human-readable explanation from the agent"
+						"description": "Human-readable explanation from the agent",
+						"examples": ["Need GitHub API access to list repository issues"]
 					},
 					"description": {
 						"anyOf": [
@@ -3232,7 +4241,8 @@
 							}
 						],
 						"title": "Description",
-						"description": "Auto-generated summary of what the agent is requesting"
+						"description": "Auto-generated summary of what the agent is requesting",
+						"examples": ["Grant access to api.github.com with GET permissions"]
 					},
 					"approve_url": {
 						"anyOf": [
@@ -3244,7 +4254,8 @@
 							}
 						],
 						"title": "Approve Url",
-						"description": "URL for the human to review and approve/deny"
+						"description": "URL for the human to review and approve/deny",
+						"examples": ["http://localhost:8900/approve/areq_abc123xyz"]
 					},
 					"created_at": {
 						"anyOf": [
@@ -3256,7 +4267,8 @@
 							}
 						],
 						"title": "Created At",
-						"description": "Unix timestamp when filed"
+						"description": "Unix timestamp when filed",
+						"examples": [1672531200.0]
 					},
 					"resolved_at": {
 						"anyOf": [
@@ -3268,7 +4280,8 @@
 							}
 						],
 						"title": "Resolved At",
-						"description": "Unix timestamp when approved or denied"
+						"description": "Unix timestamp when approved or denied",
+						"examples": [1672531500.0]
 					},
 					"applied_effects": {
 						"anyOf": [
@@ -3283,7 +4296,8 @@
 							}
 						],
 						"title": "Applied Effects",
-						"description": "Side-effects applied on approval (credential bound, rules set, etc.)"
+						"description": "Side-effects applied on approval (credential bound, rules set, etc.)",
+						"examples": [["Bound credential api.github.com to toolkit default"]]
 					}
 				},
 				"additionalProperties": true,
@@ -3292,46 +4306,74 @@
 				"title": "AccessRequestOut",
 				"description": "An access request filed by an agent and awaiting human approval.\n\nThe `payload` shape depends on `type`:\n\n**`grant`** \u2014 bind a new upstream credential to this toolkit (optionally with rules):\n```json\n{ \"type\": \"grant\", \"payload\": { \"credential_id\": \"api.github.com\", \"rules\": [...] }, \"reason\": \"...\" }\n```\n\n**`modify_permissions`** \u2014 update permission rules on an already-bound credential:\n```json\n{ \"type\": \"modify_permissions\", \"payload\": { \"credential_id\": \"api.github.com\", \"rules\": [...] }, \"reason\": \"...\" }\n```"
 			},
+			"AccountUpdate": {
+				"properties": {
+					"label": {
+						"type": "string",
+						"minLength": 1,
+						"title": "Label",
+						"description": "New display label for this account"
+					}
+				},
+				"type": "object",
+				"required": ["label"],
+				"title": "AccountUpdate",
+				"description": "Rename a connected OAuth account. Label is used in UI and credential binding displays."
+			},
 			"ApiListPage": {
 				"properties": {
 					"page": {
 						"type": "integer",
-						"title": "Page"
+						"title": "Page",
+						"description": "Current page number (1-indexed)",
+						"examples": [1]
 					},
 					"limit": {
 						"type": "integer",
-						"title": "Limit"
+						"title": "Limit",
+						"description": "Results per page",
+						"examples": [50]
 					},
 					"total": {
 						"type": "integer",
-						"title": "Total"
+						"title": "Total",
+						"description": "Total number of items matching query",
+						"examples": [247]
 					},
 					"total_pages": {
 						"type": "integer",
-						"title": "Total Pages"
+						"title": "Total Pages",
+						"description": "Total pages available",
+						"examples": [5]
 					},
 					"has_more": {
 						"type": "boolean",
-						"title": "Has More"
+						"title": "Has More",
+						"description": "True if more pages exist after current page",
+						"examples": [true]
 					},
 					"data": {
 						"items": {
 							"$ref": "#/components/schemas/ApiOut"
 						},
 						"type": "array",
-						"title": "Data"
+						"title": "Data",
+						"description": "Array of API records for this page"
 					}
 				},
 				"additionalProperties": true,
 				"type": "object",
 				"required": ["page", "limit", "total", "total_pages", "has_more", "data"],
-				"title": "ApiListPage"
+				"title": "ApiListPage",
+				"description": "Paginated list of API providers registered in the catalog."
 			},
 			"ApiOut": {
 				"properties": {
 					"id": {
 						"type": "string",
-						"title": "Id"
+						"title": "Id",
+						"description": "API ID (typically the base domain)",
+						"examples": ["api.github.com"]
 					},
 					"name": {
 						"anyOf": [
@@ -3342,7 +4384,9 @@
 								"type": "null"
 							}
 						],
-						"title": "Name"
+						"title": "Name",
+						"description": "Human-readable API name from spec info.title",
+						"examples": ["GitHub REST API"]
 					},
 					"vendor": {
 						"anyOf": [
@@ -3353,7 +4397,9 @@
 								"type": "null"
 							}
 						],
-						"title": "Vendor"
+						"title": "Vendor",
+						"description": "API vendor or maintainer organization",
+						"examples": ["GitHub"]
 					},
 					"description": {
 						"anyOf": [
@@ -3364,7 +4410,11 @@
 								"type": "null"
 							}
 						],
-						"title": "Description"
+						"title": "Description",
+						"description": "API description from spec info.description",
+						"examples": [
+							"GitHub's REST API for managing repositories, issues, and pull requests"
+						]
 					},
 					"base_url": {
 						"anyOf": [
@@ -3375,7 +4425,9 @@
 								"type": "null"
 							}
 						],
-						"title": "Base Url"
+						"title": "Base Url",
+						"description": "Primary base URL from spec servers array",
+						"examples": ["https://api.github.com"]
 					},
 					"created_at": {
 						"anyOf": [
@@ -3386,20 +4438,30 @@
 								"type": "null"
 							}
 						],
-						"title": "Created At"
+						"title": "Created At",
+						"description": "Unix timestamp when API was imported",
+						"examples": [1672531200.0]
 					}
 				},
 				"additionalProperties": true,
 				"type": "object",
 				"required": ["id"],
-				"title": "ApiOut"
+				"title": "ApiOut",
+				"description": "API provider metadata including ID, name, vendor, and base URL."
 			},
 			"Body_token_user_token_post": {
 				"properties": {
 					"grant_type": {
-						"type": "string",
-						"title": "Grant Type",
-						"default": "password"
+						"anyOf": [
+							{
+								"type": "string",
+								"pattern": "^password$"
+							},
+							{
+								"type": "null"
+							}
+						],
+						"title": "Grant Type"
 					},
 					"username": {
 						"type": "string",
@@ -3407,12 +4469,36 @@
 					},
 					"password": {
 						"type": "string",
+						"format": "password",
 						"title": "Password"
 					},
 					"scope": {
 						"type": "string",
 						"title": "Scope",
 						"default": ""
+					},
+					"client_id": {
+						"anyOf": [
+							{
+								"type": "string"
+							},
+							{
+								"type": "null"
+							}
+						],
+						"title": "Client Id"
+					},
+					"client_secret": {
+						"anyOf": [
+							{
+								"type": "string"
+							},
+							{
+								"type": "null"
+							}
+						],
+						"format": "password",
+						"title": "Client Secret"
 					}
 				},
 				"type": "object",
@@ -3421,12 +4507,6 @@
 			},
 			"ConnectLinkRequest": {
 				"properties": {
-					"external_user_id": {
-						"type": "string",
-						"title": "External User Id",
-						"description": "The user identity to generate the connect link for. In a single-user setup this is always `default`. Must match the `external_user_id` you use when routing requests.",
-						"default": "default"
-					},
 					"app": {
 						"type": "string",
 						"title": "App",
@@ -3435,8 +4515,9 @@
 					},
 					"label": {
 						"type": "string",
+						"minLength": 1,
 						"title": "Label",
-						"description": "A human-readable name for this connection, e.g. `work email` or `personal email`. Required because Pipedream only returns the app name ('Gmail'), not the account address \u2014 without a label there is no way to distinguish multiple accounts for the same app. This label is carried through to the resulting credential in `GET /credentials` and used when provisioning the credential to a toolkit.",
+						"description": "A human-readable name for this connection, e.g. `work email` or `personal email`. Required because Pipedream only returns the app name ('Gmail'), not the account address \u2014 without a label there is no way to distinguish multiple accounts for the same app. This label is carried through to the resulting credential in `GET /credentials` and used when provisioning the credential to a toolkit. Must be non-empty \u2014 no silent fallbacks to app slug or API ID.",
 						"examples": ["work email", "personal email", "main Slack workspace"]
 					},
 					"api_id": {
@@ -3455,13 +4536,16 @@
 				},
 				"type": "object",
 				"required": ["app", "label"],
-				"title": "ConnectLinkRequest"
+				"title": "ConnectLinkRequest",
+				"description": "Generate a Pipedream Connect Link for authorizing a new OAuth account. Returns URL for user authorization."
 			},
 			"CredentialBindingOut": {
 				"properties": {
 					"credential_id": {
 						"type": "string",
-						"title": "Credential Id"
+						"title": "Credential Id",
+						"description": "Credential ID (format: cred_{12chars})",
+						"examples": ["cred_abc123xyz"]
 					},
 					"label": {
 						"anyOf": [
@@ -3472,7 +4556,9 @@
 								"type": "null"
 							}
 						],
-						"title": "Label"
+						"title": "Label",
+						"description": "User-assigned credential label",
+						"examples": ["GitHub PAT for jentic-mini"]
 					},
 					"api_id": {
 						"anyOf": [
@@ -3483,7 +4569,9 @@
 								"type": "null"
 							}
 						],
-						"title": "Api Id"
+						"title": "Api Id",
+						"description": "API ID this credential is for",
+						"examples": ["api.github.com"]
 					},
 					"auth_type": {
 						"anyOf": [
@@ -3494,23 +4582,30 @@
 								"type": "null"
 							}
 						],
-						"title": "Auth Type"
+						"title": "Auth Type",
+						"description": "Auth scheme type: bearer, basic, apiKey, oauth2, etc",
+						"examples": ["bearer"]
 					}
 				},
 				"additionalProperties": true,
 				"type": "object",
 				"required": ["credential_id"],
-				"title": "CredentialBindingOut"
+				"title": "CredentialBindingOut",
+				"description": "Credential bound to a toolkit with access control rules. Includes label and API binding info."
 			},
 			"CredentialCreate": {
 				"properties": {
 					"label": {
 						"type": "string",
-						"title": "Label"
+						"title": "Label",
+						"description": "User-assigned credential label for identification",
+						"examples": ["GitHub PAT for jentic-mini"]
 					},
 					"value": {
 						"type": "string",
-						"title": "Value"
+						"title": "Value",
+						"description": "Raw credential value (API key, token, password) - encrypted before storage",
+						"examples": ["ghp_1234567890abcdefghijklmnopqrstu"]
 					},
 					"identity": {
 						"anyOf": [
@@ -3521,7 +4616,9 @@
 								"type": "null"
 							}
 						],
-						"title": "Identity"
+						"title": "Identity",
+						"description": "Optional username, client ID, or other identity value (required for basic auth, optional for compound apiKey schemes)",
+						"examples": ["alice", "client_abc123"]
 					},
 					"api_id": {
 						"anyOf": [
@@ -3532,7 +4629,9 @@
 								"type": "null"
 							}
 						],
-						"title": "Api Id"
+						"title": "Api Id",
+						"description": "API ID to bind this credential to",
+						"examples": ["api.github.com"]
 					},
 					"auth_type": {
 						"anyOf": [
@@ -3545,22 +4644,28 @@
 							}
 						],
 						"title": "Auth Type",
-						"description": "How this credential maps to the upstream API's authentication scheme. The broker uses this to find the right security scheme in the spec \u2014 it resolves by type, not by the bespoke scheme name in the overlay.\n\n| Value | Injects as | When to use |\n|---|---|---|\n| `bearer` | `Authorization: Bearer {value}` | REST APIs, OAuth access tokens, JWTs. GitHub REST API, Deepgram, Slack, etc. |\n| `basic` | `Authorization: Basic base64({identity??'token'}:{value})` | HTTP Basic auth, git-over-HTTPS. Set `identity` to the username; omit for GitHub PATs (any username accepted). |\n| `apiKey` | Custom header or query param `= {value}` | API key in a named header (X-API-Key, Api-Key, X-Auth-Key, etc.). For **compound** schemes (e.g. Discourse Api-Key + Api-Username) where the overlay uses canonical `Secret`/`Identity` scheme names, set `identity` to the username/account \u2014 a single credential covers both headers. |"
+						"description": "How this credential maps to the upstream API's authentication scheme. The broker uses this to find the right security scheme in the spec \u2014 it resolves by type, not by the bespoke scheme name in the overlay.\n\n| Value | Injects as | When to use |\n|---|---|---|\n| `bearer` | `Authorization: Bearer {value}` | REST APIs, OAuth access tokens, JWTs. GitHub REST API, Deepgram, Slack, etc. |\n| `basic` | `Authorization: Basic base64({identity??'token'}:{value})` | HTTP Basic auth, git-over-HTTPS. Set `identity` to the username; omit for GitHub PATs (any username accepted). |\n| `apiKey` | Custom header or query param `= {value}` | API key in a named header (X-API-Key, Api-Key, X-Auth-Key, etc.). For **compound** schemes (e.g. Discourse Api-Key + Api-Username) where the overlay uses canonical `Secret`/`Identity` scheme names, set `identity` to the username/account \u2014 a single credential covers both headers. |",
+						"examples": ["bearer"]
 					}
 				},
 				"type": "object",
 				"required": ["label", "value"],
-				"title": "CredentialCreate"
+				"title": "CredentialCreate",
+				"description": "Request body for storing a new upstream API credential. Values are encrypted at rest and never returned."
 			},
 			"CredentialOut": {
 				"properties": {
 					"id": {
 						"type": "string",
-						"title": "Id"
+						"title": "Id",
+						"description": "Credential ID",
+						"examples": ["cred_abc123xyz"]
 					},
 					"label": {
 						"type": "string",
-						"title": "Label"
+						"title": "Label",
+						"description": "Human-readable label for this credential",
+						"examples": ["GitHub PAT for jentic-mini"]
 					},
 					"identity": {
 						"anyOf": [
@@ -3571,7 +4676,9 @@
 								"type": "null"
 							}
 						],
-						"title": "Identity"
+						"title": "Identity",
+						"description": "Identity field (username, client ID, etc.) for basic auth or compound API key schemes",
+						"examples": ["alice"]
 					},
 					"api_id": {
 						"anyOf": [
@@ -3582,7 +4689,9 @@
 								"type": "null"
 							}
 						],
-						"title": "Api Id"
+						"title": "Api Id",
+						"description": "API this credential is bound to",
+						"examples": ["api.github.com"]
 					},
 					"auth_type": {
 						"anyOf": [
@@ -3593,7 +4702,9 @@
 								"type": "null"
 							}
 						],
-						"title": "Auth Type"
+						"title": "Auth Type",
+						"description": "Auth type: bearer, basic, or apiKey",
+						"examples": ["bearer"]
 					},
 					"created_at": {
 						"anyOf": [
@@ -3604,7 +4715,9 @@
 								"type": "null"
 							}
 						],
-						"title": "Created At"
+						"title": "Created At",
+						"description": "Unix timestamp when created",
+						"examples": [1672531200.0]
 					},
 					"updated_at": {
 						"anyOf": [
@@ -3615,12 +4728,54 @@
 								"type": "null"
 							}
 						],
-						"title": "Updated At"
+						"title": "Updated At",
+						"description": "Unix timestamp of last update",
+						"examples": [1672531200.0]
+					},
+					"account_id": {
+						"anyOf": [
+							{
+								"type": "string"
+							},
+							{
+								"type": "null"
+							}
+						],
+						"title": "Account Id",
+						"description": "OAuth broker account ID (if from OAuth broker)",
+						"examples": ["oauth_abc123"]
+					},
+					"app_slug": {
+						"anyOf": [
+							{
+								"type": "string"
+							},
+							{
+								"type": "null"
+							}
+						],
+						"title": "App Slug",
+						"description": "OAuth app slug (if from OAuth broker)",
+						"examples": ["pipedream"]
+					},
+					"synced_at": {
+						"anyOf": [
+							{
+								"type": "number"
+							},
+							{
+								"type": "null"
+							}
+						],
+						"title": "Synced At",
+						"description": "Unix timestamp of last OAuth sync",
+						"examples": [1672531200.0]
 					}
 				},
 				"type": "object",
 				"required": ["id", "label"],
-				"title": "CredentialOut"
+				"title": "CredentialOut",
+				"description": "Upstream API credential metadata. Secret values are never returned after creation."
 			},
 			"CredentialPatch": {
 				"properties": {
@@ -3633,7 +4788,8 @@
 								"type": "null"
 							}
 						],
-						"title": "Label"
+						"title": "Label",
+						"description": "New credential label (optional)"
 					},
 					"value": {
 						"anyOf": [
@@ -3644,7 +4800,8 @@
 								"type": "null"
 							}
 						],
-						"title": "Value"
+						"title": "Value",
+						"description": "New credential value for rotation (optional, encrypted before storage)"
 					},
 					"identity": {
 						"anyOf": [
@@ -3655,7 +4812,8 @@
 								"type": "null"
 							}
 						],
-						"title": "Identity"
+						"title": "Identity",
+						"description": "New identity value (optional)"
 					},
 					"api_id": {
 						"anyOf": [
@@ -3666,7 +4824,8 @@
 								"type": "null"
 							}
 						],
-						"title": "Api Id"
+						"title": "Api Id",
+						"description": "New API ID to rebind this credential (optional)"
 					},
 					"auth_type": {
 						"anyOf": [
@@ -3683,7 +4842,8 @@
 					}
 				},
 				"type": "object",
-				"title": "CredentialPatch"
+				"title": "CredentialPatch",
+				"description": "Update an existing credential. Only provided fields are changed. Rotates secrets without rebinding."
 			},
 			"HTTPValidationError": {
 				"properties": {
@@ -3702,7 +4862,9 @@
 				"properties": {
 					"status": {
 						"type": "string",
-						"title": "Status"
+						"title": "Status",
+						"description": "Import status: 'ok' if all sources succeeded, 'partial' if some failed, 'failed' if all failed",
+						"examples": ["imported"]
 					},
 					"id": {
 						"anyOf": [
@@ -3713,7 +4875,9 @@
 								"type": "null"
 							}
 						],
-						"title": "Id"
+						"title": "Id",
+						"description": "Registered API ID (for OpenAPI specs) or workflow slug (for Arazzo)",
+						"examples": ["api.github.com"]
 					},
 					"name": {
 						"anyOf": [
@@ -3724,7 +4888,9 @@
 								"type": "null"
 							}
 						],
-						"title": "Name"
+						"title": "Name",
+						"description": "Display name extracted from spec (info.title for APIs, workflow.summary for workflows)",
+						"examples": ["GitHub REST API"]
 					},
 					"operations_indexed": {
 						"anyOf": [
@@ -3735,7 +4901,9 @@
 								"type": "null"
 							}
 						],
-						"title": "Operations Indexed"
+						"title": "Operations Indexed",
+						"description": "Number of operations parsed and indexed in BM25 (OpenAPI specs only)",
+						"examples": [247]
 					},
 					"type": {
 						"anyOf": [
@@ -3746,13 +4914,16 @@
 								"type": "null"
 							}
 						],
-						"title": "Type"
+						"title": "Type",
+						"description": "Import type: 'api' for OpenAPI specs, 'workflow' for Arazzo documents",
+						"examples": ["api"]
 					}
 				},
 				"additionalProperties": true,
 				"type": "object",
 				"required": ["status"],
-				"title": "ImportOut"
+				"title": "ImportOut",
+				"description": "Result of importing an OpenAPI spec or Arazzo workflow into the catalog.\n\nThe import endpoint (POST /import) accepts specs from URLs, local file paths, or\ninline content. It parses the document, indexes operations/workflows in BM25,\nand stores metadata for broker execution. Returns the registered ID and count\nof indexed operations."
 			},
 			"ImportRequest": {
 				"properties": {
@@ -3761,18 +4932,21 @@
 							"$ref": "#/components/schemas/ImportSource"
 						},
 						"type": "array",
-						"title": "Sources"
+						"title": "Sources",
+						"description": "Array of import sources (OpenAPI specs or Arazzo workflows) to register in the catalog"
 					}
 				},
 				"type": "object",
 				"required": ["sources"],
-				"title": "ImportRequest"
+				"title": "ImportRequest",
+				"description": "Batch import request for multiple OpenAPI specs or Arazzo workflows. Sources processed in parallel."
 			},
 			"ImportSource": {
 				"properties": {
 					"type": {
 						"type": "string",
-						"title": "Type"
+						"title": "Type",
+						"description": "Source type: 'path' (local file), 'url' (fetch from URL), or 'inline' (spec content in request)"
 					},
 					"path": {
 						"anyOf": [
@@ -3783,7 +4957,8 @@
 								"type": "null"
 							}
 						],
-						"title": "Path"
+						"title": "Path",
+						"description": "Local file system path (required if type='path')"
 					},
 					"url": {
 						"anyOf": [
@@ -3794,7 +4969,9 @@
 								"type": "null"
 							}
 						],
-						"title": "Url"
+						"title": "Url",
+						"description": "Remote spec URL (required if type='url')",
+						"examples": ["https://api.example.com/openapi.json"]
 					},
 					"filename": {
 						"anyOf": [
@@ -3805,7 +4982,9 @@
 								"type": "null"
 							}
 						],
-						"title": "Filename"
+						"title": "Filename",
+						"description": "Override filename for saved spec (optional)",
+						"examples": ["my-api.json"]
 					},
 					"content": {
 						"anyOf": [
@@ -3816,7 +4995,8 @@
 								"type": "null"
 							}
 						],
-						"title": "Content"
+						"title": "Content",
+						"description": "Inline spec content as JSON or YAML string (required if type='inline')"
 					},
 					"force_api_id": {
 						"anyOf": [
@@ -3827,53 +5007,70 @@
 								"type": "null"
 							}
 						],
-						"title": "Force Api Id"
+						"title": "Force Api Id",
+						"description": "Override derived API ID with catalog canonical ID (optional)",
+						"examples": ["github"]
 					}
 				},
 				"type": "object",
 				"required": ["type"],
-				"title": "ImportSource"
+				"title": "ImportSource",
+				"description": "Single import source for an OpenAPI spec or Arazzo workflow. Can be local file, URL, or inline content."
 			},
 			"JobListPage": {
 				"properties": {
 					"page": {
 						"type": "integer",
-						"title": "Page"
+						"title": "Page",
+						"description": "Current page number (1-indexed)",
+						"examples": [1]
 					},
 					"limit": {
 						"type": "integer",
-						"title": "Limit"
+						"title": "Limit",
+						"description": "Results per page",
+						"examples": [50]
 					},
 					"total": {
 						"type": "integer",
-						"title": "Total"
+						"title": "Total",
+						"description": "Total number of items matching query",
+						"examples": [247]
 					},
 					"total_pages": {
 						"type": "integer",
-						"title": "Total Pages"
+						"title": "Total Pages",
+						"description": "Total pages available",
+						"examples": [5]
 					},
 					"has_more": {
 						"type": "boolean",
-						"title": "Has More"
+						"title": "Has More",
+						"description": "True if more pages exist after current page",
+						"examples": [true]
 					},
 					"data": {
 						"items": {
 							"$ref": "#/components/schemas/JobOut"
 						},
 						"type": "array",
-						"title": "Data"
+						"title": "Data",
+						"description": "Array of job records for this page"
 					}
 				},
 				"additionalProperties": true,
 				"type": "object",
 				"required": ["page", "limit", "total", "total_pages", "has_more", "data"],
-				"title": "JobListPage"
+				"title": "JobListPage",
+				"description": "Paginated list of async job handles with status, capability, and timing info."
 			},
 			"JobOut": {
 				"properties": {
 					"id": {
 						"type": "string",
-						"title": "Id"
+						"title": "Id",
+						"description": "Job ID (format: job_{12chars})",
+						"examples": ["job_abc123xyz"]
 					},
 					"kind": {
 						"anyOf": [
@@ -3884,7 +5081,9 @@
 								"type": "null"
 							}
 						],
-						"title": "Kind"
+						"title": "Kind",
+						"description": "Job type: 'workflow' or 'broker'",
+						"examples": ["workflow"]
 					},
 					"slug_or_id": {
 						"anyOf": [
@@ -3895,7 +5094,9 @@
 								"type": "null"
 							}
 						],
-						"title": "Slug Or Id"
+						"title": "Slug Or Id",
+						"description": "Workflow slug or capability ID",
+						"examples": ["github-create-issue"]
 					},
 					"toolkit_id": {
 						"anyOf": [
@@ -3906,14 +5107,25 @@
 								"type": "null"
 							}
 						],
-						"title": "Toolkit Id"
+						"title": "Toolkit Id",
+						"description": "Toolkit that initiated this job",
+						"examples": ["default"]
 					},
 					"status": {
 						"type": "string",
-						"title": "Status"
+						"title": "Status",
+						"description": "Job status: pending, running, complete, failed, or upstream_async",
+						"examples": ["completed"]
 					},
 					"result": {
-						"title": "Result"
+						"title": "Result",
+						"description": "Job result (only present when status is complete or upstream_async)",
+						"examples": [
+							{
+								"issue_number": 42,
+								"url": "https://github.com/jentic/jentic-mini/issues/42"
+							}
+						]
 					},
 					"error": {
 						"anyOf": [
@@ -3924,7 +5136,9 @@
 								"type": "null"
 							}
 						],
-						"title": "Error"
+						"title": "Error",
+						"description": "Error message (only present when status is failed)",
+						"examples": [null]
 					},
 					"http_status": {
 						"anyOf": [
@@ -3935,12 +5149,16 @@
 								"type": "null"
 							}
 						],
-						"title": "Http Status"
+						"title": "Http Status",
+						"description": "HTTP status code from upstream API",
+						"examples": [201]
 					},
 					"upstream_async": {
 						"type": "boolean",
 						"title": "Upstream Async",
-						"default": false
+						"description": "True if upstream API itself returned 202 (async)",
+						"default": false,
+						"examples": [false]
 					},
 					"upstream_job_url": {
 						"anyOf": [
@@ -3951,7 +5169,9 @@
 								"type": "null"
 							}
 						],
-						"title": "Upstream Job Url"
+						"title": "Upstream Job Url",
+						"description": "Upstream job polling URL (when upstream_async is true)",
+						"examples": [null]
 					},
 					"trace_id": {
 						"anyOf": [
@@ -3962,7 +5182,9 @@
 								"type": "null"
 							}
 						],
-						"title": "Trace Id"
+						"title": "Trace Id",
+						"description": "Execution trace ID for this job",
+						"examples": ["trace_xyz789"]
 					},
 					"created_at": {
 						"anyOf": [
@@ -3973,7 +5195,9 @@
 								"type": "null"
 							}
 						],
-						"title": "Created At"
+						"title": "Created At",
+						"description": "Unix timestamp when job was created",
+						"examples": [1672531200.0]
 					},
 					"completed_at": {
 						"anyOf": [
@@ -3984,13 +5208,16 @@
 								"type": "null"
 							}
 						],
-						"title": "Completed At"
+						"title": "Completed At",
+						"description": "Unix timestamp when job finished",
+						"examples": [1672531205.0]
 					}
 				},
 				"additionalProperties": true,
 				"type": "object",
 				"required": ["id", "status"],
-				"title": "JobOut"
+				"title": "JobOut",
+				"description": "Async job handle for operations that couldn't complete synchronously. Poll for status and result."
 			},
 			"KeyCreate": {
 				"properties": {
@@ -4023,13 +5250,15 @@
 					}
 				},
 				"type": "object",
-				"title": "KeyCreate"
+				"title": "KeyCreate",
+				"description": "Create a new API key for this toolkit. The full key value is only returned once at creation time."
 			},
 			"NoteCreate": {
 				"properties": {
 					"resource": {
 						"type": "string",
-						"title": "Resource"
+						"title": "Resource",
+						"description": "Resource identifier: operation_id (METHOD/host/path), api_id, or workflow slug"
 					},
 					"type": {
 						"anyOf": [
@@ -4040,11 +5269,13 @@
 								"type": "null"
 							}
 						],
-						"title": "Type"
+						"title": "Type",
+						"description": "Note category: 'auth_quirk', 'usage_hint', 'execution_feedback', or 'correction'"
 					},
 					"note": {
 						"type": "string",
-						"title": "Note"
+						"title": "Note",
+						"description": "Note content \u2014 be specific and actionable"
 					},
 					"execution_id": {
 						"anyOf": [
@@ -4055,7 +5286,8 @@
 								"type": "null"
 							}
 						],
-						"title": "Execution Id"
+						"title": "Execution Id",
+						"description": "Link to specific execution for context (optional)"
 					},
 					"confidence": {
 						"anyOf": [
@@ -4066,7 +5298,8 @@
 								"type": "null"
 							}
 						],
-						"title": "Confidence"
+						"title": "Confidence",
+						"description": "Confidence level: 'observed', 'suspected', or 'verified'"
 					},
 					"source": {
 						"anyOf": [
@@ -4077,13 +5310,14 @@
 								"type": "null"
 							}
 						],
-						"title": "Source"
+						"title": "Source",
+						"description": "Observation source, e.g. 'test run', 'production', 'documentation'"
 					}
 				},
 				"type": "object",
 				"required": ["resource", "note"],
 				"title": "NoteCreate",
-				"description": "Create a note on any Jentic resource.\n\nresource: the resource identifier (operation_id, api_id, workflow slug)\ntype: categorize the note for filtering and analysis\nnote: the content \u2014 be specific and actionable\nexecution_id: link to a specific execution (optional)\nconfidence: how certain are you?\nsource: where did you observe this?"
+				"description": "Create a note on any Jentic resource for knowledge accumulation and catalog improvement."
 			},
 			"OAuthBrokerCreate": {
 				"properties": {
@@ -4122,6 +5356,7 @@
 				"type": "object",
 				"required": ["type", "config"],
 				"title": "OAuthBrokerCreate",
+				"description": "Register a new OAuth broker for delegated credential management via Pipedream or other providers.",
 				"example": {
 					"config": {
 						"client_id": "oa_abc123",
@@ -4136,71 +5371,117 @@
 				"properties": {
 					"id": {
 						"type": "string",
-						"title": "Id"
+						"title": "Id",
+						"description": "Broker ID (format: broker_{12chars})",
+						"examples": ["broker_abc123xyz"]
 					},
 					"type": {
 						"type": "string",
-						"title": "Type"
+						"title": "Type",
+						"description": "Broker type: 'pipedream' or other provider",
+						"examples": ["pipedream"]
 					},
 					"config": {
 						"additionalProperties": true,
 						"type": "object",
-						"title": "Config"
+						"title": "Config",
+						"description": "Public broker configuration (excludes encrypted secret fields)"
 					},
 					"created_at": {
 						"type": "number",
-						"title": "Created At"
+						"title": "Created At",
+						"description": "Unix timestamp when broker was registered",
+						"examples": [1609459200]
 					},
 					"accounts_discovered": {
 						"type": "integer",
 						"title": "Accounts Discovered",
-						"default": 0
+						"description": "Number of OAuth accounts discovered from this broker",
+						"default": 0,
+						"examples": [3]
 					}
 				},
 				"type": "object",
 				"required": ["id", "type", "config", "created_at"],
-				"title": "OAuthBrokerOut"
+				"title": "OAuthBrokerOut",
+				"description": "OAuth broker configuration with discovered accounts count. Config excludes sensitive fields."
+			},
+			"OAuthBrokerUpdate": {
+				"properties": {
+					"config": {
+						"additionalProperties": true,
+						"type": "object",
+						"title": "Config",
+						"description": "Updated provider-specific configuration. For `pipedream`: `client_id`, `client_secret`, `project_id` are all accepted. Fields not supplied are left unchanged. `client_secret` is write-only \u2014 Fernet-encrypted at rest, never returned.",
+						"examples": [
+							{
+								"client_id": "oa_abc123",
+								"client_secret": "pd_secret_xxxx",
+								"project_id": "proj_abc123",
+								"support_email": "support@example.com"
+							}
+						]
+					}
+				},
+				"type": "object",
+				"required": ["config"],
+				"title": "OAuthBrokerUpdate",
+				"description": "Update OAuth broker configuration. Only provided fields are changed; secrets remain encrypted."
 			},
 			"OperationListPage": {
 				"properties": {
 					"page": {
 						"type": "integer",
-						"title": "Page"
+						"title": "Page",
+						"description": "Current page number (1-indexed)",
+						"examples": [1]
 					},
 					"limit": {
 						"type": "integer",
-						"title": "Limit"
+						"title": "Limit",
+						"description": "Results per page",
+						"examples": [50]
 					},
 					"total": {
 						"type": "integer",
-						"title": "Total"
+						"title": "Total",
+						"description": "Total number of items matching query",
+						"examples": [247]
 					},
 					"total_pages": {
 						"type": "integer",
-						"title": "Total Pages"
+						"title": "Total Pages",
+						"description": "Total pages available",
+						"examples": [5]
 					},
 					"has_more": {
 						"type": "boolean",
-						"title": "Has More"
+						"title": "Has More",
+						"description": "True if more pages exist after current page",
+						"examples": [true]
 					},
 					"data": {
 						"items": {
 							"$ref": "#/components/schemas/OperationOut"
 						},
 						"type": "array",
-						"title": "Data"
+						"title": "Data",
+						"description": "Array of operation records for this page"
 					}
 				},
 				"additionalProperties": true,
 				"type": "object",
 				"required": ["page", "limit", "total", "total_pages", "has_more", "data"],
-				"title": "OperationListPage"
+				"title": "OperationListPage",
+				"description": "Paginated list of API operations with method, path, and summary."
 			},
 			"OperationOut": {
 				"properties": {
 					"id": {
 						"type": "string",
-						"title": "Id"
+						"title": "Id",
+						"description": "Capability ID in METHOD/host/path format",
+						"examples": ["GET/api.github.com/repos/{owner}/{repo}/issues"]
 					},
 					"summary": {
 						"anyOf": [
@@ -4211,7 +5492,9 @@
 								"type": "null"
 							}
 						],
-						"title": "Summary"
+						"title": "Summary",
+						"description": "Short description of what this operation does",
+						"examples": ["List repository issues"]
 					},
 					"description": {
 						"anyOf": [
@@ -4222,7 +5505,11 @@
 								"type": "null"
 							}
 						],
-						"title": "Description"
+						"title": "Description",
+						"description": "Detailed description from the OpenAPI spec",
+						"examples": [
+							"List issues in a repository. Only issues assigned to the authenticated user are returned."
+						]
 					}
 				},
 				"additionalProperties": true,
@@ -4248,12 +5535,14 @@
 								"type": "null"
 							}
 						],
-						"title": "Contributed By"
+						"title": "Contributed By",
+						"description": "Optional contributor identifier (username, agent ID, etc.) for tracking overlay source"
 					}
 				},
 				"type": "object",
 				"required": ["overlay"],
-				"title": "OverlaySubmit"
+				"title": "OverlaySubmit",
+				"description": "Submit an OpenAPI Overlay 1.0 document to patch an API spec. Commonly used to add missing security schemes."
 			},
 			"PermissionRule": {
 				"properties": {
@@ -4386,7 +5675,8 @@
 								"type": "null"
 							}
 						],
-						"title": "System"
+						"title": "System",
+						"description": "True if this is a system safety rule (cannot be removed)"
 					},
 					"_comment": {
 						"anyOf": [
@@ -4397,7 +5687,8 @@
 								"type": "null"
 							}
 						],
-						"title": "Comment"
+						"title": "Comment",
+						"description": "Human-readable explanation of this rule's purpose (system rules only)"
 					}
 				},
 				"additionalProperties": true,
@@ -4448,11 +5739,15 @@
 				"properties": {
 					"type": {
 						"type": "string",
-						"title": "Type"
+						"title": "Type",
+						"description": "Result type: 'operation' for API endpoints, 'workflow' for multi-step Arazzo workflows",
+						"examples": ["operation"]
 					},
 					"id": {
 						"type": "string",
-						"title": "Id"
+						"title": "Id",
+						"description": "Capability ID in METHOD/host/path format",
+						"examples": ["GET/api.github.com/repos/{owner}/{repo}/issues"]
 					},
 					"slug": {
 						"anyOf": [
@@ -4463,7 +5758,9 @@
 								"type": "null"
 							}
 						],
-						"title": "Slug"
+						"title": "Slug",
+						"description": "Workflow slug (workflows only) \u2014 used as path segment in POST /workflows/{slug}",
+						"examples": ["github-list-issues"]
 					},
 					"summary": {
 						"anyOf": [
@@ -4474,7 +5771,9 @@
 								"type": "null"
 							}
 						],
-						"title": "Summary"
+						"title": "Summary",
+						"description": "Short description of what this capability does",
+						"examples": ["List repository issues"]
 					},
 					"description": {
 						"anyOf": [
@@ -4485,24 +5784,31 @@
 								"type": "null"
 							}
 						],
-						"title": "Description"
+						"title": "Description",
+						"description": "Detailed description from the OpenAPI operation or Arazzo workflow",
+						"examples": ["List issues in a repository"]
 					},
 					"score": {
 						"type": "number",
-						"title": "Score"
+						"title": "Score",
+						"description": "BM25 relevance score (0.0-1.0) \u2014 higher is more relevant to the search query",
+						"examples": [0.85]
 					},
 					"involved_apis": {
 						"items": {
 							"type": "string"
 						},
 						"type": "array",
-						"title": "Involved Apis"
+						"title": "Involved Apis",
+						"description": "List of upstream API hosts involved in this capability (for workflows, may list multiple)",
+						"examples": [["api.github.com"]]
 					}
 				},
 				"additionalProperties": true,
 				"type": "object",
 				"required": ["type", "id", "score"],
-				"title": "SearchResult"
+				"title": "SearchResult",
+				"description": "A search result from the BM25 index \u2014 either an operation or workflow capability.\n\nThe BM25 search index covers both API operations (parsed from OpenAPI specs) and\nworkflows (parsed from Arazzo documents). Results are ranked by relevance score.\nUse GET /inspect/{id} to get the full schema for a result before calling it."
 			},
 			"SyncRequest": {
 				"properties": {
@@ -4514,13 +5820,15 @@
 					}
 				},
 				"type": "object",
-				"title": "SyncRequest"
+				"title": "SyncRequest",
+				"description": "Request body for syncing discovered OAuth accounts from a broker into Jentic credentials."
 			},
 			"ToolkitCreate": {
 				"properties": {
 					"name": {
 						"type": "string",
-						"title": "Name"
+						"title": "Name",
+						"description": "Toolkit name for identification"
 					},
 					"description": {
 						"anyOf": [
@@ -4531,11 +5839,13 @@
 								"type": "null"
 							}
 						],
-						"title": "Description"
+						"title": "Description",
+						"description": "Optional description of this toolkit's purpose"
 					},
 					"simulate": {
 						"type": "boolean",
 						"title": "Simulate",
+						"description": "If true, toolkit operates in dry-run mode (no real API calls)",
 						"default": false
 					},
 					"initial_key_label": {
@@ -4568,24 +5878,29 @@
 				},
 				"type": "object",
 				"required": ["name"],
-				"title": "ToolkitCreate"
+				"title": "ToolkitCreate",
+				"description": "Create a new toolkit with scoped credentials and access control. Optionally generates first API key."
 			},
 			"ToolkitCredentialAdd": {
 				"properties": {
 					"credential_id": {
 						"type": "string",
-						"title": "Credential Id"
+						"title": "Credential Id",
+						"description": "Credential ID to bind to this toolkit (format: cred_{12chars})"
 					}
 				},
 				"type": "object",
 				"required": ["credential_id"],
-				"title": "ToolkitCredentialAdd"
+				"title": "ToolkitCredentialAdd",
+				"description": "Bind an existing credential to this toolkit. Agent rules apply; system safety rules are always active."
 			},
 			"ToolkitKeyCreated": {
 				"properties": {
 					"id": {
 						"type": "string",
-						"title": "Id"
+						"title": "Id",
+						"description": "Key ID (format: key_{12chars})",
+						"examples": ["key_abc123xyz"]
 					},
 					"name": {
 						"anyOf": [
@@ -4596,7 +5911,9 @@
 								"type": "null"
 							}
 						],
-						"title": "Name"
+						"title": "Name",
+						"description": "User-assigned key name for identification",
+						"examples": ["Production agent key"]
 					},
 					"prefix": {
 						"anyOf": [
@@ -4607,7 +5924,9 @@
 								"type": "null"
 							}
 						],
-						"title": "Prefix"
+						"title": "Prefix",
+						"description": "Key prefix (always 'jent_' for Jentic keys)",
+						"examples": ["jent_"]
 					},
 					"allowed_ips": {
 						"anyOf": [
@@ -4621,12 +5940,16 @@
 								"type": "null"
 							}
 						],
-						"title": "Allowed Ips"
+						"title": "Allowed Ips",
+						"description": "IP CIDR ranges allowed to use this key (null = no IP restriction)",
+						"examples": [["192.168.1.0/24"]]
 					},
 					"revoked": {
 						"type": "boolean",
 						"title": "Revoked",
-						"default": false
+						"description": "True if this key has been revoked and can no longer authenticate",
+						"default": false,
+						"examples": [false]
 					},
 					"created_at": {
 						"anyOf": [
@@ -4637,11 +5960,15 @@
 								"type": "null"
 							}
 						],
-						"title": "Created At"
+						"title": "Created At",
+						"description": "Unix timestamp when key was created",
+						"examples": [1672531200.0]
 					},
 					"key": {
 						"type": "string",
-						"title": "Key"
+						"title": "Key",
+						"description": "Full API key value (format: jent_{40chars}) - only shown once at creation",
+						"examples": ["jent_1234567890abcdefghijklmnopqrstuvwxyz"]
 					}
 				},
 				"additionalProperties": true,
@@ -4654,7 +5981,9 @@
 				"properties": {
 					"id": {
 						"type": "string",
-						"title": "Id"
+						"title": "Id",
+						"description": "Key ID (format: key_{12chars})",
+						"examples": ["key_abc123xyz"]
 					},
 					"name": {
 						"anyOf": [
@@ -4665,7 +5994,9 @@
 								"type": "null"
 							}
 						],
-						"title": "Name"
+						"title": "Name",
+						"description": "User-assigned key name for identification",
+						"examples": ["Production agent key"]
 					},
 					"prefix": {
 						"anyOf": [
@@ -4676,7 +6007,9 @@
 								"type": "null"
 							}
 						],
-						"title": "Prefix"
+						"title": "Prefix",
+						"description": "Key prefix (always 'jent_' for Jentic keys)",
+						"examples": ["jent_"]
 					},
 					"allowed_ips": {
 						"anyOf": [
@@ -4690,12 +6023,16 @@
 								"type": "null"
 							}
 						],
-						"title": "Allowed Ips"
+						"title": "Allowed Ips",
+						"description": "IP CIDR ranges allowed to use this key (null = no IP restriction)",
+						"examples": [["192.168.1.0/24"]]
 					},
 					"revoked": {
 						"type": "boolean",
 						"title": "Revoked",
-						"default": false
+						"description": "True if this key has been revoked and can no longer authenticate",
+						"default": false,
+						"examples": [false]
 					},
 					"created_at": {
 						"anyOf": [
@@ -4706,23 +6043,30 @@
 								"type": "null"
 							}
 						],
-						"title": "Created At"
+						"title": "Created At",
+						"description": "Unix timestamp when key was created",
+						"examples": [1672531200.0]
 					}
 				},
 				"additionalProperties": true,
 				"type": "object",
 				"required": ["id"],
-				"title": "ToolkitKeyOut"
+				"title": "ToolkitKeyOut",
+				"description": "Toolkit API key metadata. The full key value is only returned at creation time."
 			},
 			"ToolkitOut": {
 				"properties": {
 					"id": {
 						"type": "string",
-						"title": "Id"
+						"title": "Id",
+						"description": "Toolkit ID",
+						"examples": ["default"]
 					},
 					"name": {
 						"type": "string",
-						"title": "Name"
+						"title": "Name",
+						"description": "Human-readable toolkit name",
+						"examples": ["Default Toolkit"]
 					},
 					"description": {
 						"anyOf": [
@@ -4733,7 +6077,9 @@
 								"type": "null"
 							}
 						],
-						"title": "Description"
+						"title": "Description",
+						"description": "Optional description of this toolkit's purpose",
+						"examples": ["Default toolkit for general-purpose API access"]
 					},
 					"created_at": {
 						"anyOf": [
@@ -4744,12 +6090,16 @@
 								"type": "null"
 							}
 						],
-						"title": "Created At"
+						"title": "Created At",
+						"description": "Unix timestamp when created",
+						"examples": [1672531200.0]
 					},
 					"disabled": {
 						"type": "boolean",
 						"title": "Disabled",
-						"default": false
+						"description": "If true, all API keys for this toolkit are revoked",
+						"default": false,
+						"examples": [false]
 					},
 					"key_count": {
 						"anyOf": [
@@ -4760,7 +6110,9 @@
 								"type": "null"
 							}
 						],
-						"title": "Key Count"
+						"title": "Key Count",
+						"description": "Number of API keys issued for this toolkit",
+						"examples": [3]
 					},
 					"credential_count": {
 						"anyOf": [
@@ -4771,21 +6123,27 @@
 								"type": "null"
 							}
 						],
-						"title": "Credential Count"
+						"title": "Credential Count",
+						"description": "Number of credentials bound to this toolkit",
+						"examples": [5]
 					},
 					"keys": {
 						"items": {
 							"$ref": "#/components/schemas/ToolkitKeyOut"
 						},
 						"type": "array",
-						"title": "Keys"
+						"title": "Keys",
+						"description": "API keys for this toolkit (if expanded)",
+						"examples": [[]]
 					},
 					"credentials": {
 						"items": {
 							"$ref": "#/components/schemas/CredentialBindingOut"
 						},
 						"type": "array",
-						"title": "Credentials"
+						"title": "Credentials",
+						"description": "Credentials bound to this toolkit (if expanded)",
+						"examples": [[]]
 					},
 					"permissions": {
 						"items": {
@@ -4793,13 +6151,23 @@
 							"type": "object"
 						},
 						"type": "array",
-						"title": "Permissions"
+						"title": "Permissions",
+						"description": "Access control rules for this toolkit",
+						"examples": [
+							[
+								{
+									"effect": "allow",
+									"methods": ["GET"]
+								}
+							]
+						]
 					}
 				},
 				"additionalProperties": true,
 				"type": "object",
 				"required": ["id", "name"],
-				"title": "ToolkitOut"
+				"title": "ToolkitOut",
+				"description": "Toolkit configuration with scoped credentials and access control policies."
 			},
 			"ToolkitPatch": {
 				"properties": {
@@ -4812,7 +6180,8 @@
 								"type": "null"
 							}
 						],
-						"title": "Name"
+						"title": "Name",
+						"description": "New toolkit name (optional)"
 					},
 					"description": {
 						"anyOf": [
@@ -4823,7 +6192,8 @@
 								"type": "null"
 							}
 						],
-						"title": "Description"
+						"title": "Description",
+						"description": "New description (optional)"
 					},
 					"simulate": {
 						"anyOf": [
@@ -4834,7 +6204,8 @@
 								"type": "null"
 							}
 						],
-						"title": "Simulate"
+						"title": "Simulate",
+						"description": "Toggle dry-run mode (optional)"
 					},
 					"disabled": {
 						"anyOf": [
@@ -4845,43 +6216,56 @@
 								"type": "null"
 							}
 						],
-						"title": "Disabled"
+						"title": "Disabled",
+						"description": "Toggle toolkit disabled state (optional)"
 					}
 				},
 				"type": "object",
-				"title": "ToolkitPatch"
+				"title": "ToolkitPatch",
+				"description": "Update toolkit metadata or toggle disabled/simulate flags. Only provided fields are changed."
 			},
 			"TraceListPage": {
 				"properties": {
 					"total": {
 						"type": "integer",
-						"title": "Total"
+						"title": "Total",
+						"description": "Total number of traces matching the query",
+						"examples": [247]
 					},
 					"limit": {
 						"type": "integer",
-						"title": "Limit"
+						"title": "Limit",
+						"description": "Maximum traces returned in this response",
+						"examples": [50]
 					},
 					"offset": {
 						"type": "integer",
-						"title": "Offset"
+						"title": "Offset",
+						"description": "Starting offset for pagination (0-indexed)",
+						"examples": [0]
 					},
 					"traces": {
 						"items": {
 							"$ref": "#/components/schemas/TraceOut"
 						},
 						"type": "array",
-						"title": "Traces"
+						"title": "Traces",
+						"description": "Array of trace records for this page",
+						"examples": [[]]
 					}
 				},
 				"type": "object",
 				"required": ["total", "limit", "offset", "traces"],
-				"title": "TraceListPage"
+				"title": "TraceListPage",
+				"description": "Paginated list of execution traces for auditing recent broker and workflow calls."
 			},
 			"TraceOut": {
 				"properties": {
 					"id": {
 						"type": "string",
-						"title": "Id"
+						"title": "Id",
+						"description": "Trace ID (format: exec_{12chars})",
+						"examples": ["trace_abc123xyz"]
 					},
 					"toolkit_id": {
 						"anyOf": [
@@ -4892,7 +6276,9 @@
 								"type": "null"
 							}
 						],
-						"title": "Toolkit Id"
+						"title": "Toolkit Id",
+						"description": "Toolkit that executed this capability",
+						"examples": ["default"]
 					},
 					"operation_id": {
 						"anyOf": [
@@ -4903,7 +6289,9 @@
 								"type": "null"
 							}
 						],
-						"title": "Operation Id"
+						"title": "Operation Id",
+						"description": "Operation capability ID (for single API calls)",
+						"examples": ["GET/api.github.com/repos/{owner}/{repo}"]
 					},
 					"workflow_id": {
 						"anyOf": [
@@ -4914,7 +6302,9 @@
 								"type": "null"
 							}
 						],
-						"title": "Workflow Id"
+						"title": "Workflow Id",
+						"description": "Workflow capability ID (for multi-step workflows)",
+						"examples": [null]
 					},
 					"spec_path": {
 						"anyOf": [
@@ -4925,11 +6315,15 @@
 								"type": "null"
 							}
 						],
-						"title": "Spec Path"
+						"title": "Spec Path",
+						"description": "Path to the OpenAPI spec or Arazzo workflow file",
+						"examples": ["api.github.com/openapi.json"]
 					},
 					"status": {
 						"type": "string",
-						"title": "Status"
+						"title": "Status",
+						"description": "Execution status: success, failed, or pending",
+						"examples": ["success"]
 					},
 					"http_status": {
 						"anyOf": [
@@ -4940,7 +6334,9 @@
 								"type": "null"
 							}
 						],
-						"title": "Http Status"
+						"title": "Http Status",
+						"description": "Final HTTP status code from upstream",
+						"examples": [200]
 					},
 					"duration_ms": {
 						"anyOf": [
@@ -4951,7 +6347,9 @@
 								"type": "null"
 							}
 						],
-						"title": "Duration Ms"
+						"title": "Duration Ms",
+						"description": "Total execution duration in milliseconds",
+						"examples": [1234]
 					},
 					"error": {
 						"anyOf": [
@@ -4962,7 +6360,9 @@
 								"type": "null"
 							}
 						],
-						"title": "Error"
+						"title": "Error",
+						"description": "Error message if execution failed",
+						"examples": [null]
 					},
 					"created_at": {
 						"anyOf": [
@@ -4973,7 +6373,9 @@
 								"type": "null"
 							}
 						],
-						"title": "Created At"
+						"title": "Created At",
+						"description": "Unix timestamp when execution started",
+						"examples": [1672531200.0]
 					},
 					"completed_at": {
 						"anyOf": [
@@ -4984,20 +6386,25 @@
 								"type": "null"
 							}
 						],
-						"title": "Completed At"
+						"title": "Completed At",
+						"description": "Unix timestamp when execution completed",
+						"examples": [1672531201.0]
 					},
 					"steps": {
 						"items": {
 							"$ref": "#/components/schemas/TraceStepOut"
 						},
 						"type": "array",
-						"title": "Steps"
+						"title": "Steps",
+						"description": "Step-by-step execution log (for workflows)",
+						"examples": [[]]
 					}
 				},
 				"additionalProperties": true,
 				"type": "object",
 				"required": ["id", "status"],
-				"title": "TraceOut"
+				"title": "TraceOut",
+				"description": "Complete execution trace with status, timing, and step-by-step results for debugging."
 			},
 			"TraceStepOut": {
 				"properties": {
@@ -5010,7 +6417,9 @@
 								"type": "null"
 							}
 						],
-						"title": "Id"
+						"title": "Id",
+						"description": "Internal step record ID",
+						"examples": ["step_1"]
 					},
 					"step_id": {
 						"anyOf": [
@@ -5021,7 +6430,9 @@
 								"type": "null"
 							}
 						],
-						"title": "Step Id"
+						"title": "Step Id",
+						"description": "Step identifier from the Arazzo workflow",
+						"examples": ["getRepo"]
 					},
 					"operation": {
 						"anyOf": [
@@ -5032,7 +6443,9 @@
 								"type": "null"
 							}
 						],
-						"title": "Operation"
+						"title": "Operation",
+						"description": "Operation capability ID executed in this step",
+						"examples": ["GET/api.github.com/repos/{owner}/{repo}"]
 					},
 					"status": {
 						"anyOf": [
@@ -5043,7 +6456,9 @@
 								"type": "null"
 							}
 						],
-						"title": "Status"
+						"title": "Status",
+						"description": "Step status: success or failed",
+						"examples": ["success"]
 					},
 					"http_status": {
 						"anyOf": [
@@ -5054,13 +6469,24 @@
 								"type": "null"
 							}
 						],
-						"title": "Http Status"
+						"title": "Http Status",
+						"description": "HTTP status code from this step's API call",
+						"examples": [200]
 					},
 					"output": {
-						"title": "Output"
+						"title": "Output",
+						"description": "Step output data",
+						"examples": [
+							{
+								"name": "jentic-mini",
+								"stars": 42
+							}
+						]
 					},
 					"detail": {
-						"title": "Detail"
+						"title": "Detail",
+						"description": "Additional step metadata or runner context",
+						"examples": [null]
 					},
 					"error": {
 						"anyOf": [
@@ -5071,7 +6497,9 @@
 								"type": "null"
 							}
 						],
-						"title": "Error"
+						"title": "Error",
+						"description": "Error message if step failed",
+						"examples": [null]
 					},
 					"started_at": {
 						"anyOf": [
@@ -5082,7 +6510,9 @@
 								"type": "null"
 							}
 						],
-						"title": "Started At"
+						"title": "Started At",
+						"description": "Unix timestamp when step started",
+						"examples": [1672531200.0]
 					},
 					"completed_at": {
 						"anyOf": [
@@ -5093,34 +6523,42 @@
 								"type": "null"
 							}
 						],
-						"title": "Completed At"
+						"title": "Completed At",
+						"description": "Unix timestamp when step completed",
+						"examples": [1672531201.0]
 					}
 				},
 				"additionalProperties": true,
 				"type": "object",
-				"title": "TraceStepOut"
+				"title": "TraceStepOut",
+				"description": "Individual workflow step execution details including inputs, outputs, and timing."
 			},
 			"UserCreate": {
 				"properties": {
 					"username": {
 						"type": "string",
-						"title": "Username"
+						"title": "Username",
+						"description": "Admin account username (will be trimmed of whitespace)"
 					},
 					"password": {
 						"type": "string",
-						"title": "Password"
+						"title": "Password",
+						"description": "Admin account password (stored as bcrypt hash)"
 					}
 				},
 				"type": "object",
 				"required": ["username", "password"],
-				"title": "UserCreate"
+				"title": "UserCreate",
+				"description": "Request body for creating the root admin account. One-time only \u2014 POST /user/create returns 410 after first use."
 			},
 			"UserOut": {
 				"properties": {
 					"logged_in": {
 						"type": "boolean",
 						"title": "Logged In",
-						"default": false
+						"description": "True if valid session exists",
+						"default": false,
+						"examples": [true]
 					},
 					"username": {
 						"anyOf": [
@@ -5131,12 +6569,16 @@
 								"type": "null"
 							}
 						],
-						"title": "Username"
+						"title": "Username",
+						"description": "Username of authenticated user, null if not logged in",
+						"examples": ["admin"]
 					},
 					"is_admin": {
 						"type": "boolean",
 						"title": "Is Admin",
-						"default": false
+						"description": "True if user has admin privileges",
+						"default": false,
+						"examples": [true]
 					},
 					"toolkit_id": {
 						"anyOf": [
@@ -5147,17 +6589,22 @@
 								"type": "null"
 							}
 						],
-						"title": "Toolkit Id"
+						"title": "Toolkit Id",
+						"description": "Associated toolkit ID for this user, null if admin",
+						"examples": ["default"]
 					},
 					"trusted_subnet": {
 						"type": "boolean",
 						"title": "Trusted Subnet",
-						"default": false
+						"description": "True if request originated from trusted subnet (127.0.0.0/8 or 10.0.0.0/8)",
+						"default": false,
+						"examples": [true]
 					}
 				},
 				"additionalProperties": true,
 				"type": "object",
-				"title": "UserOut"
+				"title": "UserOut",
+				"description": "Current session status including authentication method and context (human session, agent key, or trusted subnet)."
 			},
 			"ValidationError": {
 				"properties": {
@@ -5182,6 +6629,13 @@
 					"type": {
 						"type": "string",
 						"title": "Error Type"
+					},
+					"input": {
+						"title": "Input"
+					},
+					"ctx": {
+						"type": "object",
+						"title": "Context"
 					}
 				},
 				"type": "object",
@@ -5240,6 +6694,36 @@
 		{
 			"name": "catalog",
 			"description": "Register APIs, upload specs, manage overlays and notes."
+		}
+	],
+	"servers": [
+		{
+			"url": "https://{hostname}:{port}",
+			"description": "Self-hosted instance (HTTPS)",
+			"variables": {
+				"hostname": {
+					"default": "localhost",
+					"description": "Server hostname"
+				},
+				"port": {
+					"default": "8900",
+					"description": "Server port"
+				}
+			}
+		},
+		{
+			"url": "http://{hostname}:{port}",
+			"description": "Local development only (HTTP)",
+			"variables": {
+				"hostname": {
+					"default": "localhost",
+					"description": "Server hostname"
+				},
+				"port": {
+					"default": "8900",
+					"description": "Server port"
+				}
+			}
 		}
 	],
 	"security": [

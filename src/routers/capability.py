@@ -17,13 +17,14 @@ import json
 import re
 import yaml
 from pathlib import Path
-from typing import Any
+from typing import Annotated, Any
 from urllib.parse import quote
 
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import APIRouter, HTTPException, Path, Query, Request
 from fastapi.responses import Response
 from src.db import get_db
 from src.config import JENTIC_PUBLIC_HOSTNAME
+from src.openapi_helpers import agent_hints
 
 router = APIRouter()
 
@@ -265,9 +266,22 @@ _CAPABILITY_CONTENT_TYPES = {
             "content": _CAPABILITY_CONTENT_TYPES,
         }
     },
+    openapi_extra=agent_hints(
+        when_to_use="Use after finding an operation via GET /search when you need complete parameter schemas, authentication requirements, and response formats before making the actual call. Essential step between discovery and execution.",
+        prerequisites=[
+            "Valid capability ID from GET /search results (format: METHOD/host/path)",
+            "Optional: Pass ?toolkit_id={id} to check credential configuration status"
+        ],
+        avoid_when="Do not use for bulk inspection — prefer GET /apis/{api_id}/operations when browsing an entire API's operation list.",
+        related_operations=[
+            "GET /search — find capabilities by natural language query first",
+            "GET /{target} — execute the operation after inspecting",
+            "GET /apis/{api_id}/operations — list all operations for an API"
+        ]
+    ),
 )
 async def get_capability(
-    capability_id: str,
+    capability_id: Annotated[str, Path(description="Capability ID (METHOD/host/path format) or workflow slug")],
     request: Request,
     toolkit_id: str | None = Query(None, description="Pass to include credential status for this toolkit"),
 ):

@@ -17,6 +17,7 @@ export class ExecuteService {
      * **Headers:**
      * - `X-Jentic-Simulate: true` — validate and preview the call without sending it
      * - `X-Jentic-Credential: {alias}` — select a specific credential when multiple exist for an API
+     * - `X-Jentic-Service: {app_slug}` — select by service name (e.g. `google_calendar`, `gmail`) when multiple credentials share a host
      * - `X-Jentic-Dry-Run: true` — alias for Simulate (deprecated)
      *
      * Returns upstream response verbatim plus `X-Jentic-Execution-Id` for trace correlation.
@@ -26,6 +27,9 @@ export class ExecuteService {
     public static brokerGet({
         target,
     }: {
+        /**
+         * Upstream API path (format: host.domain/path, e.g. api.github.com/repos)
+         */
         target: string,
     }): CancelablePromise<any> {
         return __request(OpenAPI, {

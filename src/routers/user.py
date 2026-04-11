@@ -14,15 +14,17 @@ Password reset is CLI-only:
 import logging
 import time
 import uuid
+from typing import Annotated
 
-from fastapi import APIRouter, Form, HTTPException, Request, Response
+from fastapi import APIRouter, Depends, Form, HTTPException, Path, Query, Request, Response
 from fastapi.responses import HTMLResponse, RedirectResponse
-from pydantic import BaseModel, field_validator
+from fastapi.security import OAuth2PasswordRequestForm
+from pydantic import BaseModel, Field, field_validator
 from src.validators import NormModel
 
 from src.auth import client_ip, _make_jwt, JWT_TTL_SECONDS
 from src.db import get_db, get_setting, set_setting, setup_state
-from src.models import UserOut
+from src.models import TokenRequest, UserOut
 
 import bcrypt as _bcrypt
 
@@ -33,8 +35,9 @@ router = APIRouter(prefix="/user", tags=["user"])
 # ── Models ────────────────────────────────────────────────────────────────────
 
 class UserCreate(BaseModel):
-    username: str
-    password: str
+    """Request body for creating the root admin account. One-time only — POST /user/create returns 410 after first use."""
+    username: str = Field(description="Admin account username (will be trimmed of whitespace)")
+    password: str = Field(description="Admin account password (stored as bcrypt hash)")
 
     @field_validator("username", mode="before")
     @classmethod
@@ -58,6 +61,7 @@ class UserLogin(BaseModel):
     "/create",
     status_code=201,
     summary="Create the root admin account (one-time setup)",
+    openapi_extra={"requestBody": {"description": "Account credentials: username (trimmed of whitespace) and password (stored as bcrypt hash) for the root admin"}},
 )
 async def create_user(body: UserCreate, request: Request, response: Response):
     """Create the single root account for this instance.
@@ -121,6 +125,7 @@ async def create_user(body: UserCreate, request: Request, response: Response):
     summary="Log in and receive a session cookie",
     openapi_extra={
         "requestBody": {
+            "description": "Login credentials: username and password for the root admin account",
             "required": True,
             "content": {
                 "application/json": {
@@ -137,7 +142,11 @@ async def create_user(body: UserCreate, request: Request, response: Response):
         }
     },
 )
-async def login(request: Request, response: Response, redirect_to: str | None = None):
+async def login(
+    request: Request,
+    response: Response,
+    redirect_to: Annotated[str | None, Query(description="Redirect URL after successful login (relative path only)")] = None
+):
     """Authenticate with username and password.
 
     Accepts JSON body (`{"username": ..., "password": ...}`) or HTML form data.
@@ -207,13 +216,9 @@ async def login(request: Request, response: Response, redirect_to: str | None = 
     "/token",
     summary="OAuth2 password grant — returns Bearer JWT",
     response_description="Access token for use in Authorization: Bearer header",
+    openapi_extra={"requestBody": {"description": "OAuth2 password grant form: username, password, and grant_type='password' (form-urlencoded format)"}},
 )
-async def token(
-    grant_type: str = Form(default="password"),
-    username: str = Form(...),
-    password: str = Form(...),
-    scope: str = Form(default=""),
-):
+async def token(form_data: OAuth2PasswordRequestForm = Depends()):
     """OAuth2 password grant endpoint.
 
     Swagger UI's **Authorize** dialog uses this automatically when you fill in
@@ -224,8 +229,8 @@ async def token(
     in the response body rather than as a cookie — the standard OAuth2 pattern
     expected by Swagger UI.
     """
-    if grant_type != "password":
-        raise HTTPException(400, detail={"error": "unsupported_grant_type"})
+    username = form_data.username
+    password = form_data.password
 
     async with get_db() as db:
         db.row_factory = __import__("aiosqlite").Row
@@ -285,7 +290,19 @@ async def logout(request: Request, response: Response):
     response_model=UserOut,
 )
 async def me(request: Request):
-    """Returns current session info. Useful for UI to check if logged in."""
+    """Returns current session info and authentication context.
+
+    Response varies based on authentication method:
+    - Human session (JWT cookie): logged_in=true, includes username
+    - Trusted subnet (no auth): logged_in=false, admin=true (note about logging in for named session)
+    - Agent key (X-Jentic-API-Key): logged_in=false, agent_key=true, includes toolkit_id
+    - No auth: logged_in=false, agent_key=false
+
+    Useful for UI to determine what features to show and whether to require login.
+    Agents can call this to confirm their key is valid and see which toolkit they belong to.
+
+    This endpoint accepts requests with or without authentication (open passthrough).
+    """
     if getattr(request.state, "is_human_session", False):
         async with get_db() as db:
             async with db.execute("SELECT username FROM users LIMIT 1") as cur:

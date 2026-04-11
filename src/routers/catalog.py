@@ -15,13 +15,14 @@ import re
 import time
 import urllib.request
 import urllib.error
+from typing import Annotated
 
-
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Path, Query
 from pydantic import BaseModel
 
 from src.db import get_db
 from src.config import DATA_DIR
+from src.openapi_helpers import agent_hints
 
 log = logging.getLogger("jentic.catalog")
 
@@ -451,12 +452,23 @@ def _build_catalog_result(entry: dict, registered_ids: set[str]) -> dict:
     "/catalog",
     summary="List the public API catalog",
     tags=["catalog"],
+    openapi_extra=agent_hints(
+        when_to_use="Use to browse available APIs from the Jentic public catalog (jentic/jentic-public-apis GitHub repo). Returns list of catalog entries with api_id and registration status. Use ?q= to filter by API ID substring, ?registered_only=true to see only locally registered APIs, ?unregistered_only=true to see only APIs not yet imported. Catalog manifest auto-refreshes daily; use POST /catalog/refresh to sync immediately.",
+        prerequisites=["Requires authentication (toolkit key or human session)"],
+        avoid_when="Do not use to list locally registered APIs — use GET /apis?source=local instead. Do not use for natural language API discovery — use GET /search for that.",
+        related_operations=[
+            "GET /catalog/{api_id} — get spec download URL for a catalog API",
+            "POST /import — import a catalog API after finding it here",
+            "POST /catalog/refresh — refresh catalog manifest from GitHub if empty or stale",
+            "GET /apis — list locally registered APIs (includes both local and catalog sources)"
+        ]
+    ),
 )
 async def list_catalog(
-    q: str | None = None,
-    limit: int = 50,
-    registered_only: bool = False,
-    unregistered_only: bool = False,
+    q: Annotated[str | None, Query(description="Search term to filter APIs by name or description")] = None,
+    limit: Annotated[int, Query(description="Maximum number of results (1-500)", ge=1, le=500)] = 50,
+    registered_only: Annotated[bool, Query(description="Return only APIs already registered locally")] = False,
+    unregistered_only: Annotated[bool, Query(description="Return only APIs not yet registered locally")] = False,
 ):
     """Returns entries from the cached public API catalog manifest.
     Use ``POST /catalog/refresh`` to sync from GitHub first if the list is empty.
@@ -490,8 +502,22 @@ async def list_catalog(
     "/catalog/{api_id:path}",
     summary="Get a catalog entry with spec location",
     tags=["catalog"],
+    openapi_extra=agent_hints(
+        when_to_use="Use after finding an API via GET /catalog to retrieve the spec download URL for import. Returns api_id, registration status, spec_url (GitHub raw file URL), and spec_filename. Use the spec_url with POST /import to register this API locally. Recursively searches the GitHub directory for OpenAPI spec files (openapi.json, openapi.yaml, etc.).",
+        prerequisites=[
+            "Requires authentication (toolkit key or human session)",
+            "Valid catalog api_id from GET /catalog (format: hostname or hostname/path)"
+        ],
+        avoid_when="Do not use for APIs already registered locally — check GET /apis first. Do not use to download the spec directly (use POST /import instead).",
+        related_operations=[
+            "GET /catalog — browse catalog to find the api_id",
+            "POST /import — import the API using the spec_url returned here",
+            "GET /apis — check if API is already registered before importing",
+            "POST /credentials — add credentials after importing"
+        ]
+    ),
 )
-async def get_catalog_entry(api_id: str):
+async def get_catalog_entry(api_id: Annotated[str, Path(description="API ID from catalog to retrieve")]):
     """Return details for a single catalog API, including the spec download URL.
 
     Use the returned `spec_url` with `POST /import` to import this API:
@@ -545,6 +571,16 @@ async def get_catalog_entry(api_id: str):
     "/catalog/refresh",
     summary="Refresh the API catalog manifest from GitHub",
     tags=["admin"],
+    openapi_extra=agent_hints(
+        when_to_use="Use when the catalog is empty (GET /catalog returns empty list) or when you need immediate sync after a new API was added to jentic/jentic-public-apis on GitHub. Fetches the curated apis.json index and workflows directory listing from GitHub (two unauthenticated HTTP requests). Manifest auto-refreshes daily on startup, so only call explicitly if you need immediate sync.",
+        prerequisites=["Requires authentication (admin/human session)"],
+        avoid_when="Do not call repeatedly — safe but unnecessary since manifest auto-refreshes daily. Do not use to import APIs — use POST /import after refreshing.",
+        related_operations=[
+            "GET /catalog — list catalog entries after refreshing",
+            "GET /catalog/{api_id} — get spec URL for an API after refreshing",
+            "POST /import — import an API after finding it in the refreshed catalog"
+        ]
+    ),
 )
 async def refresh_catalog():
     """Rebuilds the internal catalog manifest from the jentic/jentic-public-apis repository.

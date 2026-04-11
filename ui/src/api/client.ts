@@ -9,6 +9,7 @@ import {
 } from './generated';
 
 OpenAPI.WITH_CREDENTIALS = true;
+OpenAPI.BASE = ''; // Use relative URLs (same origin as UI) — works in dev (Vite proxy) and prod (same port)
 
 export const api = {
 	getMe: () => UserService.meUserMeGet(),

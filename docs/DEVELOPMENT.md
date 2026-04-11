@@ -16,6 +16,95 @@ docker logs -f openclaw-jentic-personal-edition-1 2>&1 | grep -E "reload|ERROR|W
 
 ---
 
+## Testing Strategy
+
+Jentic Mini has multi-layered testing that exercises different trust boundaries:
+
+### Backend Tests (Python/pytest)
+
+**Location:** `tests/`  
+**Run:** `python3 -m pytest tests/ -v`  
+**Philosophy:** Test at the HTTP boundary using a real temp SQLite database. No mocking of core functionality.
+
+```bash
+# Install test dependencies (includes production deps)
+pip install -r requirements-dev.txt
+
+# Run all tests
+python3 -m pytest tests/ -v
+
+# Run specific test file
+python3 -m pytest tests/test_auth_boundary.py -v
+
+# Run with coverage
+python3 -m pytest tests/ --cov=src --cov-report=html
+```
+
+**Test categories:**
+
+| File | Purpose | What it validates |
+|------|---------|-------------------|
+| `test_auth_boundary.py` | Core auth enforcement | API key validation, human session checks, public vs protected endpoints |
+| `test_auth_boundary_comprehensive.py` | Auth regression detector | Documents **current actual behavior** of all 68 operations — runtime vs OpenAPI spec mismatches, agent-accessible vs human-only operations |
+| `test_openapi_contract.py` | OpenAPI spec quality | ui/openapi.json sync, metadata (contact, license, servers), explicit security declarations, Phase 1 requirements |
+| `test_broker_contracts.py` | Broker behavior | Credential injection, upstream passthrough, error handling |
+| `test_credential_vault.py` | Secrets management | Fernet encryption, no value leakage in responses |
+| `test_policy_engine.py` | Access control rules | First-match-wins, regex path matching, method filtering |
+| `test_toolkit_lifecycle.py` | Toolkit CRUD | Key generation, credential binding, counts |
+| `test_health_and_meta.py` | Metadata endpoints | /health, /version responses |
+| `test_oauth_broker_lifecycle.py` | OAuth delegation | Pipedream broker registration, account sync, connect links |
+
+**Why no mocks?** The test suite uses a real SQLite database (with Alembic migrations) to catch integration issues that mocks would hide. Tests run in ~2 minutes — fast enough for tight TDD loops.
+
+**OpenAPI contract tests** (`test_openapi_contract.py`) use Schemathesis to validate that API responses match the OpenAPI schema. Custom tests enforce Jentic-specific requirements (HTTPS first, explicit security, agent hints coverage).
+
+**Auth boundary tests** (`test_auth_boundary_comprehensive.py`) document the **runtime enforcement** vs **OpenAPI spec declarations**. If this test fails, the auth boundary changed — verify it was intentional and update the test. Includes TODO markers for endpoints that may need stricter auth in the future.
+
+### UI Tests (Vitest + Playwright)
+
+**Location:** `ui/src/`  
+**Run:** `cd ui && npm test`  
+**Philosophy:** Browser-mode unit tests + MSW mocking + E2E with real backend.
+
+```bash
+cd ui
+
+# Install dependencies
+npm install
+
+# Unit tests (Vitest browser mode + MSW)
+npm test              # Watch mode
+npm run test:run      # CI mode (single run)
+npm run test:coverage # Istanbul coverage report
+
+# E2E tests (Playwright)
+npm run test:e2e         # Mocked backend (MSW)
+npm run test:e2e:docker  # Real backend (requires server running)
+
+# Linting (ESLint + Prettier)
+npm run lint        # Check
+npm run lint:fix    # Auto-fix
+```
+
+**Test stack:**
+- **Vitest browser mode** — runs tests in real browsers via Playwright (Chrome, Firefox, Safari)
+- **MSW (Mock Service Worker)** — intercepts HTTP calls to `/api/*` for isolated unit tests
+- **Testing Library** — user-centric queries (`getByRole`, `getByLabelText`)
+- **axe-core** — automated accessibility checks (WCAG violations fail tests)
+- **Playwright E2E** — full integration tests against real backend
+
+See `ui/TESTING.md` for the full UI testing guide.
+
+### CI Pipeline
+
+**Backend:** `.github/workflows/ci-backend.yml` (path-filtered: `src/`, `tests/`, `alembic/`)  
+**UI:** `.github/workflows/ci-ui.yml` (path-filtered: `ui/`)  
+**Docker:** `.github/workflows/ci-docker.yml` (always runs — validates build + E2E)
+
+All three must pass before merge.
+
+---
+
 ## Route Registration Order — CRITICAL
 
 The broker is a catch-all (`/{target:path}`) that matches any path. It **must** be the last router registered in `main.py`. If registered earlier, it will swallow all JPE-internal routes.
