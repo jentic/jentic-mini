@@ -503,6 +503,19 @@ class PipedreamOAuthBroker:
                     if existing and existing[0]:
                         user_api_id = existing[0]
 
+                # For NEW accounts: peek at the pending queue to get user_api_id BEFORE
+                # computing hosts. Without this, hosts is computed from the slug map
+                # (e.g. googleapis.com/gmail) instead of the user-specified api_id
+                # (e.g. gmail.googleapis.com), causing the wrong api_host to be stored
+                # and routes to not match real API hostnames.
+                if not user_api_id and account_id not in existing_account_ids:
+                    _peek_queue = pending.get(app_slug, [])
+                    if _peek_queue:
+                        _peek_label, _peek_api_id = _peek_queue[0]  # peek, don't pop
+                        if _peek_api_id:
+                            user_api_id = _peek_api_id
+                            log.info("Peeked pending api_id '%s' for new account %s before hosts computation", user_api_id, account_id)
+
                 # Use user-specified api_id if provided; otherwise fall back to slug map
                 if user_api_id:
                     hosts = [user_api_id]
@@ -608,6 +621,21 @@ class PipedreamOAuthBroker:
                             "(id, label, env_var, encrypted_value, api_id, auth_type) "
                             "VALUES (?, ?, ?, ?, ?, 'pipedream_oauth')",
                             (cred_id, effective_label, env_var, enc_account_id, api_host),
+                        )
+
+                    # Upsert credential_routes so the broker can match incoming requests
+                    # to this credential by host. api_host is the real HTTP hostname
+                    # (e.g. gmail.googleapis.com) — insert it as a route. Also insert
+                    # user_api_id as a route if it differs (e.g. googleapis.com/gmail)
+                    # since both forms may appear in broker request paths.
+                    route_hosts: list[str] = [api_host]
+                    if user_api_id and user_api_id != api_host:
+                        route_hosts.append(user_api_id)
+                    for route_host in route_hosts:
+                        await db.execute(
+                            "INSERT OR IGNORE INTO credential_routes (credential_id, host) "
+                            "VALUES (?, ?)",
+                            (cred_id, route_host),
                         )
 
                     count += 1

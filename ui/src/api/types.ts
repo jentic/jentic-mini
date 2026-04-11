@@ -95,9 +95,17 @@ export interface CredentialOut {
 	id: string;
 	label: string;
 	api_id?: string | null;
+	auth_type?: string | null;
+	identity?: string | null;
+	server_variables?: Record<string, string> | null;
+	scheme?: Record<string, unknown> | null;
+	routes?: string[] | null;
 	scheme_name?: string | null;
 	created_at?: number | null;
 	updated_at?: number | null;
+	account_id?: string | null;
+	app_slug?: string | null;
+	synced_at?: number | null;
 }
 
 export interface CredentialCreate {
@@ -106,6 +114,7 @@ export interface CredentialCreate {
 	auth_type?: 'bearer' | 'basic' | 'apiKey' | null;
 	identity?: string | null;
 	value: string;
+	server_variables?: Record<string, string> | null;
 }
 
 export interface CredentialPatch {
@@ -114,6 +123,9 @@ export interface CredentialPatch {
 	auth_type?: 'bearer' | 'basic' | 'apiKey' | null;
 	identity?: string | null;
 	value?: string | null;
+	server_variables?: Record<string, string> | null;
+	scheme?: Record<string, unknown> | null;
+	routes?: string[] | null;
 }
 
 export interface ApiOut {

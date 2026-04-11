@@ -557,7 +557,16 @@ export default function CredentialsPage() {
 												<Badge variant="default" className="text-[10px]">
 													{cred.scheme_name}
 												</Badge>
+											) : cred.auth_type ? (
+												<Badge variant="default" className="text-[10px]">
+													{cred.auth_type}
+												</Badge>
 											) : null}
+											{(cred as any).scheme && (
+												<Badge variant="default" className="text-[10px]">
+													{(cred as any).scheme?.in === 'header' ? `→ ${(cred as any).scheme?.name}` : 'custom scheme'}
+												</Badge>
+											)}
 										</div>
 										<p className="text-muted-foreground mt-0.5 text-xs">
 											{cred.auth_type === 'pipedream_oauth' &&

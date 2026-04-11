@@ -114,18 +114,20 @@ async def _register_openapi(doc: dict, saved_path: str, force_api_id: str | None
     """Register an OpenAPI spec as an API + operations in Jentic."""
     # Import the heavy lifting from apis.py
     from src.routers.apis import (
-        _load_base_url_from_spec, _derive_api_id, _parse_operations,
-        _rebuild_index,
+        _extract_base_url, _derive_api_id, _parse_operations,
+        _rebuild_index, _is_private_server_url, _title_to_local_api_id,
     )
+    _load_base_url_from_spec = _extract_base_url  # alias for compat
 
     base_url = None
     servers = doc.get("servers", [])
     if servers:
         base_url = servers[0].get("url")
 
-    api_id = force_api_id or (_derive_api_id(base_url) if base_url else None)
+    title = doc.get("info", {}).get("title", "unknown")
+
+    api_id = force_api_id or (_derive_api_id(base_url, title=title) if base_url else None)
     if not api_id:
-        title = doc.get("info", {}).get("title", "unknown")
         api_id = re.sub(r"[^a-z0-9]", "-", title.lower()).strip("-")[:40]
 
     # Allow caller to override the derived ID (e.g. catalog import uses canonical catalog api_id)
@@ -134,6 +136,13 @@ async def _register_openapi(doc: dict, saved_path: str, force_api_id: str | None
 
     name = doc.get("info", {}).get("title") or api_id
     description = doc.get("info", {}).get("description")
+
+    # Detect self-hosted API: private/localhost server URL → api_id ends in .local
+    is_self_hosted = (
+        not force_api_id
+        and base_url is not None
+        and _is_private_server_url(base_url)
+    )
 
     async with get_db() as db:
         await db.execute(
@@ -155,10 +164,58 @@ async def _register_openapi(doc: dict, saved_path: str, force_api_id: str | None
 
     await _rebuild_index()
 
+    # ── Auto-overlay for self-hosted APIs ─────────────────────────────────────
+    # If the spec has a hardcoded private/localhost server URL, generate and
+    # confirm a standard overlay that replaces it with a {host} template variable.
+    # This enables credential server_variables to parameterise the actual host
+    # without requiring users to manually upload an overlay.
+    overlay_generated = False
+    if is_self_hosted and base_url:
+        from urllib.parse import urlparse as _up
+        _parsed = _up(base_url)
+        _path = _parsed.path.rstrip("/") or ""
+        # Preserve any path component (e.g. http://localhost:8123/api → http://{host}/api)
+        _template_url = "http://{host}" + _path
+        _overlay = {
+            "actions": [
+                {
+                    "target": "$",
+                    "description": "Parameterise server URL for self-hosted deployment",
+                    "update": {
+                        "servers": [
+                            {
+                                "url": _template_url,
+                                "variables": {
+                                    "host": {
+                                        "default": _parsed.netloc,
+                                        "description": "Hostname (and optional port) of your local instance, e.g. 10.0.0.2:1984",
+                                    }
+                                },
+                            }
+                        ]
+                    },
+                }
+            ]
+        }
+        async with get_db() as db:
+            _oid = f"auto-{api_id}"
+            await db.execute(
+                """INSERT OR IGNORE INTO api_overlays (id, api_id, overlay, status)
+                   VALUES (?, ?, ?, 'confirmed')""",
+                (_oid, api_id, json.dumps(_overlay)),
+            )
+            await db.commit()
+        overlay_generated = True
+        # Update the stored base_url to the templated form so _derive_api_id
+        # and _resolve_server_url both see the template, not the hardcoded default.
+        async with get_db() as db:
+            await db.execute(
+                "UPDATE apis SET base_url=? WHERE id=?",
+                (_template_url, api_id),
+            )
+            await db.commit()
+
     # Auto-import catalog workflows when importing from catalog.
-    # Note: POST /credentials also calls lazy_import_catalog_workflows as a safety net
-    # for cases where the API was already registered (skipping _register_openapi).
-    # Both calls are idempotent (upserts).
     workflows_imported = []
     if force_api_id:
         try:
@@ -168,7 +225,7 @@ async def _register_openapi(doc: dict, saved_path: str, force_api_id: str | None
             import logging
             logging.getLogger("jentic.import").warning("Workflow auto-import failed for '%s': %s", api_id, e)
 
-    return {
+    result = {
         "type": "api",
         "id": api_id,
         "name": name,
@@ -176,6 +233,11 @@ async def _register_openapi(doc: dict, saved_path: str, force_api_id: str | None
         "spec_path": saved_path,
         "workflows_imported": len(workflows_imported),
     }
+    if is_self_hosted:
+        result["self_hosted"] = True
+        result["overlay_generated"] = overlay_generated
+        result["server_variables_required"] = ["host"]
+    return result
 
 
 # ── Arazzo registration ───────────────────────────────────────────────────────

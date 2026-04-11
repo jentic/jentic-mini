@@ -27,7 +27,7 @@ async def _agent_has_credential_write_permission(toolkit_id: str | None, method:
     """
     if not toolkit_id:
         return False
-    cred_ids = await vault.get_credential_ids_for_api(toolkit_id, _self_api_id())
+    cred_ids = await vault.get_credential_ids_for_route(toolkit_id, _self_api_id())
     if not cred_ids:
         return False
     from src.routers.toolkits import check_credential_policy
@@ -188,6 +188,20 @@ async def create(body: CredentialCreate, request: Request):
                                 "info": {"title": f"{api_id} auth", "version": "1.0.0"},
                                 "actions": [{"target": "$", "update": {"components": {"securitySchemes": {"ApiKeyAuth": {"type": "apiKey", "in": "header", "name": "Your-Header-Name"}}}}}],
                             },
+                            "compound_api_key_header_plus_username": {
+                                "overlay": "1.0.0",
+                                "info": {"title": f"{api_id} auth", "version": "1.0.0"},
+                                "actions": [{"target": "$", "update": {"components": {"securitySchemes": {
+                                    "Secret": {"type": "apiKey", "in": "header", "name": "Your-Secret-Header"},
+                                    "Identity": {"type": "apiKey", "in": "header", "name": "Your-Username-Header"},
+                                }}}}],
+                                "_note": "Compound scheme: broker injects credential.value into 'Secret' header and credential.identity into 'Identity' header. Use when the API requires both a key and a username (e.g. Discourse: Api-Key + Api-Username).",
+                            },
+                            "api_key_in_query": {
+                                "overlay": "1.0.0",
+                                "info": {"title": f"{api_id} auth", "version": "1.0.0"},
+                                "actions": [{"target": "$", "update": {"components": {"securitySchemes": {"ApiKeyAuth": {"type": "apiKey", "in": "query", "name": "api_key"}}}}}],
+                            },
                             "bearer_token": {
                                 "overlay": "1.0.0",
                                 "info": {"title": f"{api_id} auth", "version": "1.0.0"},
@@ -197,27 +211,28 @@ async def create(body: CredentialCreate, request: Request):
                                 "overlay": "1.0.0",
                                 "info": {"title": f"{api_id} auth", "version": "1.0.0"},
                                 "actions": [{"target": "$", "update": {"components": {"securitySchemes": {"BasicAuth": {"type": "http", "scheme": "basic"}}}}}],
+                                "_note": "Basic auth: broker injects Authorization: Basic base64(identity:value). Set 'identity' on the credential to the username.",
                             },
                         },
                         "note": (
-                            "Set auth_type on the credential to 'bearer', 'basic', or 'apiKey' — "
-                            "the broker uses this to match the right security scheme from the spec."
+                            "Set auth_type on the credential to 'bearer', 'basic', or 'apiKey'. "
+                            "For compound apiKey schemes (key + username headers): name the two "
+                            "securitySchemes 'Secret' (receives credential.value) and 'Identity' "
+                            "(receives credential.identity) in your overlay — the broker handles injection automatically."
                         ),
                     },
                 )
 
     try:
-        # Auto-generate a stable internal slug (not exposed via API)
-        import re
-        slug = re.sub(r"[^a-zA-Z0-9]+", "_", f"{body.api_id or ''}_{body.label}").strip("_").upper()
-        env_var = slug or f"CRED_{uuid.uuid4().hex[:8].upper()}"
         cred = await vault.create_credential(
             body.label,
-            env_var,
             body.value,
             api_id=api_id,
             scheme_name=scheme_name,
             identity=getattr(body, "identity", None),
+            server_variables=getattr(body, "server_variables", None),
+            scheme=getattr(body, "scheme", None),
+            routes=getattr(body, "routes", None),
         )
     except Exception as e:
         log.exception("Failed to create credential")
@@ -231,16 +246,10 @@ async def create(body: CredentialCreate, request: Request):
 @router.get("/{cid:path}", response_model=CredentialOut, summary="Get an upstream API credential by ID")
 async def get_credential(cid: str):
     """Retrieve metadata for a single credential. Value is never returned."""
-    async with get_db() as db:
-        async with db.execute(
-            "SELECT id, label, api_id, auth_type, created_at, updated_at, identity FROM credentials WHERE id=?",
-            (cid,),
-        ) as cur:
-            row = await cur.fetchone()
-    if not row:
+    cred = await vault.get_credential(cid)
+    if not cred:
         raise HTTPException(404, "Credential not found")
-    return {"id": row[0], "label": row[1], "api_id": row[2], "auth_type": row[3],
-            "created_at": row[4], "updated_at": row[5], "identity": row[6] if len(row) > 6 else None}
+    return cred
 
 
 @router.patch("/{cid:path}", response_model=CredentialOut, summary="Update an upstream API credential — rotate a secret or fix its API binding")
@@ -248,8 +257,13 @@ async def patch(cid: str, body: CredentialPatch, request: Request):
     if not request.state.is_human_session:
         if not await _agent_has_credential_write_permission(request.state.toolkit_id, "PATCH", f"/credentials/{cid}"):
             raise HTTPException(status_code=403, detail="Updating credentials requires a human session, or an agent key with an explicit PATCH /credentials allow rule on the jentic-mini credential.")
-    row = await vault.patch_credential(cid, body.label, body.value, body.api_id, body.auth_type,
-                                       identity=getattr(body, "identity", None))
+    row = await vault.patch_credential(
+        cid, body.label, body.value, body.api_id, body.auth_type,
+        identity=getattr(body, "identity", None),
+        server_variables=getattr(body, "server_variables", None),
+        scheme=getattr(body, "scheme", None),
+        routes=getattr(body, "routes", None),
+    )
     if not row:
         raise HTTPException(404, "Credential not found")
     actor = "human" if request.state.is_human_session else f"toolkit={request.state.toolkit_id}"
@@ -290,9 +304,11 @@ async def list_credentials(request: Request, api_id: str | None = None):
 
     where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
 
+    import json as _json
     async with get_db() as db:
         async with db.execute(
             f"SELECT c.id, c.label, c.api_id, c.auth_type, c.created_at, c.updated_at, c.identity, "
+            f"       c.server_variables, c.scheme, "
             f"       oba.account_id, oba.app_slug, oba.synced_at "
             f"FROM credentials c "
             f"LEFT JOIN oauth_broker_accounts oba ON oba.broker_id || '-' || oba.account_id || '-' || replace(oba.api_host, '.', '-') = c.id "
@@ -300,6 +316,20 @@ async def list_credentials(request: Request, api_id: str | None = None):
             params,
         ) as cur:
             rows = await cur.fetchall()
+
+        # Fetch routes for all credentials in one query
+        cred_ids = [r[0] for r in rows]
+        routes_map: dict[str, list[str]] = {}
+        if cred_ids:
+            placeholders = ",".join("?" * len(cred_ids))
+            async with db.execute(
+                f"SELECT credential_id, host, path_prefix FROM credential_routes "
+                f"WHERE credential_id IN ({placeholders}) ORDER BY length(path_prefix) DESC",
+                cred_ids,
+            ) as cur:
+                for cid, host, pp in await cur.fetchall():
+                    route_str = host + pp if pp != "/" else host
+                    routes_map.setdefault(cid, []).append(route_str)
 
     return [
         {
@@ -310,9 +340,12 @@ async def list_credentials(request: Request, api_id: str | None = None):
             "created_at": r[4],
             "updated_at": r[5],
             "identity": r[6] if len(r) > 6 else None,
-            "account_id": r[7] if len(r) > 7 else None,
-            "app_slug": r[8] if len(r) > 8 else None,
-            "synced_at": r[9] if len(r) > 9 else None,
+            "server_variables": _json.loads(r[7]) if len(r) > 7 and r[7] else None,
+            "scheme": _json.loads(r[8]) if len(r) > 8 and r[8] else None,
+            "routes": routes_map.get(r[0]),
+            "account_id": r[9] if len(r) > 9 else None,
+            "app_slug": r[10] if len(r) > 10 else None,
+            "synced_at": r[11] if len(r) > 11 else None,
         }
         for r in rows
     ]

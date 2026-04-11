@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle, Search, Check, ChevronRight, Loader2 } from 'lucide-react';
 import { api, oauthBrokers } from '@/api/client';
@@ -8,6 +8,7 @@ import { BackButton } from '@/components/ui/BackButton';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
+import { Select } from '@/components/ui/Select';
 import { Textarea } from '@/components/ui/Textarea';
 import { Label } from '@/components/ui/Label';
 import { ErrorAlert } from '@/components/ui/ErrorAlert';
@@ -26,7 +27,26 @@ function useDebounce<T>(value: T, ms: number): T {
 
 type SchemeType = 'bearer' | 'basic' | 'apiKey' | 'oauth2' | 'unknown';
 
-type RawSchemes = Record<string, { type?: string; scheme?: string }> | null | undefined;
+type RawSchemes =
+	| Record<string, { type?: string; scheme?: string; in?: string; name?: string }>
+	| null
+	| undefined;
+
+/** Returns true when the scheme map uses the canonical compound pattern: a 'Secret' + 'Identity' apiKey pair. */
+function isCompoundApiKey(schemes: RawSchemes): boolean {
+	if (!schemes) return false;
+	return 'Secret' in schemes && 'Identity' in schemes;
+}
+
+/** For compound schemes, derive human-friendly labels from the header names defined in the overlay. */
+function compoundLabels(schemes: RawSchemes): { secretLabel: string; identityLabel: string } {
+	const secret = schemes?.Secret;
+	const identity = schemes?.Identity;
+	return {
+		secretLabel: secret?.name ?? 'API Key',
+		identityLabel: identity?.name ?? 'Username',
+	};
+}
 
 interface SchemeOption {
 	name: string; // key from securitySchemes (e.g. "bearerAuth")
@@ -79,12 +99,60 @@ function firstSchemeNameFromSchemes(schemes: RawSchemes): string | null {
 	return Object.keys(schemes)[0] ?? null;
 }
 
+// ── Server variable definitions ───────────────────────────────────────────
+
+export interface ServerVarDef {
+	name: string;
+	default?: string | null;
+	description?: string | null;
+	enum?: string[] | null;
+	required: boolean;
+}
+
+/** Extract server variable definitions from local API detail or catalog spec. */
+function useApiServerVarDefs(
+	selectedApi: ApiOut | null,
+	localDetail: ApiOut | null,
+	spec: any,
+): ServerVarDef[] {
+	// Local API: server_variables comes from backend GET /apis/{id}
+	if (localDetail && (localDetail as any).server_variables) {
+		const raw = (localDetail as any).server_variables as Record<string, any>;
+		return Object.entries(raw).map(([name, def]) => ({
+			name,
+			default: def?.default ?? null,
+			description: def?.description ?? null,
+			enum: def?.enum ?? null,
+			required: def?.required ?? false,
+		}));
+	}
+	// Catalog API: parse from raw spec servers array
+	if (spec?.servers) {
+		const server = spec.servers[0];
+		if (server?.variables) {
+			return Object.entries(server.variables as Record<string, any>).map(([name, def]) => ({
+				name,
+				default: def?.default ?? null,
+				description: def?.description ?? null,
+				enum: def?.enum ?? null,
+				required: !def?.default, // no default = required
+			}));
+		}
+	}
+	return [];
+}
+
 /** Fetch security schemes for a selected API.
  *  - local API: use already-fetched detail (has security_schemes)
  *  - catalog API: fetch catalog entry → get spec_url → fetch spec → parse securitySchemes
  *  Returns { schemes, loading }
  */
-function useApiSchemes(selectedApi: ApiOut | null): { schemes: RawSchemes; loading: boolean } {
+function useApiSchemes(selectedApi: ApiOut | null): {
+	schemes: RawSchemes;
+	loading: boolean;
+	localDetail: ApiOut | null;
+	spec: any;
+} {
 	const isCatalog = selectedApi?.source === 'catalog';
 	const isLocal = selectedApi?.source === 'local' || (!!selectedApi && !selectedApi.source);
 
@@ -118,15 +186,25 @@ function useApiSchemes(selectedApi: ApiOut | null): { schemes: RawSchemes; loadi
 
 	if (isLocal) {
 		const schemes = (localDetail as any)?.security_schemes as RawSchemes;
-		return { schemes, loading: localLoading };
+		return {
+			schemes,
+			loading: localLoading,
+			localDetail: (localDetail as ApiOut) ?? null,
+			spec: null,
+		};
 	}
 
 	if (isCatalog) {
 		const schemes = (spec as any)?.components?.securitySchemes as RawSchemes;
-		return { schemes, loading: entryLoading || specLoading };
+		return {
+			schemes,
+			loading: entryLoading || specLoading,
+			localDetail: null,
+			spec: spec ?? null,
+		};
 	}
 
-	return { schemes: null, loading: false };
+	return { schemes: null, loading: false, localDetail: null, spec: null };
 }
 
 // ── Step 1 — API Picker ────────────────────────────────────────────────────
@@ -248,32 +326,74 @@ interface CredFieldsProps {
 	onSaved: () => void;
 	editId?: string;
 	existing?: any;
+	prefill?: {
+		label?: string;
+		value?: string;
+		identity?: string;
+		serverVars?: Record<string, string>;
+	};
 }
 
-function CredentialFields({ selectedApi, onBack, onSaved, editId, existing }: CredFieldsProps) {
+function CredentialFields({
+	selectedApi,
+	onBack,
+	onSaved,
+	editId,
+	existing,
+	prefill,
+}: CredFieldsProps) {
 	const queryClient = useQueryClient();
 	const isEdit = !!editId;
 
 	// Fetch security schemes from spec (local: API detail, catalog: raw spec via GitHub)
-	const { schemes, loading: schemesLoading } = useApiSchemes(selectedApi);
+	const { schemes, loading: schemesLoading, localDetail, spec } = useApiSchemes(selectedApi);
+	const serverVarDefs = useApiServerVarDefs(selectedApi, localDetail, spec);
 	const schemeOptions = parseSchemeOptions(schemes);
 	const defaultScheme = schemeOptions[0] ?? null;
 	const [selectedScheme, setSelectedScheme] = useState<SchemeOption | null>(null);
 
+	// Server variable values keyed by variable name
+	const [serverVars, setServerVars] = useState<Record<string, string>>({});
+
 	// Reset scheme selection and fields when API changes
-	useEffect(() => {
+	const resetFields = () => {
 		setSelectedScheme(null);
-		setLabel(selectedApi.name ?? selectedApi.id);
-		setValue('');
-		setIdentity('');
+		setLabel(prefill?.label ?? selectedApi.name ?? selectedApi.id);
+		setValue(prefill?.value ?? '');
+		setIdentity(prefill?.identity ?? '');
+		setServerVars(prefill?.serverVars ?? {});
 		setError(null);
-	}, [selectedApi.id]);
+	};
+
+	useEffect(resetFields, [selectedApi.id]);
+
+	// Pre-populate server vars defaults when defs load — don't overwrite prefilled values
+	useEffect(() => {
+		if (serverVarDefs.length > 0 && Object.keys(serverVars).length === 0) {
+			const defaults: Record<string, string> = {};
+			serverVarDefs.forEach((v) => {
+				if (v.default) defaults[v.name] = v.default;
+			});
+			if (Object.keys(defaults).length > 0)
+				setServerVars((prev) =>
+					Object.keys(prev).length > 0
+						? prev
+						: { ...defaults, ...(prefill?.serverVars ?? {}) },
+				);
+		}
+	}, [serverVarDefs]);
 
 	// Prefill from existing credential in edit mode
 	useEffect(() => {
 		if (existing) {
 			setLabel(existing.label ?? '');
 			setIdentity(existing.identity ?? '');
+			if (existing.server_variables && Object.keys(existing.server_variables).length > 0) {
+				setServerVars(existing.server_variables as Record<string, string>);
+			}
+			setSchemeJson(existing.scheme ? JSON.stringify(existing.scheme, null, 2) : '');
+			setRoutesText(existing.routes ? (existing.routes as string[]).join('\n') : '');
+			setShowAdvanced(!!(existing.scheme || existing.routes));
 			// value is write-only — leave blank
 		}
 	}, [existing]);
@@ -281,11 +401,24 @@ function CredentialFields({ selectedApi, onBack, onSaved, editId, existing }: Cr
 	const activeScheme = selectedScheme ?? defaultScheme;
 	const schemeType = activeScheme?.type ?? 'unknown';
 	const schemeName = activeScheme?.name ?? firstSchemeNameFromSchemes(schemes);
+	const compound = isCompoundApiKey(schemes);
+	const { secretLabel, identityLabel } = compoundLabels(schemes);
 
-	const [label, setLabel] = useState(existing?.label ?? selectedApi.name ?? selectedApi.id);
-	const [value, setValue] = useState('');
-	const [identity, setIdentity] = useState(existing?.identity ?? '');
-	const [error, setError] = useState<string | null>(null);
+	const [label, setLabel] = useState(
+		prefill?.label ?? existing?.label ?? selectedApi.name ?? selectedApi.id,
+	);
+	const [value, setValue] = useState(prefill?.value ?? '');
+	const [identity, setIdentity] = useState(prefill?.identity ?? existing?.identity ?? '');
+	const [error, setError] = useState<string | Error | null>(null);
+
+	// Advanced broker fields
+	const [schemeJson, setSchemeJson] = useState(
+		existing?.scheme ? JSON.stringify(existing.scheme, null, 2) : '',
+	);
+	const [routesText, setRoutesText] = useState(
+		existing?.routes ? (existing.routes as string[]).join('\n') : '',
+	);
+	const [showAdvanced, setShowAdvanced] = useState(!!(existing?.scheme || existing?.routes));
 
 	// For OAuth, check if any broker is configured
 	const { data: brokers, isLoading: brokersLoading } = useQuery({
@@ -318,7 +451,7 @@ function CredentialFields({ selectedApi, onBack, onSaved, editId, existing }: Cr
 			queryClient.invalidateQueries({ queryKey: ['credentials'] });
 			onSaved();
 		},
-		onError: (e: Error) => setError(e.message),
+		onError: (e: Error) => setError(e),
 	});
 
 	const updateMutation = useMutation({
@@ -327,13 +460,27 @@ function CredentialFields({ selectedApi, onBack, onSaved, editId, existing }: Cr
 			queryClient.invalidateQueries({ queryKey: ['credentials'] });
 			onSaved();
 		},
-		onError: (e: Error) => setError(e.message),
+		onError: (e: Error) => setError(e),
 	});
 
 	const handleSubmit = (e: React.FormEvent) => {
 		e.preventDefault();
 		if (schemeType === 'oauth2') return;
 		setError(null);
+
+		// Validate required server variables
+		const missingVars = serverVarDefs.filter((v) => v.required && !serverVars[v.name]?.trim());
+		if (missingVars.length > 0) {
+			setError(
+				`Required server variables missing: ${missingVars.map((v) => v.name).join(', ')}`,
+			);
+			return;
+		}
+
+		const cleanedVars =
+			Object.keys(serverVars).length > 0
+				? Object.fromEntries(Object.entries(serverVars).filter(([, v]) => v.trim()))
+				: null;
 
 		// Derive auth_type from scheme
 		const authTypeMap: Record<SchemeType, CredentialCreate['auth_type']> = {
@@ -345,12 +492,32 @@ function CredentialFields({ selectedApi, onBack, onSaved, editId, existing }: Cr
 		};
 
 		if (isEdit) {
+			// Parse advanced fields
+			let parsedScheme: Record<string, unknown> | null = null;
+			if (schemeJson.trim()) {
+				try {
+					parsedScheme = JSON.parse(schemeJson.trim());
+				} catch {
+					setError('Scheme JSON is invalid');
+					return;
+				}
+			}
+			const parsedRoutes = routesText.trim()
+				? routesText
+						.split('\n')
+						.map((r) => r.trim())
+						.filter(Boolean)
+				: null;
+
 			updateMutation.mutate({
 				label: label || null,
 				api_id: selectedApi.id,
 				auth_type: authTypeMap[schemeType],
 				value: value || null,
 				identity: identity || null,
+				server_variables: cleanedVars,
+				scheme: parsedScheme,
+				routes: parsedRoutes,
 			});
 		} else {
 			if (!value) {
@@ -363,6 +530,7 @@ function CredentialFields({ selectedApi, onBack, onSaved, editId, existing }: Cr
 				auth_type: authTypeMap[schemeType],
 				value,
 				identity: identity || undefined,
+				server_variables: cleanedVars,
 			});
 		}
 	};
@@ -424,6 +592,70 @@ function CredentialFields({ selectedApi, onBack, onSaved, editId, existing }: Cr
 						))}
 					</div>
 				</fieldset>
+			)}
+
+			{/* Server variables — shown when the API has templated base URLs */}
+			{serverVarDefs.length > 0 && (
+				<div className="bg-muted/30 border-border space-y-3 rounded-lg border p-4">
+					<div>
+						<p className="text-foreground text-sm font-medium">Server configuration</p>
+						<p className="text-muted-foreground mt-0.5 text-xs">
+							This API uses a templated base URL. Fill in the values for your
+							instance.
+						</p>
+					</div>
+					{serverVarDefs.map((varDef) => (
+						<div key={varDef.name}>
+							<Label
+								htmlFor={`svar-${varDef.name}`}
+								className="text-muted-foreground mb-1 block text-xs"
+							>
+								<span className="font-mono">{varDef.name}</span>
+								{varDef.required && (
+									<span className="text-destructive ml-1">*</span>
+								)}
+							</Label>
+							{varDef.description && (
+								<p className="text-muted-foreground mb-1 text-xs">
+									{varDef.description}
+								</p>
+							)}
+							{varDef.enum && varDef.enum.length > 0 ? (
+								<Select
+									id={`svar-${varDef.name}`}
+									value={serverVars[varDef.name] ?? varDef.default ?? ''}
+									onChange={(e) =>
+										setServerVars((prev) => ({
+											...prev,
+											[varDef.name]: e.target.value,
+										}))
+									}
+									className="bg-background border-border text-foreground w-full rounded-md border px-3 py-2 text-sm"
+								>
+									{varDef.enum.map((opt) => (
+										<option key={opt} value={opt}>
+											{opt}
+										</option>
+									))}
+								</Select>
+							) : (
+								<Input
+									id={`svar-${varDef.name}`}
+									type="text"
+									value={serverVars[varDef.name] ?? ''}
+									onChange={(e) =>
+										setServerVars((prev) => ({
+											...prev,
+											[varDef.name]: e.target.value,
+										}))
+									}
+									placeholder={varDef.default ?? `Enter ${varDef.name}`}
+									className="bg-background font-mono"
+								/>
+							)}
+						</div>
+					))}
+				</div>
 			)}
 
 			{/* Label */}
@@ -582,44 +814,128 @@ function CredentialFields({ selectedApi, onBack, onSaved, editId, existing }: Cr
 				</>
 			)}
 
-			{/* Bearer / apiKey / unknown: single token field */}
+			{/* Bearer / apiKey / unknown: single token field — or compound (Secret + Identity) */}
 			{(schemeType === 'bearer' || schemeType === 'apiKey' || schemeType === 'unknown') && (
-				<div>
-					<Label
-						htmlFor="cred-token"
-						className="text-muted-foreground mb-1 block text-xs"
-						required={!isEdit}
-					>
-						{schemeType === 'bearer'
-							? 'Bearer Token'
-							: schemeType === 'apiKey'
-								? 'API Key'
-								: 'Credential Value'}
-						{isEdit && (
-							<span className="text-muted-foreground/60">
-								{' '}
-								(leave blank to keep existing)
-							</span>
-						)}
-					</Label>
-					<Textarea
-						id="cred-token"
-						value={value}
-						onChange={(e) => setValue(e.target.value)}
-						rows={3}
-						required={!isEdit}
-						placeholder="Paste your token or API key…"
-						resizable="none"
-						className="bg-background font-mono"
-					/>
-					<p className="text-muted-foreground mt-1 text-xs">
-						<AlertTriangle className="-mt-0.5 inline h-3 w-3" /> Stored encrypted. Never
-						shown again after saving.
-					</p>
-				</div>
+				<>
+					{/* Compound apiKey: separate fields for key and username */}
+					{compound && (
+						<div>
+							<Label
+								htmlFor="cred-identity"
+								className="text-muted-foreground mb-1 block text-xs"
+								required
+							>
+								{identityLabel}
+							</Label>
+							<Input
+								id="cred-identity"
+								type="text"
+								value={identity}
+								onChange={(e) => setIdentity(e.target.value)}
+								placeholder={`Your ${identityLabel.toLowerCase()}`}
+								required
+								className="bg-background"
+							/>
+						</div>
+					)}
+					<div>
+						<Label
+							htmlFor="cred-token"
+							className="text-muted-foreground mb-1 block text-xs"
+							required={!isEdit}
+						>
+							{compound
+								? secretLabel
+								: schemeType === 'bearer'
+									? 'Bearer Token'
+									: schemeType === 'apiKey'
+										? 'API Key'
+										: 'Credential Value'}
+							{isEdit && (
+								<span className="text-muted-foreground/60">
+									{' '}
+									(leave blank to keep existing)
+								</span>
+							)}
+						</Label>
+						<Textarea
+							id="cred-token"
+							value={value}
+							onChange={(e) => setValue(e.target.value)}
+							rows={3}
+							required={!isEdit}
+							placeholder="Paste your token or API key…"
+							resizable="none"
+							className="bg-background font-mono"
+						/>
+						<p className="text-muted-foreground mt-1 text-xs">
+							<AlertTriangle className="-mt-0.5 inline h-3 w-3" /> Stored encrypted.
+							Never shown again after saving.
+						</p>
+					</div>
+				</>
 			)}
 
 			{error && <ErrorAlert message={error} />}
+
+			{/* Advanced: scheme / routes (edit mode) */}
+			{isEdit && (
+				<div className="border-border rounded-lg border">
+					<Button
+						variant="ghost"
+						type="button"
+						className="text-muted-foreground hover:text-foreground flex w-full items-center justify-between px-4 py-3 text-xs font-medium transition-colors"
+						onClick={() => setShowAdvanced((v) => !v)}
+					>
+						<span>Advanced broker settings</span>
+						<ChevronRight
+							className={`h-3.5 w-3.5 transition-transform ${showAdvanced ? 'rotate-90' : ''}`}
+						/>
+					</Button>
+					{showAdvanced && (
+						<div className="border-border space-y-4 border-t px-4 pt-3 pb-4">
+							<p className="text-muted-foreground text-xs">
+								Override how the broker injects this credential. Leave blank to use
+								spec-based inference.
+							</p>
+							<div>
+								<Label
+									htmlFor="cred-scheme"
+									className="text-muted-foreground mb-1 block text-xs"
+								>
+									Scheme (JSON)
+								</Label>
+								<Textarea
+									id="cred-scheme"
+									value={schemeJson}
+									onChange={(e) => setSchemeJson(e.target.value)}
+									rows={4}
+									placeholder='{"in":"header","name":"X-API-KEY"}'
+									resizable="vertical"
+									className="bg-background font-mono text-xs"
+								/>
+							</div>
+							<div>
+								<Label
+									htmlFor="cred-routes"
+									className="text-muted-foreground mb-1 block text-xs"
+								>
+									Routes (one per line)
+								</Label>
+								<Textarea
+									id="cred-routes"
+									value={routesText}
+									onChange={(e) => setRoutesText(e.target.value)}
+									rows={3}
+									placeholder="10.0.0.2:9443"
+									resizable="vertical"
+									className="bg-background font-mono text-xs"
+								/>
+							</div>
+						</div>
+					)}
+				</div>
+			)}
 
 			{schemeType !== 'oauth2' && (
 				<div className="flex gap-2 pt-2">
@@ -640,10 +956,34 @@ function CredentialFields({ selectedApi, onBack, onSaved, editId, existing }: Cr
 export default function CredentialFormPage() {
 	const { id } = useParams<{ id: string }>();
 	const navigate = useNavigate();
+	const [searchParams] = useSearchParams();
 	const isEdit = !!id;
 
+	// Query param deeplink support:
+	//   ?api_id=discourse.org
+	//   &label=My+Discourse
+	//   &identity=seanblanchfield
+	//   &server_vars[defaultHost]=techpreneurs.ie
+	// The `value` param (the secret) is intentionally supported so the UI renders
+	// ready for the user to paste — but the agent can omit it and only prefill
+	// the non-sensitive fields.
+	const paramApiId = searchParams.get('api_id');
+	const prefill = paramApiId
+		? {
+				label: searchParams.get('label') ?? undefined,
+				value: searchParams.get('value') ?? undefined,
+				identity: searchParams.get('identity') ?? undefined,
+				serverVars: Array.from(searchParams.entries())
+					.filter(([k]) => k.startsWith('server_vars[') && k.endsWith(']'))
+					.reduce<Record<string, string>>((acc, [k, v]) => {
+						acc[k.slice('server_vars['.length, -1)] = v;
+						return acc;
+					}, {}),
+			}
+		: undefined;
+
 	const [selectedApi, setSelectedApi] = useState<ApiOut | null>(null);
-	const [step, setStep] = useState<'pick' | 'fill'>(isEdit ? 'fill' : 'pick');
+	const [step, setStep] = useState<'pick' | 'fill'>(isEdit || !!paramApiId ? 'fill' : 'pick');
 
 	// For edit mode, load the existing credential to pre-select its API
 	const { data: existing } = useQuery({
@@ -659,15 +999,28 @@ export default function CredentialFormPage() {
 		enabled: isEdit && !!existing?.api_id,
 	});
 
+	// For deeplink mode (?api_id=...), fetch the preselected API
+	const { data: paramApi } = useQuery({
+		queryKey: ['api', paramApiId],
+		queryFn: () => api.getApi(paramApiId!),
+		enabled: !isEdit && !!paramApiId,
+	});
+
 	useEffect(() => {
 		if (existingApi) {
 			setSelectedApi(existingApi as ApiOut);
 			setStep('fill');
 		} else if (isEdit && existing && !existing.api_id) {
-			// No api_id — fall back to picker
 			setStep('pick');
 		}
 	}, [existingApi, existing, isEdit]);
+
+	useEffect(() => {
+		if (paramApi) {
+			setSelectedApi(paramApi as ApiOut);
+			setStep('fill');
+		}
+	}, [paramApi]);
 
 	const handleApiSelect = (a: ApiOut) => {
 		setSelectedApi(a);
@@ -719,11 +1072,12 @@ export default function CredentialFormPage() {
 						onSaved={() => navigate('/credentials')}
 						editId={id}
 						existing={existing}
+						prefill={prefill}
 					/>
 				)}
-				{step === 'fill' && !selectedApi && isEdit && (
+				{step === 'fill' && !selectedApi && (isEdit || !!paramApiId) && (
 					<LoadingState
-						message="Loading credential…"
+						message={paramApiId ? 'Loading API…' : 'Loading credential…'}
 						icon={<Loader2 className="h-5 w-5 animate-spin" />}
 					/>
 				)}

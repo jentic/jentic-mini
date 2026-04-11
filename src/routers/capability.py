@@ -343,19 +343,60 @@ async def get_capability(
     servers = doc.get("servers", [])
     server_url = base_url or (servers[0].get("url") if servers else None)
 
+    # ── Server variables: collect definitions from spec + configured values from credential ──
+    # OpenAPI server variables are how self-hosted software (Discourse, Jenkins, HA, etc.)
+    # express that the base URL is instance-specific. We surface them here so callers know
+    # what needs to be configured before the broker can route the request.
+    import re as _re
+    import json as _json
+    server_variable_defs: dict | None = None
+    if servers:
+        all_vars: dict = {}
+        for srv in servers:
+            all_vars.update(srv.get("variables", {}))
+        if all_vars:
+            server_variable_defs = {
+                k: {
+                    "default": v.get("default"),
+                    "description": v.get("description"),
+                    "enum": v.get("enum"),
+                }
+                for k, v in all_vars.items()
+            }
+    # Also detect implicit variables from URL templates not covered by a variables block
+    if server_url:
+        _implicit = _re.findall(r"\{([^}]+)\}", server_url)
+        for _v in _implicit:
+            if server_variable_defs is None:
+                server_variable_defs = {}
+            if _v not in server_variable_defs:
+                server_variable_defs[_v] = {"default": None, "description": None, "enum": None}
+
     credentials = None
     if toolkit_id:
         async with get_db() as db:
             async with db.execute(
-                """SELECT c.id, c.label FROM credentials c
+                """SELECT c.id, c.label, c.server_variables FROM credentials c
                    JOIN toolkit_credentials cc ON cc.credential_id = c.id
                    WHERE cc.toolkit_id = ?""",
                 (toolkit_id,),
             ) as cur:
                 creds = await cur.fetchall()
+        configured_vars: dict | None = None
+        if creds and server_variable_defs:
+            # Use the first matching credential's server_variables
+            for cred_row in creds:
+                sv_raw = cred_row[2] if len(cred_row) > 2 else None
+                if sv_raw:
+                    try:
+                        configured_vars = _json.loads(sv_raw)
+                        break
+                    except Exception:
+                        pass
         credentials = (
             {"status": "configured",
-             "available": [{"id": c[0], "label": c[1]} for c in creds]}
+             "available": [{"id": c[0], "label": c[1]} for c in creds],
+             **(({"server_variables_configured": configured_vars}) if configured_vars else {})}
             if creds else {"status": "not_configured"}
         )
 
@@ -386,6 +427,7 @@ async def get_capability(
         "response_schema": response_schema,
         "auth": auth or None,
         "server": server_url,
+        **(({"server_variables": server_variable_defs}) if server_variable_defs else {}),
         "_links": links,
     }
     if credentials is not None:
