@@ -86,8 +86,11 @@ _HOP_BY_HOP = {
     "x-real-ip", "x-scheme",
 }
 
-# Response hop-by-hop headers — same set. aiohttp does NOT auto-decompress
-# response bodies, so content-encoding passes through correctly.
+# aiohttp auto-decompresses response bodies by default (auto_decompress=True).
+# We disable this below so the raw body passes through unchanged and
+# content-encoding forwards correctly (client gets what upstream actually sent).
+# _HOP_BY_HOP_RESPONSE is the same set — content-encoding is NOT stripped,
+# because with auto_decompress=False the header accurately describes the body.
 _HOP_BY_HOP_RESPONSE = _HOP_BY_HOP
 
 async def _resolve_credential_ids(host: str, toolkit_id: str | None, path: str = "/") -> list[str]:
@@ -923,7 +926,7 @@ async def broker(request: Request, target: str):
                 fwd_hdrs = {k: v for k, v in request.headers.items() if k.lower() not in _HOP_BY_HOP}
                 fwd_hdrs.update(inject_headers)
                 _connector = aiohttp.TCPConnector(ssl=False if not _ssl_verify else None)
-                async with aiohttp.ClientSession(connector=_connector) as cl:
+                async with aiohttp.ClientSession(connector=_connector, auto_decompress=False) as cl:
                     async with cl.request(
                         request.method, upstream_url,
                         headers=fwd_hdrs,
@@ -975,7 +978,7 @@ async def broker(request: Request, target: str):
 
     try:
         _connector = aiohttp.TCPConnector(ssl=False if not _ssl_verify else None)
-        async with aiohttp.ClientSession(connector=_connector) as client:
+        async with aiohttp.ClientSession(connector=_connector, auto_decompress=False) as client:
             async with client.request(
                 method=request.method,
                 url=upstream_url,
