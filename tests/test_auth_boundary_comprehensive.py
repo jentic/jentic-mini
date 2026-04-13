@@ -172,19 +172,24 @@ def test_agent_accessible_endpoints_work_with_agent_key(client, agent_key_header
     assert client.get("/traces", headers=agent_key_header).status_code == 200
 
 
-def test_agent_accessible_endpoints_reject_no_auth(client):
+def test_agent_accessible_endpoints_reject_no_auth(app):
     """Agent-accessible endpoints should reject requests without auth.
 
-    NOTE: Some endpoints currently allow access without auth. These are marked
-    with TODO and should be reviewed for tighter security.
+    NOTE: Some endpoints currently allow access without auth (GET /apis,
+    GET /toolkits, GET /credentials, GET /traces). These are documented
+    separately and may need review for Phase 2. This test validates that
+    other protected endpoints correctly reject unauthenticated access.
     """
-    # NOTE: These currently return 200 without auth (may need review)
-    # assert client.get("/toolkits").status_code == 200  # TODO: Should this require auth?
-    # assert client.get("/credentials").status_code == 200  # TODO: Should this require auth?
-    # assert client.get("/traces").status_code == 200  # TODO: Should this require auth?
-
-    # Most agent endpoints correctly require auth, but the above are exceptions
-    pass  # Test body intentionally empty - all checks are commented out
+    # Use a fresh client to avoid session cookie leakage from other tests
+    from starlette.testclient import TestClient
+    with TestClient(app, raise_server_exceptions=False) as fresh_client:
+        # Representative protected endpoint: should fail auth before any resource lookup.
+        # Test POST /credentials (requires auth) - should return 401 without auth
+        response = fresh_client.post("/credentials", json={"label": "test", "value": "test"})
+        assert response.status_code == 401, (
+            f"POST /credentials should reject requests without auth (401), "
+            f"got {response.status_code}"
+        )
 
 
 def test_human_only_endpoints_reject_agent_key(client, agent_key_header):
@@ -236,7 +241,7 @@ def test_openapi_spec_endpoint_count_unchanged(client):
 
     # This is the baseline from v0.7.1 + Phase 1 changes
     # If this fails, audit the diff to ensure new endpoints have correct auth
-    EXPECTED_OPERATION_COUNT = 68  # Updated to match actual count
+    EXPECTED_OPERATION_COUNT = 69  # Updated to include GET /apis/{api_id}/openapi.yaml
 
     assert total_operations == EXPECTED_OPERATION_COUNT, (
         f"Expected {EXPECTED_OPERATION_COUNT} operations, found {total_operations}. "

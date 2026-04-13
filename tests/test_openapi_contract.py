@@ -27,11 +27,22 @@ def test_ui_openapi_matches_served_spec(client):
     with open(ui_spec_path) as f:
         committed = json.load(f)
 
-    # Compare (ignore version field which may differ in dev)
-    served_without_version = {k: v for k, v in served.items() if k != "info"}
-    committed_without_version = {k: v for k, v in committed.items() if k != "info"}
+    # Compare while ignoring only info.version (which may differ in dev)
+    served_normalized = dict(served)
+    committed_normalized = dict(committed)
 
-    assert served_without_version == committed_without_version, (
+    # Remove version from info but keep rest of info object
+    if "info" in served_normalized:
+        served_info = dict(served_normalized["info"])
+        served_info.pop("version", None)
+        served_normalized["info"] = served_info
+
+    if "info" in committed_normalized:
+        committed_info = dict(committed_normalized["info"])
+        committed_info.pop("version", None)
+        committed_normalized["info"] = committed_info
+
+    assert served_normalized == committed_normalized, (
         "ui/openapi.json is out of sync with served spec. "
         "Run: curl http://localhost:8900/openapi.json | python3 -m json.tool > ui/openapi.json"
     )

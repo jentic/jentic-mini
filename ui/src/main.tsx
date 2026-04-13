@@ -6,6 +6,8 @@ import '@/index.css';
 import { OpenAPI } from '@/api/generated';
 import { ApiError } from '@/api/generated/core/ApiError';
 
+// Configure OpenAPI client before any services are used
+OpenAPI.BASE = ''; // Use relative URLs (same origin as UI) — works in dev (Vite proxy) and prod (same port)
 OpenAPI.WITH_CREDENTIALS = true;
 
 function isNonTransientError(error: unknown): boolean {

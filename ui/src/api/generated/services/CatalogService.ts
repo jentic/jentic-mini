@@ -126,7 +126,7 @@ export class CatalogService {
         });
     }
     /**
-     * Download merged OpenAPI spec — base spec with all confirmed overlays applied
+     * Download merged OpenAPI spec as JSON — base spec with all confirmed overlays applied
      * Returns the full merged OpenAPI spec for this API as a JSON download.
      *
      * All confirmed overlays are applied on top of the base spec using deep merge
@@ -141,7 +141,7 @@ export class CatalogService {
      * @returns any Successful Response
      * @throws ApiError
      */
-    public static getApiOpenapiApisApiIdOpenapiJsonGet({
+    public static getApiOpenapiJsonApisApiIdOpenapiJsonGet({
         apiId,
     }: {
         /**
@@ -152,6 +152,41 @@ export class CatalogService {
         return __request(OpenAPI, {
             method: 'GET',
             url: '/apis/{api_id}/openapi.json',
+            path: {
+                'api_id': apiId,
+            },
+            errors: {
+                422: `Validation Error`,
+            },
+        });
+    }
+    /**
+     * Download merged OpenAPI spec as YAML — base spec with all confirmed overlays applied
+     * Returns the full merged OpenAPI spec for this API as a YAML download.
+     *
+     * All confirmed overlays are applied on top of the base spec using deep merge
+     * (overlay values win on conflict). Pending overlays are not included.
+     *
+     * Overlay actions with `target: "$"` are applied as root-level deep merges.
+     * Actions targeting specific paths or operations are listed in
+     * `x-jentic-unapplied-overlays` for transparency.
+     *
+     * For selective access to spec sections without downloading the full file,
+     * use `GET /apis/{api_id}?sections=info,servers,security,tags`.
+     * @returns any Successful Response
+     * @throws ApiError
+     */
+    public static getApiOpenapiYamlApisApiIdOpenapiYamlGet({
+        apiId,
+    }: {
+        /**
+         * API ID (hostname or hostname/path format)
+         */
+        apiId: string,
+    }): CancelablePromise<any> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/apis/{api_id}/openapi.yaml',
             path: {
                 'api_id': apiId,
             },

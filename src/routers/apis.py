@@ -9,7 +9,7 @@ from urllib.parse import urlparse
 from typing import Annotated, Optional
 
 from fastapi import APIRouter, HTTPException, Path, Query
-from fastapi.responses import Response, JSONResponse
+from fastapi.responses import Response
 from src.models import ApiOut, OperationOut, ApiListPage, OperationListPage
 from src.db import get_db
 from src.config import JENTIC_PUBLIC_HOSTNAME
@@ -18,31 +18,6 @@ from src.openapi_helpers import agent_hints
 
 router = APIRouter()
 
-
-# ---------------------------------------------------------------------------
-# OpenAPI Spec Endpoints
-# ---------------------------------------------------------------------------
-
-@router.get("/openapi.json", include_in_schema=False, tags=["catalog"])
-async def get_openapi_json():
-    """Serve OpenAPI spec as JSON with correct media type."""
-    # Import here to avoid circular dependency
-    from src.main import app
-    return JSONResponse(
-        content=app.openapi(),
-        media_type="application/openapi+json"
-    )
-
-
-@router.get("/openapi.yaml", include_in_schema=False, tags=["catalog"])
-async def get_openapi_yaml():
-    """Serve OpenAPI spec as YAML with correct media type."""
-    # Import here to avoid circular dependency
-    from src.main import app
-    return Response(
-        content=yaml.dump(app.openapi(), default_flow_style=False, sort_keys=False),
-        media_type="application/openapi+yaml"
-    )
 
 # ---------------------------------------------------------------------------
 # Spec helpers
@@ -546,7 +521,7 @@ _LARGE_SECTIONS = {"paths", "components", "webhooks"}
 
 @router.get(
     "/apis/{api_id:path}/openapi.json",
-    summary="Download merged OpenAPI spec — base spec with all confirmed overlays applied",
+    summary="Download merged OpenAPI spec as JSON — base spec with all confirmed overlays applied",
     openapi_extra=agent_hints(
         when_to_use="Use when you need the full OpenAPI specification file for an API with all confirmed overlays applied (security scheme corrections, server URL fixes). Returns complete spec as JSON download with Content-Disposition attachment header. Overlay actions with target: $ are deep-merged; other actions listed in x-jentic-unapplied-overlays. Useful for SDK generation, schema analysis, or importing into external tools.",
         prerequisites=[
@@ -556,13 +531,14 @@ _LARGE_SECTIONS = {"paths", "components", "webhooks"}
         avoid_when="Do not use for lightweight API inspection — use GET /apis/{api_id}?sections=info,servers,security instead. Do not use to browse operations — use GET /apis/{api_id}/operations for paginated operation list.",
         related_operations=[
             "GET /apis/{api_id} — get API metadata with selective spec sections (no download, lighter weight)",
+            "GET /apis/{api_id}/openapi.yaml — download the same spec in YAML format",
             "GET /apis/{api_id}/operations — list operations without downloading full spec",
             "GET /apis/{api_id}/overlays — view overlays that are merged into this spec",
             "POST /apis/{api_id}/overlays — submit a new overlay to correct security schemes or servers"
         ]
     ),
 )
-async def get_api_openapi(api_id: Annotated[str, Path(description="API ID (hostname or hostname/path format)")]):
+async def get_api_openapi_json(api_id: Annotated[str, Path(description="API ID (hostname or hostname/path format)")]):
     """
     Returns the full merged OpenAPI spec for this API as a JSON download.
 
@@ -586,7 +562,55 @@ async def get_api_openapi(api_id: Annotated[str, Path(description="API ID (hostn
     filename = api_id.replace("/", "_") + ".openapi.json"
     return Response(
         content=json.dumps(spec, indent=2),
-        media_type="application/json",
+        media_type="application/openapi+json",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.get(
+    "/apis/{api_id:path}/openapi.yaml",
+    summary="Download merged OpenAPI spec as YAML — base spec with all confirmed overlays applied",
+    openapi_extra=agent_hints(
+        when_to_use="Use when you need the full OpenAPI specification file for an API in YAML format with all confirmed overlays applied. Same content as GET /apis/{api_id}/openapi.json but in YAML. Useful for human readability, configuration files, or tools that prefer YAML format.",
+        prerequisites=[
+            "Requires authentication (toolkit key or human session)",
+            "Valid API ID from GET /apis (format: hostname or hostname/path)"
+        ],
+        avoid_when="Do not use for lightweight API inspection — use GET /apis/{api_id}?sections=info,servers,security instead. Do not use to browse operations — use GET /apis/{api_id}/operations for paginated operation list.",
+        related_operations=[
+            "GET /apis/{api_id} — get API metadata with selective spec sections (no download, lighter weight)",
+            "GET /apis/{api_id}/openapi.json — download the same spec in JSON format",
+            "GET /apis/{api_id}/operations — list operations without downloading full spec",
+            "GET /apis/{api_id}/overlays — view overlays that are merged into this spec",
+            "POST /apis/{api_id}/overlays — submit a new overlay to correct security schemes or servers"
+        ]
+    ),
+)
+async def get_api_openapi_yaml(api_id: Annotated[str, Path(description="API ID (hostname or hostname/path format)")]):
+    """
+    Returns the full merged OpenAPI spec for this API as a YAML download.
+
+    All confirmed overlays are applied on top of the base spec using deep merge
+    (overlay values win on conflict). Pending overlays are not included.
+
+    Overlay actions with `target: "$"` are applied as root-level deep merges.
+    Actions targeting specific paths or operations are listed in
+    `x-jentic-unapplied-overlays` for transparency.
+
+    For selective access to spec sections without downloading the full file,
+    use `GET /apis/{api_id}?sections=info,servers,security,tags`.
+    """
+    async with get_db() as db:
+        async with db.execute("SELECT id, spec_path FROM apis WHERE id=?", (api_id,)) as cur:
+            row = await cur.fetchone()
+    if not row:
+        raise HTTPException(404, f"API '{api_id}' not found")
+
+    spec = await _load_merged_spec(api_id, row[1])
+    filename = api_id.replace("/", "_") + ".openapi.yaml"
+    return Response(
+        content=yaml.dump(spec, default_flow_style=False, sort_keys=False, allow_unicode=True),
+        media_type="application/openapi+yaml",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 

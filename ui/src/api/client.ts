@@ -1,5 +1,4 @@
 import {
-	OpenAPI,
 	CatalogService,
 	ToolkitsService,
 	UserService,
@@ -8,8 +7,8 @@ import {
 	InspectService,
 } from './generated';
 
-OpenAPI.WITH_CREDENTIALS = true;
-OpenAPI.BASE = ''; // Use relative URLs (same origin as UI) — works in dev (Vite proxy) and prod (same port)
+// Note: OpenAPI.BASE and WITH_CREDENTIALS are set in main.tsx to ensure
+// they're initialized before any service imports execute
 
 export const api = {
 	getMe: () => UserService.meUserMeGet(),
