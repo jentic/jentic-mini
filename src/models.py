@@ -143,9 +143,9 @@ class CredentialOut(BaseModel):
 
 class ToolkitKeyOut(BaseModel):
     """Toolkit API key metadata. The full key value is only returned at creation time."""
-    id: str = Field(examples=["key_abc123xyz"], description="Key ID (format: key_{12chars})")
+    id: str = Field(examples=["ck_a1b2c3d4"], description="Key record ID")
     name: str | None = Field(default=None, examples=["Production agent key"], description="User-assigned key name for identification")
-    prefix: str | None = Field(default=None, examples=["jent_"], description="Key prefix (always 'jent_' for Jentic keys)")
+    prefix: str | None = Field(default=None, examples=["tk_"], description="Key prefix (always 'tk_' for toolkit keys)")
     allowed_ips: list[str] | None = Field(default=None, examples=[["192.168.1.0/24"]], description="IP CIDR ranges allowed to use this key (null = no IP restriction)")
     revoked: bool = Field(default=False, examples=[False], description="True if this key has been revoked and can no longer authenticate")
     created_at: float | None = Field(default=None, examples=[1672531200.0], description="Unix timestamp when key was created")
@@ -154,12 +154,12 @@ class ToolkitKeyOut(BaseModel):
 
 class ToolkitKeyCreated(ToolkitKeyOut):
     """Returned only at key creation — includes the full key value (never returned again)."""
-    key: str = Field(examples=["jent_1234567890abcdefghijklmnopqrstuvwxyz"], description="Full API key value (format: jent_{40chars}) - only shown once at creation")
+    key: str = Field(examples=["tk_ABCDEFghijklmnop1234567890abcd"], description="Full API key value (format: tk_{32chars}) — only shown once at creation")
 
 
 class CredentialBindingOut(BaseModel):
     """Credential bound to a toolkit with access control rules. Includes label and API binding info."""
-    credential_id: str = Field(examples=["cred_abc123xyz"], description="Credential ID (format: cred_{12chars})")
+    credential_id: str = Field(examples=["api.github.com-pat"], description="Credential ID")
     label: str | None = Field(default=None, examples=["GitHub PAT for jentic-mini"], description="User-assigned credential label")
     api_id: str | None = Field(default=None, examples=["api.github.com"], description="API ID this credential is for")
     auth_type: str | None = Field(default=None, examples=["bearer"], description="Auth scheme type: bearer, basic, apiKey, oauth2, etc")
@@ -450,7 +450,7 @@ class ImportOut(BaseModel):
 # ── Default API key (output) ──────────────────────────────────────────────────
 
 class DefaultKeyOut(BaseModel):
-    key: str = Field(examples=["jent_1234567890abcdefghijklmnopqrstuvwxyz"], description="Generated API key for the default toolkit (format: jent_{40chars})")
+    key: str = Field(examples=["tk_ABCDEFghijklmnop1234567890abcd"], description="Generated API key for the default toolkit (format: tk_{32chars})")
     toolkit_id: str = Field(examples=["default"], description="Toolkit ID this key is bound to")
     setup_url: str | None = Field(default=None, examples=["http://localhost:8900/setup"], description="URL for first-time setup wizard (if applicable)")
     message: str | None = Field(default=None, examples=["First-time setup key generated. Save this key securely."], description="Human-readable message about key generation")
