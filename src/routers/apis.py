@@ -4,7 +4,7 @@ import uuid
 import json
 import yaml
 import copy
-from pathlib import Path
+import pathlib
 from urllib.parse import urlparse
 from typing import Annotated, Optional
 
@@ -62,7 +62,7 @@ def _deep_merge(base: dict, overlay: dict) -> dict:
 async def _load_spec(spec_path: str) -> dict:
     """Load a JSON or YAML spec file. Returns {} on failure."""
     try:
-        p = Path(spec_path)
+        p = pathlib.Path(spec_path)
         raw = p.read_text()
         return yaml.safe_load(raw) if str(p).endswith((".yaml", ".yml")) else json.loads(raw)
     except Exception:
@@ -244,7 +244,7 @@ def _parse_operations(api_id: str, spec_path: str, base_url: str | None = None) 
     - operation_id: OpenAPI operationId string
     - method, path, summary, description
     """
-    p = Path(spec_path)
+    p = pathlib.Path(spec_path)
     if not p.exists():
         return []
     raw = p.read_text()
@@ -274,7 +274,7 @@ def _parse_operations(api_id: str, spec_path: str, base_url: str | None = None) 
 
 def _load_base_url_from_spec(spec_path: str) -> str | None:
     """Load and extract base URL from a spec file."""
-    p = Path(spec_path)
+    p = pathlib.Path(spec_path)
     if not p.exists():
         return None
     try:
