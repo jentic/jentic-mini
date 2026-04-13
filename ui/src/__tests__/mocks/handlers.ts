@@ -11,9 +11,7 @@ export const handlers = [
 	// ── Auth & health ───────────────────────────────────────────────
 	http.get('/health', () => HttpResponse.json({ status: 'ok' })),
 
-	http.get('/user/me', () =>
-		HttpResponse.json({ logged_in: true, username: 'admin', role: 'admin' }),
-	),
+	http.get('/user/me', () => HttpResponse.json({ logged_in: true, username: 'admin' })),
 
 	http.post('/user/login', () => HttpResponse.json({ logged_in: true, username: 'admin' })),
 
