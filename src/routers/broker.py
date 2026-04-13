@@ -503,7 +503,7 @@ _BROKER_RESPONSES = {
         prerequisites=[
             "Requires authentication (toolkit key or human session)",
             "Requires registered API with credentials (use POST /credentials to add)",
-            "Requires credential bound to toolkit (use PUT /toolkits/{id}/credentials/{cred_id})",
+            "Requires credential bound to toolkit (use POST /toolkits/{id}/credentials with {credential_id} in body)",
             "Toolkit credential must allow the operation (governed by access policy)"
         ],
         avoid_when="Do not use for workflows — use POST /workflows/{slug} instead. Do not use for Jentic internal endpoints — use direct paths like /apis, /search.",
@@ -512,7 +512,7 @@ _BROKER_RESPONSES = {
             "GET /traces/{id} — view execution trace after broker call (use X-Jentic-Execution-Id header)",
             "GET /jobs/{id} — poll async job status when Prefer: wait=0 header is used",
             "POST /credentials — add credentials before calling",
-            "PUT /toolkits/{id}/credentials/{cred_id} — bind credentials to toolkit"
+            "POST /toolkits/{id}/credentials — bind credentials to toolkit (body: {credential_id})"
         ]
     ),
 )
