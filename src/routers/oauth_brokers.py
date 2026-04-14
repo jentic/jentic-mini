@@ -290,7 +290,7 @@ class OAuthBrokerUpdate(NormModel):
     response_model=OAuthBrokerOut,
     summary="Update an OAuth broker configuration",
     dependencies=[Depends(require_human_session)],
-    openapi_extra={"requestBody": {"description": "Fields to update: type, config, or encrypted credentials — only provided fields are changed"}},
+    openapi_extra={"requestBody": {"description": "Provider-specific config fields to update: client_id, client_secret, project_id — only provided fields are changed, secrets re-encrypted"}},
 )
 async def update_oauth_broker(broker_id: BrokerIdPath, body: OAuthBrokerUpdate):
     """Update client_id, client_secret, and/or project_id for an existing broker.
