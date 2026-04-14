@@ -8,6 +8,9 @@ import {
 	InspectService,
 } from './generated';
 
+// Configure OpenAPI client (also set in main.tsx for explicitness, but initialized here
+// to ensure tests that import this module directly get the correct config)
+OpenAPI.BASE = ''; // Use relative URLs (same origin as UI) — works in dev (Vite proxy) and prod (same port)
 OpenAPI.WITH_CREDENTIALS = true;
 
 export const api = {
@@ -191,7 +194,11 @@ async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
 	if (!res.ok) {
 		const body = await res.text().catch(() => '');
 		let data: Record<string, any> | null = null;
-		try { data = JSON.parse(body); } catch { /* not JSON */ }
+		try {
+			data = JSON.parse(body);
+		} catch {
+			/* not JSON */
+		}
 		throw new ApiError(res.status, res.statusText, body, data);
 	}
 	const text = await res.text();

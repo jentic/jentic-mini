@@ -30,6 +30,7 @@ from src.brokers.pipedream import api_host_to_pd_slug, broker_credential_id
 from src.db import get_db
 from src.oauth_broker import registry as oauth_broker_registry
 import src.vault as vault
+from src.openapi_helpers import agent_hints
 
 log = logging.getLogger("jentic.routers.oauth_brokers")
 
@@ -48,8 +49,8 @@ _PIPEDREAM_CONFIG_EXAMPLE = {
 _SUPPORTED_TYPES = ("pipedream",)
 
 # Annotated path/query helpers with pre-filled Swagger examples
-BrokerIdPath = Annotated[str, Path(description="The broker ID", example="pipedream")]
-ExternalUserIdQuery = Annotated[str | None, Query(description="Filter by external user ID", example="default")]
+BrokerIdPath = Annotated[str, Path(description="The broker ID", examples=["pipedream"])]
+ExternalUserIdQuery = Annotated[str | None, Query(description="Filter by external user ID", examples=["default"])]
 
 _CREATE_EXAMPLE = {
     "type": "pipedream",
@@ -112,6 +113,7 @@ automatically proxied with the user's OAuth token injected server-side.
 
 
 class OAuthBrokerCreate(NormModel):
+    """Register a new OAuth broker for delegated credential management via Pipedream or other providers."""
     id: str | None = Field(None, description="Optional custom broker ID. Auto-generated from type if omitted.")
     type: str = Field(..., description="Broker backend type. Currently supported: `pipedream`.")
     config: dict[str, Any] = Field(
@@ -130,14 +132,16 @@ class OAuthBrokerCreate(NormModel):
 
 
 class OAuthBrokerOut(BaseModel):
-    id: str
-    type: str
-    config: dict[str, Any]          # provider-specific, never includes secret
-    created_at: float
-    accounts_discovered: int = 0
+    """OAuth broker configuration with discovered accounts count. Config excludes sensitive fields."""
+    id: str = Field(examples=["broker_abc123xyz"], description="Broker ID (format: broker_{12chars})")
+    type: str = Field(examples=["pipedream"], description="Broker type: 'pipedream' or other provider")
+    config: dict[str, Any] = Field(description="Public broker configuration (excludes encrypted secret fields)")
+    created_at: float = Field(examples=[1609459200], description="Unix timestamp when broker was registered")
+    accounts_discovered: int = Field(default=0, examples=[3], description="Number of OAuth accounts discovered from this broker")
 
 
 class SyncRequest(NormModel):
+    """Request body for syncing discovered OAuth accounts from a broker into Jentic credentials."""
     external_user_id: str = Field(
         "default",
         description=(
@@ -202,6 +206,7 @@ def _extract_pipedream_config(config: dict) -> tuple[str, str, str, str | None, 
     summary="Register an OAuth broker",
     description=_CREATE_DESCRIPTION,
     dependencies=[Depends(require_human_session)],
+    openapi_extra={"requestBody": {"description": "Broker configuration: type (e.g. 'pipedream'), provider-specific config, and encrypted credentials"}},
 )
 async def create_oauth_broker(body: OAuthBrokerCreate):
     if body.type not in _SUPPORTED_TYPES:
@@ -267,6 +272,7 @@ async def create_oauth_broker(body: OAuthBrokerCreate):
 
 
 class OAuthBrokerUpdate(NormModel):
+    """Update OAuth broker configuration. Only provided fields are changed; secrets remain encrypted."""
     config: dict[str, Any] = Field(
         ...,
         description=(
@@ -284,6 +290,7 @@ class OAuthBrokerUpdate(NormModel):
     response_model=OAuthBrokerOut,
     summary="Update an OAuth broker configuration",
     dependencies=[Depends(require_human_session)],
+    openapi_extra={"requestBody": {"description": "Provider-specific config fields to update: client_id, client_secret, project_id — only provided fields are changed, secrets re-encrypted"}},
 )
 async def update_oauth_broker(broker_id: BrokerIdPath, body: OAuthBrokerUpdate):
     """Update client_id, client_secret, and/or project_id for an existing broker.
@@ -354,6 +361,17 @@ async def update_oauth_broker(broker_id: BrokerIdPath, body: OAuthBrokerUpdate):
     "",
     summary="List registered OAuth brokers",
     tags=["inspect"],
+    openapi_extra=agent_hints(
+        when_to_use="Use to discover available OAuth brokers (Pipedream, future: Jentic native) for delegated OAuth credential management. Returns list of registered brokers with type, client_id, project_id, and default_external_user_id. Client_secret is never included. Accessible to both agents (toolkit key) and humans (session). Use before connecting apps or syncing accounts.",
+        prerequisites=["Requires authentication (toolkit key or human session)"],
+        avoid_when="Do not use to retrieve individual broker details — use GET /oauth-brokers/{broker_id} instead. Do not use to manage OAuth accounts — use POST /oauth-brokers/{broker_id}/connect-link to initiate OAuth.",
+        related_operations=[
+            "POST /oauth-brokers — register a new OAuth broker (Pipedream)",
+            "GET /oauth-brokers/{broker_id} — get detailed broker configuration and account statistics",
+            "POST /oauth-brokers/{broker_id}/connect-link — initiate OAuth flow for an API via broker",
+            "POST /oauth-brokers/{broker_id}/sync — pull connected accounts into Jentic after OAuth"
+        ]
+    ),
 )
 async def list_oauth_brokers():
     """Return all registered OAuth brokers as a flat list. `client_secret` is never included.
@@ -375,6 +393,14 @@ async def list_oauth_brokers():
     tags=["inspect"],
 )
 async def get_oauth_broker(broker_id: BrokerIdPath):
+    """
+    Retrieve OAuth broker configuration and metadata.
+
+    Returns broker type, client ID, project ID, and connected account statistics.
+    Use this to verify a broker is registered before creating connect links or syncing accounts.
+
+    For connected account details, use `GET /oauth-brokers/{broker_id}/accounts`.
+    """
     async with get_db() as db:
         async with db.execute(
             "SELECT id, type, client_id, project_id, default_external_user_id, created_at "
@@ -388,6 +414,7 @@ async def get_oauth_broker(broker_id: BrokerIdPath):
 
 
 class ConnectLinkRequest(NormModel):
+    """Generate a Pipedream Connect Link for authorizing a new OAuth account. Returns URL for user authorization."""
     app: str = Field(
         ...,
         description=(
@@ -426,6 +453,7 @@ class ConnectLinkRequest(NormModel):
 @router.post(
     "/{broker_id}/connect-link",
     summary="Generate a Pipedream Connect Link for authorising apps",
+    openapi_extra={"requestBody": {"description": "Connect link request: Pipedream app slug (e.g. gmail, slack), human-readable label for the connection, and optional api_id override for catalog binding"}},
 )
 async def create_connect_link(broker_id: BrokerIdPath, body: ConnectLinkRequest, request: Request):
     """Generate a short-lived Pipedream Connect Link URL.
@@ -669,6 +697,7 @@ async def connect_callback(
 @router.post(
     "/{broker_id}/sync",
     summary="Sync connected accounts from the OAuth broker",
+    openapi_extra={"requestBody": {"description": "Sync request: list of API slugs to sync accounts for (fetches connected accounts from broker and imports as Jentic credentials)"}},
 )
 async def sync_broker_accounts(broker_id: BrokerIdPath, body: SyncRequest, request: Request):
     """Re-fetch connected accounts from the provider and update local mappings.
@@ -781,7 +810,7 @@ async def list_broker_accounts(broker_id: BrokerIdPath, external_user_id: Extern
     summary="Remove a connected account from an OAuth broker",
     dependencies=[Depends(require_human_session)],
 )
-async def delete_broker_account(broker_id: BrokerIdPath, account_id: str):
+async def delete_broker_account(broker_id: BrokerIdPath, account_id: Annotated[str, Path(description="Connected account ID to delete")]):
     """Remove a specific connected account from this broker.
 
     This performs three actions in order:
@@ -867,16 +896,37 @@ async def delete_broker_account(broker_id: BrokerIdPath, account_id: str):
 
 
 class AccountUpdate(NormModel):
+    """Rename a connected OAuth account. Label is used in UI and credential binding displays."""
     label: str = Field(..., min_length=1, description="New display label for this account")
 
 
 @router.patch(
     "/{broker_id}/accounts/{account_id}",
     summary="Update a connected account (e.g. rename label)",
+    openapi_extra={"requestBody": {"description": "Account update: new display label for this connected OAuth account"}},
     dependencies=[Depends(require_human_session)],
 )
-async def update_broker_account(broker_id: BrokerIdPath, account_id: str, body: AccountUpdate):
-    """Patch a connected account record. Currently supports updating `label` only."""
+async def update_broker_account(broker_id: BrokerIdPath, account_id: Annotated[str, Path(description="Connected account ID to update")], body: AccountUpdate):
+    """Patch a connected account record.
+
+    Updates the display label for a connected OAuth account. The account remains linked
+    to the same external OAuth identity and credentials are not affected. Label changes
+    are reflected in both the oauth_broker_accounts table and any associated credentials
+    in the vault.
+
+    Parameters:
+        broker_id: OAuth broker ID (e.g. 'pipedream')
+        account_id: Connected account ID from the broker
+        body: Update request containing the new label
+
+    Returns:
+        Updated account_id and label.
+
+    Auth: Requires human session (admin only).
+
+    Currently supports updating label only. Future versions may support updating
+    additional account metadata.
+    """
     new_label = body.label
     async with get_db() as db:
         async with db.execute(
@@ -903,7 +953,11 @@ async def update_broker_account(broker_id: BrokerIdPath, account_id: str, body: 
     summary="Get a reconnect link for an existing connected account",
     dependencies=[Depends(require_human_session)],
 )
-async def reconnect_account_link(broker_id: BrokerIdPath, account_id: str, request: Request):
+async def reconnect_account_link(
+    broker_id: BrokerIdPath,
+    account_id: Annotated[str, Path(description="OAuth broker account ID to reconnect")],
+    request: Request
+):
     """Generate a new OAuth connect link for an existing connected account.
 
     The returned URL sends the user through the Pipedream OAuth flow for the

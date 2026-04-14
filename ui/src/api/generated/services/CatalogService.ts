@@ -102,6 +102,9 @@ export class CatalogService {
         apiId,
         sections,
     }: {
+        /**
+         * API ID (hostname or hostname/path format)
+         */
         apiId: string,
         /**
          * Comma-separated list of OpenAPI spec sections to include in the response. Valid values: components, info, paths, security, servers, tags, webhooks. Default (when omitted): info, security, servers. Large sections (paths, components, webhooks) must be requested explicitly. Use GET /apis/{api_id}/openapi.json to download the full merged spec.
@@ -123,7 +126,7 @@ export class CatalogService {
         });
     }
     /**
-     * Download merged OpenAPI spec — base spec with all confirmed overlays applied
+     * Download merged OpenAPI spec as JSON — base spec with all confirmed overlays applied
      * Returns the full merged OpenAPI spec for this API as a JSON download.
      *
      * All confirmed overlays are applied on top of the base spec using deep merge
@@ -138,14 +141,52 @@ export class CatalogService {
      * @returns any Successful Response
      * @throws ApiError
      */
-    public static getApiOpenapiApisApiIdOpenapiJsonGet({
+    public static getApiOpenapiJsonApisApiIdOpenapiJsonGet({
         apiId,
     }: {
+        /**
+         * API ID (hostname or hostname/path format)
+         */
         apiId: string,
     }): CancelablePromise<any> {
         return __request(OpenAPI, {
             method: 'GET',
             url: '/apis/{api_id}/openapi.json',
+            path: {
+                'api_id': apiId,
+            },
+            errors: {
+                422: `Validation Error`,
+            },
+        });
+    }
+    /**
+     * Download merged OpenAPI spec as YAML — base spec with all confirmed overlays applied
+     * Returns the full merged OpenAPI spec for this API as a YAML download.
+     *
+     * All confirmed overlays are applied on top of the base spec using deep merge
+     * (overlay values win on conflict). Pending overlays are not included.
+     *
+     * Overlay actions with `target: "$"` are applied as root-level deep merges.
+     * Actions targeting specific paths or operations are listed in
+     * `x-jentic-unapplied-overlays` for transparency.
+     *
+     * For selective access to spec sections without downloading the full file,
+     * use `GET /apis/{api_id}?sections=info,servers,security,tags`.
+     * @returns any Successful Response
+     * @throws ApiError
+     */
+    public static getApiOpenapiYamlApisApiIdOpenapiYamlGet({
+        apiId,
+    }: {
+        /**
+         * API ID (hostname or hostname/path format)
+         */
+        apiId: string,
+    }): CancelablePromise<any> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/apis/{api_id}/openapi.yaml',
             path: {
                 'api_id': apiId,
             },
@@ -165,6 +206,9 @@ export class CatalogService {
         page = 1,
         limit = 50,
     }: {
+        /**
+         * API ID to list operations for
+         */
         apiId: string,
         /**
          * Page number (1-indexed)
@@ -207,7 +251,13 @@ export class CatalogService {
         apiId,
         requestBody,
     }: {
+        /**
+         * API ID to submit overlay for
+         */
         apiId: string,
+        /**
+         * OpenAPI Overlay 1.0 document to patch the stored spec — adds security schemes, corrects base URLs, or enriches operation metadata
+         */
         requestBody: OverlaySubmit,
     }): CancelablePromise<any> {
         return __request(OpenAPI, {
@@ -236,6 +286,9 @@ export class CatalogService {
     public static listOverlaysApisApiIdOverlaysGet({
         apiId,
     }: {
+        /**
+         * API ID to list overlays for
+         */
         apiId: string,
     }): CancelablePromise<any> {
         return __request(OpenAPI, {
@@ -251,7 +304,21 @@ export class CatalogService {
     }
     /**
      * Delete an overlay
-     * Delete an overlay by ID. Works on both pending and confirmed overlays.
+     * Delete an overlay by ID.
+     *
+     * Permanently removes the overlay from the database. Works on both pending and confirmed
+     * overlays. If the overlay was confirmed and actively patching the spec, the next
+     * broker call will use the spec without this overlay's changes.
+     *
+     * Parameters:
+     * api_id: API ID that owns this overlay
+     * overlay_id: Overlay ID to delete (format: overlay_xxxxxxxx)
+     *
+     * Returns:
+     * Confirmation with deleted overlay_id and api_id.
+     *
+     * Use when an overlay was submitted incorrectly or is no longer needed. To replace
+     * an incorrect overlay, delete it first, then submit a corrected version.
      * @returns any Successful Response
      * @throws ApiError
      */
@@ -259,7 +326,13 @@ export class CatalogService {
         apiId,
         overlayId,
     }: {
+        /**
+         * API ID
+         */
         apiId: string,
+        /**
+         * Overlay ID to delete
+         */
         overlayId: string,
     }): CancelablePromise<any> {
         return __request(OpenAPI, {
@@ -287,9 +360,21 @@ export class CatalogService {
         registeredOnly = false,
         unregisteredOnly = false,
     }: {
+        /**
+         * Search term to filter APIs by name or description
+         */
         q?: (string | null),
+        /**
+         * Maximum number of results (1-500)
+         */
         limit?: number,
+        /**
+         * Return only APIs already registered locally
+         */
         registeredOnly?: boolean,
+        /**
+         * Return only APIs not yet registered locally
+         */
         unregisteredOnly?: boolean,
     }): CancelablePromise<any> {
         return __request(OpenAPI, {
@@ -312,7 +397,8 @@ export class CatalogService {
      * The manifest is used by lazy import — when you `POST /credentials` for an API not yet in
      * your local registry, Jentic Mini resolves the spec from this manifest automatically.
      *
-     * Takes ~2–5 seconds (two unauthenticated GitHub API calls). Safe to call repeatedly.
+     * Fetches the curated apis.json index and the workflows directory listing
+     * (two unauthenticated HTTP requests). Safe to call repeatedly.
      * The manifest auto-refreshes daily; only call this explicitly if you need immediate sync
      * after a new API has been added to the public catalog.
      * @returns any Successful Response
@@ -338,6 +424,9 @@ export class CatalogService {
     public static getCatalogEntryCatalogApiIdGet({
         apiId,
     }: {
+        /**
+         * API ID from catalog to retrieve
+         */
         apiId: string,
     }): CancelablePromise<any> {
         return __request(OpenAPI, {
@@ -354,7 +443,7 @@ export class CatalogService {
     /**
      * Import an API spec or workflow — add to the searchable catalog
      * Registers an OpenAPI spec or Arazzo workflow into the catalog and BM25 index.
-     * Source types: url (fetch from URL), upload (multipart file), inline (JSON body).
+     * Source types: path (local file), url (fetch from URL), inline (spec content in request body).
      * For OpenAPI specs: parses operations, computes capability IDs, indexes descriptions.
      * For Arazzo workflows: stores definition, extracts input schema and involved APIs.
      * Returns the registered API or workflow with its canonical id.
@@ -364,6 +453,9 @@ export class CatalogService {
     public static importSourcesImportPost({
         requestBody,
     }: {
+        /**
+         * Array of import sources (local file paths, URLs, or inline spec content) to register in the catalog — supports OpenAPI 3.x and Arazzo 1.0
+         */
         requestBody: ImportRequest,
     }): CancelablePromise<ImportOut> {
         return __request(OpenAPI, {
@@ -385,6 +477,9 @@ export class CatalogService {
     public static createNoteNotesPost({
         requestBody,
     }: {
+        /**
+         * Note details: resource ID, note type (auth_quirk/usage_hint/execution_feedback/correction), content, optional execution link, confidence level, and source
+         */
         requestBody: NoteCreate,
     }): CancelablePromise<any> {
         return __request(OpenAPI, {
@@ -399,6 +494,14 @@ export class CatalogService {
     }
     /**
      * List notes for a resource
+     * List notes attached to resources (operations, workflows, APIs).
+     *
+     * Notes capture observations from execution — success signals, failure patterns,
+     * data validation findings, and human annotations. Agents use notes to build
+     * operational knowledge and improve reliability over time.
+     *
+     * Filter by `?resource={id}` to see notes for a specific operation/workflow,
+     * or by `?type={type}` to filter by note category (e.g., "success", "error", "validation").
      * @returns any Successful Response
      * @throws ApiError
      */
@@ -407,8 +510,17 @@ export class CatalogService {
         type,
         limit = 50,
     }: {
+        /**
+         * Filter notes by resource ID (capability_id, api_id, or workflow slug)
+         */
         resource?: (string | null),
+        /**
+         * Filter notes by type (auth_quirk, usage_hint, execution_feedback, correction)
+         */
         type?: (string | null),
+        /**
+         * Maximum number of notes to return (1-500)
+         */
         limit?: number,
     }): CancelablePromise<any> {
         return __request(OpenAPI, {
@@ -426,12 +538,19 @@ export class CatalogService {
     }
     /**
      * Delete a note
+     * Permanently delete a note.
+     *
+     * Use this to remove outdated observations, incorrect annotations, or
+     * notes that no longer apply after an API change.
      * @returns void
      * @throws ApiError
      */
     public static deleteNoteNotesNoteIdDelete({
         noteId,
     }: {
+        /**
+         * Note ID to delete (format: note_{8chars})
+         */
         noteId: string,
     }): CancelablePromise<void> {
         return __request(OpenAPI, {
@@ -495,6 +614,9 @@ export class CatalogService {
     public static getWorkflowWorkflowsSlugGet({
         slug,
     }: {
+        /**
+         * Workflow slug (URL-safe identifier)
+         */
         slug: string,
     }): CancelablePromise<Record<string, any>> {
         return __request(OpenAPI, {

@@ -12,7 +12,8 @@ export class AdminService {
      * The manifest is used by lazy import — when you `POST /credentials` for an API not yet in
      * your local registry, Jentic Mini resolves the spec from this manifest automatically.
      *
-     * Takes ~2–5 seconds (two unauthenticated GitHub API calls). Safe to call repeatedly.
+     * Fetches the curated apis.json index and the workflows directory listing
+     * (two unauthenticated HTTP requests). Safe to call repeatedly.
      * The manifest auto-refreshes daily; only call this explicitly if you need immediate sync
      * after a new API has been added to the public catalog.
      * @returns any Successful Response

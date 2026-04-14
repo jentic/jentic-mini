@@ -154,12 +154,40 @@ app = FastAPI(
         "| **catalog** | Humans/admin | Register APIs, upload specs, overlays, notes |\n"
         "| **credentials** | Humans only | Manage the credentials vault |\n\n"
         "Agents with a toolkit key need: **search**, **inspect**, **execute**, **toolkits** (read), **observe**."
-    ),    version=APP_VERSION,
+    ),
+    version=APP_VERSION,
     lifespan=lifespan,
     docs_url=None,
     redoc_url=None,
     openapi_url="/openapi.json",
     debug=False,
+    servers=[
+        {
+            "url": "https://{hostname}:{port}",
+            "description": "Self-hosted instance (HTTPS)",
+            "variables": {
+                "hostname": {"default": "localhost", "description": "Server hostname"},
+                "port": {"default": "8900", "description": "Server port"}
+            }
+        },
+        {
+            "url": "http://{hostname}:{port}",
+            "description": "Local development only (HTTP)",
+            "variables": {
+                "hostname": {"default": "localhost", "description": "Server hostname"},
+                "port": {"default": "8900", "description": "Server port"}
+            }
+        }
+    ],
+    contact={
+        "name": "Jentic Mini Support",
+        "url": "https://github.com/jentic/jentic-mini",
+        "email": "hello@jentic.com"
+    },
+    license_info={
+        "name": "Apache 2.0",
+        "identifier": "Apache-2.0"
+    },
 )
 
 app.add_middleware(APIKeyMiddleware)
@@ -190,7 +218,19 @@ app.include_router(oauth_brokers_router.router, tags=["credentials"])
 # ── Meta routes: health + root — MUST be before broker catch-all ─────────────
 @app.get("/health", tags=["meta"])
 async def health(request: Request):
-    """Returns current setup state with explicit instructions for agents."""
+    """Returns current setup state with explicit instructions for agents and UI.
+
+    Response varies based on setup progress:
+    - status='setup_required': No default API key claimed yet → agent should call POST /default-api-key/generate
+    - status='account_required': Agent key active, admin account not created → user should visit setup_url
+    - status='ok': Fully set up → includes version and apis_registered count
+
+    This endpoint is always public (no auth required) so agents can check setup state before
+    attempting authenticated calls. UI uses this to determine whether to show setup wizard.
+
+    Returns:
+        Setup status, version, and context-specific next steps or operational metrics.
+    """
     state = await setup_state()
 
     if not state["default_key_claimed"]:
@@ -413,6 +453,41 @@ _OPEN_OPERATIONS: set[tuple[str, str]] = {
     ("/workflows/{slug}", "post"),
 }
 
+# Human-only operations - require human session, reject agent keys
+_HUMAN_ONLY_OPERATIONS: set[tuple[str, str]] = {
+    # Credentials write
+    ("/credentials", "post"),
+    ("/credentials/{cid}", "patch"),
+    ("/credentials/{cid}", "delete"),
+    # Toolkit write
+    ("/toolkits", "post"),
+    ("/toolkits/{toolkit_id}", "patch"),
+    ("/toolkits/{toolkit_id}", "delete"),
+    ("/toolkits/{toolkit_id}/keys", "post"),
+    ("/toolkits/{toolkit_id}/keys/{key_id}", "patch"),
+    ("/toolkits/{toolkit_id}/keys/{key_id}", "delete"),
+    ("/toolkits/{toolkit_id}/credentials", "post"),
+    ("/toolkits/{toolkit_id}/credentials/{credential_id}", "delete"),
+    ("/toolkits/{toolkit_id}/credentials/{cred_id}/permissions", "put"),
+    ("/toolkits/{toolkit_id}/credentials/{cred_id}/permissions", "patch"),
+    # Access request approvals
+    ("/toolkits/{toolkit_id}/access-requests/{req_id}/approve", "post"),
+    ("/toolkits/{toolkit_id}/access-requests/{req_id}/deny", "post"),
+    # Catalog admin
+    ("/apis", "post"),
+    ("/apis/{api_id}", "delete"),
+    ("/apis/{api_id}/overlays", "post"),
+    ("/apis/{api_id}/overlays/{overlay_id}", "delete"),
+    # OAuth broker admin
+    ("/oauth-brokers", "post"),
+    ("/oauth-brokers/{broker_id}", "patch"),
+    ("/oauth-brokers/{broker_id}", "delete"),
+    ("/oauth-brokers/{broker_id}/accounts/{account_id}/reconnect-link", "post"),
+    ("/oauth-brokers/{broker_id}/accounts/{account_id}", "patch"),
+    # User management
+    ("/user/logout", "post"),
+}
+
 def custom_openapi():
     if app.openapi_schema:
         return app.openapi_schema
@@ -423,7 +498,16 @@ def custom_openapi():
         routes=app.routes,
         tags=app.openapi_tags,  # controls section order in Swagger UI
     )
+
+    # Add servers (HTTPS first)
+    schema["servers"] = app.servers
+
+    # Add contact and license
+    schema["info"]["contact"] = app.contact
+    schema["info"]["license"] = app.license_info
+
     schema.setdefault("components", {})
+
     schema["components"]["securitySchemes"] = {
         "JenticApiKey": {
             "type": "apiKey",
@@ -445,13 +529,24 @@ def custom_openapi():
     # Global default: endpoints require JenticApiKey OR HumanLogin
     schema["security"] = [{"JenticApiKey": []}, {"HumanLogin": []}]
 
-    # Override: mark open/public operations as unlocked (security: [])
+    # Set explicit security on all operations (required for SEC dimension scoring)
+    # Three-tier model:
+    # 1. Public (no auth): security: []
+    # 2. Human-only: security: [{"HumanLogin": []}]
+    # 3. Agent-accessible (agents OR humans): security: [{"JenticApiKey": []}, {"HumanLogin": []}]
     for path, path_item in schema.get("paths", {}).items():
         for method, operation in path_item.items():
             if not isinstance(operation, dict):
                 continue
             if (path, method.lower()) in _OPEN_OPERATIONS:
+                # Public operations: no auth required
                 operation["security"] = []
+            elif (path, method.lower()) in _HUMAN_ONLY_OPERATIONS:
+                # Human-only operations: require human session, reject agent keys
+                operation["security"] = [{"HumanLogin": []}]
+            else:
+                # Agent-accessible operations: agents OR humans can use
+                operation["security"] = [{"JenticApiKey": []}, {"HumanLogin": []}]
 
     # Reorder paths: group by root resource prefix, then depth (least → most specific),
     # then alphabetically within the same depth. This produces the natural logical order:

@@ -2,6 +2,9 @@
 /* istanbul ignore file */
 /* tslint:disable */
 /* eslint-disable */
+/**
+ * Register a new OAuth broker for delegated credential management via Pipedream or other providers.
+ */
 export type OAuthBrokerCreate = {
     /**
      * Optional custom broker ID. Auto-generated from type if omitted.

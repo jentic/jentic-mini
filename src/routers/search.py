@@ -3,6 +3,7 @@ from urllib.parse import quote
 from fastapi import APIRouter, Query
 from src.utils import abbreviate
 from src.models import SearchResult
+from src.openapi_helpers import agent_hints
 import src.bm25 as bm25
 
 router = APIRouter()
@@ -33,6 +34,16 @@ def _workflow_links(slug: str, wf_id: str) -> dict:
     "/search",
     summary="Search the catalog — find operations and workflows by natural language intent",
     response_model=list[SearchResult],
+    openapi_extra=agent_hints(
+        when_to_use="Use when you need to discover APIs or workflows based on a natural language description of what you want to do. Primary entry point for finding capabilities — search first before exploring individual APIs.",
+        prerequisites=["Requires authentication (toolkit key or human session)"],
+        avoid_when="Do not use if you already know the exact operation ID or workflow slug — use GET /inspect/{id} directly instead.",
+        related_operations=[
+            "GET /inspect/{id} — get full operation details after finding it via search",
+            "GET /apis — browse APIs by provider when you know the vendor",
+            "GET /workflows — list all workflows when browsing by category"
+        ]
+    ),
 )
 async def search(
     q: str = Query(..., description='Search query, e.g. "send an email" or "create payment"'),

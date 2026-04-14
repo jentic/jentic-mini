@@ -2,6 +2,9 @@
 /* istanbul ignore file */
 /* tslint:disable */
 /* eslint-disable */
+/**
+ * Submit an OpenAPI Overlay 1.0 document to patch an API spec. Commonly used to add missing security schemes.
+ */
 export type OverlaySubmit = {
     /**
      * Full OpenAPI Overlay 1.0 document as a JSON object. Use this to patch the stored spec for any API — security schemes, base URL corrections, operation metadata, extra extensions, etc.
@@ -52,6 +55,9 @@ export type OverlaySubmit = {
                                              * **Compound apiKey schemes** (e.g. Discourse — two separate apiKey headers): name one scheme `Secret` (the primary key) and one `Identity` (the username/ID). The broker resolves these by canonical name without needing further annotation.
                                              */
                                             overlay: Record<string, any>;
+                                            /**
+                                             * Optional contributor identifier (username, agent ID, etc.) for tracking overlay source
+                                             */
                                             contributed_by?: (string | null);
                                         };
 

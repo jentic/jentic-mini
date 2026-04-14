@@ -2,10 +2,25 @@
 /* istanbul ignore file */
 /* tslint:disable */
 /* eslint-disable */
+/**
+ * Request body for storing a new upstream API credential. Values are encrypted at rest and never returned.
+ */
 export type CredentialCreate = {
+    /**
+     * User-assigned credential label for identification
+     */
     label: string;
+    /**
+     * Raw credential value (API key, token, password) - encrypted before storage
+     */
     value: string;
+    /**
+     * Optional username, client ID, or other identity value (required for basic auth, optional for compound apiKey schemes)
+     */
     identity?: (string | null);
+    /**
+     * API ID to bind this credential to
+     */
     api_id?: (string | null);
     /**
      * How this credential maps to the upstream API's authentication scheme. The broker uses this to find the right security scheme in the spec — it resolves by type, not by the bespoke scheme name in the overlay.

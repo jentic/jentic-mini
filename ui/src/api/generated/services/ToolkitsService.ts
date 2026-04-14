@@ -21,7 +21,17 @@ import { request as __request } from '../core/request';
 export class ToolkitsService {
     /**
      * List toolkits
-     * List all toolkits.
+     * List all toolkits with metadata summary.
+     *
+     * Returns all toolkits visible to the caller with key counts and bound credential counts.
+     * Admin users see all toolkits. Agents see only their own toolkit.
+     *
+     * Each toolkit includes:
+     * - Metadata (name, description, disabled state, simulation mode)
+     * - Active key count (revoked keys excluded)
+     * - Bound credential count (upstream API credentials available to this toolkit)
+     *
+     * The default toolkit implicitly has access to all credentials without explicit binding.
      * @returns ToolkitOut Successful Response
      * @throws ApiError
      */
@@ -34,7 +44,7 @@ export class ToolkitsService {
     /**
      * Create a toolkit — scoped bundle of upstream API credentials with a client API key
      * Creates a toolkit: a named bundle of upstream API credentials with a scoped client API key for the agent.
-     * Returns a toolkit API key (col_xxx) — shown once, not recoverable.
+     * Returns a toolkit API key (tk_xxx) — shown once, not recoverable.
      * Bind credentials via POST /toolkits/{id}/credentials.
      * Set access policy via PUT /toolkits/{id}/credentials/{cred_id}/permissions.
      * Agents use toolkit keys to call the broker; only bound credentials are injected.
@@ -44,6 +54,9 @@ export class ToolkitsService {
     public static createToolkitToolkitsPost({
         requestBody,
     }: {
+        /**
+         * Toolkit details: name, optional description, simulate flag for dry-run mode, and optional first API key configuration
+         */
         requestBody: ToolkitCreate,
     }): CancelablePromise<ToolkitOut> {
         return __request(OpenAPI, {
@@ -66,6 +79,9 @@ export class ToolkitsService {
     public static getToolkitToolkitsToolkitIdGet({
         toolkitId,
     }: {
+        /**
+         * Toolkit ID (e.g. 'default' or custom toolkit identifier)
+         */
         toolkitId: string,
     }): CancelablePromise<Record<string, any>> {
         return __request(OpenAPI, {
@@ -81,6 +97,13 @@ export class ToolkitsService {
     }
     /**
      * Update toolkit — rename or update description
+     * Update toolkit metadata — name, description, disabled state, or simulation mode.
+     *
+     * Only changed fields need to be included in the request body. Omitted fields are left unchanged.
+     *
+     * **Note:** The default toolkit's name and description cannot be modified (403 error).
+     *
+     * **Auth:** Requires human session (admin).
      * @returns ToolkitOut Successful Response
      * @throws ApiError
      */
@@ -88,7 +111,13 @@ export class ToolkitsService {
         toolkitId,
         requestBody,
     }: {
+        /**
+         * Toolkit ID to update
+         */
         toolkitId: string,
+        /**
+         * Fields to update: name, description, simulate flag, or disabled flag — only provided fields are changed
+         */
         requestBody: ToolkitPatch,
     }): CancelablePromise<ToolkitOut> {
         return __request(OpenAPI, {
@@ -106,12 +135,25 @@ export class ToolkitsService {
     }
     /**
      * Delete toolkit and revoke all its client API keys
+     * Permanently delete a toolkit and revoke all its access keys.
+     *
+     * All agents using keys from this toolkit will immediately receive 401 errors.
+     * Credential bindings are removed, but the credentials themselves remain in the vault.
+     *
+     * **Note:** The default toolkit cannot be deleted (403 error).
+     *
+     * **Auth:** Requires human session (admin).
+     *
+     * **Warning:** This operation cannot be undone.
      * @returns void
      * @throws ApiError
      */
     public static deleteToolkitToolkitsToolkitIdDelete({
         toolkitId,
     }: {
+        /**
+         * Toolkit ID to delete
+         */
         toolkitId: string,
     }): CancelablePromise<void> {
         return __request(OpenAPI, {
@@ -143,7 +185,13 @@ export class ToolkitsService {
         toolkitId,
         requestBody,
     }: {
+        /**
+         * Toolkit ID
+         */
         toolkitId: string,
+        /**
+         * Access request: type (grant/modify_permissions), credential_id, optional permission rules, and optional reason explaining why access is needed
+         */
         requestBody: AccessRequestBody,
     }): CancelablePromise<AccessRequestOut> {
         return __request(OpenAPI, {
@@ -178,7 +226,13 @@ export class ToolkitsService {
         toolkitId,
         status,
     }: {
+        /**
+         * Toolkit ID
+         */
         toolkitId: string,
+        /**
+         * Filter by status (pending, approved, denied)
+         */
         status?: (string | null),
     }): CancelablePromise<Array<AccessRequestOut>> {
         return __request(OpenAPI, {
@@ -205,7 +259,13 @@ export class ToolkitsService {
         toolkitId,
         requestBody,
     }: {
+        /**
+         * Toolkit ID to bind credential to
+         */
         toolkitId: string,
+        /**
+         * Credential binding: credential_id to bind to this toolkit (enables broker to inject auth for that API)
+         */
         requestBody: ToolkitCredentialAdd,
     }): CancelablePromise<CredentialBindingOut> {
         return __request(OpenAPI, {
@@ -232,6 +292,9 @@ export class ToolkitsService {
     public static listToolkitCredentialsToolkitsToolkitIdCredentialsGet({
         toolkitId,
     }: {
+        /**
+         * Toolkit ID to list credentials for
+         */
         toolkitId: string,
     }): CancelablePromise<Array<CredentialBindingOut>> {
         return __request(OpenAPI, {
@@ -255,7 +318,13 @@ export class ToolkitsService {
         toolkitId,
         requestBody,
     }: {
+        /**
+         * Toolkit ID to issue key for
+         */
         toolkitId: string,
+        /**
+         * Key configuration: optional label and optional IP allowlist (CIDR ranges)
+         */
         requestBody: KeyCreate,
     }): CancelablePromise<ToolkitKeyCreated> {
         return __request(OpenAPI, {
@@ -283,6 +352,9 @@ export class ToolkitsService {
     public static listToolkitKeysToolkitsToolkitIdKeysGet({
         toolkitId,
     }: {
+        /**
+         * Toolkit ID to list keys for
+         */
         toolkitId: string,
     }): CancelablePromise<any> {
         return __request(OpenAPI, {
@@ -313,7 +385,13 @@ export class ToolkitsService {
         toolkitId,
         reqId,
     }: {
+        /**
+         * Toolkit ID
+         */
         toolkitId: string,
+        /**
+         * Access request ID (format: areq_xxxxxxxx)
+         */
         reqId: string,
     }): CancelablePromise<AccessRequestOut> {
         return __request(OpenAPI, {
@@ -330,6 +408,12 @@ export class ToolkitsService {
     }
     /**
      * Unbind an upstream API credential from this toolkit
+     * Unbind a credential from this toolkit.
+     *
+     * Agents using this toolkit will immediately lose access to the upstream API.
+     * The credential remains in the vault and can be bound to other toolkits.
+     *
+     * To delete the credential entirely (from all toolkits), use `DELETE /credentials/{id}`.
      * @returns void
      * @throws ApiError
      */
@@ -337,7 +421,13 @@ export class ToolkitsService {
         toolkitId,
         credentialId,
     }: {
+        /**
+         * Toolkit ID
+         */
         toolkitId: string,
+        /**
+         * Credential ID to unbind
+         */
         credentialId: string,
     }): CancelablePromise<void> {
         return __request(OpenAPI, {
@@ -354,7 +444,25 @@ export class ToolkitsService {
     }
     /**
      * Update a client API key — rename or change IP restrictions
-     * Update label or IP restrictions on a client API key. Cannot change the key value itself.
+     * Update label or IP restrictions on a client API key.
+     *
+     * Modifies the metadata for an existing toolkit key. The key value itself cannot be
+     * changed - to rotate a key, revoke the old one and create a new one.
+     *
+     * Parameters:
+     * toolkit_id: Toolkit ID containing the key
+     * key_id: Key ID to update (format: ck_xxxxxxxx)
+     * body: Update request with optional label and/or allowed_ips
+     *
+     * Updatable fields:
+     * - label: Human-readable name (e.g. "Production bot", "Staging agent")
+     * - allowed_ips: IP allowlist in CIDR notation (e.g. ["192.168.1.0/24"]).
+     * Set to null or empty array to allow all IPs.
+     *
+     * Returns:
+     * Updated key metadata including new label and IP restrictions.
+     *
+     * The key remains active with its original value. Changes take effect immediately.
      * @returns ToolkitKeyOut Successful Response
      * @throws ApiError
      */
@@ -363,8 +471,17 @@ export class ToolkitsService {
         keyId,
         requestBody,
     }: {
+        /**
+         * Toolkit ID
+         */
         toolkitId: string,
+        /**
+         * Key ID to update
+         */
         keyId: string,
+        /**
+         * Fields to update: label or IP allowlist — only provided fields are changed
+         */
         requestBody: KeyCreate,
     }): CancelablePromise<ToolkitKeyOut> {
         return __request(OpenAPI, {
@@ -394,7 +511,13 @@ export class ToolkitsService {
         toolkitId,
         keyId,
     }: {
+        /**
+         * Toolkit ID
+         */
         toolkitId: string,
+        /**
+         * Key ID to revoke
+         */
         keyId: string,
     }): CancelablePromise<void> {
         return __request(OpenAPI, {
@@ -422,7 +545,13 @@ export class ToolkitsService {
         toolkitId,
         reqId,
     }: {
+        /**
+         * Toolkit ID
+         */
         toolkitId: string,
+        /**
+         * Access request ID to approve
+         */
         reqId: string,
     }): CancelablePromise<AccessRequestOut> {
         return __request(OpenAPI, {
@@ -440,6 +569,19 @@ export class ToolkitsService {
     /**
      * Deny an access request (human session only)
      * Deny a pending access request.
+     *
+     * Permanently rejects the request. The agent will receive a 403 error if it continues
+     * to attempt the operation that required the permission. To grant access later, the
+     * agent must file a new request.
+     *
+     * Parameters:
+     * toolkit_id: Toolkit ID containing the access request
+     * req_id: Access request ID (format: areq_xxxxxxxx)
+     *
+     * Returns:
+     * Updated access request with status='denied' and resolved_at timestamp.
+     *
+     * Auth: Requires human session (admin).
      * @returns AccessRequestOut Successful Response
      * @throws ApiError
      */
@@ -447,7 +589,13 @@ export class ToolkitsService {
         toolkitId,
         reqId,
     }: {
+        /**
+         * Toolkit ID
+         */
         toolkitId: string,
+        /**
+         * Access request ID to deny
+         */
         reqId: string,
     }): CancelablePromise<AccessRequestOut> {
         return __request(OpenAPI, {
@@ -477,7 +625,13 @@ export class ToolkitsService {
         toolkitId,
         credId,
     }: {
+        /**
+         * Toolkit ID
+         */
         toolkitId: string,
+        /**
+         * Credential ID to get permissions for
+         */
         credId: string,
     }): CancelablePromise<Array<PermissionRuleOut>> {
         return __request(OpenAPI, {
@@ -505,8 +659,17 @@ export class ToolkitsService {
         credId,
         requestBody,
     }: {
+        /**
+         * Toolkit ID
+         */
         toolkitId: string,
+        /**
+         * Credential ID to set permissions for
+         */
         credId: string,
+        /**
+         * Array of permission rules to replace the entire agent rule list for this credential — each rule specifies effect (allow/deny), optional methods, optional path regex, and optional operation IDs
+         */
         requestBody: Array<PermissionRule>,
     }): CancelablePromise<Array<PermissionRuleOut>> {
         return __request(OpenAPI, {
@@ -542,8 +705,17 @@ export class ToolkitsService {
         credId,
         requestBody,
     }: {
+        /**
+         * Toolkit ID
+         */
         toolkitId: string,
+        /**
+         * Credential ID to patch permissions for
+         */
         credId: string,
+        /**
+         * Incremental update: arrays of rules to add and/or remove from this credential's policy — rules are matched by exact equality for removal
+         */
         requestBody: PermissionsPatch,
     }): CancelablePromise<Array<PermissionRuleOut>> {
         return __request(OpenAPI, {

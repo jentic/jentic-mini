@@ -29,12 +29,13 @@ import asyncio
 import json
 import time
 import uuid
-from typing import Any
+from typing import Annotated, Any
 
-from fastapi import APIRouter, HTTPException, Request, Query
+from fastapi import APIRouter, HTTPException, Path, Query, Request
 
 from src.db import get_db
 from src.models import JobOut, JobListPage
+from src.openapi_helpers import agent_hints
 
 router = APIRouter(prefix="/jobs", tags=["observe"])
 
@@ -206,8 +207,8 @@ def _job_response(d: dict) -> dict:
 )
 async def list_jobs(
     status: str | None = Query(None, description="Filter by status"),
-    page: int = Query(1, ge=1),
-    limit: int = Query(20, ge=1, le=100),
+    page: Annotated[int, Query(description="Page number (1-indexed)", ge=1)] = 1,
+    limit: Annotated[int, Query(description="Results per page (1-100)", ge=1, le=100)] = 20,
 ):
     offset = (page - 1) * limit
     async with get_db() as db:
@@ -281,8 +282,22 @@ async def list_jobs(
         "check `upstream_job_url` to follow the upstream job. "
         "Returns `status: failed` with `error` and `http_status` on failure."
     ),
+    openapi_extra=agent_hints(
+        when_to_use="Use after receiving HTTP 202 from a broker call or workflow execution to poll for completion. Job ID comes from Location header (RFC 7240) or X-Jentic-Job-Id header. Poll until status is complete, failed, or upstream_async. Jobs are created when: (1) client sends Prefer: wait=0, (2) execution exceeds Prefer: wait=N timeout, or (3) upstream API returns 202.",
+        prerequisites=[
+            "Requires authentication (toolkit key or human session)",
+            "Valid job ID from a 202 response (format: job_{12chars})"
+        ],
+        avoid_when="Do not use for synchronous calls (200 responses) — those produce traces, not jobs. Do not poll excessively — implement exponential backoff (start at 1s, max 30s).",
+        related_operations=[
+            "GET /{target} (broker) — broker call with Prefer: wait=0 returns 202 + job ID",
+            "POST /workflows/{slug} — workflow with Prefer: wait=0 returns 202 + job ID",
+            "GET /traces/{id} — completed jobs reference a trace via trace_id field",
+            "DELETE /jobs/{id} — cancel an outstanding async job"
+        ]
+    ),
 )
-async def get_job_route(job_id: str):
+async def get_job_route(job_id: Annotated[str, Path(description="Job ID (format: job_{12chars})")]):
     d = await get_job(job_id)
     if not d:
         raise HTTPException(404, f"Job '{job_id}' not found")
@@ -301,7 +316,7 @@ async def get_job_route(job_id: str):
         "Has no effect on already-completed jobs."
     ),
 )
-async def cancel_job(job_id: str):
+async def cancel_job(job_id: Annotated[str, Path(description="Job ID to cancel")]):
     d = await get_job(job_id)
     if not d:
         raise HTTPException(404, f"Job '{job_id}' not found")
