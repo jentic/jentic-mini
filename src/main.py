@@ -12,9 +12,8 @@ from fastapi import FastAPI, Request, Response
 from fastapi.openapi.docs import get_redoc_html
 from fastapi.openapi.utils import get_openapi
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse
+from fastapi.responses import FileResponse, HTMLResponse
 import httpx
-import yaml
 
 from src.auth import APIKeyMiddleware
 from src.negotiate import negotiate_middleware
