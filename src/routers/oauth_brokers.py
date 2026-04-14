@@ -453,7 +453,7 @@ class ConnectLinkRequest(NormModel):
 @router.post(
     "/{broker_id}/connect-link",
     summary="Generate a Pipedream Connect Link for authorising apps",
-    openapi_extra={"requestBody": {"description": "Connect link request: API slug, optional external ID for tracking, optional OAuth scopes, and return URL"}},
+    openapi_extra={"requestBody": {"description": "Connect link request: Pipedream app slug (e.g. gmail, slack), human-readable label for the connection, and optional api_id override for catalog binding"}},
 )
 async def create_connect_link(broker_id: BrokerIdPath, body: ConnectLinkRequest, request: Request):
     """Generate a short-lived Pipedream Connect Link URL.
