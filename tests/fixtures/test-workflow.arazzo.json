@@ -1,0 +1,63 @@
+{
+  "arazzo": "1.0.0",
+  "info": {
+    "title": "Test Workflow",
+    "version": "1.0.0",
+    "description": "A simple test workflow for E2E testing"
+  },
+  "sourceDescriptions": [
+    {
+      "name": "test-api",
+      "type": "openapi",
+      "url": "https://api.example.com/openapi.json"
+    }
+  ],
+  "workflows": [
+    {
+      "workflowId": "test-workflow",
+      "summary": "Test workflow for E2E tests",
+      "description": "A minimal workflow used for testing workflow loading functionality",
+      "inputs": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "Search query parameter"
+          }
+        }
+      },
+      "steps": [
+        {
+          "stepId": "search",
+          "description": "Search for items",
+          "operationId": "test-api.searchItems",
+          "parameters": [
+            {
+              "name": "q",
+              "in": "query",
+              "value": "$inputs.query"
+            }
+          ],
+          "outputs": {
+            "results": "$response.body.items"
+          }
+        },
+        {
+          "stepId": "get-details",
+          "description": "Get details for first result",
+          "operationId": "test-api.getItem",
+          "parameters": [
+            {
+              "name": "id",
+              "in": "path",
+              "value": "$steps.search.outputs.results[0].id"
+            }
+          ]
+        }
+      ],
+      "outputs": {
+        "item": "$steps.get-details.outputs"
+      }
+    }
+  ]
+}
