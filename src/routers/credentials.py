@@ -2,9 +2,10 @@
 import json
 import logging
 import uuid
+from typing import Annotated
 
 import yaml
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Body, HTTPException, Path, Query, Request
 from fastapi.responses import JSONResponse
 from src.models import CredentialCreate, CredentialOut, CredentialPatch
 import src.vault as vault
@@ -87,7 +88,13 @@ async def api_has_native_scheme(api_id: str) -> bool:
         return False
 
 
-@router.post("", response_model=CredentialOut, status_code=201, summary="Store an upstream API credential — add a secret to the vault for broker injection")
+@router.post(
+    "",
+    response_model=CredentialOut,
+    status_code=201,
+    summary="Store an upstream API credential — add a secret to the vault for broker injection",
+    openapi_extra={"requestBody": {"description": "Credential details: label for identification, encrypted value (API key/token/password), optional identity (username/client ID), API ID, and auth type"}},
+)
 async def create(body: CredentialCreate, request: Request):
     """Store an encrypted credential in the vault for automatic broker injection.
 
@@ -229,8 +236,21 @@ async def create(body: CredentialCreate, request: Request):
 
 
 @router.get("/{cid:path}", response_model=CredentialOut, summary="Get an upstream API credential by ID")
-async def get_credential(cid: str):
-    """Retrieve metadata for a single credential. Value is never returned."""
+async def get_credential(cid: Annotated[str, Path(description="Credential ID (format: hostname or hostname/path)")]):
+    """Retrieve metadata for a single credential.
+
+    Returns the credential's label, API binding, auth type, and identity field (if set).
+    The secret value is never returned after creation for security.
+
+    Parameters:
+        cid: Credential ID (format: hostname or hostname/path, e.g. 'api.github.com')
+
+    Returns:
+        Credential metadata including id, label, api_id, auth_type, timestamps, and identity.
+
+    Use this to confirm a credential exists before binding it to a toolkit or to inspect
+    its configuration before making authenticated calls.
+    """
     async with get_db() as db:
         async with db.execute(
             "SELECT id, label, api_id, auth_type, created_at, updated_at, identity FROM credentials WHERE id=?",
@@ -243,8 +263,30 @@ async def get_credential(cid: str):
             "created_at": row[4], "updated_at": row[5], "identity": row[6] if len(row) > 6 else None}
 
 
-@router.patch("/{cid:path}", response_model=CredentialOut, summary="Update an upstream API credential — rotate a secret or fix its API binding")
-async def patch(cid: str, body: CredentialPatch, request: Request):
+@router.patch(
+    "/{cid:path}",
+    response_model=CredentialOut,
+    summary="Update an upstream API credential — rotate a secret or fix its API binding",
+    openapi_extra={"requestBody": {"description": "Fields to update: label, value (for rotation), identity, api_id, or auth_type — only provided fields are changed"}},
+)
+async def patch(
+    cid: Annotated[str, Path(description="Credential ID to update")],
+    body: CredentialPatch,
+    request: Request,
+):
+    """
+    Update a credential's label, secret value, identity field, API binding, or auth_type.
+
+    Common use cases:
+    - Rotate an expired token or password (update `value`)
+    - Fix incorrect API binding (update `api_id`)
+    - Add username to existing credential (update `identity`)
+    - Relabel for clarity (update `label`)
+
+    Only changed fields need to be included in the request body. Omitted fields are left unchanged.
+
+    **Auth:** Requires human session OR agent key with explicit `PATCH /credentials` allow rule on jentic-mini credential.
+    """
     if not request.state.is_human_session:
         if not await _agent_has_credential_write_permission(request.state.toolkit_id, "PATCH", f"/credentials/{cid}"):
             raise HTTPException(status_code=403, detail="Updating credentials requires a human session, or an agent key with an explicit PATCH /credentials allow rule on the jentic-mini credential.")
@@ -258,7 +300,17 @@ async def patch(cid: str, body: CredentialPatch, request: Request):
 
 
 @router.delete("/{cid:path}", status_code=204, summary="Delete an upstream API credential")
-async def delete(cid: str, request: Request):
+async def delete(cid: Annotated[str, Path(description="Credential ID to delete")], request: Request):
+    """
+    Permanently delete a credential.
+
+    The credential is removed from the vault and unbound from all toolkits that reference it.
+    Agents using toolkits with this credential will immediately lose access to the upstream API.
+
+    **Auth:** Requires human session OR agent key with explicit `DELETE /credentials` allow rule on jentic-mini credential.
+
+    **Warning:** This operation cannot be undone. The secret value is irrecoverably destroyed.
+    """
     if not request.state.is_human_session:
         if not await _agent_has_credential_write_permission(request.state.toolkit_id, "DELETE", f"/credentials/{cid}"):
             raise HTTPException(status_code=403, detail="Deleting credentials requires a human session, or an agent key with an explicit DELETE /credentials allow rule on the jentic-mini credential.")
@@ -269,7 +321,7 @@ async def delete(cid: str, request: Request):
 
 
 @router.get("", summary="List upstream API credentials — labels and API bindings only, no secret values", response_model=list[CredentialOut])
-async def list_credentials(request: Request, api_id: str | None = None):
+async def list_credentials(request: Request, api_id: Annotated[str | None, Query(description="Filter credentials by API ID (hostname)")] = None):
     """List stored upstream API credentials. Values are never returned.
 
     All authenticated callers (agent keys and human sessions) can see all credential

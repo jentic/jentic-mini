@@ -24,6 +24,9 @@ export class InspectService {
         capabilityId,
         toolkitId,
     }: {
+        /**
+         * Capability ID (METHOD/host/path format) or workflow slug
+         */
         capabilityId: string,
         /**
          * Pass to include credential status for this toolkit
@@ -60,6 +63,12 @@ export class InspectService {
     }
     /**
      * Get an OAuth broker
+     * Retrieve OAuth broker configuration and metadata.
+     *
+     * Returns broker type, client ID, project ID, and connected account statistics.
+     * Use this to verify a broker is registered before creating connect links or syncing accounts.
+     *
+     * For connected account details, use `GET /oauth-brokers/{broker_id}/accounts`.
      * @returns any Successful Response
      * @throws ApiError
      */

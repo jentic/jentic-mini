@@ -4,18 +4,20 @@ import uuid
 import json
 import yaml
 import copy
-from pathlib import Path
+import pathlib
 from urllib.parse import urlparse
-from typing import Optional
+from typing import Annotated, Optional
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Path, Query
 from fastapi.responses import Response
 from src.models import ApiOut, OperationOut, ApiListPage, OperationListPage
 from src.db import get_db
 from src.config import JENTIC_PUBLIC_HOSTNAME
 import src.bm25 as bm25
+from src.openapi_helpers import agent_hints
 
 router = APIRouter()
+
 
 # ---------------------------------------------------------------------------
 # Spec helpers
@@ -35,7 +37,7 @@ def _deep_merge(base: dict, overlay: dict) -> dict:
 async def _load_spec(spec_path: str) -> dict:
     """Load a JSON or YAML spec file. Returns {} on failure."""
     try:
-        p = Path(spec_path)
+        p = pathlib.Path(spec_path)
         raw = p.read_text()
         return yaml.safe_load(raw) if str(p).endswith((".yaml", ".yml")) else json.loads(raw)
     except Exception:
@@ -217,7 +219,7 @@ def _parse_operations(api_id: str, spec_path: str, base_url: str | None = None) 
     - operation_id: OpenAPI operationId string
     - method, path, summary, description
     """
-    p = Path(spec_path)
+    p = pathlib.Path(spec_path)
     if not p.exists():
         return []
     raw = p.read_text()
@@ -247,7 +249,7 @@ def _parse_operations(api_id: str, spec_path: str, base_url: str | None = None) 
 
 def _load_base_url_from_spec(spec_path: str) -> str | None:
     """Load and extract base URL from a spec file."""
-    p = Path(spec_path)
+    p = pathlib.Path(spec_path)
     if not p.exists():
         return None
     try:
@@ -346,7 +348,22 @@ def _row_to_op(r) -> dict:
 
 # ── routes ────────────────────────────────────────────────────────────────────
 
-@router.get("/apis", summary="List APIs — browse all available API providers (local and catalog)", response_model=ApiListPage)
+@router.get(
+    "/apis",
+    summary="List APIs — browse all available API providers (local and catalog)",
+    response_model=ApiListPage,
+    openapi_extra=agent_hints(
+        when_to_use="Use when you need to discover available API providers by vendor name, browse registered APIs, or check which APIs have credentials configured. Returns both locally registered APIs (source: local) and available catalog APIs (source: catalog). Use ?q= to filter by API ID or name, ?source= to filter by source type, and ?page=/limit= for pagination.",
+        prerequisites=["Requires authentication (toolkit key or human session)"],
+        avoid_when="Do not use if you already know the API ID — use GET /apis/{api_id} directly instead. Do not use for natural language capability discovery — use GET /search for that.",
+        related_operations=[
+            "GET /apis/{api_id} — get detailed API metadata including security schemes and credential status",
+            "GET /apis/{api_id}/operations — list all operations for a specific API",
+            "GET /search — search for capabilities across all APIs by natural language intent",
+            "POST /credentials — add credentials for an API (imports from catalog if not yet registered)"
+        ]
+    ),
+)
 async def list_apis(
     page: int = Query(1, ge=1, description="Page number (1-indexed)"),
     limit: int = Query(20, ge=1, le=100, description="Results per page"),
@@ -502,9 +519,26 @@ _DEFAULT_SECTIONS = {"info", "servers", "security"}
 _LARGE_SECTIONS = {"paths", "components", "webhooks"}
 
 
-@router.get("/apis/{api_id:path}/openapi.json",
-            summary="Download merged OpenAPI spec — base spec with all confirmed overlays applied")
-async def get_api_openapi(api_id: str):
+@router.get(
+    "/apis/{api_id:path}/openapi.json",
+    summary="Download merged OpenAPI spec as JSON — base spec with all confirmed overlays applied",
+    openapi_extra=agent_hints(
+        when_to_use="Use when you need the full OpenAPI specification file for an API with all confirmed overlays applied (security scheme corrections, server URL fixes). Returns complete spec as JSON download with Content-Disposition attachment header. Overlay actions with target: $ are deep-merged; other actions listed in x-jentic-unapplied-overlays. Useful for SDK generation, schema analysis, or importing into external tools.",
+        prerequisites=[
+            "Requires authentication (toolkit key or human session)",
+            "Valid API ID from GET /apis (format: hostname or hostname/path)"
+        ],
+        avoid_when="Do not use for lightweight API inspection — use GET /apis/{api_id}?sections=info,servers,security instead. Do not use to browse operations — use GET /apis/{api_id}/operations for paginated operation list.",
+        related_operations=[
+            "GET /apis/{api_id} — get API metadata with selective spec sections (no download, lighter weight)",
+            "GET /apis/{api_id}/openapi.yaml — download the same spec in YAML format",
+            "GET /apis/{api_id}/operations — list operations without downloading full spec",
+            "GET /apis/{api_id}/overlays — view overlays that are merged into this spec",
+            "POST /apis/{api_id}/overlays — submit a new overlay to correct security schemes or servers"
+        ]
+    ),
+)
+async def get_api_openapi_json(api_id: Annotated[str, Path(description="API ID (hostname or hostname/path format)")]):
     """
     Returns the full merged OpenAPI spec for this API as a JSON download.
 
@@ -528,17 +562,81 @@ async def get_api_openapi(api_id: str):
     filename = api_id.replace("/", "_") + ".openapi.json"
     return Response(
         content=json.dumps(spec, indent=2),
-        media_type="application/json",
+        media_type="application/openapi+json",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 
 
-@router.get("/apis/{api_id:path}/operations",
-            summary="List operations for an API — enumerate all available actions",
-            response_model=OperationListPage,
-            responses={200: {"description": "Operation list — format controlled by Accept header.", "content": _OP_LIST_CONTENT_TYPES}})
+@router.get(
+    "/apis/{api_id:path}/openapi.yaml",
+    summary="Download merged OpenAPI spec as YAML — base spec with all confirmed overlays applied",
+    openapi_extra=agent_hints(
+        when_to_use="Use when you need the full OpenAPI specification file for an API in YAML format with all confirmed overlays applied. Same content as GET /apis/{api_id}/openapi.json but in YAML. Useful for human readability, configuration files, or tools that prefer YAML format.",
+        prerequisites=[
+            "Requires authentication (toolkit key or human session)",
+            "Valid API ID from GET /apis (format: hostname or hostname/path)"
+        ],
+        avoid_when="Do not use for lightweight API inspection — use GET /apis/{api_id}?sections=info,servers,security instead. Do not use to browse operations — use GET /apis/{api_id}/operations for paginated operation list.",
+        related_operations=[
+            "GET /apis/{api_id} — get API metadata with selective spec sections (no download, lighter weight)",
+            "GET /apis/{api_id}/openapi.json — download the same spec in JSON format",
+            "GET /apis/{api_id}/operations — list operations without downloading full spec",
+            "GET /apis/{api_id}/overlays — view overlays that are merged into this spec",
+            "POST /apis/{api_id}/overlays — submit a new overlay to correct security schemes or servers"
+        ]
+    ),
+)
+async def get_api_openapi_yaml(api_id: Annotated[str, Path(description="API ID (hostname or hostname/path format)")]):
+    """
+    Returns the full merged OpenAPI spec for this API as a YAML download.
+
+    All confirmed overlays are applied on top of the base spec using deep merge
+    (overlay values win on conflict). Pending overlays are not included.
+
+    Overlay actions with `target: "$"` are applied as root-level deep merges.
+    Actions targeting specific paths or operations are listed in
+    `x-jentic-unapplied-overlays` for transparency.
+
+    For selective access to spec sections without downloading the full file,
+    use `GET /apis/{api_id}?sections=info,servers,security,tags`.
+    """
+    async with get_db() as db:
+        async with db.execute("SELECT id, spec_path FROM apis WHERE id=?", (api_id,)) as cur:
+            row = await cur.fetchone()
+    if not row:
+        raise HTTPException(404, f"API '{api_id}' not found")
+
+    spec = await _load_merged_spec(api_id, row[1])
+    filename = api_id.replace("/", "_") + ".openapi.yaml"
+    return Response(
+        content=yaml.dump(spec, default_flow_style=False, sort_keys=False, allow_unicode=True),
+        media_type="application/openapi+yaml",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.get(
+    "/apis/{api_id:path}/operations",
+    summary="List operations for an API — enumerate all available actions",
+    response_model=OperationListPage,
+    responses={200: {"description": "Operation list — format controlled by Accept header.", "content": _OP_LIST_CONTENT_TYPES}},
+    openapi_extra=agent_hints(
+        when_to_use="Use after finding an API via GET /apis to enumerate all available operations (endpoints) for that API. Returns paginated list of capability IDs, summaries, and descriptions. Each operation can then be inspected via GET /inspect/{id} for full parameter schemas and auth requirements before execution. Useful for discovering what actions an API supports.",
+        prerequisites=[
+            "Requires authentication (toolkit key or human session)",
+            "Valid API ID from GET /apis (format: hostname or hostname/path)"
+        ],
+        avoid_when="Do not use for natural language capability discovery across all APIs — use GET /search instead. Do not use to inspect a specific operation's parameters — use GET /inspect/{id} after finding the capability ID.",
+        related_operations=[
+            "GET /apis — list available APIs to find the api_id",
+            "GET /inspect/{id} — inspect operation details (parameters, request/response schemas, auth)",
+            "GET /search — search for specific capabilities by natural language intent instead of browsing",
+            "GET /{target} (broker) — execute an operation after finding its capability ID"
+        ]
+    ),
+)
 async def list_api_operations(
-    api_id: str,
+    api_id: Annotated[str, Path(description="API ID to list operations for")],
     page: int = Query(1, ge=1, description="Page number (1-indexed)"),
     limit: int = Query(50, ge=1, le=200, description="Results per page"),
 ):
@@ -578,12 +676,29 @@ async def list_api_operations(
 # NOTE: This catch-all route ({api_id:path} matches slashes) MUST be registered
 # last among /apis/{api_id:path}/* routes. FastAPI/Starlette match in registration
 # order — if this route appears first, it swallows /operations, /openapi.json, etc.
-@router.get("/apis/{api_id:path}",
-            summary="Get API details — metadata, auth schemes, servers, and optional spec sections",
-            response_model=ApiOut,
-            responses={200: {"description": "API detail — format controlled by Accept header.", "content": _API_CONTENT_TYPES}})
+@router.get(
+    "/apis/{api_id:path}",
+    summary="Get API details — metadata, auth schemes, servers, and optional spec sections",
+    response_model=ApiOut,
+    responses={200: {"description": "API detail — format controlled by Accept header.", "content": _API_CONTENT_TYPES}},
+    openapi_extra=agent_hints(
+        when_to_use="Use after finding an API via GET /apis or GET /search to inspect its authentication requirements, security schemes, and available credential setup options. Critical for understanding which auth types need credentials before calling operations. Returns API metadata enriched with OpenAPI spec sections (info, servers, security_schemes). Use ?sections= to request additional spec sections (tags, paths, components).",
+        prerequisites=[
+            "Requires authentication (toolkit key or human session)",
+            "Valid API ID from GET /apis or catalog (format: hostname or hostname/path)"
+        ],
+        avoid_when="Do not use to download the full OpenAPI spec — use GET /apis/{api_id}/openapi.json for that. Do not use to list operations — use GET /apis/{api_id}/operations instead.",
+        related_operations=[
+            "GET /apis — list available APIs to find the api_id",
+            "GET /apis/{api_id}/openapi.json — download full merged OpenAPI spec with overlays applied",
+            "GET /apis/{api_id}/operations — list all operations for this API",
+            "POST /credentials — add credentials after inspecting security_schemes",
+            "GET /credentials?api_id={api_id} — check which credentials are configured"
+        ]
+    ),
+)
 async def get_api(
-    api_id: str,
+    api_id: Annotated[str, Path(description="API ID (hostname or hostname/path format)")],
     sections: str | None = Query(
         None,
         description=(

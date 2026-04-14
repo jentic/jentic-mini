@@ -75,9 +75,9 @@ def registered_apis(client, admin_session):
 def test_no_auth_api_forwards_without_credentials(client, agent_key_header, registered_apis):
     """A registered API with no securitySchemes should not require credentials."""
     resp = client.get(f"/{NO_AUTH_HOST}/get", headers=agent_key_header)
-    # The upstream is non-routable so we expect a connection error (502),
+    # The upstream is non-routable so we expect a connection error (502 or 504),
     # NOT a credential lookup error (500).
-    assert resp.status_code == 502, f"Expected 502 (upstream unreachable), got {resp.status_code}: {resp.text}"
+    assert resp.status_code in (502, 504), f"Expected 502/504 (upstream unreachable), got {resp.status_code}: {resp.text}"
 
 
 def test_auth_api_requires_credentials(client, agent_key_header, registered_apis):

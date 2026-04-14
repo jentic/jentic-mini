@@ -12,11 +12,12 @@ Routes:
 import json
 import logging
 import uuid
-from typing import Any
+from typing import Annotated, Any
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Path, Query
 from src.db import get_db
 from src.models import TraceOut, TraceListPage
+from src.openapi_helpers import agent_hints
 
 router = APIRouter()
 log = logging.getLogger("jentic.traces")
@@ -93,10 +94,24 @@ async def safe_write_trace(**kwargs) -> None:
 
 # ── Routes ────────────────────────────────────────────────────────────────────
 
-@router.get("/traces", summary="List execution traces — audit recent broker and workflow calls", response_model=TraceListPage)
+@router.get(
+    "/traces",
+    summary="List execution traces — audit recent broker and workflow calls",
+    response_model=TraceListPage,
+    openapi_extra=agent_hints(
+        when_to_use="Use when you need to audit recent API calls or workflow executions, review execution history, or debug issues by inspecting recent traces. Returns paginated list of traces with status, HTTP codes, and timing. Use ?limit= and ?offset= for pagination.",
+        prerequisites=["Requires authentication (toolkit key or human session)"],
+        avoid_when="Do not use if you already have a specific trace ID from a broker call (X-Jentic-Execution-Id header) — use GET /traces/{id} directly instead.",
+        related_operations=[
+            "GET /traces/{id} — get full trace with step-by-step detail",
+            "GET /{target} (broker) — returns X-Jentic-Execution-Id header pointing to trace",
+            "POST /workflows/{slug} — workflow execution returns trace_id in response body"
+        ]
+    ),
+)
 async def list_traces(
-    limit: int = Query(20, ge=1, le=200),
-    offset: int = Query(0, ge=0),
+    limit: Annotated[int, Query(description="Maximum number of traces to return (1-500)", ge=1, le=500)] = 20,
+    offset: Annotated[int, Query(description="Number of traces to skip for pagination", ge=0)] = 0,
 ):
     """Returns recent execution traces with status, capability id, toolkit, timestamp, and HTTP status. Use GET /traces/{trace_id} for step-level detail."""
     async with get_db() as db:
@@ -134,8 +149,25 @@ async def list_traces(
     }
 
 
-@router.get("/traces/{trace_id}", summary="Get trace detail — step-by-step execution log", response_model=TraceOut)
-async def get_trace(trace_id: str):
+@router.get(
+    "/traces/{trace_id}",
+    summary="Get trace detail — step-by-step execution log",
+    response_model=TraceOut,
+    openapi_extra=agent_hints(
+        when_to_use="Use after executing a broker call or workflow to retrieve the full execution trace with step-by-step details. Essential for debugging workflow failures — shows which step failed, what inputs were used, and what error was returned. Trace ID comes from X-Jentic-Execution-Id response header (broker calls) or trace_id in response body (workflows).",
+        prerequisites=[
+            "Requires authentication (toolkit key or human session)",
+            "Valid trace ID from a previous execution (format: exec_{12chars})"
+        ],
+        avoid_when="Do not use for browsing recent traces — use GET /traces with pagination instead.",
+        related_operations=[
+            "GET /traces — list recent traces when you don't have a specific trace ID yet",
+            "GET /{target} (broker) — execution returns X-Jentic-Execution-Id header",
+            "POST /workflows/{slug} — workflow execution returns trace_id field"
+        ]
+    ),
+)
+async def get_trace(trace_id: Annotated[str, Path(description="Trace ID (format: exec_{12chars})")]):
     """Returns the full execution trace with all steps: capability called, inputs, outputs, HTTP status, and timing. Useful for debugging failed workflow steps."""
     async with get_db() as db:
         async with db.execute(

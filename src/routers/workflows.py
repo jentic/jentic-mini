@@ -18,9 +18,9 @@ import tempfile
 import uuid
 import yaml
 from pathlib import Path
-from typing import Any
+from typing import Annotated, Any
 
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import APIRouter, HTTPException, Path, Query, Request
 from fastapi.responses import HTMLResponse, Response
 
 from jentic.apitools.openapi.common.uri import is_http_https_url
@@ -28,6 +28,7 @@ from src.db import get_db
 from src.utils import workflow_has_async_steps
 from src.models import WorkflowOut
 from src.config import JENTIC_PUBLIC_HOSTNAME
+from src.openapi_helpers import agent_hints
 
 router = APIRouter()
 
@@ -141,7 +142,22 @@ def _extract_workflow_meta(doc: dict, workflow_id: str | None = None) -> dict:
 
 # ── Routes ────────────────────────────────────────────────────────────────────
 
-@router.get("/workflows", summary="List workflows — browse available multi-step Arazzo workflows", tags=["catalog"])
+@router.get(
+    "/workflows",
+    summary="List workflows — browse available multi-step Arazzo workflows",
+    tags=["catalog"],
+    openapi_extra=agent_hints(
+        when_to_use="Use when you need to discover multi-step workflows or automated sequences. Lists both registered workflows (source: local) and available catalog workflow sources (source: catalog). Use ?q= to filter by name or API.",
+        prerequisites=["Requires authentication (toolkit key or human session)"],
+        avoid_when="Do not use if you already know the workflow slug — use GET /workflows/{slug} directly instead.",
+        related_operations=[
+            "GET /workflows/{slug} — get workflow definition and input schema",
+            "POST /workflows/{slug} — execute a workflow via broker",
+            "GET /search — search across operations and workflows by natural language intent",
+            "GET /catalog — browse available APIs when you know workflows exist for a vendor"
+        ]
+    ),
+)
 async def list_workflows(
     q: str | None = Query(None, description='Filter by name or API, e.g. "stripe" or "oauth"'),
     source: str | None = Query(None, description='Filter by source: "local" or "catalog"'),
@@ -277,8 +293,21 @@ _WORKFLOW_CONTENT_TYPES = {
             "content": _WORKFLOW_CONTENT_TYPES,
         }
     },
+    openapi_extra=agent_hints(
+        when_to_use="Use after finding a workflow via GET /workflows or GET /search to retrieve its full definition, input schema, and step sequence. Returns Arazzo spec with content negotiation (JSON, YAML, Markdown, HTML).",
+        prerequisites=[
+            "Requires authentication (toolkit key or human session)",
+            "Valid workflow slug (from GET /workflows or GET /search results)"
+        ],
+        avoid_when="Do not use to execute the workflow — use POST /workflows/{slug} via broker for execution.",
+        related_operations=[
+            "POST /workflows/{slug} — execute this workflow with inputs",
+            "GET /inspect/{id} — get full capability details (use workflow capability ID format: POST/{host}/workflows/{slug})",
+            "GET /workflows — list all workflows when you don't know the slug yet"
+        ]
+    ),
 )
-async def get_workflow(slug: str, request: Request):
+async def get_workflow(slug: Annotated[str, Path(description="Workflow slug (URL-safe identifier)")], request: Request):
     """Returns the workflow definition with content negotiation:
     - application/json (default): workflow metadata with simplified step info
     - application/vnd.oai.workflows+json: raw Arazzo document as JSON

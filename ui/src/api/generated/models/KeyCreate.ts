@@ -2,6 +2,9 @@
 /* istanbul ignore file */
 /* tslint:disable */
 /* eslint-disable */
+/**
+ * Create a new API key for this toolkit. The full key value is only returned once at creation time.
+ */
 export type KeyCreate = {
     /**
      * Human-readable label, e.g. 'Agent A', 'Staging bot'

@@ -9,6 +9,7 @@ export type { OpenAPIConfig } from './core/OpenAPI';
 
 export { AccessRequestBody } from './models/AccessRequestBody';
 export type { AccessRequestOut } from './models/AccessRequestOut';
+export type { AccountUpdate } from './models/AccountUpdate';
 export type { ApiListPage } from './models/ApiListPage';
 export type { ApiOut } from './models/ApiOut';
 export type { Body_token_user_token_post } from './models/Body_token_user_token_post';
@@ -27,6 +28,7 @@ export type { KeyCreate } from './models/KeyCreate';
 export type { NoteCreate } from './models/NoteCreate';
 export type { OAuthBrokerCreate } from './models/OAuthBrokerCreate';
 export type { OAuthBrokerOut } from './models/OAuthBrokerOut';
+export type { OAuthBrokerUpdate } from './models/OAuthBrokerUpdate';
 export type { OperationListPage } from './models/OperationListPage';
 export type { OperationOut } from './models/OperationOut';
 export type { OverlaySubmit } from './models/OverlaySubmit';

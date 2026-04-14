@@ -2,4 +2,7 @@
 /* istanbul ignore file */
 /* tslint:disable */
 /* eslint-disable */
+/**
+ * Paginated list of API operations with method, path, and summary.
+ */
 export type OperationListPage = Record<string, any>;
