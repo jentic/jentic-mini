@@ -14,9 +14,9 @@ Workflow IDs are detected by matching the Jentic hostname + /workflows/ path.
 The backend transparently handles both types — callers need not distinguish.
 """
 import json
+import pathlib
 import re
 import yaml
-from pathlib import Path
 from typing import Annotated, Any
 from urllib.parse import quote
 
@@ -177,7 +177,7 @@ async def _get_workflow_capability(slug: str, capability_id: str, toolkit_id: st
      steps_count, involved_apis_str, created_at) = row
 
     # Load Arazzo doc for authoritative inputs, outputs, step info
-    arazzo_file = Path(arazzo_path)
+    arazzo_file = pathlib.Path(arazzo_path)
     doc: dict = {}
     if arazzo_file.exists():
         raw = arazzo_file.read_text()
@@ -328,7 +328,7 @@ async def get_capability(
     (_, api_id, operation_id, jid, op_method, path,
      summary, description, spec_path, base_url, api_name, api_description) = row
 
-    spec_file = Path(spec_path) if spec_path else None
+    spec_file = pathlib.Path(spec_path) if spec_path else None
     doc: dict = {}
     op_spec: dict = {}
     path_item: dict = {}
