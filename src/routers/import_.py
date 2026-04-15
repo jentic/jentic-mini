@@ -175,7 +175,7 @@ async def _register_openapi(doc: dict, saved_path: str, force_api_id: str | None
     # This enables credential server_variables to parameterise the actual host
     # without requiring users to manually upload an overlay.
     overlay_generated = False
-    if is_self_hosted and base_url:
+    if is_self_hosted and base_url and "{" not in base_url:
         from urllib.parse import urlparse as _up
         _parsed = _up(base_url)
         _path = _parsed.path.rstrip("/") or ""
