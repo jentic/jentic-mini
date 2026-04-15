@@ -126,7 +126,7 @@ async def _ensure_spec_imported(app=None) -> None:
         )
         await db.commit()
         async with db.execute(
-            "SELECT id FROM apis WHERE id=?", (hostname,)
+            "SELECT id FROM apis WHERE id=? OR spec_path LIKE '%jentic-mini.json'", (hostname,)
         ) as cur:
             if await cur.fetchone():
                 log.info("self-registration: spec already imported — skipping")
@@ -184,6 +184,17 @@ async def _ensure_internal_credential() -> None:
 
     log.info("self-registration: creating internal admin credential")
     try:
+        # Resolve the actual API ID — may differ from JENTIC_PUBLIC_HOSTNAME
+        # when the server URL is private (e.g. localhost → jentic-mini.local).
+        resolved_api_id = _public_hostname()
+        async with get_db() as db:
+            async with db.execute(
+                "SELECT id FROM apis WHERE spec_path LIKE '%jentic-mini.json' LIMIT 1"
+            ) as cur:
+                row = await cur.fetchone()
+            if row:
+                resolved_api_id = row[0]
+
         # Generate a fresh admin toolkit key
         raw_key = "tk_" + secrets.token_hex(16)
 
@@ -193,7 +204,7 @@ async def _ensure_internal_credential() -> None:
             label="Jentic Mini Admin Key",
             env_var="JENTIC_MINI_ADMIN_KEY",
             value=raw_key,
-            api_id=_public_hostname(),
+            api_id=resolved_api_id,
             scheme_name="JenticApiKey",
             scheme={"in": "header", "name": "X-Jentic-API-Key"},
         )
