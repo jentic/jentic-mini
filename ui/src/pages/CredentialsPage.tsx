@@ -564,7 +564,9 @@ export default function CredentialsPage() {
 											) : null}
 											{(cred as any).scheme && (
 												<Badge variant="default" className="text-[10px]">
-													{(cred as any).scheme?.in === 'header' ? `→ ${(cred as any).scheme?.name}` : 'custom scheme'}
+													{(cred as any).scheme?.in === 'header'
+														? `→ ${(cred as any).scheme?.name}`
+														: 'custom scheme'}
 												</Badge>
 											)}
 										</div>
