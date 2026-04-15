@@ -565,8 +565,21 @@ async def broker(request: Request, target: str):
     _resolved_cred_ids: list[str] = []
 
     if credential_alias and toolkit_id:
-        # Hard override: use the named credential directly for policy enforcement.
-        _resolved_cred_ids = [credential_alias]
+        # X-Jentic-Credential is a disambiguator, not a bypass — resolve by route
+        # first, then verify the named credential is among the matches.
+        _resolved_cred_ids = await _resolve_credential_ids(
+            host=upstream_host, toolkit_id=toolkit_id, path=upstream_path
+        )
+        if credential_alias in _resolved_cred_ids:
+            _resolved_cred_ids = [credential_alias]
+        elif _resolved_cred_ids:
+            # Alias doesn't match any route-resolved credential for this host —
+            # log warning but proceed with route-matched creds (best-effort).
+            log.warning(
+                "X-Jentic-Credential=%r not found among route-matched credentials %s for host=%r — ignoring alias",
+                credential_alias, _resolved_cred_ids, upstream_host,
+            )
+        # If _resolved_cred_ids is empty, fall through to the fail-closed check below.
     elif toolkit_id:
         try:
             _resolved_cred_ids = await _resolve_credential_ids(
