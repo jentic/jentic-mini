@@ -498,7 +498,7 @@ async def get_credentials_for_route(toolkit_id: str, host: str, path: str) -> li
     placeholders = ",".join("?" * len(ids))
     async with get_db() as db:
         async with db.execute(
-            f"""SELECT id, encrypted_value, auth_type, identity, server_variables, scheme
+            f"""SELECT id, encrypted_value, auth_type, identity, server_variables, scheme, api_id
                 FROM credentials WHERE id IN ({placeholders})""",
             ids,
         ) as cur:
@@ -511,7 +511,7 @@ async def get_credentials_for_route(toolkit_id: str, host: str, path: str) -> li
         row = row_by_id.get(cid)
         if not row:
             continue
-        cid, enc_val, auth_type, identity, sv_raw, scheme_raw = row
+        cid, enc_val, auth_type, identity, sv_raw, scheme_raw, api_id = row
         try:
             server_variables = _json.loads(sv_raw) if sv_raw else None
         except Exception:
@@ -523,6 +523,7 @@ async def get_credentials_for_route(toolkit_id: str, host: str, path: str) -> li
             "identity": identity,
             "server_variables": server_variables,
             "scheme": _json.loads(scheme_raw) if scheme_raw else None,
+            "api_id": api_id,
         })
     return result
 
