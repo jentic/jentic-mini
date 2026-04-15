@@ -244,6 +244,11 @@ async def _find_credential_for_host(
                 # Compound scheme: also inject identity if a second scheme entry is present
                 if cred_scheme.get("identity_name") and identity:
                     headers[cred_scheme["identity_name"]] = identity
+            elif s_in == "query":
+                _broker_log.warning(
+                    "CRED INJECT: credential %r uses apiKey in query param (%s) — not yet supported, skipping injection",
+                    cred.get("id"), s_name,
+                )
             continue
 
         # No pre-computed scheme blob — minimal no-spec fallback.
