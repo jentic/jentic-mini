@@ -145,7 +145,7 @@ async def create(body: CredentialCreate, request: Request):
     api_id = getattr(body, "api_id", None)
     scheme_name = getattr(body, "auth_type", None)
 
-    if api_id:
+    if api_id and scheme_name != "none":
         # ── Lazy import: if api_id is a catalog API not yet locally registered, import it now ──
         from src.routers.catalog import ensure_catalog_api_imported, lazy_import_catalog_workflows
         resolved_id = await ensure_catalog_api_imported(api_id)

@@ -99,3 +99,61 @@ def test_credential_bound_to_api(client, admin_session):
     cred_id = resp.json()["id"]
     data = client.get(f"/credentials/{cred_id}", cookies=admin_session).json()
     assert data["api_id"] == api_id
+
+
+def test_create_no_auth_credential_skips_scheme_check(client, admin_session):
+    """auth_type=none credentials should not require a security scheme or overlay."""
+    api_id = "noauth-local.example.com"
+
+    # Register a bare API with NO security schemes
+    spec = {
+        "openapi": "3.1.0",
+        "info": {"title": "No-Auth API", "version": "1.0.0"},
+        "servers": [{"url": f"https://{api_id}"}],
+        "paths": {"/health": {"get": {"operationId": "health", "responses": {"200": {"description": "ok"}}}}},
+    }
+    resp = client.post("/import", cookies=admin_session, json={
+        "sources": [{"type": "inline", "content": json.dumps(spec), "filename": f"{api_id}.json"}],
+    })
+    assert resp.status_code in (200, 201), f"Import failed: {resp.text}"
+
+    # Creating a credential with auth_type=none should succeed (not 409)
+    resp = client.post("/credentials", cookies=admin_session, json={
+        "label": "No-Auth Local Service",
+        "value": "",
+        "api_id": api_id,
+        "auth_type": "none",
+    })
+    assert resp.status_code in (200, 201), (
+        f"Expected 201 for auth_type=none, got {resp.status_code}: {resp.text}"
+    )
+    data = resp.json()
+    assert data["auth_type"] == "none"
+
+
+def test_create_credential_without_scheme_still_blocked(client, admin_session):
+    """Regular auth_type credentials for APIs without schemes should still get 409."""
+    api_id = "noscheme-blocked.example.com"
+
+    # Register a bare API with NO security schemes
+    spec = {
+        "openapi": "3.1.0",
+        "info": {"title": "No-Scheme API", "version": "1.0.0"},
+        "servers": [{"url": f"https://{api_id}"}],
+        "paths": {"/data": {"get": {"operationId": "getData", "responses": {"200": {"description": "ok"}}}}},
+    }
+    resp = client.post("/import", cookies=admin_session, json={
+        "sources": [{"type": "inline", "content": json.dumps(spec), "filename": f"{api_id}.json"}],
+    })
+    assert resp.status_code in (200, 201), f"Import failed: {resp.text}"
+
+    # Creating a bearer credential should fail with 409 (no security scheme)
+    resp = client.post("/credentials", cookies=admin_session, json={
+        "label": "Should Fail",
+        "value": "some-token",
+        "api_id": api_id,
+        "auth_type": "bearer",
+    })
+    assert resp.status_code == 409, (
+        f"Expected 409 for bearer without scheme, got {resp.status_code}: {resp.text}"
+    )
