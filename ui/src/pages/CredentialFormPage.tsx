@@ -381,7 +381,7 @@ function CredentialFields({
 						: { ...defaults, ...(prefill?.serverVars ?? {}) },
 				);
 		}
-	}, [serverVarDefs]);
+	}, [serverVarDefs, prefill?.serverVars]);
 
 	// Prefill from existing credential in edit mode
 	useEffect(() => {

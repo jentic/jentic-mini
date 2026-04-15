@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Key, Plus, Trash2, Settings, RotateCcw, ExternalLink, Link2 } from 'lucide-react';
 import { api, oauthBrokers } from '@/api/client';
 import type { OAuthBroker } from '@/api/client';
+import type { CredentialOut } from '@/api/types';
 import { AppLink } from '@/components/ui/AppLink';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
@@ -527,7 +528,7 @@ export default function CredentialsPage() {
 				<div className="space-y-3">
 					<PipedreamStatusLine />
 					<div className="space-y-2">
-						{credentials.map((cred: any) => (
+						{credentials.map((cred: CredentialOut) => (
 							<div
 								key={cred.id}
 								className="bg-muted border-border rounded-xl border p-4"
@@ -562,10 +563,10 @@ export default function CredentialsPage() {
 													{cred.auth_type}
 												</Badge>
 											) : null}
-											{(cred as any).scheme && (
+											{cred.scheme && (
 												<Badge variant="default" className="text-[10px]">
-													{(cred as any).scheme?.in === 'header'
-														? `→ ${(cred as any).scheme?.name}`
+													{cred.scheme?.in === 'header'
+														? `→ ${cred.scheme?.name}`
 														: 'custom scheme'}
 												</Badge>
 											)}
@@ -600,7 +601,7 @@ export default function CredentialsPage() {
 													if (editingCred === cred.account_id) {
 														setEditingCred(null);
 													} else {
-														setEditingCred(cred.account_id);
+														setEditingCred(cred.account_id ?? null);
 														setEditLabel(cred.label || '');
 													}
 												}}
@@ -624,14 +625,14 @@ export default function CredentialsPage() {
 											onConfirm={() =>
 												deleteMutation.mutate({
 													id: cred.id,
-													authType: cred.auth_type,
+													authType: cred.auth_type ?? '',
 													brokerId:
 														cred.auth_type === 'pipedream_oauth'
 															? 'pipedream'
 															: undefined,
 													accountId:
 														cred.auth_type === 'pipedream_oauth'
-															? cred.account_id
+															? (cred.account_id ?? undefined)
 															: undefined,
 												})
 											}
@@ -675,7 +676,8 @@ export default function CredentialsPage() {
 															if (editLabel.trim()) {
 																renameMutation.mutate({
 																	brokerId: 'pipedream',
-																	accountId: cred.account_id,
+																	accountId:
+																		cred.account_id ?? '',
 																	label: editLabel.trim(),
 																});
 															}
@@ -704,7 +706,7 @@ export default function CredentialsPage() {
 														setEditingCred(null);
 														reconnectMutation.mutate({
 															brokerId: 'pipedream',
-															accountId: cred.account_id,
+															accountId: cred.account_id ?? '',
 														});
 													}}
 													disabled={reconnectMutation.isPending}
