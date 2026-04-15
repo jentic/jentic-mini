@@ -14,10 +14,10 @@ as operation IDs. The backend detects them by matching the Jentic hostname.
 import copy
 import html as _html
 import json
+import pathlib
 import tempfile
 import uuid
 import yaml
-from pathlib import Path
 from typing import Annotated, Any
 
 from fastapi import APIRouter, HTTPException, Path, Query, Request
@@ -48,7 +48,7 @@ def workflow_url(slug: str) -> str:
 
 
 def _parse_arazzo(arazzo_path: str) -> dict:
-    p = Path(arazzo_path)
+    p = pathlib.Path(arazzo_path)
     if not p.exists():
         return {}
     raw = p.read_text()
