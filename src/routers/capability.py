@@ -392,8 +392,8 @@ async def get_capability(
             async with db.execute(
                 """SELECT c.id, c.label, c.server_variables FROM credentials c
                    JOIN toolkit_credentials cc ON cc.credential_id = c.id
-                   WHERE cc.toolkit_id = ?""",
-                (toolkit_id,),
+                   WHERE cc.toolkit_id = ? AND c.api_id = ?""",
+                (toolkit_id, api_id),
             ) as cur:
                 creds = await cur.fetchall()
         configured_vars: dict | None = None
