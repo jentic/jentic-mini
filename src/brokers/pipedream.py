@@ -632,10 +632,12 @@ class PipedreamOAuthBroker:
                     if user_api_id and user_api_id != api_host:
                         route_hosts.append(user_api_id)
                     for route_host in route_hosts:
+                        from src.vault import _parse_route
+                        r_host, r_prefix = _parse_route(route_host)
                         await db.execute(
-                            "INSERT OR IGNORE INTO credential_routes (credential_id, host) "
-                            "VALUES (?, ?)",
-                            (cred_id, route_host),
+                            "INSERT OR IGNORE INTO credential_routes (credential_id, host, path_prefix) "
+                            "VALUES (?, ?, ?)",
+                            (cred_id, r_host, r_prefix),
                         )
 
                     count += 1
