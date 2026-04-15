@@ -724,6 +724,7 @@ async def broker(request: Request, target: str):
     # (e.g. 'bedroom.go2rtc.local') — not a real DNS name. Resolve the actual
     # upstream from the matched credential's server_variables.
     routing_host = upstream_host
+    _resolved_scheme = None  # populated by .local server_variables resolution
     if upstream_host.endswith(".local"):
         # Find the credential's server_variables and resolve via the API's
         # confirmed overlay server URL template.
@@ -743,8 +744,9 @@ async def broker(request: Request, target: str):
                     from urllib.parse import urlparse as _urlparse2
                     _p = _urlparse2(_resolved)
                     routing_host = _p.netloc or routing_host
-                    log.debug("broker: .local route %r resolved to upstream %r via server_variables",
-                              upstream_host, routing_host)
+                    _resolved_scheme = _p.scheme
+                    log.debug("broker: .local route %r resolved to upstream %r (scheme=%s) via server_variables",
+                              upstream_host, routing_host, _resolved_scheme)
                 else:
                     log.warning("broker: .local route %r — could not resolve upstream from server_variables %r",
                                 upstream_host, _sv)
@@ -875,10 +877,15 @@ async def broker(request: Request, target: str):
         or _routing_host_bare.endswith(".local")  # self-hosted semantic routes never resolve via DNS
     )
     _ssl_verify = not _is_private_host
-    # Private hosts use https only on standard TLS ports (443, 8443);
-    # all other ports are assumed plain HTTP (e.g. HA on 8123, NPM on 81).
+    # Scheme selection priority:
+    # 1. If server_variables resolution provided an explicit scheme, use it
+    # 2. Public hosts → always HTTPS
+    # 3. Private hosts → HTTPS only on standard TLS ports (443, 8443, 9443)
     _SSL_PORTS = {443, 8443, 9443}
-    _use_https = not _is_private_host or (_routing_host_port in _SSL_PORTS)
+    if _resolved_scheme:
+        _use_https = _resolved_scheme == "https"
+    else:
+        _use_https = not _is_private_host or (_routing_host_port in _SSL_PORTS)
     if _is_self:
         upstream_url = f"http://localhost:{_internal_port}{upstream_path}"
     else:
