@@ -282,7 +282,6 @@ async def _backfill_credential_routes() -> None:
     Runs at every startup — the LEFT JOIN makes it a no-op if already complete.
     """
     from src.vault import _parse_route
-    import json as _json
     async with get_db() as db:
         async with db.execute(
             """SELECT c.id, c.api_id
