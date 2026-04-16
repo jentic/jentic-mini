@@ -217,6 +217,10 @@ async def _ensure_internal_credential() -> None:
                     "UPDATE credentials SET id=? WHERE id=?",
                     (_INTERNAL_CRED_ID, cred["id"]),
                 )
+                await db.execute(
+                    "UPDATE credential_routes SET credential_id=? WHERE credential_id=?",
+                    (_INTERNAL_CRED_ID, cred["id"]),
+                )
                 await db.commit()
 
         # Register the key as a valid toolkit key in the DB (bound to default toolkit)
