@@ -207,6 +207,7 @@ async def _ensure_internal_credential() -> None:
             api_id=resolved_api_id,
             scheme_name="JenticApiKey",
             scheme={"in": "header", "name": "X-Jentic-API-Key"},
+            routes=[_public_hostname()],
         )
 
         # Override the semantic ID to our canonical internal ID (in case slug differs)

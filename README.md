@@ -102,7 +102,7 @@ Optional environment variables (set in `.env` or pass to `docker compose`):
 | Variable                 | Default        | Description                                                                       |
 | ------------------------ | -------------- | --------------------------------------------------------------------------------- |
 | `JENTIC_VAULT_KEY`       | auto-generated | [Fernet](https://cryptography.io/en/latest/fernet/) key for the credentials vault |
-| `JENTIC_PUBLIC_HOSTNAME` | none           | Public hostname for self-links and workflow IDs, e.g. `jentic.example.com`        |
+| `JENTIC_PUBLIC_HOSTNAME` | `localhost`    | Public hostname for self-links and workflow IDs, e.g. `jentic.example.com`        |
 | `LOG_LEVEL`              | `info`         | `debug`, `info`, `warning`, `error`                                               |
 
 ### Authentication
