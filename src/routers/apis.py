@@ -82,6 +82,20 @@ async def _load_merged_spec(api_id: str, spec_path: str | None, include_pending:
     return spec
 
 
+async def load_api_desc(api_id: str, include_pending: bool = False) -> dict:
+    """Load the merged API description (spec + overlays) by api_id.
+
+    Looks up spec_path from the apis table, then delegates to _load_merged_spec.
+    Returns {} if the API is not found or has no spec.
+    """
+    async with get_db() as db:
+        async with db.execute("SELECT spec_path FROM apis WHERE id=?", (api_id,)) as cur:
+            row = await cur.fetchone()
+    if not row or not row[0]:
+        return {}
+    return await _load_merged_spec(api_id, row[0], include_pending=include_pending)
+
+
 def _extract_vendor(api_id: str | None) -> str | None:
     """Extract registrable domain from a URL-derived API ID.
 
