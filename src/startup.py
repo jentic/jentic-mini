@@ -126,7 +126,7 @@ async def _ensure_spec_imported(app=None) -> None:
         )
         await db.commit()
         async with db.execute(
-            "SELECT id FROM apis WHERE id=?", (hostname,)
+            "SELECT id FROM apis WHERE id=? OR spec_path LIKE '%jentic-mini.json'", (hostname,)
         ) as cur:
             if await cur.fetchone():
                 log.info("self-registration: spec already imported — skipping")
@@ -184,6 +184,17 @@ async def _ensure_internal_credential() -> None:
 
     log.info("self-registration: creating internal admin credential")
     try:
+        # Resolve the actual API ID — may differ from JENTIC_PUBLIC_HOSTNAME
+        # when the server URL is private (e.g. localhost → jentic-mini.local).
+        resolved_api_id = _public_hostname()
+        async with get_db() as db:
+            async with db.execute(
+                "SELECT id FROM apis WHERE spec_path LIKE '%jentic-mini.json' LIMIT 1"
+            ) as cur:
+                row = await cur.fetchone()
+            if row:
+                resolved_api_id = row[0]
+
         # Generate a fresh admin toolkit key
         raw_key = "tk_" + secrets.token_hex(16)
 
@@ -193,8 +204,10 @@ async def _ensure_internal_credential() -> None:
             label="Jentic Mini Admin Key",
             env_var="JENTIC_MINI_ADMIN_KEY",
             value=raw_key,
-            api_id=_public_hostname(),
+            api_id=resolved_api_id,
             scheme_name="JenticApiKey",
+            scheme={"in": "header", "name": "X-Jentic-API-Key"},
+            routes=[_public_hostname()],
         )
 
         # Override the semantic ID to our canonical internal ID (in case slug differs)
@@ -202,6 +215,10 @@ async def _ensure_internal_credential() -> None:
             async with get_db() as db:
                 await db.execute(
                     "UPDATE credentials SET id=? WHERE id=?",
+                    (_INTERNAL_CRED_ID, cred["id"]),
+                )
+                await db.execute(
+                    "UPDATE credential_routes SET credential_id=? WHERE credential_id=?",
                     (_INTERNAL_CRED_ID, cred["id"]),
                 )
                 await db.commit()
@@ -268,3 +285,41 @@ async def seed_broker_apps(broker_id: str = "pipedream") -> None:
         log.info("seed_broker_apps: %d inserted, %d updated for broker '%s'", inserted, updated, broker_id)
     else:
         log.debug("seed_broker_apps: all mappings already up-to-date for broker '%s'", broker_id)
+
+
+
+async def _backfill_credential_routes() -> None:
+    """Ensure every credential has at least one entry in credential_routes.
+
+    Credentials created before migration 0006 may not have rows in credential_routes.
+    This idempotent backfill adds route entries derived from api_id for any
+    credential with no existing credential_routes rows.
+
+    Runs at every startup — the LEFT JOIN makes it a no-op if already complete.
+    """
+    from src.vault import _parse_route
+    async with get_db() as db:
+        async with db.execute(
+            """SELECT c.id, c.api_id
+               FROM credentials c
+               LEFT JOIN credential_routes cr ON c.id = cr.credential_id
+               WHERE cr.credential_id IS NULL"""
+        ) as cur:
+            rows = await cur.fetchall()
+
+    if not rows:
+        log.debug("_backfill_credential_routes: nothing to backfill")
+        return
+
+    log.info("_backfill_credential_routes: backfilling routes for %d credential(s)", len(rows))
+    async with get_db() as db:
+        for cred_id, api_id in rows:
+            if not api_id:
+                continue
+            host, path_prefix = _parse_route(api_id)
+            await db.execute(
+                "INSERT OR IGNORE INTO credential_routes (credential_id, host, path_prefix) VALUES (?,?,?)",
+                (cred_id, host, path_prefix),
+            )
+        await db.commit()
+    log.info("_backfill_credential_routes: done")

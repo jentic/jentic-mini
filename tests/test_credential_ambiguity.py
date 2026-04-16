@@ -59,6 +59,16 @@ def ambiguous_credentials(client, admin_session):
                 (CRED_ID_B, "Gmail Token", "CRED_B", enc_b, API_ID),
             )
 
+            # Register routes so broker resolves credentials via credential_routes
+            await db.execute(
+                "INSERT OR IGNORE INTO credential_routes (credential_id, host) VALUES (?, ?)",
+                (CRED_ID_A, API_HOST),
+            )
+            await db.execute(
+                "INSERT OR IGNORE INTO credential_routes (credential_id, host) VALUES (?, ?)",
+                (CRED_ID_B, API_HOST),
+            )
+
             # Bind both to the default toolkit
             for cred_id in (CRED_ID_A, CRED_ID_B):
                 await db.execute(
@@ -93,6 +103,7 @@ def ambiguous_credentials(client, admin_session):
     async def teardown():
         db_path = os.environ["DB_PATH"]
         async with aiosqlite.connect(db_path) as db:
+            await db.execute("DELETE FROM credential_routes WHERE credential_id IN (?, ?)", (CRED_ID_A, CRED_ID_B))
             await db.execute("DELETE FROM toolkit_credentials WHERE credential_id IN (?, ?)", (CRED_ID_A, CRED_ID_B))
             await db.execute("DELETE FROM credentials WHERE id IN (?, ?)", (CRED_ID_A, CRED_ID_B))
             await db.execute("DELETE FROM oauth_broker_accounts WHERE broker_id=?", (BROKER_ID,))

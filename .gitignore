@@ -15,4 +15,6 @@ vendor/arazzo-engine
 /static/
 /src/specs/
 /src/workflows/
+*.bak
+*.db
 .hypothesis/

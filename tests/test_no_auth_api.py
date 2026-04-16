@@ -1,88 +1,87 @@
 """No-auth API passthrough tests — broker should forward without credentials
-when the API spec has no securitySchemes, and block when it does.
+when an auth_type=none credential is configured, and block when no credential
+exists for the host (fail-closed).
 
-Covers issue #48: importing a no-auth API spec should not break broker calls.
+Prior to the credential_routes migration, the broker checked the API spec's
+securitySchemes to decide whether to require credentials. This was replaced by
+a purely route-based model:
+  - auth_type=none credential  → forward without injecting auth headers  → 502 (unreachable)
+  - no credential for host     → 403 policy_denied (fail-closed)
 """
 import asyncio
-import json
 import os
 
 import aiosqlite
 import pytest
 
+from src import vault
 
 NO_AUTH_HOST = "127.0.0.3"
 AUTH_HOST = "127.0.0.4"
 
 
 @pytest.fixture(scope="module")
-def registered_apis(client, admin_session):
-    """Register two APIs: one without security schemes, one with."""
+def registered_apis(client, agent_key_header, admin_session):
+    """Register a no-auth credential for NO_AUTH_HOST; leave AUTH_HOST unconfigured."""
 
     async def setup():
         db_path = os.environ["DB_PATH"]
-        specs_dir = os.path.join(os.path.dirname(db_path), "specs")
-        os.makedirs(specs_dir, exist_ok=True)
 
-        # No-auth spec (no securitySchemes)
-        no_auth_spec = {
-            "openapi": "3.0.3",
-            "info": {"title": "No-Auth API", "version": "1.0"},
-            "paths": {
-                "/get": {
-                    "get": {"operationId": "getStuff", "responses": {"200": {"description": "OK"}}}
-                }
-            },
-        }
-        no_auth_path = os.path.join(specs_dir, "no_auth_api.json")
-        with open(no_auth_path, "w") as f:
-            json.dump(no_auth_spec, f)
-
-        # Auth spec (has securitySchemes)
-        auth_spec = {
-            "openapi": "3.0.3",
-            "info": {"title": "Auth API", "version": "1.0"},
-            "components": {
-                "securitySchemes": {
-                    "BearerAuth": {"type": "http", "scheme": "bearer"}
-                }
-            },
-            "security": [{"BearerAuth": []}],
-            "paths": {
-                "/data": {
-                    "get": {"operationId": "getData", "responses": {"200": {"description": "OK"}}}
-                }
-            },
-        }
-        auth_path = os.path.join(specs_dir, "auth_api.json")
-        with open(auth_path, "w") as f:
-            json.dump(auth_spec, f)
-
+        enc = vault.encrypt("")  # no-auth: empty value
         async with aiosqlite.connect(db_path) as db:
             await db.execute(
-                "INSERT OR IGNORE INTO apis (id, name, base_url, spec_path) VALUES (?, ?, ?, ?)",
-                (NO_AUTH_HOST, "No-Auth API", f"https://{NO_AUTH_HOST}", no_auth_path),
+                "INSERT OR IGNORE INTO credentials "
+                "(id, label, env_var, encrypted_value, api_id, auth_type) "
+                "VALUES (?, ?, ?, ?, ?, 'none')",
+                ("no-auth-api-test", "No-Auth API", "NO_AUTH_API_TEST", enc, NO_AUTH_HOST),
             )
             await db.execute(
-                "INSERT OR IGNORE INTO apis (id, name, base_url, spec_path) VALUES (?, ?, ?, ?)",
-                (AUTH_HOST, "Auth API", f"https://{AUTH_HOST}", auth_path),
+                "INSERT OR IGNORE INTO credential_routes (credential_id, host) VALUES (?, ?)",
+                ("no-auth-api-test", NO_AUTH_HOST),
+            )
+            # Bind credential to the default toolkit so the broker can find it
+            await db.execute(
+                "INSERT OR IGNORE INTO toolkit_credentials (toolkit_id, credential_id) "
+                "VALUES ('default', 'no-auth-api-test')",
             )
             await db.commit()
 
     asyncio.run(setup())
+    yield
+
+    async def teardown():
+        db_path = os.environ["DB_PATH"]
+        async with aiosqlite.connect(db_path) as db:
+            await db.execute("DELETE FROM credential_routes WHERE credential_id='no-auth-api-test'")
+            await db.execute("DELETE FROM toolkit_credentials WHERE credential_id='no-auth-api-test'")
+            await db.execute("DELETE FROM credentials WHERE id='no-auth-api-test'")
+            await db.commit()
+
+    asyncio.run(teardown())
 
 
 def test_no_auth_api_forwards_without_credentials(client, agent_key_header, registered_apis):
-    """A registered API with no securitySchemes should not require credentials."""
+    """An auth_type=none credential allows broker passthrough without injecting auth.
+
+    The upstream is non-routable so we expect a connection error (502), not a
+    credential or policy error.
+    """
     resp = client.get(f"/{NO_AUTH_HOST}/get", headers=agent_key_header)
-    # The upstream is non-routable so we expect a connection error (502 or 504),
-    # NOT a credential lookup error (500).
-    assert resp.status_code in (502, 504), f"Expected 502/504 (upstream unreachable), got {resp.status_code}: {resp.text}"
+    assert resp.status_code == 502, (
+        f"Expected 502 (upstream unreachable), got {resp.status_code}: {resp.text}"
+    )
 
 
 def test_auth_api_requires_credentials(client, agent_key_header, registered_apis):
-    """A registered API with securitySchemes should fail without credentials."""
+    """A host with no configured credential returns 403 policy_denied (fail-closed).
+
+    Previously the broker returned 500 CREDENTIAL_LOOKUP_FAILED when it couldn't
+    find a scheme in the spec. The route-based model replaces this with a clean
+    403: if no credential_routes row exists for the host, the request is denied.
+    """
     resp = client.get(f"/{AUTH_HOST}/data", headers=agent_key_header)
-    assert resp.status_code == 500
+    assert resp.status_code == 403, (
+        f"Expected 403 policy_denied (no credential for host), got {resp.status_code}: {resp.text}"
+    )
     body = resp.json()
-    assert "CREDENTIAL_LOOKUP_FAILED" in body.get("error", "")
+    assert body.get("error") == "policy_denied", f"Unexpected error code: {body}"

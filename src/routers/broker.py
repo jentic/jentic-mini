@@ -43,6 +43,7 @@ from typing import Annotated, Optional
 from urllib.parse import unquote, urlparse
 
 import httpx
+import aiohttp
 from fastapi import APIRouter, Path, Request, Response, HTTPException
 from fastapi.routing import APIRoute
 
@@ -69,10 +70,7 @@ class ServiceNotFoundError(Exception):
 _HOP_BY_HOP = {
     "connection", "keep-alive", "proxy-authenticate", "proxy-authorization",
     "te", "trailers", "transfer-encoding", "upgrade",
-    # httpx decompresses automatically — forwarding Content-Encoding causes
-    # ERR_CONTENT_DECODING_FAILED in browsers because content is already decoded
-    "content-encoding",
-    # Content-Length from upstream is wrong after decompression; let ASGI recalculate
+    # Content-Length from upstream is wrong after any proxy buffering; let ASGI recalculate
     "content-length",
     # Jentic-specific — consumed here, not forwarded upstream
     "x-jentic-api-key", "x-jentic-simulate",
@@ -89,38 +87,21 @@ _HOP_BY_HOP = {
     "x-real-ip", "x-scheme",
 }
 
-# How we detect credentials for a given API host
-# Looks up the api in the apis table by id (which is the scheme-stripped base URL)
-# then finds matching credentials by api_id + auth_type and injects them as HTTP headers.
-async def _resolve_credential_ids(host: str, toolkit_id: str | None) -> tuple[str | None, list[str]]:
-    """Resolve host → (api_id, [credential_ids]) without decrypting anything.
+# aiohttp auto-decompresses response bodies by default (auto_decompress=True).
+# We disable this below so the raw body passes through unchanged and
+# content-encoding forwards correctly (client gets what upstream actually sent).
+# _HOP_BY_HOP_RESPONSE is the same set — content-encoding is NOT stripped,
+# because with auto_decompress=False the header accurately describes the body.
+_HOP_BY_HOP_RESPONSE = _HOP_BY_HOP
+
+async def _resolve_credential_ids(host: str, toolkit_id: str | None, path: str = "/") -> list[str]:
+    """Resolve host → [credential_ids] without decrypting anything.
     Used for policy checks before the vault is touched.
+    Resolution is purely route-based via credential_routes.
     """
-    candidates = [host]
-    parts = host.split(".")
-    if len(parts) > 2:
-        candidates.append(".".join(parts[1:]))
-
-    api_id = None
-    async with get_db() as db:
-        for candidate in candidates:
-            # ORDER BY length(id) DESC ensures longest (most specific) match wins,
-            # making selection deterministic when multiple APIs share a host prefix
-            # (e.g. googleapis.com/calendar vs googleapis.com/gmail).
-            async with db.execute(
-                "SELECT id FROM apis WHERE id=? OR id LIKE ? ORDER BY length(id) DESC LIMIT 1",
-                (candidate, f"{candidate}%"),
-            ) as cur:
-                row = await cur.fetchone()
-            if row:
-                api_id = row[0]
-                break
-
-    if not api_id or not toolkit_id:
-        return api_id, []
-
-    cred_ids = await vault.get_credential_ids_for_api(toolkit_id, api_id)
-    return api_id, cred_ids
+    if not toolkit_id:
+        return []
+    return await vault.get_credential_ids_for_route(toolkit_id, host, path)
 
 
 async def _find_credential_for_host(
@@ -135,6 +116,7 @@ async def _find_credential_for_host(
 
     credential_id is the ID of the first credential used for injection — used by the
     caller to enforce per-credential policy rules.
+    api_id is taken from the credential record — not resolved via the apis table.
 
     is_ambiguous is True when multiple credentials matched and no alias/service
     was provided to disambiguate.
@@ -142,60 +124,11 @@ async def _find_credential_for_host(
     import logging as _log
     _broker_log = _log.getLogger("jentic.broker")
 
-    # Resolve host → api_id
-    candidates = [host]
-    parts = host.split(".")
-    if len(parts) > 2:
-        candidates.append(".".join(parts[1:]))
+    api_id = None  # populated from credential record below
+    _broker_log.debug("CRED LOOKUP: host=%r path=%r toolkit=%r alias=%r", host, path, toolkit_id, alias)
 
-    api_id = None
-    async with get_db() as db:
-        for candidate in candidates:
-            # For subdomain-style hosts (e.g. calendar.googleapis.com), also try
-            # the catalog convention of parent-domain/subdomain (googleapis.com/calendar)
-            # by extracting the leftmost subdomain label as a path hint.
-            sub_hint = host.split(".")[0] if host != candidate else None
-            row = None
-
-            # 1. Exact match
-            async with db.execute("SELECT id FROM apis WHERE id=?", (candidate,)) as cur:
-                row = await cur.fetchone()
-
-            # 2. Subdomain-hinted prefix match (e.g. googleapis.com/calendar)
-            if not row and sub_hint:
-                async with db.execute(
-                    "SELECT id FROM apis WHERE id LIKE ? ORDER BY length(id) DESC LIMIT 1",
-                    (f"{candidate}/{sub_hint}%",),
-                ) as cur:
-                    row = await cur.fetchone()
-
-            # 3. General longest-prefix match (fallback)
-            if not row:
-                async with db.execute(
-                    "SELECT id FROM apis WHERE id LIKE ? ORDER BY length(id) DESC LIMIT 1",
-                    (f"{candidate}%",),
-                ) as cur:
-                    row = await cur.fetchone()
-
-            if row:
-                api_id = row[0]
-                break
-
-    # Credentials are always stored under api_id (the canonical ID from the apis
-    # table), which matches how POST /credentials stores them and how
-    # _resolve_credential_ids (the policy check path) looks them up.
-    _broker_log.debug("CRED LOOKUP: host=%r → api_id=%r (toolkit=%r alias=%r)", host, api_id, toolkit_id, alias)
-
-    if not api_id:
-        return {}, None, None, False
-
-    # Get credentials bound to this toolkit + api
-    creds = await vault.get_credentials_for_api(toolkit_id, api_id)
-    # TODO: remove hostname fallback once Pipedream credential storage is
-    # updated to use catalog api_id instead of HTTP hostname (see #79).
-    if not creds and host != api_id:
-        creds = await vault.get_credentials_for_api(toolkit_id, host)
-    _broker_log.debug("CRED LOOKUP: %d cred(s) for api_id=%r host=%r: %s", len(creds), api_id, host, [c.get("id") for c in creds])
+    creds = await vault.get_credentials_for_route(toolkit_id, host, path)
+    _broker_log.debug("CRED LOOKUP: %d cred(s) via route for host=%r: %s", len(creds), host, [c.get("id") for c in creds])
 
     if not creds and toolkit_id:
         # Don't block no-auth APIs — only raise if the API spec defines security schemes.
@@ -252,20 +185,15 @@ async def _find_credential_for_host(
     if len(creds) > 1 and not alias and not service:
         is_ambiguous = True
         _broker_log.warning(
-            "CRED AMBIGUITY: %d credentials for host=%r api_id=%r — using first. "
+            "CRED AMBIGUITY: %d credentials for host=%r — using first. "
             "Set X-Jentic-Service or X-Jentic-Credential header to disambiguate. "
             "Credential IDs: %s",
-            len(creds), host, api_id,
+            len(creds), host,
             [c.get("id") for c in creds],
         )
 
-    # Get merged security schemes (spec + confirmed overlays)
-    from src.routers.overlays import get_merged_security_schemes
-    schemes = await get_merged_security_schemes(api_id)
-
-    # Note: schemes may be empty if no spec or overlay is registered for this API.
-    # That is fine — credentials with an explicit auth_type can still be injected
-    # without a scheme definition (e.g. github.com git-over-HTTPS has no spec).
+    # api_id comes from the credential record — not resolved via the apis table.
+    api_id = creds[0].get("api_id") if creds else None
 
     headers = {}
     first_credential_id: str | None = None
@@ -273,65 +201,68 @@ async def _find_credential_for_host(
         value = cred["value"]
         auth_type = cred.get("auth_type")
         identity = cred.get("identity")
-
-        # Derive auth_type from spec if not stored on credential (legacy / null)
-        if not auth_type:
-            _basic_key = next(
-                (k for k, v in schemes.items() if v.get("type") == "http" and v.get("scheme", "").lower() == "basic"),
-                None,
-            )
-            _bearer_key = next(
-                (k for k, v in schemes.items() if v.get("type") == "http" and v.get("scheme", "").lower() == "bearer"),
-                None,
-            )
-            _apikey_key = next(
-                (k for k, v in schemes.items() if v.get("type") == "apiKey"),
-                None,
-            )
-            if _basic_key:
-                auth_type = "basic"
-            elif _bearer_key:
-                auth_type = "bearer"
-            elif _apikey_key:
-                auth_type = "apiKey"
-
-        if not auth_type:
-            continue
+        cred_scheme = cred.get("scheme")  # pre-computed blob from migration 0007 / store_credential
 
         if not first_credential_id:
             first_credential_id = cred["id"]
 
-        # Find the matching scheme(s) in the spec by auth_type
-        if auth_type == "bearer":
-            # Find any HTTP auth scheme that isn't basic/digest.
-            # Use the actual scheme name from the spec/overlay — e.g. "bearer" → "Bearer",
-            # "token" → "Token". This lets vendor-specific prefixes (Deepgram "Token",
-            # GitHub "Bearer", etc.) work without touching the credential.
-            scheme = next(
-                (v for v in schemes.values()
-                 if v.get("type") == "http" and v.get("scheme", "").lower() not in ("basic", "digest")),
-                None,
-            )
-            if scheme:
-                scheme_prefix = scheme.get("scheme", "bearer").capitalize()
-                headers["Authorization"] = f"{scheme_prefix} {value}"
-            else:
-                # No overlay/spec scheme found — fall back to Bearer (most common)
-                headers["Authorization"] = f"Bearer {value}"
+        # No-auth credential: exists only for server_variables routing — skip injection.
+        if auth_type == "none":
+            continue
 
+        # Fast path: use the pre-computed scheme blob if available.
+        # This is the canonical path after migration 0007 — no spec lookup needed.
+        if cred_scheme:
+            # Compound scheme: {"secret": {"in":...,"name":...}, "identity": {"in":...,"name":...}}
+            if "secret" in cred_scheme:
+                s = cred_scheme["secret"]
+                s_pfx = s.get("prefix", "")
+                if s.get("in") == "header":
+                    headers[s["name"]] = f"{s_pfx}{value}"
+                if "identity" in cred_scheme and identity:
+                    si = cred_scheme["identity"]
+                    if si.get("in") == "header":
+                        headers[si["name"]] = identity
+                continue
+
+            s_in   = cred_scheme.get("in")
+            s_name = cred_scheme.get("name", "Authorization")
+            s_pfx  = cred_scheme.get("prefix", "")
+            s_enc  = cred_scheme.get("encode")
+            if s_in == "header":
+                if s_enc == "base64":
+                    import base64 as _b64
+                    if identity:
+                        _raw = f"{identity}:{value}"
+                    elif ":" in value:
+                        _raw = value
+                    else:
+                        _raw = f"token:{value}"
+                    headers[s_name] = f"{s_pfx}{_b64.b64encode(_raw.encode()).decode()}"
+                else:
+                    headers[s_name] = f"{s_pfx}{value}"
+                # Compound scheme: also inject identity if a second scheme entry is present
+                if cred_scheme.get("identity_name") and identity:
+                    headers[cred_scheme["identity_name"]] = identity
+            elif s_in == "query":
+                _broker_log.warning(
+                    "CRED INJECT: credential %r uses apiKey in query param (%s) — not yet supported, skipping injection",
+                    cred.get("id"), s_name,
+                )
+            continue
+
+        # No pre-computed scheme blob — minimal no-spec fallback.
+        # All credentials created since migration 0005 have a scheme blob; this path
+        # is only reachable for manually-inserted or very old credentials.
+        import logging as _fblog
+        _fblog.getLogger("jentic.broker").warning(
+            "CRED INJECT: credential %r has no scheme blob — attempting auth_type fallback",
+            cred.get("id"),
+        )
+        if auth_type == "bearer" or auth_type == "oauth2":
+            headers["Authorization"] = f"Bearer {value}"
         elif auth_type == "basic":
-            scheme = next(
-                (v for v in schemes.values() if v.get("type") == "http" and v.get("scheme", "").lower() in ("basic", "digest")),
-                None,
-            )
-            # Inject Basic auth regardless of whether a scheme is found in the spec.
-            # auth_type on the credential is authoritative — no spec/overlay required.
-            # (scheme lookup is kept for future use, e.g. digest challenge-response)
             import base64 as _b64
-            # BasicAuth/DigestAuth credential construction (RFC 7617):
-            # 1. value contains ":" → treat as pre-formatted "username:password"
-            # 2. identity is set → base64("{identity}:{value}")
-            # 3. fallback → base64("token:{value}") — works for PAT-style APIs like GitHub
             if ":" in value:
                 _raw = value
             elif identity:
@@ -339,30 +270,12 @@ async def _find_credential_for_host(
             else:
                 _raw = f"token:{value}"
             headers["Authorization"] = f"Basic {_b64.b64encode(_raw.encode()).decode()}"
-
-        elif auth_type == "apiKey":
-            # Collect all apiKey schemes from the spec
-            apikey_schemes = {k: v for k, v in schemes.items() if v.get("type") == "apiKey"}
-            if not apikey_schemes:
-                continue
-
-            # Canonical compound apiKey: overlay uses scheme names 'Secret' and 'Identity'
-            secret_scheme = apikey_schemes.get("Secret")
-            identity_scheme = apikey_schemes.get("Identity")
-            if secret_scheme and identity_scheme:
-                # Compound: Secret → cred.value, Identity → cred.identity
-                if secret_scheme.get("in") == "header":
-                    headers[secret_scheme["name"]] = value
-                if identity_scheme.get("in") == "header" and identity:
-                    headers[identity_scheme["name"]] = identity
-            else:
-                # Single apiKey: inject value into every apiKey header scheme
-                for scheme in apikey_schemes.values():
-                    if scheme.get("in") == "header":
-                        headers[scheme["name"]] = value
-
-        elif auth_type == "oauth2":
-            headers["Authorization"] = f"Bearer {value}"
+        else:
+            # apiKey and others require a header name — can't inject without scheme blob.
+            _fblog.getLogger("jentic.broker").error(
+                "CRED INJECT: credential %r auth_type=%r has no scheme blob and no spec fallback — skipping injection",
+                cred.get("id"), auth_type,
+            )
 
     _broker_log.debug("CRED INJECT: api_id=%r injecting headers=%s using cred=%r ambiguous=%s", api_id, list(headers.keys()), first_credential_id, is_ambiguous)
     return headers, api_id, first_credential_id, is_ambiguous
@@ -654,24 +567,28 @@ async def broker(request: Request, target: str):
     # (e.g. googleapis.com) where auto-selection would otherwise target the wrong
     # credential (e.g. Calendar when the caller wants Gmail), causing spurious 403s
     # with a misleading credential_id in the error body.
-    _api_id_for_host: str | None = None
     _resolved_cred_ids: list[str] = []
 
     if credential_alias and toolkit_id:
-        # Hard override: use the named credential directly for policy enforcement.
-        # Also attempt to resolve api_id for context (error messages etc.) but
-        # never let it change which credential gets checked.
-        _resolved_cred_ids = [credential_alias]
-        try:
-            _api_id_for_host, _ = await _resolve_credential_ids(
-                host=upstream_host, toolkit_id=toolkit_id
+        # X-Jentic-Credential is a disambiguator, not a bypass — resolve by route
+        # first, then verify the named credential is among the matches.
+        _resolved_cred_ids = await _resolve_credential_ids(
+            host=upstream_host, toolkit_id=toolkit_id, path=upstream_path
+        )
+        if credential_alias in _resolved_cred_ids:
+            _resolved_cred_ids = [credential_alias]
+        elif _resolved_cred_ids:
+            # Alias doesn't match any route-resolved credential for this host —
+            # log warning but proceed with route-matched creds (best-effort).
+            log.warning(
+                "X-Jentic-Credential=%r not found among route-matched credentials %s for host=%r — ignoring alias",
+                credential_alias, _resolved_cred_ids, upstream_host,
             )
-        except Exception:
-            pass
+        # If _resolved_cred_ids is empty, fall through to the fail-closed check below.
     elif toolkit_id:
         try:
-            _api_id_for_host, _resolved_cred_ids = await _resolve_credential_ids(
-                host=upstream_host, toolkit_id=toolkit_id
+            _resolved_cred_ids = await _resolve_credential_ids(
+                host=upstream_host, toolkit_id=toolkit_id, path=upstream_path
             )
         except Exception:
             # Fail closed: if we can't resolve credentials for policy checking,
@@ -690,6 +607,23 @@ async def broker(request: Request, target: str):
                 media_type="application/json",
                 headers={"X-Jentic-Error": "true", "X-Jentic-Execution-Id": execution_id},
             )
+
+    if toolkit_id and not _resolved_cred_ids:
+        # Fail closed: an authenticated request with a toolkit_id must resolve
+        # to at least one credential for the target host. If none can be found,
+        # deny immediately — never fall through to unenforced injection.
+        await _write_trace("policy_denied", 403, f"No credential found for '{upstream_host}'")
+        return Response(
+            content=json.dumps({
+                "error": "policy_denied",
+                "message": f"No credential configured for '{upstream_host}'. Request denied.",
+                "toolkit_id": toolkit_id,
+                "remediation": "Add a credential for this host via the Jentic Mini UI.",
+            }),
+            status_code=403,
+            media_type="application/json",
+            headers={"X-Jentic-Error": "true", "X-Jentic-Execution-Id": execution_id},
+        )
 
     if toolkit_id and _resolved_cred_ids:
         from src.routers.toolkits import check_credential_policy
@@ -774,20 +708,56 @@ async def broker(request: Request, target: str):
         _cred_headers["X-Jentic-Credential-Used"] = credential_id
     if credential_ambiguous:
         _cred_headers["X-Jentic-Credential-Ambiguous"] = "true"
+        await _write_trace("error", 409, "Ambiguous credential")
+        return Response(
+            content=json.dumps({
+                "error": "CREDENTIAL_AMBIGUOUS",
+                "message": (
+                    f"Multiple credentials match host '{upstream_host}'. "
+                    "Use X-Jentic-Credential to specify which one, "
+                    "or X-Jentic-Service to select by service name."
+                ),
+            }),
+            status_code=409,
+            media_type="application/json",
+            headers={"X-Jentic-Error": "true", "X-Jentic-Execution-Id": execution_id, **_cred_headers},
+        )
 
-    # ── Compute routing host (used by both main and Pipedream paths) ──────────
-    # Look up base_url from the apis table for the matched api_id. This decouples
-    # the api_id (e.g. googleapis.com/calendar) from the real HTTP host
-    # (www.googleapis.com). Falls back to upstream_host if no base_url found.
+    # ── Routing host ──────────────────────────────────────────────────────────
+    # upstream_host is the host the caller addressed in the broker URL.
+    # For .local self-hosted APIs, the upstream_host is a semantic routing key
+    # (e.g. 'bedroom.go2rtc.local') — not a real DNS name. Resolve the actual
+    # upstream from the matched credential's server_variables.
     routing_host = upstream_host
-    if api_id and not _is_self:
-        async with get_db() as _rdb:
-            async with _rdb.execute("SELECT base_url FROM apis WHERE id=?", (api_id,)) as _rcur:
-                _rrow = await _rcur.fetchone()
-            if _rrow and _rrow[0]:
-                _parsed_host = urlparse(_rrow[0]).hostname
-                if _parsed_host:
-                    routing_host = _parsed_host
+    _resolved_scheme = None  # populated by .local server_variables resolution
+    if upstream_host.endswith(".local"):
+        # Find the credential's server_variables and resolve via the API's
+        # confirmed overlay server URL template.
+        _local_cred = None
+        if inject_headers is not None:
+            # Try to get the credential record that produced inject_headers
+            if credential_id:
+                _local_cred = await vault.get_credential(credential_id)
+        if _local_cred is None and credential_id:
+            _local_cred = await vault.get_credential(credential_id)
+        if _local_cred:
+            _sv = _local_cred.get("server_variables") or {}
+            _cred_api_id = _local_cred.get("api_id")
+            if _sv:
+                _resolved = await vault._resolve_server_url(_cred_api_id, _sv)
+                if _resolved:
+                    from urllib.parse import urlparse as _urlparse2
+                    _p = _urlparse2(_resolved)
+                    routing_host = _p.netloc or routing_host
+                    _resolved_scheme = _p.scheme
+                    log.debug("broker: .local route %r resolved to upstream %r (scheme=%s) via server_variables",
+                              upstream_host, routing_host, _resolved_scheme)
+                else:
+                    log.warning("broker: .local route %r — could not resolve upstream from server_variables %r",
+                                upstream_host, _sv)
+            elif _sv is not None:
+                log.warning("broker: .local route %r — credential %r has no server_variables; cannot resolve upstream",
+                            upstream_host, credential_id)
 
     # ── Pipedream credential path ─────────────────────────────────────────────
     # If the vault lookup yielded no headers, check for an explicitly-provisioned
@@ -885,7 +855,7 @@ async def broker(request: Request, target: str):
                     await _write_trace(trace_status, _pd_resp.status_code)
                     _pd_resp_headers = {
                         k: v for k, v in _pd_resp.headers.items()
-                        if k.lower() not in _HOP_BY_HOP
+                        if k.lower() not in _HOP_BY_HOP_RESPONSE
                     }
                     _pd_resp_headers["X-Jentic-Execution-Id"] = execution_id
                     _pd_resp_headers["X-Jentic-OAuth-Broker"] = "pipedream"
@@ -898,13 +868,34 @@ async def broker(request: Request, target: str):
                     )
 
     # ── Build upstream URL ────────────────────────────────────────────────────
-    # routing_host was computed above from base_url lookup — use it here too.
     import os as _os2
+    import re as _re2
     _internal_port = int(_os2.environ.get("JENTIC_INTERNAL_PORT", "8900"))
+    # Disable TLS verification for private/local addresses (self-signed certs)
+    _routing_host_bare = routing_host.split(":")[0]
+    _routing_host_port = int(routing_host.split(":")[1]) if ":" in routing_host else None
+    _is_private_host = (
+        _routing_host_bare in ("localhost", "127.0.0.1")
+        or _routing_host_bare.startswith("10.")
+        or _routing_host_bare.startswith("192.168.")
+        or bool(_re2.match(r"172\.(1[6-9]|2[0-9]|3[0-1])\.", _routing_host_bare))
+        or _routing_host_bare.endswith(".local")  # self-hosted semantic routes never resolve via DNS
+    )
+    _ssl_verify = not _is_private_host
+    # Scheme selection priority:
+    # 1. If server_variables resolution provided an explicit scheme, use it
+    # 2. Public hosts → always HTTPS
+    # 3. Private hosts → HTTPS only on standard TLS ports (443, 8443, 9443)
+    _SSL_PORTS = {443, 8443, 9443}
+    if _resolved_scheme:
+        _use_https = _resolved_scheme == "https"
+    else:
+        _use_https = not _is_private_host or (_routing_host_port in _SSL_PORTS)
     if _is_self:
         upstream_url = f"http://localhost:{_internal_port}{upstream_path}"
     else:
-        upstream_url = f"https://{routing_host}{upstream_path}"
+        _scheme = "https" if _use_https else "http"
+        upstream_url = f"{_scheme}://{routing_host}{upstream_path}"
     if request.url.query:
         upstream_url += f"?{request.url.query}"
 
@@ -980,23 +971,32 @@ async def broker(request: Request, target: str):
                 await update_job(job_id, status="running")
                 fwd_hdrs = {k: v for k, v in request.headers.items() if k.lower() not in _HOP_BY_HOP}
                 fwd_hdrs.update(inject_headers)
-                async with httpx.AsyncClient(timeout=120.0, follow_redirects=True) as cl:
-                    resp = await cl.request(request.method, upstream_url, headers=fwd_hdrs, content=body_bytes or None)
-                upstream_async_flag = resp.status_code == 202
+                _connector = aiohttp.TCPConnector(ssl=False if not _ssl_verify else None)
+                async with aiohttp.ClientSession(connector=_connector, auto_decompress=False) as cl:
+                    async with cl.request(
+                        request.method, upstream_url,
+                        headers=fwd_hdrs,
+                        data=body_bytes or None,
+                        allow_redirects=True,
+                        timeout=aiohttp.ClientTimeout(total=120.0),
+                    ) as resp:
+                        resp_body = await resp.read()
+                        resp_text = resp_body.decode(errors="replace")
+                upstream_async_flag = resp.status == 202
                 upstream_loc = resp.headers.get("location") if upstream_async_flag else None
-                result = {"status_code": resp.status_code, "body": resp.text[:4096]}
+                result = {"status_code": resp.status, "body": resp_text[:4096]}
 
                 # Update trace with final status
-                trace_status = "success" if resp.status_code < 400 else "error"
-                await _write_trace(trace_status, resp.status_code)
+                trace_status = "success" if resp.status < 400 else "error"
+                await _write_trace(trace_status, resp.status)
 
                 if upstream_async_flag:
                     await update_job(job_id, status="upstream_async", result=result,
                                      http_status=202, upstream_async=True, upstream_job_url=upstream_loc)
-                elif resp.status_code < 400:
-                    await update_job(job_id, status="complete", result=result, http_status=resp.status_code)
+                elif resp.status < 400:
+                    await update_job(job_id, status="complete", result=result, http_status=resp.status)
                 else:
-                    await update_job(job_id, status="failed", error=resp.text[:512], http_status=resp.status_code)
+                    await update_job(job_id, status="failed", error=resp_text[:512], http_status=resp.status)
             except Exception as exc:
                 # Update trace on exception
                 await _write_trace("error", 500, f"Background task error: {str(exc)}")
@@ -1023,14 +1023,20 @@ async def broker(request: Request, target: str):
         )
 
     try:
-        async with httpx.AsyncClient(timeout=60.0, follow_redirects=True) as client:
-            upstream_response = await client.request(
+        _connector = aiohttp.TCPConnector(ssl=False if not _ssl_verify else None)
+        async with aiohttp.ClientSession(connector=_connector, auto_decompress=False) as client:
+            async with client.request(
                 method=request.method,
                 url=upstream_url,
                 headers=forward_headers,
-                content=body_bytes if body_bytes else None,
-            )
-    except httpx.TimeoutException:
+                data=body_bytes if body_bytes else None,
+                allow_redirects=True,
+                timeout=aiohttp.ClientTimeout(total=60.0),
+            ) as upstream_response:
+                _upstream_body = await upstream_response.read()
+                _upstream_status = upstream_response.status
+                _upstream_headers = dict(upstream_response.headers)
+    except asyncio.TimeoutError:
         await _write_trace("timeout", 504, f"Upstream {upstream_host} timeout after 60s")
         error_body = {
             "error": "UPSTREAM_TIMEOUT",
@@ -1042,7 +1048,7 @@ async def broker(request: Request, target: str):
             media_type="application/json",
             headers={"X-Jentic-Error": "true", "X-Jentic-Execution-Id": execution_id, **_cred_headers},
         )
-    except httpx.RequestError as e:
+    except aiohttp.ClientError as e:
         log.exception("Upstream request failed for %s", upstream_host)
         await _write_trace("error", 502, f"Network error reaching {upstream_host}")
         error_body = {
@@ -1058,14 +1064,14 @@ async def broker(request: Request, target: str):
 
     # ── Build response — strip hop-by-hop, add Jentic trace headers ──────────
     response_headers = {
-        k: v for k, v in upstream_response.headers.items()
-        if k.lower() not in _HOP_BY_HOP
+        k: v for k, v in _upstream_headers.items()
+        if k.lower() not in _HOP_BY_HOP_RESPONSE
     }
     response_headers["X-Jentic-Execution-Id"] = execution_id
     response_headers.update(_cred_headers)
 
     # ── Confirm pending overlay on first successful call ──────────────────────
-    if api_id and upstream_response.status_code < 400:
+    if api_id and _upstream_status < 400:
         try:
             from src.routers.overlays import confirm_overlay
             await confirm_overlay(api_id, execution_id)
@@ -1076,13 +1082,13 @@ async def broker(request: Request, target: str):
     # When a BasicAuth call gets 401/403, the likely cause is the wrong
     # username format. Surface a machine-readable hint so agents can
     # self-correct by researching and uploading an overlay.
-    if upstream_response.status_code in (401, 403):
+    if _upstream_status in (401, 403):
         auth_header = inject_headers.get("Authorization", "")
         if auth_header.startswith("Basic "):
             hint = {
                 "x-jentic-hint": "basic_auth_failure",
                 "message": (
-                    f"BasicAuth to {upstream_host} failed ({upstream_response.status_code}). "
+                    f"BasicAuth to {upstream_host} failed ({_upstream_status}). "
                     "The credential value may be correct but the identity (username) is wrong. "
                     "PATCH /credentials/{id} with the correct 'identity' field. "
                     "For most token-based APIs any username works; for traditional user/password APIs "
@@ -1090,15 +1096,15 @@ async def broker(request: Request, target: str):
                 ),
                 "action": f"PATCH /credentials/{{id}}",
                 "example": {"identity": "your_username_here"},
-                "upstream_status": upstream_response.status_code,
-                "upstream_body": upstream_response.text[:512],
+                "upstream_status": _upstream_status,
+                "upstream_body": _upstream_body.decode(errors="replace")[:512],
             }
             response_headers["X-Jentic-Hint"] = "basic_auth_failure"
             # Write trace for BasicAuth failure hint path
-            await _write_trace("error", upstream_response.status_code, "BasicAuth failure - identity mismatch")
+            await _write_trace("error", _upstream_status, "BasicAuth failure - identity mismatch")
             return Response(
                 content=json.dumps(hint),
-                status_code=upstream_response.status_code,
+                status_code=_upstream_status,
                 headers=response_headers,
                 media_type="application/json",
             )
@@ -1106,9 +1112,9 @@ async def broker(request: Request, target: str):
     # ── Detect upstream 202: surface as upstream_async ───────────────────────
     # If the upstream itself returned 202, and a callback was registered,
     # create a job record so the agent has a consistent handle.
-    if upstream_response.status_code == 202 and callback_url:
+    if _upstream_status == 202 and callback_url:
         from src.routers.jobs import create_job, update_job
-        upstream_loc = upstream_response.headers.get("location")
+        upstream_loc = _upstream_headers.get("location")
         capability_id = f"{request.method}/{upstream_host}{upstream_path}"
         job_id = await create_job(
             kind="broker", slug_or_id=capability_id,
@@ -1119,19 +1125,19 @@ async def broker(request: Request, target: str):
             await _db.commit()
         await update_job(
             job_id, status="upstream_async",
-            result={"body": upstream_response.text[:4096]},
+            result={"body": _upstream_body.decode(errors="replace")[:4096]},
             http_status=202, upstream_async=True, upstream_job_url=upstream_loc,
         )
         response_headers["X-Jentic-Job-Id"] = job_id
         response_headers["Location"] = f"/jobs/{job_id}"
 
     # Write trace for standard path (includes 202 upstream async case)
-    trace_status = "success" if upstream_response.status_code < 400 else "error"
-    await _write_trace(trace_status, upstream_response.status_code)
+    trace_status = "success" if _upstream_status < 400 else "error"
+    await _write_trace(trace_status, _upstream_status)
 
     return Response(
-        content=upstream_response.content,
-        status_code=upstream_response.status_code,
+        content=_upstream_body,
+        status_code=_upstream_status,
         headers=response_headers,
-        media_type=upstream_response.headers.get("content-type"),
+        media_type=_upstream_headers.get("content-type"),
     )

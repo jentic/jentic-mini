@@ -955,7 +955,7 @@
 			"get": {
 				"tags": ["credentials"],
 				"summary": "Get an upstream API credential by ID",
-				"description": "Retrieve metadata for a single credential.\n\nReturns the credential's label, API binding, auth type, and identity field (if set).\nThe secret value is never returned after creation for security.\n\nParameters:\n    cid: Credential ID (format: hostname or hostname/path, e.g. 'api.github.com')\n\nReturns:\n    Credential metadata including id, label, api_id, auth_type, timestamps, and identity.\n\nUse this to confirm a credential exists before binding it to a toolkit or to inspect\nits configuration before making authenticated calls.",
+				"description": "Retrieve metadata for a single credential. Value is never returned.",
 				"operationId": "get_credential_credentials__cid__get",
 				"parameters": [
 					{
@@ -964,10 +964,8 @@
 						"required": true,
 						"schema": {
 							"type": "string",
-							"description": "Credential ID (format: hostname or hostname/path)",
 							"title": "Cid"
-						},
-						"description": "Credential ID (format: hostname or hostname/path)"
+						}
 					}
 				],
 				"responses": {
@@ -4662,15 +4660,12 @@
 				"properties": {
 					"label": {
 						"type": "string",
-						"title": "Label",
-						"description": "User-assigned credential label for identification",
-						"examples": ["GitHub PAT for jentic-mini"]
+						"title": "Label"
 					},
 					"value": {
 						"type": "string",
 						"title": "Value",
-						"description": "Raw credential value (API key, token, password) - encrypted before storage",
-						"examples": ["ghp_1234567890abcdefghijklmnopqrstu"]
+						"default": ""
 					},
 					"identity": {
 						"anyOf": [
@@ -4681,9 +4676,7 @@
 								"type": "null"
 							}
 						],
-						"title": "Identity",
-						"description": "Optional username, client ID, or other identity value (required for basic auth, optional for compound apiKey schemes)",
-						"examples": ["alice", "client_abc123"]
+						"title": "Identity"
 					},
 					"api_id": {
 						"anyOf": [
@@ -4694,43 +4687,78 @@
 								"type": "null"
 							}
 						],
-						"title": "Api Id",
-						"description": "API ID to bind this credential to",
-						"examples": ["api.github.com"]
+						"title": "Api Id"
+					},
+					"server_variables": {
+						"anyOf": [
+							{
+								"additionalProperties": {
+									"type": "string"
+								},
+								"type": "object"
+							},
+							{
+								"type": "null"
+							}
+						],
+						"title": "Server Variables"
 					},
 					"auth_type": {
 						"anyOf": [
 							{
 								"type": "string",
-								"enum": ["bearer", "basic", "apiKey"]
+								"enum": ["bearer", "basic", "apiKey", "none"]
 							},
 							{
 								"type": "null"
 							}
 						],
 						"title": "Auth Type",
-						"description": "How this credential maps to the upstream API's authentication scheme. The broker uses this to find the right security scheme in the spec — it resolves by type, not by the bespoke scheme name in the overlay.\n\n| Value | Injects as | When to use |\n|---|---|---|\n| `bearer` | `Authorization: Bearer {value}` | REST APIs, OAuth access tokens, JWTs. GitHub REST API, Deepgram, Slack, etc. |\n| `basic` | `Authorization: Basic base64({identity??'token'}:{value})` | HTTP Basic auth, git-over-HTTPS. Set `identity` to the username; omit for GitHub PATs (any username accepted). |\n| `apiKey` | Custom header or query param `= {value}` | API key in a named header (X-API-Key, Api-Key, X-Auth-Key, etc.). For **compound** schemes (e.g. Discourse Api-Key + Api-Username) where the overlay uses canonical `Secret`/`Identity` scheme names, set `identity` to the username/account — a single credential covers both headers. |",
+						"description": "How this credential maps to the upstream API's authentication scheme. The broker uses this to find the right security scheme in the spec — it resolves by type, not by the bespoke scheme name in the overlay.\n\n| Value | Injects as | When to use |\n|---|---|---|\n| `bearer` | `Authorization: Bearer {value}` | REST APIs, OAuth access tokens, JWTs. GitHub REST API, Deepgram, Slack, etc. |\n| `basic` | `Authorization: Basic base64({identity??'token'}:{value})` | HTTP Basic auth, git-over-HTTPS. Set `identity` to the username; omit for GitHub PATs (any username accepted). |\n| `apiKey` | Custom header or query param `= {value}` | API key in a named header (X-API-Key, Api-Key, X-Auth-Key, etc.). For **compound** schemes (e.g. Discourse Api-Key + Api-Username) where the overlay uses canonical `Secret`/`Identity` scheme names, set `identity` to the username/account — a single credential covers both headers. |\n| `none` | *(nothing injected)* | No-auth APIs where the credential exists only to carry `server_variables` for routing. |",
 						"examples": ["bearer"]
+					},
+					"scheme": {
+						"anyOf": [
+							{
+								"additionalProperties": true,
+								"type": "object"
+							},
+							{
+								"type": "null"
+							}
+						],
+						"title": "Scheme",
+						"description": "Self-describing injection rule. When set, the broker injects the credential directly from this blob without looking up the API spec or overlay at runtime. Format: {\"in\": \"header\", \"name\": \"Authorization\", \"prefix\": \"Bearer \"} or {\"in\": \"header\", \"name\": \"X-Api-Key\"}. Supports encode=base64 for Basic auth: {\"in\": \"header\", \"name\": \"Authorization\", \"prefix\": \"Basic \", \"encode\": \"base64\"}. For compound schemes: {\"secret\": {\"in\": \"header\", ...}, \"identity\": {\"in\": \"header\", ...}}."
+					},
+					"routes": {
+						"anyOf": [
+							{
+								"items": {
+									"type": "string"
+								},
+								"type": "array"
+							},
+							{
+								"type": "null"
+							}
+						],
+						"title": "Routes",
+						"description": "Hostnames or host+path patterns this credential should be injected into. Each entry is stored as (host, path_prefix) in credential_routes. Example: [\"github.com\", \"api.github.com\"]. "
 					}
 				},
 				"type": "object",
-				"required": ["label", "value"],
-				"title": "CredentialCreate",
-				"description": "Request body for storing a new upstream API credential. Values are encrypted at rest and never returned."
+				"required": ["label"],
+				"title": "CredentialCreate"
 			},
 			"CredentialOut": {
 				"properties": {
 					"id": {
 						"type": "string",
-						"title": "Id",
-						"description": "Credential ID",
-						"examples": ["cred_abc123xyz"]
+						"title": "Id"
 					},
 					"label": {
 						"type": "string",
-						"title": "Label",
-						"description": "Human-readable label for this credential",
-						"examples": ["GitHub PAT for jentic-mini"]
+						"title": "Label"
 					},
 					"identity": {
 						"anyOf": [
@@ -4741,9 +4769,7 @@
 								"type": "null"
 							}
 						],
-						"title": "Identity",
-						"description": "Identity field (username, client ID, etc.) for basic auth or compound API key schemes",
-						"examples": ["alice"]
+						"title": "Identity"
 					},
 					"api_id": {
 						"anyOf": [
@@ -4754,9 +4780,7 @@
 								"type": "null"
 							}
 						],
-						"title": "Api Id",
-						"description": "API this credential is bound to",
-						"examples": ["api.github.com"]
+						"title": "Api Id"
 					},
 					"auth_type": {
 						"anyOf": [
@@ -4767,9 +4791,47 @@
 								"type": "null"
 							}
 						],
-						"title": "Auth Type",
-						"description": "Auth type: bearer, basic, or apiKey",
-						"examples": ["bearer"]
+						"title": "Auth Type"
+					},
+					"server_variables": {
+						"anyOf": [
+							{
+								"additionalProperties": {
+									"type": "string"
+								},
+								"type": "object"
+							},
+							{
+								"type": "null"
+							}
+						],
+						"title": "Server Variables"
+					},
+					"scheme": {
+						"anyOf": [
+							{
+								"additionalProperties": true,
+								"type": "object"
+							},
+							{
+								"type": "null"
+							}
+						],
+						"title": "Scheme"
+					},
+					"routes": {
+						"anyOf": [
+							{
+								"items": {
+									"type": "string"
+								},
+								"type": "array"
+							},
+							{
+								"type": "null"
+							}
+						],
+						"title": "Routes"
 					},
 					"created_at": {
 						"anyOf": [
@@ -4780,9 +4842,7 @@
 								"type": "null"
 							}
 						],
-						"title": "Created At",
-						"description": "Unix timestamp when created",
-						"examples": [1672531200.0]
+						"title": "Created At"
 					},
 					"updated_at": {
 						"anyOf": [
@@ -4793,9 +4853,7 @@
 								"type": "null"
 							}
 						],
-						"title": "Updated At",
-						"description": "Unix timestamp of last update",
-						"examples": [1672531200.0]
+						"title": "Updated At"
 					},
 					"account_id": {
 						"anyOf": [
@@ -4806,9 +4864,7 @@
 								"type": "null"
 							}
 						],
-						"title": "Account Id",
-						"description": "OAuth broker account ID (if from OAuth broker)",
-						"examples": ["oauth_abc123"]
+						"title": "Account Id"
 					},
 					"app_slug": {
 						"anyOf": [
@@ -4819,9 +4875,7 @@
 								"type": "null"
 							}
 						],
-						"title": "App Slug",
-						"description": "OAuth app slug (if from OAuth broker)",
-						"examples": ["pipedream"]
+						"title": "App Slug"
 					},
 					"synced_at": {
 						"anyOf": [
@@ -4832,9 +4886,7 @@
 								"type": "null"
 							}
 						],
-						"title": "Synced At",
-						"description": "Unix timestamp of last OAuth sync",
-						"examples": [1672531200.0]
+						"title": "Synced At"
 					}
 				},
 				"type": "object",
@@ -4853,8 +4905,7 @@
 								"type": "null"
 							}
 						],
-						"title": "Label",
-						"description": "New credential label (optional)"
+						"title": "Label"
 					},
 					"value": {
 						"anyOf": [
@@ -4865,8 +4916,7 @@
 								"type": "null"
 							}
 						],
-						"title": "Value",
-						"description": "New credential value for rotation (optional, encrypted before storage)"
+						"title": "Value"
 					},
 					"identity": {
 						"anyOf": [
@@ -4877,8 +4927,7 @@
 								"type": "null"
 							}
 						],
-						"title": "Identity",
-						"description": "New identity value (optional)"
+						"title": "Identity"
 					},
 					"api_id": {
 						"anyOf": [
@@ -4889,14 +4938,13 @@
 								"type": "null"
 							}
 						],
-						"title": "Api Id",
-						"description": "New API ID to rebind this credential (optional)"
+						"title": "Api Id"
 					},
 					"auth_type": {
 						"anyOf": [
 							{
 								"type": "string",
-								"enum": ["bearer", "basic", "apiKey"]
+								"enum": ["bearer", "basic", "apiKey", "none"]
 							},
 							{
 								"type": "null"
@@ -4904,11 +4952,52 @@
 						],
 						"title": "Auth Type",
 						"description": "Update the auth type for this credential. See `POST /credentials` for valid values and semantics."
+					},
+					"server_variables": {
+						"anyOf": [
+							{
+								"additionalProperties": {
+									"type": "string"
+								},
+								"type": "object"
+							},
+							{
+								"type": "null"
+							}
+						],
+						"title": "Server Variables"
+					},
+					"scheme": {
+						"anyOf": [
+							{
+								"additionalProperties": true,
+								"type": "object"
+							},
+							{
+								"type": "null"
+							}
+						],
+						"title": "Scheme",
+						"description": "Update the self-describing injection rule. See POST /credentials for format."
+					},
+					"routes": {
+						"anyOf": [
+							{
+								"items": {
+									"type": "string"
+								},
+								"type": "array"
+							},
+							{
+								"type": "null"
+							}
+						],
+						"title": "Routes",
+						"description": "Update the host+path routing patterns for this credential."
 					}
 				},
 				"type": "object",
-				"title": "CredentialPatch",
-				"description": "Update an existing credential. Only provided fields are changed. Rotates secrets without rebinding."
+				"title": "CredentialPatch"
 			},
 			"HTTPValidationError": {
 				"properties": {
