@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle, Search, Check, ChevronRight, Loader2 } from 'lucide-react';
 import { api, oauthBrokers } from '@/api/client';
 import type { CredentialCreate, CredentialPatch, ApiOut } from '@/api/types';
+import { AppLink } from '@/components/ui/AppLink';
 import { BackButton } from '@/components/ui/BackButton';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { Button } from '@/components/ui/Button';
@@ -748,28 +749,23 @@ function CredentialFields({
 							</div>
 						);
 					}
-					// No broker — show agent prompt
-					const prompt = `Please set up OAuth access for ${apiName} (api_id: "${selectedApi.id}") on my Jentic Mini instance at ${window.location.host}, so I can use it in my workflows.`;
+					// No broker — guide user to set up Pipedream first
 					return (
 						<div className="bg-muted/50 border-border space-y-3 rounded-lg border p-4">
 							<p className="text-foreground text-sm font-medium">OAuth required</p>
 							<p className="text-muted-foreground text-xs">
-								{apiName} uses OAuth 2.0. Ask your agent to set this up — copy the
-								prompt below and send it:
+								{apiName} uses OAuth 2.0. Set up Pipedream Connect first:
 							</p>
-							<div className="relative">
-								<pre className="bg-background border-border text-foreground rounded border p-3 font-mono text-xs leading-relaxed break-words whitespace-pre-wrap">
-									{prompt}
-								</pre>
-								<Button
-									variant="secondary"
-									size="sm"
-									onClick={() => navigator.clipboard.writeText(prompt)}
-									className="absolute top-2 right-2 px-2 py-0.5 text-[10px]"
-								>
-									Copy
-								</Button>
-							</div>
+							<ol className="text-muted-foreground list-decimal space-y-1 pl-5 text-xs">
+								<li>
+									Go to <AppLink href="/credentials">Credentials</AppLink>
+								</li>
+								<li>
+									Click <strong>Enable OAuth via Pipedream</strong> and enter your
+									Pipedream client ID, secret, and project ID
+								</li>
+								<li>Return here to connect {apiName}</li>
+							</ol>
 						</div>
 					);
 				})()}
@@ -878,8 +874,8 @@ function CredentialFields({
 
 			{error && <ErrorAlert message={error} />}
 
-			{/* Advanced: scheme / routes (edit mode) */}
-			{isEdit && (
+			{/* Advanced: scheme / routes (hidden for OAuth2 — Pipedream manages these) */}
+			{schemeType !== 'oauth2' && (
 				<div className="border-border rounded-lg border">
 					<Button
 						variant="ghost"
