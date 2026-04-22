@@ -8,7 +8,7 @@ Jentic Mini is a FastAPI service with four primary responsibilities:
 |---|---|
 | **Catalog** | Stores registered APIs (OpenAPI specs) and Arazzo workflows in SQLite; indexes them with BM25 for natural language search |
 | **Broker** | Transparent HTTP reverse proxy — URL pattern `/{upstream_host}/{path}`, injects credentials automatically, enforces toolkit policies |
-| **Workflow orchestrator** | Executes Arazzo multi-step workflows via `arazzo-engine`; each step routes through the broker for credential injection |
+| **Workflow orchestrator** | Executes Arazzo multi-step workflows via `arazzo-runner`; each step routes through the broker for credential injection |
 | **Credential vault** | Fernet-encrypted SQLite store; credentials are write-only (values never returned after creation) |
 | **Workflow renderer** | React-based visualization via `@jentic/arazzo-ui` (npm package from [jentic-arazzo-tools](https://github.com/jentic/jentic-arazzo-tools)); provides diagram, docs, and split views |
 
@@ -112,9 +112,9 @@ This means the `/inspect/{id}` endpoint and `/search` results use a single ID fo
 
 ### 4. Credential Injection via Broker
 
-**Credentials are NEVER passed as env vars to the arazzo-engine subprocess.**
+**Credentials are NEVER passed as env vars to the arazzo-runner subprocess.**
 
-Instead, the arazzo-engine runner rewrites each source spec's `servers[0].url` to `http://localhost:8900/{host}` before execution. This routes every step through the local broker, which:
+Instead, the arazzo-runner rewrites each source spec's `servers[0].url` to `http://localhost:8900/{host}` before execution. This routes every step through the local broker, which:
 
 1. Identifies the upstream host from the rewritten URL
 2. Looks up credentials in the current toolkit bound to that API
@@ -411,7 +411,7 @@ Description is abbreviated to ≤3 sentences by `utils._abbreviate()` to keep se
 
 ---
 
-## Arazzo Engine
+## Arazzo Runner
 
 **Source:** Installed from PyPI (`arazzo-runner` package).
 
