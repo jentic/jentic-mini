@@ -34,6 +34,7 @@ jobs:
       - uses: pdm-project/setup-pdm@v4
         with:
           python-version: '3.11'
+          version: '2.25.5'
 
       - name: Install dependencies
         run: pdm install --dev --frozen-lockfile

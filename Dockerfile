@@ -14,8 +14,8 @@ WORKDIR /app
 
 RUN pip install --no-cache-dir --upgrade pip wheel setuptools
 
-# Install PDM (recommended method)
-RUN curl -sSL https://pdm-project.org/install-pdm.py | python3 -
+# Install PDM (recommended method, pinned version)
+RUN curl -sSL https://pdm-project.org/install-pdm.py | python3 - --version 2.25.5
 
 COPY pyproject.toml pdm.lock ./
 RUN /root/.local/bin/pdm venv create --with-pip
