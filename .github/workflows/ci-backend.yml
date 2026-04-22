@@ -31,16 +31,12 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - uses: actions/setup-python@v6
-        with:
-          python-version: '3.11'
-
       - uses: pdm-project/setup-pdm@v4
         with:
           python-version: '3.11'
 
       - name: Install dependencies
-        run: pdm install --dev
+        run: pdm install --dev --frozen-lockfile
 
       - name: Run backend tests
         env:

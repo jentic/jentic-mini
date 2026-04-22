@@ -17,13 +17,14 @@ RUN pip install --no-cache-dir --upgrade pip wheel setuptools
 # Install PDM (recommended method)
 RUN curl -sSL https://pdm-project.org/install-pdm.py | python3 -
 
+COPY pyproject.toml pdm.lock ./
+RUN /root/.local/bin/pdm venv create --with-pip
+
 # Clone arazzo-engine and install runner from source
 RUN git clone --depth 1 https://github.com/jentic/arazzo-engine.git /opt/arazzo-engine \
-    && /root/.local/bin/pdm venv create --with-pip \
     && /app/.venv/bin/pip install --no-cache-dir -e /opt/arazzo-engine/runner
 
-COPY pyproject.toml pdm.lock ./
-RUN /root/.local/bin/pdm install --prod --no-editable --no-self
+RUN /root/.local/bin/pdm install --prod --no-editable --no-self --frozen-lockfile
 
 # Stage 3: Runtime
 FROM python:3.11-slim
