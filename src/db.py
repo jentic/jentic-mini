@@ -1,5 +1,7 @@
 """Database connection helper and Alembic migration runner."""
+
 import os
+import secrets
 
 import aiosqlite
 from alembic import command
@@ -18,9 +20,7 @@ def run_migrations() -> None:
     project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     alembic_cfg = Config(os.path.join(project_root, "alembic.ini"))
     # Ensure script_location is absolute so it works regardless of cwd
-    alembic_cfg.set_main_option(
-        "script_location", os.path.join(project_root, "alembic")
-    )
+    alembic_cfg.set_main_option("script_location", os.path.join(project_root, "alembic"))
     command.upgrade(alembic_cfg, "head")
 
 
@@ -40,9 +40,7 @@ async def get_setting(key: str) -> str | None:
 async def set_setting(key: str, value: str) -> None:
     """Write a single settings value."""
     async with aiosqlite.connect(DB_PATH) as db:
-        await db.execute(
-            "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", (key, value)
-        )
+        await db.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", (key, value))
         await db.commit()
 
 
@@ -61,7 +59,6 @@ async def setup_state() -> dict:
 
     # Generate jwt_secret on first call
     if "jwt_secret" not in s:
-        import secrets
         secret = secrets.token_hex(32)
         await set_setting("jwt_secret", secret)
         s["jwt_secret"] = secret

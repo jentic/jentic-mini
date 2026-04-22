@@ -18,23 +18,31 @@ The client_secret is Fernet-encrypted at rest.
 Token cache: Pipedream access tokens expire in ~1 hour. We cache in memory
 (per-instance) and refresh automatically.
 """
+
 from __future__ import annotations
 
 import base64
 import logging
+import mimetypes
 import time
 from dataclasses import dataclass, field
+from urllib.parse import urlparse
 
 import httpx
-
 from jentic.apitools.openapi.common.uri import is_http_https_url
-from src.db import get_db
+
 import src.vault as vault
+from src.db import get_db
+from src.routers.catalog import ensure_catalog_api_imported
+from src.vault import _parse_route
+
 
 log = logging.getLogger("jentic.brokers.pipedream")
 
 
-def broker_account_row_id(broker_id: str, external_user_id: str, api_host: str, account_id: str) -> str:
+def broker_account_row_id(
+    broker_id: str, external_user_id: str, api_host: str, account_id: str
+) -> str:
     """Stable primary key for oauth_broker_accounts rows."""
     return f"{broker_id}:{external_user_id}:{api_host}:{account_id}"
 
@@ -62,90 +70,90 @@ def broker_credential_id(broker_id: str, account_id: str, api_host: str) -> str:
 # produces after stripping www.googleapis.com.
 _API_ID_TO_PD_SLUG: dict[str, str] = {
     # Google — all served via www.googleapis.com; derive to googleapis.com/<svc>
-    "googleapis.com/gmail":         "gmail",
-    "googleapis.com/calendar":      "google_calendar",
-    "googleapis.com/drive":         "google_drive",
-    "googleapis.com/sheets":        "google_sheets",
-    "googleapis.com/docs":          "google_docs",
-    "googleapis.com/slides":        "google_slides",
-    "googleapis.com/admin":         "google_admin",
-    "googleapis.com/people":        "google_contacts",
-    "googleapis.com/tasks":         "google_tasks",
-    "googleapis.com/analytics":     "google_analytics",
-    "googleapis.com/youtube":       "youtube",
-    "googleapis.com/forms":         "google_forms",
-    "googleapis.com/chat":          "google_chat",
-    "googleapis.com/bigquery":      "google_bigquery",
-    "googleapis.com/storage":       "google_cloud_storage",
+    "googleapis.com/gmail": "gmail",
+    "googleapis.com/calendar": "google_calendar",
+    "googleapis.com/drive": "google_drive",
+    "googleapis.com/sheets": "google_sheets",
+    "googleapis.com/docs": "google_docs",
+    "googleapis.com/slides": "google_slides",
+    "googleapis.com/admin": "google_admin",
+    "googleapis.com/people": "google_contacts",
+    "googleapis.com/tasks": "google_tasks",
+    "googleapis.com/analytics": "google_analytics",
+    "googleapis.com/youtube": "youtube",
+    "googleapis.com/forms": "google_forms",
+    "googleapis.com/chat": "google_chat",
+    "googleapis.com/bigquery": "google_bigquery",
+    "googleapis.com/storage": "google_cloud_storage",
     # Google — subdomain-native (not www.googleapis.com)
-    "sheets.googleapis.com":        "google_sheets",
-    "people.googleapis.com":        "google_contacts",
+    "sheets.googleapis.com": "google_sheets",
+    "people.googleapis.com": "google_contacts",
     # Atlassian
-    "api.atlassian.com":            "jira",
-    "atlassian.net":                "jira",
+    "api.atlassian.com": "jira",
+    "atlassian.net": "jira",
     # Communication
-    "slack.com/api":                "slack",
-    "discord.com/api":              "discord",
-    "api.telegram.org":             "telegram_bot_api",
-    "api.sendgrid.com":             "sendgrid",
-    "api.mailchimp.com":            "mailchimp",
-    "api.twilio.com":               "twilio",
+    "slack.com/api": "slack",
+    "discord.com/api": "discord",
+    "api.telegram.org": "telegram_bot_api",
+    "api.sendgrid.com": "sendgrid",
+    "api.mailchimp.com": "mailchimp",
+    "api.twilio.com": "twilio",
     # Dev tools
-    "api.github.com":               "github",
-    "api.linear.app":               "linear_app",
-    "api.vercel.com":               "vercel",
-    "api.circleci.com":             "circleci",
+    "api.github.com": "github",
+    "api.linear.app": "linear_app",
+    "api.vercel.com": "vercel",
+    "api.circleci.com": "circleci",
     # CRM / sales
-    "api.hubapi.com":               "hubspot",
-    "api.salesforce.com":           "salesforce_rest_api",
-    "salesforce.com":               "salesforce_rest_api",
-    "api.pipedrive.com":            "pipedrive",
-    "api.close.com":                "close",
-    "api.intercom.io":              "intercom",
+    "api.hubapi.com": "hubspot",
+    "api.salesforce.com": "salesforce_rest_api",
+    "salesforce.com": "salesforce_rest_api",
+    "api.pipedrive.com": "pipedrive",
+    "api.close.com": "close",
+    "api.intercom.io": "intercom",
     # Project management
-    "app.asana.com/api":            "asana",
-    "api.trello.com":               "trello",
-    "api.monday.com":               "monday",
-    "api.notion.com":               "notion",
-    "api.clickup.com":              "clickup",
-    "api.airtable.com":             "airtable",
+    "app.asana.com/api": "asana",
+    "api.trello.com": "trello",
+    "api.monday.com": "monday",
+    "api.notion.com": "notion",
+    "api.clickup.com": "clickup",
+    "api.airtable.com": "airtable",
     # Storage / files
-    "api.dropboxapi.com":           "dropbox",
-    "api.box.com":                  "box",
+    "api.dropboxapi.com": "dropbox",
+    "api.box.com": "box",
     # Finance / payments
-    "api.stripe.com":               "stripe",
-    "api.xero.com":                 "xero",
-    "platform.intuit.com":          "quickbooks",
+    "api.stripe.com": "stripe",
+    "api.xero.com": "xero",
+    "platform.intuit.com": "quickbooks",
     # Social / media
-    "api.twitter.com":              "twitter",
-    "api.x.com":                    "twitter",
-    "graph.facebook.com":           "facebook",
-    "api.linkedin.com":             "linkedin",
-    "api.spotify.com":              "spotify",
+    "api.twitter.com": "twitter",
+    "api.x.com": "twitter",
+    "graph.facebook.com": "facebook",
+    "api.linkedin.com": "linkedin",
+    "api.spotify.com": "spotify",
     # Data / analytics
-    "api.mixpanel.com":             "mixpanel",
-    "api.segment.com":              "segment",
-    "api.amplitude.com":            "amplitude",
+    "api.mixpanel.com": "mixpanel",
+    "api.segment.com": "segment",
+    "api.amplitude.com": "amplitude",
     # Productivity
-    "api.zoom.us":                  "zoom",
-    "api.calendly.com":             "calendly",
-    "api.figma.com":                "figma",
-    "api.miro.com":                 "miro",
-    "api.typeform.com":             "typeform",
+    "api.zoom.us": "zoom",
+    "api.calendly.com": "calendly",
+    "api.figma.com": "figma",
+    "api.miro.com": "miro",
+    "api.typeform.com": "typeform",
     # Support
-    "api.zendesk.com":              "zendesk",
-    "zendesk.com":                  "zendesk",
-    "api.freshdesk.com":            "freshdesk",
-    "freshdesk.com":                "freshdesk",
+    "api.zendesk.com": "zendesk",
+    "zendesk.com": "zendesk",
+    "api.freshdesk.com": "freshdesk",
+    "freshdesk.com": "freshdesk",
     # E-commerce
-    "api.shopify.com":              "shopify",
-    "myshopify.com":                "shopify",
+    "api.shopify.com": "shopify",
+    "myshopify.com": "shopify",
     # AI
-    "api.openai.com":               "openai",
-    "api.anthropic.com":            "anthropic",
-    "api.groq.com/openai":          "groq",
-    "api.mistral.ai":               "mistral",
-    "api.elevenlabs.io":            "elevenlabs",
+    "api.openai.com": "openai",
+    "api.anthropic.com": "anthropic",
+    "api.groq.com/openai": "groq",
+    "api.mistral.ai": "mistral",
+    "api.elevenlabs.io": "elevenlabs",
 }
 
 # Reverse: slug → list of api_hosts
@@ -172,13 +180,14 @@ def pd_slug_to_hosts(slug: str) -> list[str]:
 
 # ── PipedreamOAuthBroker ──────────────────────────────────────────────────────
 
+
 @dataclass
 class PipedreamOAuthBroker:
     """OAuthBroker backed by Pipedream Connect proxy."""
 
     broker_id: str
     client_id: str
-    client_secret: str          # decrypted at load time, never persisted
+    client_secret: str  # decrypted at load time, never persisted
     project_id: str
     environment: str
     default_external_user_id: str
@@ -226,7 +235,8 @@ class PipedreamOAuthBroker:
         if not account_id:
             log.warning(
                 "PipedreamOAuthBroker: no account_id for host=%s user=%s",
-                api_host, external_user_id,
+                api_host,
+                external_user_id,
             )
             return None
 
@@ -236,9 +246,7 @@ class PipedreamOAuthBroker:
             upstream_url += f"?{query_string}"
 
         # Base64url-encode the upstream URL (no padding)
-        encoded_url = base64.urlsafe_b64encode(
-            upstream_url.encode()
-        ).rstrip(b"=").decode()
+        encoded_url = base64.urlsafe_b64encode(upstream_url.encode()).rstrip(b"=").decode()
 
         proxy_url = (
             f"https://api.pipedream.com/v1/connect/{self.project_id}"
@@ -255,7 +263,10 @@ class PipedreamOAuthBroker:
 
         log.info(
             "PipedreamOAuthBroker proxy: %s %s → %s (account %s)",
-            method, upstream_url, proxy_url[:80], account_id,
+            method,
+            upstream_url,
+            proxy_url[:80],
+            account_id,
         )
 
         try:
@@ -295,9 +306,7 @@ class PipedreamOAuthBroker:
         if query_string:
             upstream_url += f"?{query_string}"
 
-        encoded_url = base64.urlsafe_b64encode(
-            upstream_url.encode()
-        ).rstrip(b"=").decode()
+        encoded_url = base64.urlsafe_b64encode(upstream_url.encode()).rstrip(b"=").decode()
 
         proxy_url = (
             f"https://api.pipedream.com/v1/connect/{self.project_id}"
@@ -312,7 +321,9 @@ class PipedreamOAuthBroker:
 
         log.info(
             "PipedreamOAuthBroker proxy (credential): %s %s → account %s",
-            method, upstream_url, account_id,
+            method,
+            upstream_url,
+            account_id,
         )
 
         try:
@@ -372,7 +383,9 @@ class PipedreamOAuthBroker:
                 row = await cur.fetchone()
         return row[0] if row else None
 
-    async def create_connect_token(self, external_user_id: str, success_redirect_uri: str | None = None) -> dict:
+    async def create_connect_token(
+        self, external_user_id: str, success_redirect_uri: str | None = None
+    ) -> dict:
         """Create a short-lived Pipedream Connect Token for the given user.
 
         Args:
@@ -411,7 +424,10 @@ class PipedreamOAuthBroker:
             raise ValueError(f"No token in Pipedream response: {data}")
 
         # Pipedream returns the connect_link_url directly — use it verbatim
-        connect_link_url = data.get("connect_link_url") or f"https://pipedream.com/_static/connect.html?token={token}&connectLink=true"
+        connect_link_url = (
+            data.get("connect_link_url")
+            or f"https://pipedream.com/_static/connect.html?token={token}&connectLink=true"
+        )
         expires_at = data.get("expires_at") or (time.time() + 3600)
 
         return {
@@ -514,14 +530,17 @@ class PipedreamOAuthBroker:
                         _peek_label, _peek_api_id = _peek_queue[0]  # peek, don't pop
                         if _peek_api_id:
                             user_api_id = _peek_api_id
-                            log.info("Peeked pending api_id '%s' for new account %s before hosts computation", user_api_id, account_id)
+                            log.info(
+                                "Peeked pending api_id '%s' for new account %s before hosts computation",
+                                user_api_id,
+                                account_id,
+                            )
 
                 # Use user-specified api_id if provided; otherwise fall back to slug map
                 if user_api_id:
                     hosts = [user_api_id]
                     # Auto-import the catalog spec so the local API registry is populated
                     try:
-                        from src.routers.catalog import ensure_catalog_api_imported
                         await ensure_catalog_api_imported(user_api_id)
                     except Exception as exc:
                         log.warning("Auto-import of catalog API '%s' failed: %s", user_api_id, exc)
@@ -529,14 +548,13 @@ class PipedreamOAuthBroker:
                     # The credential api_id must be the real HTTP host (e.g. gmail.googleapis.com)
                     # so that the broker's prefix-match lookup works at execution time.
                     try:
-                        from urllib.parse import urlparse as _urlparse
                         async with get_db() as _rdb:
                             async with _rdb.execute(
                                 "SELECT base_url FROM apis WHERE id=?", (user_api_id,)
                             ) as _rcur:
                                 _rrow = await _rcur.fetchone()
                         if _rrow and _rrow[0]:
-                            _real_host = _urlparse(_rrow[0]).hostname
+                            _real_host = urlparse(_rrow[0]).hostname
                             if _real_host:
                                 hosts = [_real_host]
                                 log.info("Resolved real host for '%s': %s", user_api_id, _real_host)
@@ -545,7 +563,9 @@ class PipedreamOAuthBroker:
                 else:
                     hosts = pd_slug_to_hosts(app_slug)
                 for api_host in hosts:
-                    row_id = broker_account_row_id(self.broker_id, external_user_id, api_host, account_id)
+                    row_id = broker_account_row_id(
+                        self.broker_id, external_user_id, api_host, account_id
+                    )
                     # Check if this account row already exists.
                     async with db.execute(
                         "SELECT label FROM oauth_broker_accounts WHERE id=?",
@@ -573,7 +593,8 @@ class PipedreamOAuthBroker:
                             log.warning(
                                 "No pending label for new account %s (app_slug=%s). "
                                 "This should not happen if connect-link was used. Skipping.",
-                                account_id, app_slug,
+                                account_id,
+                                app_slug,
                             )
                             continue  # skip this account
                         label, user_api_id = pending_queue.pop(0)
@@ -584,8 +605,17 @@ class PipedreamOAuthBroker:
                                (id, broker_id, external_user_id, api_host, app_slug,
                                 account_id, label, api_id, healthy, synced_at)
                                VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?)""",
-                            (row_id, self.broker_id, external_user_id,
-                             api_host, app_slug, account_id, effective_label, user_api_id, time.time()),
+                            (
+                                row_id,
+                                self.broker_id,
+                                external_user_id,
+                                api_host,
+                                app_slug,
+                                account_id,
+                                effective_label,
+                                user_api_id,
+                                time.time(),
+                            ),
                         )
 
                     # Upsert a credential in the vault so users can provision it to toolkits.
@@ -632,7 +662,6 @@ class PipedreamOAuthBroker:
                     if user_api_id and user_api_id != api_host:
                         route_hosts.append(user_api_id)
                     for route_host in route_hosts:
-                        from src.vault import _parse_route
                         r_host, r_prefix = _parse_route(route_host)
                         await db.execute(
                             "INSERT OR IGNORE INTO credential_routes (credential_id, host, path_prefix) "
@@ -661,9 +690,13 @@ class PipedreamOAuthBroker:
                 ) as cur:
                     stale_creds = [r[0] for r in await cur.fetchall()]
                 for cred_id in stale_creds:
-                    await db.execute("DELETE FROM toolkit_credentials WHERE credential_id=?", (cred_id,))
+                    await db.execute(
+                        "DELETE FROM toolkit_credentials WHERE credential_id=?", (cred_id,)
+                    )
                     await db.execute("DELETE FROM credentials WHERE id=?", (cred_id,))
-                    log.info("Removed stale credential %s (account %s disconnected)", cred_id, stale_id)
+                    log.info(
+                        "Removed stale credential %s (account %s disconnected)", cred_id, stale_id
+                    )
 
                 # Remove account row
                 await db.execute(
@@ -685,7 +718,8 @@ class PipedreamOAuthBroker:
 
         log.info(
             "PipedreamOAuthBroker: discovered %d account-host pairs for user=%s",
-            count, external_user_id,
+            count,
+            external_user_id,
         )
         return count
 
@@ -702,9 +736,6 @@ class PipedreamOAuthBroker:
         All three are optional — only non-None values are sent. Logo is fetched
         from logo_url and uploaded as a base64 data URL.
         """
-        import base64
-        import mimetypes
-
         pd_token = await self._get_access_token()
         headers = {
             "Authorization": f"Bearer {pd_token}",
@@ -721,16 +752,20 @@ class PipedreamOAuthBroker:
             if resp.status_code not in (200, 204):
                 log.warning(
                     "PipedreamOAuthBroker: project PATCH returned %s: %s",
-                    resp.status_code, resp.text[:200],
+                    resp.status_code,
+                    resp.text[:200],
                 )
             else:
                 log.info(
                     "PipedreamOAuthBroker: project configured (app_name=%r, support_email=%r)",
-                    app_name, support_email,
+                    app_name,
+                    support_email,
                 )
 
             if logo_url and not is_http_https_url(logo_url):
-                log.warning("PipedreamOAuthBroker: skipping logo — not an http(s) URL: %s", logo_url)
+                log.warning(
+                    "PipedreamOAuthBroker: skipping logo — not an http(s) URL: %s", logo_url
+                )
                 logo_url = None
             if logo_url:
                 try:
@@ -749,13 +784,13 @@ class PipedreamOAuthBroker:
                     if logo_post.status_code not in (200, 204):
                         log.warning(
                             "PipedreamOAuthBroker: logo upload returned %s: %s",
-                            logo_post.status_code, logo_post.text[:200],
+                            logo_post.status_code,
+                            logo_post.text[:200],
                         )
                     else:
                         log.info("PipedreamOAuthBroker: logo uploaded from %s", logo_url)
                 except Exception as exc:
                     log.warning("PipedreamOAuthBroker: logo upload failed: %s", exc)
-
 
     @classmethod
     async def from_db(cls) -> list["PipedreamOAuthBroker"]:
@@ -775,17 +810,20 @@ class PipedreamOAuthBroker:
             except Exception as exc:
                 log.error(
                     "PipedreamOAuthBroker: failed to decrypt secret for broker %s: %s",
-                    broker_id, exc,
+                    broker_id,
+                    exc,
                 )
                 continue
-            brokers.append(cls(
-                broker_id=broker_id,
-                client_id=client_id,
-                client_secret=client_secret,
-                project_id=project_id,
-                environment=environment or "production",
-                default_external_user_id=default_ext_uid or "default",
-            ))
+            brokers.append(
+                cls(
+                    broker_id=broker_id,
+                    client_id=client_id,
+                    client_secret=client_secret,
+                    project_id=project_id,
+                    environment=environment or "production",
+                    default_external_user_id=default_ext_uid or "default",
+                )
+            )
 
         log.info("PipedreamOAuthBroker: loaded %d broker(s) from DB", len(brokers))
         return brokers

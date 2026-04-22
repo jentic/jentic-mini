@@ -13,16 +13,16 @@ import json
 import logging
 import re
 import time
-import urllib.request
 import urllib.error
+import urllib.request
 from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, Path, Query
-from pydantic import BaseModel
 
-from src.db import get_db
 from src.config import DATA_DIR
+from src.db import get_db
 from src.openapi_helpers import agent_hints
+
 
 log = logging.getLogger("jentic.catalog")
 
@@ -38,6 +38,7 @@ MANIFEST_MAX_AGE_SECONDS = 24 * 3600  # auto-refresh if older than 1 day
 
 
 # ── API Manifest helpers ──────────────────────────────────────────────────────
+
 
 def _load_manifest() -> list[dict]:
     if not CATALOG_MANIFEST_PATH.exists():
@@ -61,6 +62,7 @@ def _manifest_age_seconds() -> float | None:
 
 # ── Workflow manifest helpers ─────────────────────────────────────────────────
 
+
 def _load_workflow_manifest() -> list[dict]:
     if not WORKFLOW_MANIFEST_PATH.exists():
         return []
@@ -73,8 +75,6 @@ def _load_workflow_manifest() -> list[dict]:
 def _save_workflow_manifest(entries: list[dict]) -> None:
     WORKFLOW_MANIFEST_PATH.parent.mkdir(parents=True, exist_ok=True)
     WORKFLOW_MANIFEST_PATH.write_text(json.dumps(entries, indent=2))
-
-
 
 
 def _fetch_github_dir(path: str) -> list[dict]:
@@ -104,10 +104,19 @@ def _find_spec_recursive(path: str, depth: int = 0, max_depth: int = 3) -> dict 
         return None
 
     files = [i for i in items if i["type"] == "file"]
-    subdirs = sorted([i for i in items if i["type"] == "dir"], key=lambda x: x["name"], reverse=True)
+    subdirs = sorted(
+        [i for i in items if i["type"] == "dir"], key=lambda x: x["name"], reverse=True
+    )
 
     # Prefer canonical spec filenames
-    for fname in ("openapi.json", "openapi.yaml", "openapi.yml", "swagger.json", "swagger.yaml", "swagger.yml"):
+    for fname in (
+        "openapi.json",
+        "openapi.yaml",
+        "openapi.yml",
+        "swagger.json",
+        "swagger.yaml",
+        "swagger.yml",
+    ):
         hit = next((f for f in files if f["name"].lower() == fname), None)
         if hit:
             return hit
@@ -134,7 +143,8 @@ def _catalog_vendor_set(api_ids: set[str]) -> set[str]:
     Used to deduplicate catalog entries against locally registered APIs.
     e.g.  api.stripe.com → stripe.com,  slack.com/api → slack.com
     """
-    from src.routers.apis import _extract_vendor
+    from src.routers.apis import _extract_vendor  # noqa: PLC0415  # circular import
+
     vendors: set[str] = set()
     for aid in api_ids:
         v = _extract_vendor(aid)
@@ -179,11 +189,25 @@ async def ensure_catalog_api_imported(api_id: str) -> str | None:
     if not download_url:
         raise HTTPException(502, f"No download_url for spec file '{spec_file['name']}'")
 
-    from src.routers.import_ import ImportRequest, ImportSource, import_sources
+    from src.routers.import_ import (  # noqa: PLC0415  # circular import
+        ImportRequest,
+        ImportSource,
+        import_sources,
+    )
+
     safe_name = api_id.replace("/", "_")
     try:
         result = await import_sources(
-            ImportRequest(sources=[ImportSource(type="url", url=download_url, filename=f"{safe_name}_{spec_file['name']}", force_api_id=api_id)])
+            ImportRequest(
+                sources=[
+                    ImportSource(
+                        type="url",
+                        url=download_url,
+                        filename=f"{safe_name}_{spec_file['name']}",
+                        force_api_id=api_id,
+                    )
+                ]
+            )
         )
     except Exception as e:
         raise HTTPException(500, f"Auto-import failed for catalog API '{api_id}': {e}")
@@ -209,7 +233,10 @@ async def lazy_import_catalog_workflows(api_id: str) -> list[str]:
 
     Returns list of imported workflow slugs (empty if no workflows found).
     """
-    from src.routers.import_ import WORKFLOWS_DIR, _register_arazzo
+    from src.routers.import_ import (  # noqa: PLC0415  # circular import
+        WORKFLOWS_DIR,
+        _register_arazzo,
+    )
 
     # Find in workflow manifest — exact source_id match first, then vendor fallback
     wf_manifest = _load_workflow_manifest()
@@ -218,12 +245,16 @@ async def lazy_import_catalog_workflows(api_id: str) -> list[str]:
 
     if not entry:
         # Vendor fallback: api.stripe.com → look for stripe.com in workflow manifest
-        from src.routers.apis import _extract_vendor
+        from src.routers.apis import _extract_vendor  # noqa: PLC0415  # circular import
+
         vendor = _extract_vendor(api_id)
         if vendor:
             entry = next(
-                (e for e in wf_manifest
-                 if e["api_id"] == vendor or e["api_id"].startswith(vendor + "/")),
+                (
+                    e
+                    for e in wf_manifest
+                    if e["api_id"] == vendor or e["api_id"].startswith(vendor + "/")
+                ),
                 None,
             )
             if entry:
@@ -296,7 +327,8 @@ async def lazy_import_catalog_workflows(api_id: str) -> list[str]:
 
     log.info(
         "Imported %d workflow(s) for '%s': %s",
-        len(imported_slugs), api_id,
+        len(imported_slugs),
+        api_id,
         imported_slugs[:5] if len(imported_slugs) > 5 else imported_slugs,
     )
     return imported_slugs
@@ -350,13 +382,16 @@ def _build_manifest_from_apis_json() -> list[dict] | None:
         seen.add(api_id)
         path = f"{CATALOG_PATH}/{domain}/{sub}" if sub != domain else f"{CATALOG_PATH}/{domain}"
         # Derive spec_url from the sub-apis.json URL: replace /apis.json → /openapi.json
-        spec_url = url.replace("/apis.json", "/openapi.json") if url.endswith("/apis.json") else None
+        spec_url = (
+            url.replace("/apis.json", "/openapi.json") if url.endswith("/apis.json") else None
+        )
         manifest.append({"api_id": api_id, "path": path, "sha": "", "spec_url": spec_url})
 
     return manifest
 
 
 # ── Startup helper (called from lifespan) ────────────────────────────────────
+
 
 async def refresh_catalog_if_stale() -> None:
     """Auto-refresh both API and workflow manifests on startup if absent or stale."""
@@ -370,15 +405,18 @@ async def refresh_catalog_if_stale() -> None:
             # Workflow manifest from GitHub Contents API (single call)
             try:
                 wf_items = _fetch_github_dir(WORKFLOWS_CATALOG_PATH)
-                wf_entries = sorted([
-                    {
-                        "source_id": i["name"],
-                        "path": i["path"],
-                        "api_id": i["name"].replace("~", "/", 1),
-                    }
-                    for i in wf_items
-                    if i.get("type") == "dir"
-                ], key=lambda e: e["source_id"])
+                wf_entries = sorted(
+                    [
+                        {
+                            "source_id": i["name"],
+                            "path": i["path"],
+                            "api_id": i["name"].replace("~", "/", 1),
+                        }
+                        for i in wf_items
+                        if i.get("type") == "dir"
+                    ],
+                    key=lambda e: e["source_id"],
+                )
             except Exception as wf_exc:
                 log.warning("Workflow manifest fetch failed — keeping previous: %s", wf_exc)
                 wf_entries = None
@@ -390,18 +428,22 @@ async def refresh_catalog_if_stale() -> None:
                 _save_workflow_manifest(wf_entries)
             log.info(
                 "Manifests refreshed: %s API entries, %d workflow sources",
-                len(api_entries) if api_entries else "unchanged", len(wf_entries),
+                len(api_entries) if api_entries else "unchanged",
+                len(wf_entries),
             )
         except Exception as e:
             log.warning("Catalog manifest refresh failed (non-fatal): %s", e)
     else:
         log.info(
             "Catalog manifest up to date (age %.0fs, %d API entries, %d workflow sources)",
-            age, len(_load_manifest()), len(_load_workflow_manifest()),
+            age,
+            len(_load_manifest()),
+            len(_load_workflow_manifest()),
         )
 
 
 # ── Search helpers ────────────────────────────────────────────────────────────
+
 
 def _tokenise(text: str) -> list[str]:
     return re.findall(r"[a-z0-9]+", (text or "").lower())
@@ -451,6 +493,7 @@ def _build_catalog_result(entry: dict, registered_ids: set[str]) -> dict:
 
 # ── Routes ────────────────────────────────────────────────────────────────────
 
+
 @router.get(
     "/catalog",
     summary="List the public API catalog",
@@ -463,15 +506,23 @@ def _build_catalog_result(entry: dict, registered_ids: set[str]) -> dict:
             "GET /catalog/{api_id} — get spec download URL for a catalog API",
             "POST /import — import a catalog API after finding it here",
             "POST /catalog/refresh — refresh catalog manifest from GitHub if empty or stale",
-            "GET /apis — list locally registered APIs (includes both local and catalog sources)"
-        ]
+            "GET /apis — list locally registered APIs (includes both local and catalog sources)",
+        ],
     ),
 )
 async def list_catalog(
-    q: Annotated[str | None, Query(description="Search term to filter APIs by name or description")] = None,
-    limit: Annotated[int, Query(description="Maximum number of results (1-500)", ge=1, le=500)] = 50,
-    registered_only: Annotated[bool, Query(description="Return only APIs already registered locally")] = False,
-    unregistered_only: Annotated[bool, Query(description="Return only APIs not yet registered locally")] = False,
+    q: Annotated[
+        str | None, Query(description="Search term to filter APIs by name or description")
+    ] = None,
+    limit: Annotated[
+        int, Query(description="Maximum number of results (1-500)", ge=1, le=500)
+    ] = 50,
+    registered_only: Annotated[
+        bool, Query(description="Return only APIs already registered locally")
+    ] = False,
+    unregistered_only: Annotated[
+        bool, Query(description="Return only APIs not yet registered locally")
+    ] = False,
 ):
     """Returns entries from the cached public API catalog manifest.
     Use ``POST /catalog/refresh`` to sync from GitHub first if the list is empty.
@@ -509,18 +560,20 @@ async def list_catalog(
         when_to_use="Use after finding an API via GET /catalog to retrieve the spec download URL for import. Returns api_id, registration status, spec_url (GitHub raw file URL), and spec_filename. Use the spec_url with POST /import to register this API locally. Recursively searches the GitHub directory for OpenAPI spec files (openapi.json, openapi.yaml, etc.).",
         prerequisites=[
             "Requires authentication (toolkit key or human session)",
-            "Valid catalog api_id from GET /catalog (format: hostname or hostname/path)"
+            "Valid catalog api_id from GET /catalog (format: hostname or hostname/path)",
         ],
         avoid_when="Do not use for APIs already registered locally — check GET /apis first. Do not use to download the spec directly (use POST /import instead).",
         related_operations=[
             "GET /catalog — browse catalog to find the api_id",
             "POST /import — import the API using the spec_url returned here",
             "GET /apis — check if API is already registered before importing",
-            "POST /credentials — add credentials after importing"
-        ]
+            "POST /credentials — add credentials after importing",
+        ],
     ),
 )
-async def get_catalog_entry(api_id: Annotated[str, Path(description="API ID from catalog to retrieve")]):
+async def get_catalog_entry(
+    api_id: Annotated[str, Path(description="API ID from catalog to retrieve")],
+):
     """Return details for a single catalog API, including the spec download URL.
 
     Use the returned `spec_url` with `POST /import` to import this API:
@@ -584,8 +637,8 @@ async def get_catalog_entry(api_id: Annotated[str, Path(description="API ID from
         related_operations=[
             "GET /catalog — list catalog entries after refreshing",
             "GET /catalog/{api_id} — get spec URL for an API after refreshing",
-            "POST /import — import an API after finding it in the refreshed catalog"
-        ]
+            "POST /import — import an API after finding it in the refreshed catalog",
+        ],
     ),
 )
 async def refresh_catalog():
@@ -603,15 +656,18 @@ async def refresh_catalog():
         if api_entries is None:
             raise HTTPException(502, "Failed to fetch apis.json from GitHub")
         wf_items = _fetch_github_dir(WORKFLOWS_CATALOG_PATH)
-        wf_entries = sorted([
-            {
-                "source_id": i["name"],
-                "path": i["path"],
-                "api_id": i["name"].replace("~", "/", 1),
-            }
-            for i in wf_items
-            if i.get("type") == "dir"
-        ], key=lambda e: e["source_id"])
+        wf_entries = sorted(
+            [
+                {
+                    "source_id": i["name"],
+                    "path": i["path"],
+                    "api_id": i["name"].replace("~", "/", 1),
+                }
+                for i in wf_items
+                if i.get("type") == "dir"
+            ],
+            key=lambda e: e["source_id"],
+        )
     except urllib.error.HTTPError as e:
         raise HTTPException(502, f"GitHub returned {e.code}: {e.reason}")
     except HTTPException:
@@ -623,7 +679,8 @@ async def refresh_catalog():
     _save_workflow_manifest(wf_entries)
     log.info(
         "Manifests refreshed: %d API entries, %d workflow sources",
-        len(api_entries), len(wf_entries),
+        len(api_entries),
+        len(wf_entries),
     )
     return {
         "status": "ok",

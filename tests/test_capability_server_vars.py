@@ -4,14 +4,15 @@ Verifies that GET /inspect/{id} returns server_variables_configured from
 the credential matching the capability's api_id — not from an unrelated
 credential in the same toolkit.
 """
+
 import asyncio
 import json
 import os
 
 import aiosqlite
 import pytest
-
 from src import vault
+
 
 API_A = "portainer.local"
 API_B = "discourse.local"
@@ -35,12 +36,20 @@ def two_local_apis(client, admin_session, agent_key_header):
             spec = {
                 "openapi": "3.0.3",
                 "info": {"title": title, "version": "1.0"},
-                "servers": [{"url": f"https://{{host}}", "variables": {"host": {"default": "localhost"}}}],
-                "components": {"securitySchemes": {"BearerAuth": {"type": "http", "scheme": "bearer"}}},
-                "paths": {"/api/test": {"get": {
-                    "operationId": f"{api_id}-test",
-                    "responses": {"200": {"description": "ok"}},
-                }}},
+                "servers": [
+                    {"url": "https://{host}", "variables": {"host": {"default": "localhost"}}}
+                ],
+                "components": {
+                    "securitySchemes": {"BearerAuth": {"type": "http", "scheme": "bearer"}}
+                },
+                "paths": {
+                    "/api/test": {
+                        "get": {
+                            "operationId": f"{api_id}-test",
+                            "responses": {"200": {"description": "ok"}},
+                        }
+                    }
+                },
             }
             spec_path = os.path.join(specs_dir, f"{api_id}.json")
             with open(spec_path, "w") as f:
@@ -70,7 +79,13 @@ def two_local_apis(client, admin_session, agent_key_header):
                 await db.execute(
                     "INSERT OR IGNORE INTO operations (id, api_id, operation_id, jentic_id, method, path, summary) "
                     "VALUES (?, ?, ?, ?, 'GET', '/api/test', ?)",
-                    (f"op-{api_id}", api_id, f"{api_id}-test", f"GET/{api_id}/api/test", f"{title} test"),
+                    (
+                        f"op-{api_id}",
+                        api_id,
+                        f"{api_id}-test",
+                        f"GET/{api_id}/api/test",
+                        f"{title} test",
+                    ),
                 )
                 await db.commit()
 
@@ -82,7 +97,9 @@ def two_local_apis(client, admin_session, agent_key_header):
         async with aiosqlite.connect(db_path) as db:
             for cred_id in ("cred-portainer", "cred-discourse"):
                 await db.execute("DELETE FROM credential_routes WHERE credential_id=?", (cred_id,))
-                await db.execute("DELETE FROM toolkit_credentials WHERE credential_id=?", (cred_id,))
+                await db.execute(
+                    "DELETE FROM toolkit_credentials WHERE credential_id=?", (cred_id,)
+                )
                 await db.execute("DELETE FROM credentials WHERE id=?", (cred_id,))
             for api_id in (API_A, API_B):
                 await db.execute("DELETE FROM operations WHERE api_id=?", (api_id,))

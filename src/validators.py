@@ -6,7 +6,8 @@ NormStr    — Annotated type: strips + lowercases (use for enum-like fields: ty
 TrimStr    — Annotated type: strips only (use where case matters: name, label, URL…).
 strip_param / norm_param — normalise optional query-parameter strings.
 """
-from typing import Any, Annotated, Optional
+
+from typing import Annotated, Any, Optional
 
 from pydantic import BaseModel, model_validator
 from pydantic.functional_validators import BeforeValidator
@@ -15,6 +16,7 @@ from pydantic.functional_validators import BeforeValidator
 # ---------------------------------------------------------------------------
 # Low-level transforms
 # ---------------------------------------------------------------------------
+
 
 def _strip(v: Any) -> Any:
     return v.strip() if isinstance(v, str) else v
@@ -30,12 +32,13 @@ def _norm(v: Any) -> Any:
 # ---------------------------------------------------------------------------
 
 TrimStr = Annotated[str, BeforeValidator(_strip)]
-NormStr = Annotated[str, BeforeValidator(_norm)]   # strip + lowercase
+NormStr = Annotated[str, BeforeValidator(_norm)]  # strip + lowercase
 
 
 # ---------------------------------------------------------------------------
 # Base model
 # ---------------------------------------------------------------------------
+
 
 class NormModel(BaseModel):
     """
@@ -55,6 +58,7 @@ class NormModel(BaseModel):
 # ---------------------------------------------------------------------------
 # Query-parameter helpers
 # ---------------------------------------------------------------------------
+
 
 def strip_param(v: Optional[str]) -> Optional[str]:
     """Strip whitespace from an optional query parameter."""

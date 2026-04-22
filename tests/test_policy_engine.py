@@ -3,6 +3,7 @@
 Tests _check_policy directly (pure function) and verifies the
 system safety rules behave as documented.
 """
+
 from src.routers.toolkits import _check_policy
 
 
@@ -30,8 +31,13 @@ class TestSystemSafetyRulesAlone:
         assert allowed
 
     def test_denies_sensitive_paths_even_for_get(self):
-        for path in ["/admin/users", "/billing/invoices", "/webhook/config",
-                     "/secret/keys", "/token/refresh"]:
+        for path in [
+            "/admin/users",
+            "/billing/invoices",
+            "/webhook/config",
+            "/secret/keys",
+            "/token/refresh",
+        ]:
             allowed, _ = _check_policy([], None, method="GET", path=path)
             assert not allowed, f"GET {path} should be denied by sensitive path rule"
 
@@ -85,5 +91,7 @@ class TestPathRegexMatching:
 
     def test_no_match_on_unrelated_path(self):
         rules = [{"effect": "allow", "methods": ["POST"], "path": "drafts"}]
-        allowed, _ = _check_policy(rules, None, method="POST", path="/gmail/v1/users/me/messages/send")
+        allowed, _ = _check_policy(
+            rules, None, method="POST", path="/gmail/v1/users/me/messages/send"
+        )
         assert not allowed

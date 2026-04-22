@@ -20,12 +20,15 @@ Revises: 0003
 Create Date: 2026-04-09
 """
 
+import copy
 import json
 import os
+import re
 from typing import Optional
 
 from alembic import op
 from sqlalchemy import text
+
 
 revision = "0004"
 down_revision = "0003"
@@ -35,6 +38,7 @@ depends_on = None
 
 # ── Helpers (self-contained — migration must not import from src/) ────────────
 
+
 def _load_spec(spec_path: str) -> Optional[dict]:
     if not spec_path or not os.path.exists(spec_path):
         return None
@@ -43,7 +47,8 @@ def _load_spec(spec_path: str) -> Optional[dict]:
             content = f.read()
         if spec_path.endswith((".yaml", ".yml")):
             try:
-                import yaml
+                import yaml  # noqa: PLC0415  # optional dependency for YAML specs
+
                 return yaml.safe_load(content)
             except ImportError:
                 pass
@@ -53,7 +58,6 @@ def _load_spec(spec_path: str) -> Optional[dict]:
 
 
 def _deep_merge(base: dict, overlay: dict) -> dict:
-    import copy
     result = copy.deepcopy(base)
     for k, v in overlay.items():
         if k in result and isinstance(result[k], dict) and isinstance(v, dict):
@@ -102,11 +106,14 @@ def _infer_auth_type_from_spec(spec: Optional[dict]) -> Optional[str]:
     schemes = _get_security_schemes(spec)
     if not schemes:
         return None
-    if any(v.get("type") == "http" and v.get("scheme", "").lower() == "basic"
-           for v in schemes.values()):
+    if any(
+        v.get("type") == "http" and v.get("scheme", "").lower() == "basic" for v in schemes.values()
+    ):
         return "basic"
-    if any(v.get("type") == "http" and v.get("scheme", "").lower() not in ("basic", "digest")
-           for v in schemes.values()):
+    if any(
+        v.get("type") == "http" and v.get("scheme", "").lower() not in ("basic", "digest")
+        for v in schemes.values()
+    ):
         return "bearer"
     if any(v.get("type") == "apiKey" for v in schemes.values()):
         return "apiKey"
@@ -122,15 +129,19 @@ def _apikey_scheme_from_spec(spec: dict, identity: Optional[str]) -> Optional[di
 
     if not identity:
         http_bearer = next(
-            (v for v in raw_schemes.values()
-             if v.get("type") == "http" and v.get("scheme", "").lower() == "bearer"),
+            (
+                v
+                for v in raw_schemes.values()
+                if v.get("type") == "http" and v.get("scheme", "").lower() == "bearer"
+            ),
             None,
         )
         if http_bearer:
             return {"in": "header", "name": "Authorization", "prefix": "Bearer "}
 
     apikey_schemes = {
-        k: v for k, v in raw_schemes.items()
+        k: v
+        for k, v in raw_schemes.items()
         if v.get("type") == "apiKey" and v.get("in") == "header" and v.get("name")
     }
     if not apikey_schemes:
@@ -150,15 +161,17 @@ def _apikey_scheme_from_spec(spec: dict, identity: Optional[str]) -> Optional[di
         if len(apikey_schemes) == 1:
             s = next(iter(apikey_schemes.values()))
             return {"in": "header", "name": s["name"]}
-        identity_candidates = {k: v for k, v in apikey_schemes.items()
-                                if _is_identity_slot(v["name"])}
-        secret_candidates   = {k: v for k, v in apikey_schemes.items()
-                                if not _is_identity_slot(v["name"])}
+        identity_candidates = {
+            k: v for k, v in apikey_schemes.items() if _is_identity_slot(v["name"])
+        }
+        secret_candidates = {
+            k: v for k, v in apikey_schemes.items() if not _is_identity_slot(v["name"])
+        }
         if identity_candidates and secret_candidates:
-            secret_s   = min(secret_candidates.values(), key=lambda v: _secret_score(v["name"]))
+            secret_s = min(secret_candidates.values(), key=lambda v: _secret_score(v["name"]))
             identity_s = next(iter(identity_candidates.values()))
             return {
-                "secret":   {"in": "header", "name": secret_s["name"]},
+                "secret": {"in": "header", "name": secret_s["name"]},
                 "identity": {"in": "header", "name": identity_s["name"]},
             }
         s = next(iter(apikey_schemes.values()))
@@ -192,22 +205,19 @@ def _parse_route(route: str) -> tuple[str, str]:
 
 # ── Migration ─────────────────────────────────────────────────────────────────
 
+
 def upgrade() -> None:
     conn = op.get_bind()
 
     # 1. server_variables column (defensive — may already exist if migrating from pre-squash branch)
     try:
-        op.execute(
-            "ALTER TABLE credentials ADD COLUMN server_variables TEXT DEFAULT NULL"
-        )
+        op.execute("ALTER TABLE credentials ADD COLUMN server_variables TEXT DEFAULT NULL")
     except Exception:
         pass  # column already exists
 
     # 2. scheme column (defensive)
     try:
-        op.execute(
-            "ALTER TABLE credentials ADD COLUMN scheme TEXT DEFAULT NULL"
-        )
+        op.execute("ALTER TABLE credentials ADD COLUMN scheme TEXT DEFAULT NULL")
     except Exception:
         pass  # column already exists
 
@@ -220,10 +230,7 @@ def upgrade() -> None:
             PRIMARY KEY (credential_id, host, path_prefix)
         )
     """)
-    op.execute(
-        "CREATE INDEX IF NOT EXISTS idx_credential_routes_host "
-        "ON credential_routes(host)"
-    )
+    op.execute("CREATE INDEX IF NOT EXISTS idx_credential_routes_host ON credential_routes(host)")
 
     # 4. Backfill scheme on existing credentials
     rows = conn.execute(
@@ -231,8 +238,9 @@ def upgrade() -> None:
     ).fetchall()
 
     BEARER_SCHEME = json.dumps({"in": "header", "name": "Authorization", "prefix": "Bearer "})
-    BASIC_SCHEME  = json.dumps({"in": "header", "name": "Authorization", "prefix": "Basic ",
-                                "encode": "base64"})
+    BASIC_SCHEME = json.dumps(
+        {"in": "header", "name": "Authorization", "prefix": "Basic ", "encode": "base64"}
+    )
 
     for cred_id, auth_type_raw, api_id, identity in rows:
         auth_type = auth_type_raw
@@ -282,7 +290,7 @@ def upgrade() -> None:
             try:
                 sv = json.loads(sv_json)
                 for v in sv.values():
-                    if isinstance(v, str) and ('.' in v or ':' in v):
+                    if isinstance(v, str) and ("." in v or ":" in v):
                         route_host_raw = v
                         break
             except Exception:
@@ -292,22 +300,22 @@ def upgrade() -> None:
         if not route_host_raw and api_id:
             try:
                 doc = _load_api_desc(conn, api_id)
-                servers = (doc.get("servers") or
-                           ([{"url": f"https://{doc['host']}"}] if doc.get("host") else []))
+                servers = doc.get("servers") or (
+                    [{"url": f"https://{doc['host']}"}] if doc.get("host") else []
+                )
                 if servers:
                     base_url = servers[0].get("url", "")
                     # Substitute any server template variables from credential sv
-                    if sv_json and '{' in base_url:
+                    if sv_json and "{" in base_url:
                         try:
                             sv = json.loads(sv_json)
-                            import re as _re
-                            for var in _re.findall(r'\{([^}]+)\}', base_url):
+                            for var in re.findall(r"\{([^}]+)\}", base_url):
                                 if var in sv:
-                                    base_url = base_url.replace(f'{{{var}}}', sv[var])
+                                    base_url = base_url.replace(f"{{{var}}}", sv[var])
                         except Exception:
                             pass
                     # Only use if fully resolved and not a generic example host
-                    if base_url and '{' not in base_url and 'example.com' not in base_url:
+                    if base_url and "{" not in base_url and "example.com" not in base_url:
                         route_host_raw = base_url  # full URL, _parse_route will strip scheme
             except Exception:
                 pass

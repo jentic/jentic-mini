@@ -1,10 +1,25 @@
 """Debug endpoints — hidden from public docs (include_in_schema=False on all routes)."""
+
+import asyncio
+import inspect
+import json
 import logging
-import os, json, inspect
+import os
+import sys
+import uuid
 from pathlib import Path
+
+from arazzo_runner import ArazzoRunner
+from cryptography.fernet import Fernet, InvalidToken
 from fastapi import APIRouter, Request
 
+import src.vault as vault
+from src.auth import _trusted_subnets, client_ip, default_allowed_ips, is_trusted_ip
 from src.config import DATA_DIR
+from src.db import DEFAULT_TOOLKIT_ID, get_db
+from src.routers.apis import _rebuild_index
+from src.routers.workflows import _execute_workflow_core, _parse_arazzo
+
 
 log = logging.getLogger("jentic")
 router = APIRouter(prefix="/debug", tags=["debug"], include_in_schema=False)
@@ -13,7 +28,6 @@ router = APIRouter(prefix="/debug", tags=["debug"], include_in_schema=False)
 @router.get("/whoami")
 async def whoami(request: Request):
     """Return IP detection diagnostics — use to verify source IP is not masked by Docker/NPM."""
-    from src.auth import client_ip, is_trusted_ip, _trusted_subnets, default_allowed_ips
     raw_client = request.client.host if request.client else None
     xff = request.headers.get("x-forwarded-for", None)
     x_real_ip = request.headers.get("x-real-ip", None)
@@ -35,46 +49,55 @@ async def whoami(request: Request):
 @router.get("/auth-internals")
 async def auth_internals():
     result = {}
+    # arazzo_runner private submodule paths — kept local so this endpoint still
+    # returns a useful error JSON if upstream restructures internal modules.
     try:
-        from arazzo_runner.auth.credentials.models import Credential, RequestAuthValue, SecurityScheme, AuthValue
+        from arazzo_runner.auth.credentials.models import (  # noqa: PLC0415
+            AuthValue,
+            Credential,
+            RequestAuthValue,
+            SecurityScheme,
+        )
+
         result["Credential"] = inspect.getsource(Credential)[:2500]
         result["SecurityScheme"] = inspect.getsource(SecurityScheme)[:1500]
         result["AuthValue"] = inspect.getsource(AuthValue)[:1000]
         result["RequestAuthValue"] = inspect.getsource(RequestAuthValue)[:1000]
     except Exception as e:
         result["models_err"] = str(e)
-    
+
     try:
-        from arazzo_runner.auth.credentials.fetch import FetchStrategy
+        from arazzo_runner.auth.credentials.fetch import FetchStrategy  # noqa: PLC0415
+
         result["FetchStrategy_src"] = inspect.getsource(FetchStrategy)[:3000]
     except Exception as e:
         result["fetch_err"] = str(e)
-    
+
     try:
-        from arazzo_runner.auth.credentials import provider as prov_mod
-        result["provider_dir"] = [x for x in dir(prov_mod) if not x.startswith('_')]
+        from arazzo_runner.auth.credentials import provider as prov_mod  # noqa: PLC0415
+
+        result["provider_dir"] = [x for x in dir(prov_mod) if not x.startswith("_")]
         # Get all classes in provider module
         for name in dir(prov_mod):
             obj = getattr(prov_mod, name)
-            if inspect.isclass(obj) and obj.__module__.startswith('arazzo_runner'):
+            if inspect.isclass(obj) and obj.__module__.startswith("arazzo_runner"):
                 try:
                     result[f"class_{name}"] = inspect.getsource(obj)[:1500]
-                except:
+                except Exception:
                     pass
     except Exception as e:
         result["provider_err"] = str(e)
-    
+
     return result
 
 
 @router.get("/env-mappings")
 async def env_mappings(arazzo_path: str = ""):
     try:
-        from arazzo_runner import ArazzoRunner
         runner = ArazzoRunner.from_arazzo_path(arazzo_path)
         mappings = runner.get_env_mappings()
         return {"mappings": mappings}
-    except Exception as e:
+    except Exception:
         log.exception("env-mappings failed for %s", arazzo_path)
         return {"error": "Failed to load env mappings. Check server logs for details."}
 
@@ -112,12 +135,13 @@ async def spec_info(path: str = ""):
                 sample.append(f"{method.upper()} {api_path}: {op.get('operationId', '')}")
                 break
     return {
-        "exists": True, "size_kb": p.stat().st_size // 1024,
-        "paths_count": len(paths), "sample": sample,
-        "security_schemes": doc.get('components', {}).get('securitySchemes', {}),
-        "global_security": doc.get('security', []),
+        "exists": True,
+        "size_kb": p.stat().st_size // 1024,
+        "paths_count": len(paths),
+        "sample": sample,
+        "security_schemes": doc.get("components", {}).get("securitySchemes", {}),
+        "global_security": doc.get("security", []),
     }
-
 
 
 @router.post("/admin/purge-old-api-ids", status_code=200)
@@ -129,10 +153,6 @@ async def purge_old_api_ids():
     Keeps only IDs that look like URL-derived ones (contain a dot, not a TLD stub,
     don't start with '{').
     """
-    import re
-    from src.db import get_db
-    import src.bm25 as bm25
-    from src.routers.apis import _rebuild_index
 
     def is_derived(id_: str) -> bool:
         return "." in id_ and not id_.startswith("{") and id_ not in ("com", "net", "org")
@@ -162,10 +182,6 @@ async def purge_old_api_ids():
 @router.get("/vault-status")
 async def vault_status():
     """Diagnose vault key source and test round-trip encrypt/decrypt."""
-    import os
-    from pathlib import Path
-    from cryptography.fernet import Fernet, InvalidToken
-
     db_path = os.getenv("DB_PATH", "/app/data/jentic-mini.db")
     key_file = Path(db_path).parent / "vault.key"
     env_key = os.getenv("JENTIC_VAULT_KEY", "")
@@ -217,9 +233,10 @@ async def vault_status():
     # Test decrypting all credentials (without returning values)
     cred_results = []
     try:
-        from src.db import get_db
         async with get_db() as db:
-            async with db.execute("SELECT id, encrypted_value FROM credentials ORDER BY created_at") as cur:
+            async with db.execute(
+                "SELECT id, encrypted_value FROM credentials ORDER BY created_at"
+            ) as cur:
                 rows = await cur.fetchall()
         f = Fernet(active_key.encode())
         for cred_id, enc_val in rows:
@@ -253,9 +270,6 @@ async def pycheck():
 @router.get("/broker-cred-test")
 async def broker_cred_test(host: str = "api.elevenlabs.io"):
     """Test broker credential lookup for a given host."""
-    from src.db import get_db
-    import src.vault as vault
-
     # Step 1: find API
     async with get_db() as db:
         async with db.execute(
@@ -272,16 +286,14 @@ async def broker_cred_test(host: str = "api.elevenlabs.io"):
 
     # Step 2: try arazzo-runner
     try:
-        from arazzo_runner import ArazzoRunner
         runner = ArazzoRunner.from_openapi_path(spec_path)
         mappings = runner.get_env_mappings()
         auth_mappings = mappings.get("auth", {})
-    except Exception as e:
+    except Exception:
         log.exception("arazzo-runner failed for %s", spec_path)
         return {"error": "arazzo-runner failed. Check server logs for details."}
 
     # Step 3: resolve headers
-    import json
     with open(spec_path) as f:
         spec = json.load(f)
     security_schemes = spec.get("components", {}).get("securitySchemes", {})
@@ -314,32 +326,38 @@ async def broker_cred_test(host: str = "api.elevenlabs.io"):
 @router.post("/admin/fix-credentials", include_in_schema=False)
 async def fix_credentials():
     """One-off: backfill api_id/scheme_name on pre-overlay credentials and enroll in default."""
-    import uuid as _uuid
-    from src.db import get_db, DEFAULT_TOOLKIT_ID
     async with get_db() as db:
-        await db.execute("UPDATE credentials SET api_id='techpreneurs.ie', scheme_name='DiscourseApiKey' WHERE env_var='DISCOURSE_API_KEY'")
-        await db.execute("UPDATE credentials SET api_id='techpreneurs.ie', scheme_name='DiscourseUsername' WHERE env_var='DISCOURSE_API_USERNAME'")
-        for ev in ('DISCOURSE_API_KEY', 'DISCOURSE_API_USERNAME', 'DISCOURSE_USERNAME'):
-            async with db.execute('SELECT id FROM credentials WHERE env_var=?', (ev,)) as cur:
+        await db.execute(
+            "UPDATE credentials SET api_id='techpreneurs.ie', scheme_name='DiscourseApiKey' WHERE env_var='DISCOURSE_API_KEY'"
+        )
+        await db.execute(
+            "UPDATE credentials SET api_id='techpreneurs.ie', scheme_name='DiscourseUsername' WHERE env_var='DISCOURSE_API_USERNAME'"
+        )
+        for ev in ("DISCOURSE_API_KEY", "DISCOURSE_API_USERNAME", "DISCOURSE_USERNAME"):
+            async with db.execute("SELECT id FROM credentials WHERE env_var=?", (ev,)) as cur:
                 row = await cur.fetchone()
             if row:
                 await db.execute(
-                    'INSERT OR IGNORE INTO toolkit_credentials (id, toolkit_id, credential_id) VALUES (?,?,?)',
-                    (str(_uuid.uuid4()), DEFAULT_TOOLKIT_ID, row[0])
+                    "INSERT OR IGNORE INTO toolkit_credentials (id, toolkit_id, credential_id) VALUES (?,?,?)",
+                    (str(uuid.uuid4()), DEFAULT_TOOLKIT_ID, row[0]),
                 )
         await db.commit()
-        async with db.execute("SELECT env_var, api_id, scheme_name FROM credentials WHERE api_id IS NOT NULL") as cur:
+        async with db.execute(
+            "SELECT env_var, api_id, scheme_name FROM credentials WHERE api_id IS NOT NULL"
+        ) as cur:
             updated = await cur.fetchall()
     return {"updated": updated}
 
 
 @router.get("/admin/check-creds", include_in_schema=False)
 async def check_creds():
-    from src.db import get_db, DEFAULT_TOOLKIT_ID
     async with get_db() as db:
         async with db.execute("SELECT id, env_var, api_id, scheme_name FROM credentials") as cur:
             creds = await cur.fetchall()
-        async with db.execute("SELECT toolkit_id, credential_id FROM toolkit_credentials WHERE toolkit_id=?", (DEFAULT_TOOLKIT_ID,)) as cur:
+        async with db.execute(
+            "SELECT toolkit_id, credential_id FROM toolkit_credentials WHERE toolkit_id=?",
+            (DEFAULT_TOOLKIT_ID,),
+        ) as cur:
             cc = await cur.fetchall()
         async with db.execute("SELECT id FROM toolkits WHERE id=?", (DEFAULT_TOOLKIT_ID,)) as cur:
             coll = await cur.fetchone()
@@ -349,8 +367,6 @@ async def check_creds():
 @router.get("/async-subprocess-test", include_in_schema=False)
 async def async_subprocess_test():
     """Test if subprocesses work correctly from both sync and background task contexts."""
-    import asyncio, sys, json
-
     script = """
 import socket, sys, json
 
@@ -376,9 +392,12 @@ except Exception as e:
 
 print(json.dumps(results))
 """
+
     async def run_it():
         proc = await asyncio.create_subprocess_exec(
-            sys.executable, "-c", script,
+            sys.executable,
+            "-c",
+            script,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
@@ -390,9 +409,11 @@ print(json.dumps(results))
 
     # Background task
     bg_result = {}
+
     async def bg():
         r = await run_it()
         bg_result.update(r)
+
     task = asyncio.create_task(bg())
     await task
 
@@ -402,23 +423,15 @@ print(json.dumps(results))
 @router.post("/test-async-workflow", include_in_schema=False)
 async def test_async_workflow():
     """Run dispatch_workflow with Prefer: wait=0 and capture full exception details."""
-    import asyncio
-    from src.routers.workflows import dispatch_workflow
-    from src.routers.jobs import get_job
-
     error_detail = {}
 
     async def instrumented_bg():
         try:
-            from src.routers.workflows import _execute_workflow_core, _parse_arazzo, _preprocess_arazzo_for_broker
-            import sys, time, asyncio, json, os
-            from src.routers.traces import write_trace, new_trace_id
-            from src.db import get_db
-
             # Get the workflow
             async with get_db() as db:
                 async with db.execute(
-                    "SELECT arazzo_path, name FROM workflows WHERE slug=?", ("summarise-latest-topics",)
+                    "SELECT arazzo_path, name FROM workflows WHERE slug=?",
+                    ("summarise-latest-topics",),
                 ) as cur:
                     row = await cur.fetchone()
 
@@ -445,7 +458,7 @@ async def test_async_workflow():
             )
             error_detail["step"] = "complete"
             error_detail["status_code"] = result.status_code
-        except Exception as exc:
+        except Exception:
             log.exception("Async workflow test failed")
             error_detail["error"] = "Request failed. Check server logs."
 

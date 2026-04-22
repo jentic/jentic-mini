@@ -31,11 +31,13 @@ import time
 import uuid
 from typing import Annotated, Any
 
-from fastapi import APIRouter, HTTPException, Path, Query, Request
+import httpx
+from fastapi import APIRouter, HTTPException, Path, Query
 
 from src.db import get_db
-from src.models import JobOut, JobListPage
+from src.models import JobListPage, JobOut
 from src.openapi_helpers import agent_hints
+
 
 router = APIRouter(prefix="/jobs", tags=["observe"])
 
@@ -45,10 +47,11 @@ _running_tasks: dict[str, asyncio.Task] = {}
 
 # ── DB helpers ─────────────────────────────────────────────────────────────────
 
+
 async def create_job(
     *,
-    kind: str,         # "workflow" | "broker"
-    slug_or_id: str,   # workflow slug or capability ID
+    kind: str,  # "workflow" | "broker"
+    slug_or_id: str,  # workflow slug or capability ID
     toolkit_id: str | None,
     inputs: dict,
 ) -> str:
@@ -120,7 +123,6 @@ async def _fire_callback(job_id: str) -> None:
             payload["result"] = json.loads(result_json)
         if error:
             payload["error"] = error
-        import httpx
         async with httpx.AsyncClient(timeout=10.0) as client:
             await client.post(callback_url, json=payload)
     except Exception:
@@ -141,9 +143,21 @@ async def get_job(job_id: str) -> dict | None:
     if not row:
         return None
     keys = [
-        "id", "kind", "slug_or_id", "toolkit_id", "status", "result", "error",
-        "http_status", "upstream_async", "upstream_job_url", "trace_id", "inputs",
-        "created_at", "completed_at", "callback_url",
+        "id",
+        "kind",
+        "slug_or_id",
+        "toolkit_id",
+        "status",
+        "result",
+        "error",
+        "http_status",
+        "upstream_async",
+        "upstream_job_url",
+        "trace_id",
+        "inputs",
+        "created_at",
+        "completed_at",
+        "callback_url",
     ]
     d = dict(zip(keys, row))
     if d.get("result"):
@@ -194,6 +208,7 @@ def _job_response(d: dict) -> dict:
 
 # ── Routes ─────────────────────────────────────────────────────────────────────
 
+
 @router.get(
     "",
     summary="List async jobs — paginated handles for outstanding and completed async calls",
@@ -213,9 +228,7 @@ async def list_jobs(
     offset = (page - 1) * limit
     async with get_db() as db:
         if status:
-            async with db.execute(
-                "SELECT COUNT(*) FROM jobs WHERE status=?", (status,)
-            ) as cur:
+            async with db.execute("SELECT COUNT(*) FROM jobs WHERE status=?", (status,)) as cur:
                 total = (await cur.fetchone())[0]
             async with db.execute(
                 "SELECT id, kind, slug_or_id, toolkit_id, status, result, error, "
@@ -238,9 +251,21 @@ async def list_jobs(
                 rows = await cur.fetchall()
 
     keys = [
-        "id", "kind", "slug_or_id", "toolkit_id", "status", "result", "error",
-        "http_status", "upstream_async", "upstream_job_url", "trace_id", "inputs",
-        "created_at", "completed_at", "callback_url",
+        "id",
+        "kind",
+        "slug_or_id",
+        "toolkit_id",
+        "status",
+        "result",
+        "error",
+        "http_status",
+        "upstream_async",
+        "upstream_job_url",
+        "trace_id",
+        "inputs",
+        "created_at",
+        "completed_at",
+        "callback_url",
     ]
     items = []
     for row in rows:
@@ -263,8 +288,8 @@ async def list_jobs(
         "has_more": page < total_pages,
         "_links": {
             "self": f"/jobs?page={page}&limit={limit}",
-            **({"next": f"/jobs?page={page+1}&limit={limit}"} if page < total_pages else {}),
-            **({"prev": f"/jobs?page={page-1}&limit={limit}"} if page > 1 else {}),
+            **({"next": f"/jobs?page={page + 1}&limit={limit}"} if page < total_pages else {}),
+            **({"prev": f"/jobs?page={page - 1}&limit={limit}"} if page > 1 else {}),
         },
     }
 
@@ -286,15 +311,15 @@ async def list_jobs(
         when_to_use="Use after receiving HTTP 202 from a broker call or workflow execution to poll for completion. Job ID comes from Location header (RFC 7240) or X-Jentic-Job-Id header. Poll until status is complete, failed, or upstream_async. Jobs are created when: (1) client sends Prefer: wait=0, (2) execution exceeds Prefer: wait=N timeout, or (3) upstream API returns 202.",
         prerequisites=[
             "Requires authentication (toolkit key or human session)",
-            "Valid job ID from a 202 response (format: job_{12chars})"
+            "Valid job ID from a 202 response (format: job_{12chars})",
         ],
         avoid_when="Do not use for synchronous calls (200 responses) — those produce traces, not jobs. Do not poll excessively — implement exponential backoff (start at 1s, max 30s).",
         related_operations=[
             "GET /{target} (broker) — broker call with Prefer: wait=0 returns 202 + job ID",
             "POST /workflows/{slug} — workflow with Prefer: wait=0 returns 202 + job ID",
             "GET /traces/{id} — completed jobs reference a trace via trace_id field",
-            "DELETE /jobs/{id} — cancel an outstanding async job"
-        ]
+            "DELETE /jobs/{id} — cancel an outstanding async job",
+        ],
     ),
 )
 async def get_job_route(job_id: Annotated[str, Path(description="Job ID (format: job_{12chars})")]):

@@ -9,17 +9,26 @@ Both operations are idempotent — safe to call on every startup.
 
 See docs/SELF-REGISTRATION.md for design rationale.
 """
+
 import asyncio
 import json
 import logging
 import os
 import pathlib
 import secrets
+import traceback
 import uuid
 
-from src.db import get_db
+import httpx
+from fastapi.openapi.utils import get_openapi as _get_openapi
+
+from src.auth import default_allowed_ips
 from src.brokers.pipedream import _API_ID_TO_PD_SLUG as _PIPEDREAM_APP_SEEDS
-from src.config import JENTIC_PUBLIC_HOSTNAME, DATA_DIR, SPECS_DIR
+from src.config import DATA_DIR, JENTIC_PUBLIC_HOSTNAME, SPECS_DIR
+from src.db import DEFAULT_TOOLKIT_ID, get_db
+from src.routers.import_ import _register_openapi
+from src.vault import _parse_route, create_credential
+
 
 _REGISTER_INSTALL_URL = "https://api.jentic.com/api/v1/register-install"
 _INSTALL_ID_FILE = DATA_DIR / "install-id.txt"
@@ -27,8 +36,8 @@ _INSTALL_REGISTERED_FILE = DATA_DIR / "install-registered.txt"
 
 log = logging.getLogger("jentic")
 
-_INTERNAL_CRED_ID   = "jentic-mini"          # vault credential ID
-_INTERNAL_PORT      = int(os.getenv("JENTIC_INTERNAL_PORT", "8900"))
+_INTERNAL_CRED_ID = "jentic-mini"  # vault credential ID
+_INTERNAL_PORT = int(os.getenv("JENTIC_INTERNAL_PORT", "8900"))
 
 
 def _public_hostname() -> str:
@@ -37,6 +46,7 @@ def _public_hostname() -> str:
 
 async def self_register(app=None) -> None:
     """Schedule self-registration as a background task so it doesn't block startup."""
+
     async def _run():
         # Small delay to ensure the server is fully ready before we generate the spec
         await asyncio.sleep(2)
@@ -48,6 +58,7 @@ async def self_register(app=None) -> None:
 
 
 # ── Install registration ──────────────────────────────────────────────────────
+
 
 async def register_install() -> None:
     """On first startup, generate a random install ID and register it with Jentic.
@@ -99,7 +110,6 @@ async def register_install() -> None:
 
     # Fire the registration call
     try:
-        import httpx
         async with httpx.AsyncClient(timeout=10.0) as client:
             resp = await client.post(
                 _REGISTER_INSTALL_URL,
@@ -109,12 +119,16 @@ async def register_install() -> None:
                 _INSTALL_REGISTERED_FILE.write_text(install_id)
                 log.info("register_install: registered successfully")
             else:
-                log.warning("register_install: server returned %d — will retry on next startup", resp.status_code)
+                log.warning(
+                    "register_install: server returned %d — will retry on next startup",
+                    resp.status_code,
+                )
     except Exception as exc:
         log.warning("register_install: network call failed (%s) — will retry on next startup", exc)
 
 
 # ── Step 1: import own OpenAPI spec ──────────────────────────────────────────
+
 
 async def _ensure_spec_imported(app=None) -> None:
     """Import Jentic Mini's own OpenAPI spec into the catalog (skip if already present)."""
@@ -138,7 +152,6 @@ async def _ensure_spec_imported(app=None) -> None:
         # We don't call app.openapi() to avoid caching issues during lifespan.
         if app is None:
             raise ValueError("app instance required for spec import")
-        from fastapi.openapi.utils import get_openapi as _get_openapi
         spec = _get_openapi(
             title=app.title,
             version=app.version,
@@ -150,8 +163,6 @@ async def _ensure_spec_imported(app=None) -> None:
         hostname = _public_hostname()
         spec["servers"] = [{"url": f"https://{hostname}"}]
 
-        from src.routers.import_ import _register_openapi
-        import json, pathlib
         specs_dir = SPECS_DIR
         specs_dir.mkdir(parents=True, exist_ok=True)
         saved_path = str(specs_dir / "jentic-mini.json")
@@ -166,18 +177,16 @@ async def _ensure_spec_imported(app=None) -> None:
             result["id"],
         )
     except Exception as exc:
-        import traceback
         log.warning("self-registration: spec import failed — %s\n%s", exc, traceback.format_exc())
 
 
 # ── Step 2: create internal admin credential ──────────────────────────────────
 
+
 async def _ensure_internal_credential() -> None:
     """Create a Jentic Mini admin credential in the vault (skip if already present)."""
     async with get_db() as db:
-        async with db.execute(
-            "SELECT id FROM credentials WHERE id=?", (_INTERNAL_CRED_ID,)
-        ) as cur:
+        async with db.execute("SELECT id FROM credentials WHERE id=?", (_INTERNAL_CRED_ID,)) as cur:
             if await cur.fetchone():
                 log.info("self-registration: internal credential already exists — skipping")
                 return
@@ -199,7 +208,6 @@ async def _ensure_internal_credential() -> None:
         raw_key = "tk_" + secrets.token_hex(16)
 
         # Store it in the vault
-        from src.vault import create_credential
         cred = await create_credential(
             label="Jentic Mini Admin Key",
             env_var="JENTIC_MINI_ADMIN_KEY",
@@ -225,8 +233,6 @@ async def _ensure_internal_credential() -> None:
 
         # Register the key as a valid toolkit key in the DB (bound to default toolkit)
         async with get_db() as db:
-            from src.db import DEFAULT_TOOLKIT_ID
-            from src.auth import default_allowed_ips
             allowed_ips = json.dumps(default_allowed_ips())
             await db.execute(
                 """INSERT OR IGNORE INTO toolkit_keys
@@ -245,7 +251,6 @@ async def _ensure_internal_credential() -> None:
         log.warning("self-registration: credential creation failed — %s", exc)
 
 
-
 async def seed_broker_apps(broker_id: str = "pipedream") -> None:
     """Upsert api_broker_apps for all known API→Pipedream slug mappings.
 
@@ -254,9 +259,7 @@ async def seed_broker_apps(broker_id: str = "pipedream") -> None:
     """
     async with get_db() as db:
         # Only seed if a matching broker row exists
-        async with db.execute(
-            "SELECT id FROM oauth_brokers WHERE id=?", (broker_id,)
-        ) as cur:
+        async with db.execute("SELECT id FROM oauth_brokers WHERE id=?", (broker_id,)) as cur:
             if not await cur.fetchone():
                 log.debug("seed_broker_apps: broker '%s' not configured — skipping", broker_id)
                 return
@@ -282,10 +285,14 @@ async def seed_broker_apps(broker_id: str = "pipedream") -> None:
 
         await db.commit()
     if inserted or updated:
-        log.info("seed_broker_apps: %d inserted, %d updated for broker '%s'", inserted, updated, broker_id)
+        log.info(
+            "seed_broker_apps: %d inserted, %d updated for broker '%s'",
+            inserted,
+            updated,
+            broker_id,
+        )
     else:
         log.debug("seed_broker_apps: all mappings already up-to-date for broker '%s'", broker_id)
-
 
 
 async def _backfill_credential_routes() -> None:
@@ -297,7 +304,6 @@ async def _backfill_credential_routes() -> None:
 
     Runs at every startup — the LEFT JOIN makes it a no-op if already complete.
     """
-    from src.vault import _parse_route
     async with get_db() as db:
         async with db.execute(
             """SELECT c.id, c.api_id

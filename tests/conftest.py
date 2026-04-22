@@ -5,8 +5,10 @@ Sets up a temp SQLite database, runs Alembic migrations, and provides
 a FastAPI TestClient with auth helper fixtures. All tests hit the real
 HTTP API — no mocking of the database or vault.
 """
+
 import os
 import tempfile
+
 
 # ── DB_PATH must be set BEFORE any src.* imports ──────────────────────────────
 # src/config.py reads DB_PATH at import time, so we override it here.
@@ -17,11 +19,11 @@ os.environ["DB_PATH"] = os.path.join(_test_dir, "test.db")
 os.environ["JENTIC_TELEMETRY"] = "off"
 os.environ["APP_VERSION"] = "0.0.0-test"
 
-import pytest
 from contextlib import asynccontextmanager
-from starlette.testclient import TestClient
 
+import pytest
 from src.db import run_migrations
+from starlette.testclient import TestClient
 
 
 @asynccontextmanager
@@ -39,6 +41,7 @@ async def _test_lifespan(app):
 def app():
     """Create a FastAPI app with test lifespan."""
     from src.main import app as _app
+
     # NB: mutates the singleton app — safe for tests but not reversible
     _app.router.lifespan_context = _test_lifespan
     return _app
@@ -55,17 +58,23 @@ def client(app):
 def admin_session(client):
     """Create an admin account and return session cookies for use with `cookies=` in requests."""
     # Create account (first-time setup)
-    resp = client.post("/user/create", json={
-        "username": "testadmin",
-        "password": "testpassword123",
-    })
+    resp = client.post(
+        "/user/create",
+        json={
+            "username": "testadmin",
+            "password": "testpassword123",
+        },
+    )
     assert resp.status_code in (200, 201, 410), f"Failed to create user: {resp.text}"
 
     # Login
-    resp = client.post("/user/login", json={
-        "username": "testadmin",
-        "password": "testpassword123",
-    })
+    resp = client.post(
+        "/user/login",
+        json={
+            "username": "testadmin",
+            "password": "testpassword123",
+        },
+    )
     assert resp.status_code == 200, f"Failed to login: {resp.text}"
 
     # Extract session cookie
@@ -82,7 +91,9 @@ def agent_key(client, admin_session):
         return resp.json()["key"]
     default_key_status, default_key_body = resp.status_code, resp.text
     # Already claimed — create a new key on the default toolkit
-    resp = client.post("/toolkits/default/keys", cookies=admin_session, json={"label": "test-agent"})
+    resp = client.post(
+        "/toolkits/default/keys", cookies=admin_session, json={"label": "test-agent"}
+    )
     if resp.status_code in (200, 201):
         return resp.json()["key"]
     pytest.fail(
@@ -115,5 +126,6 @@ def agent_only_client(app, agent_key, client):
 def _cleanup():
     """Remove temp directory after all tests complete."""
     import shutil
+
     yield
     shutil.rmtree(_test_dir, ignore_errors=True)

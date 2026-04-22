@@ -7,14 +7,18 @@ the source spec gets wrong or omits.
 Overlays start as "pending" and are auto-confirmed on the first successful broker
 call that uses them.
 """
+
 import json
 import uuid
 from typing import Annotated
-from fastapi import APIRouter, Body, HTTPException, Path
+
+from fastapi import APIRouter, HTTPException, Path
 from pydantic import Field
-from src.validators import NormModel
+
 from src.db import get_db
 from src.openapi_helpers import agent_hints
+from src.validators import NormModel
+
 
 router = APIRouter()
 
@@ -74,10 +78,15 @@ The broker resolves these by canonical name without needing further annotation.\
 
 # ── Raw overlay endpoint ───────────────────────────────────────────────────
 
+
 class OverlaySubmit(NormModel):
     """Submit an OpenAPI Overlay 1.0 document to patch an API spec. Commonly used to add missing security schemes."""
+
     overlay: dict = Field(..., description=_OVERLAY_FIELD_DESCRIPTION)
-    contributed_by: str | None = Field(default=None, description="Optional contributor identifier (username, agent ID, etc.) for tracking overlay source")
+    contributed_by: str | None = Field(
+        default=None,
+        description="Optional contributor identifier (username, agent ID, etc.) for tracking overlay source",
+    )
 
 
 @router.post(
@@ -90,17 +99,19 @@ class OverlaySubmit(NormModel):
             prerequisites=[
                 "Requires authentication (admin/human session)",
                 "Valid API ID from GET /apis",
-                "Valid OpenAPI Overlay 1.0 structure (overlay, info, actions array)"
+                "Valid OpenAPI Overlay 1.0 structure (overlay, info, actions array)",
             ],
             avoid_when="Do not use for testing security schemes before adding credentials — first add credentials via POST /credentials, then submit overlay if authentication fails with 401/403. Do not submit duplicate overlays — check GET /apis/{api_id}/overlays first.",
             related_operations=[
                 "GET /apis/{api_id}/overlays — list existing overlays to avoid duplicates",
                 "GET /apis/{api_id} — inspect current security_schemes before patching",
                 "POST /credentials — add credentials after overlay is confirmed",
-                "GET /apis/{api_id}/openapi.json — download merged spec to verify overlay was applied"
-            ]
+                "GET /apis/{api_id}/openapi.json — download merged spec to verify overlay was applied",
+            ],
         ),
-        "requestBody": {"description": "OpenAPI Overlay 1.0 document to patch the stored spec — adds security schemes, corrects base URLs, or enriches operation metadata"}
+        "requestBody": {
+            "description": "OpenAPI Overlay 1.0 document to patch the stored spec — adds security schemes, corrects base URLs, or enriches operation metadata"
+        },
     },
 )
 async def submit_overlay(
@@ -154,15 +165,15 @@ async def submit_overlay(
         when_to_use="Use to inspect existing overlays for an API before submitting a new one (avoids duplicates) or to verify which overlays are confirmed vs pending. Each overlay includes the complete OpenAPI Overlay 1.0 document with all actions, so no second call needed. Confirmed overlays are listed first, then pending, ordered by creation date descending.",
         prerequisites=[
             "Requires authentication (toolkit key or human session)",
-            "Valid API ID from GET /apis"
+            "Valid API ID from GET /apis",
         ],
         avoid_when="Do not use to download the merged spec — use GET /apis/{api_id}/openapi.json for that (overlays already applied). Do not use to inspect base security schemes — use GET /apis/{api_id} instead.",
         related_operations=[
             "POST /apis/{api_id}/overlays — submit a new overlay after checking for duplicates",
             "DELETE /apis/{api_id}/overlays/{overlay_id} — delete an overlay",
             "GET /apis/{api_id}/openapi.json — download merged spec with all confirmed overlays applied",
-            "GET /apis/{api_id} — view current security_schemes (includes merged overlays)"
-        ]
+            "GET /apis/{api_id} — view current security_schemes (includes merged overlays)",
+        ],
     ),
 )
 async def list_overlays(api_id: Annotated[str, Path(description="API ID to list overlays for")]):
@@ -205,17 +216,20 @@ async def list_overlays(api_id: Annotated[str, Path(description="API ID to list 
         when_to_use="Use to remove an incorrect or obsolete overlay from an API. Works on both pending and confirmed overlays. After deletion, the merged spec (GET /apis/{api_id}/openapi.json) will no longer include the deleted overlay's patches.",
         prerequisites=[
             "Requires authentication (admin/human session)",
-            "Valid API ID and overlay ID from GET /apis/{api_id}/overlays"
+            "Valid API ID and overlay ID from GET /apis/{api_id}/overlays",
         ],
         avoid_when="Do not use to temporarily disable an overlay — deletion is permanent. Do not delete overlays that other toolkits may depend on without coordination.",
         related_operations=[
             "GET /apis/{api_id}/overlays — list overlays to find the overlay_id",
             "POST /apis/{api_id}/overlays — submit a replacement overlay after deleting an incorrect one",
-            "GET /apis/{api_id}/openapi.json — verify overlay removal by downloading merged spec"
-        ]
+            "GET /apis/{api_id}/openapi.json — verify overlay removal by downloading merged spec",
+        ],
     ),
 )
-async def delete_overlay(api_id: Annotated[str, Path(description="API ID")], overlay_id: Annotated[str, Path(description="Overlay ID to delete")]):
+async def delete_overlay(
+    api_id: Annotated[str, Path(description="API ID")],
+    overlay_id: Annotated[str, Path(description="Overlay ID to delete")],
+):
     """Delete an overlay by ID.
 
     Permanently removes the overlay from the database. Works on both pending and confirmed
@@ -247,7 +261,6 @@ async def delete_overlay(api_id: Annotated[str, Path(description="API ID")], ove
 
 async def get_merged_security_schemes(api_id: str) -> dict:
     """Return merged security schemes: native spec + confirmed/pending overlays."""
-    import json as _json
     schemes = {}
 
     async with get_db() as db:
@@ -257,7 +270,7 @@ async def get_merged_security_schemes(api_id: str) -> dict:
     if row and row[0]:
         try:
             with open(row[0]) as f:
-                spec = _json.load(f)
+                spec = json.load(f)
             spec_schemes = spec.get("components", {}).get("securitySchemes", {})
             global_security = spec.get("security", [])
             if global_security:
@@ -272,11 +285,13 @@ async def get_merged_security_schemes(api_id: str) -> dict:
         ) as cur:
             overlay_rows = await cur.fetchall()
 
-    for (overlay_json, _status) in overlay_rows:
+    for overlay_json, _status in overlay_rows:
         try:
-            overlay = _json.loads(overlay_json)
+            overlay = json.loads(overlay_json)
             for action in overlay.get("actions", []):
-                overlay_schemes = action.get("update", {}).get("components", {}).get("securitySchemes", {})
+                overlay_schemes = (
+                    action.get("update", {}).get("components", {}).get("securitySchemes", {})
+                )
                 schemes.update(overlay_schemes)
         except Exception:
             pass

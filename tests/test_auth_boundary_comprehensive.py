@@ -24,7 +24,7 @@ KNOWN AUTH BOUNDARY MISMATCHES (code vs OpenAPI spec declaration):
 NOTE: Some endpoints marked with TODO may need stricter auth in the future.
 This test captures reality as of Phase 1 to prevent accidental loosening.
 """
-import pytest
+
 from starlette.testclient import TestClient
 
 
@@ -96,7 +96,10 @@ AGENT_ACCESSIBLE_ENDPOINTS = {
     #   - src/routers/toolkits.py DELETE /toolkits/{id}/keys/{key_id}
     ("POST", "/toolkits"),  # 201 - agents can create toolkits (should be human-only)
     ("POST", "/toolkits/{id}/keys"),  # 201 - agents can issue keys (should be human-only)
-    ("DELETE", "/toolkits/{id}/credentials/{cred_id}"),  # 204 - agents can unbind (should be human-only)
+    (
+        "DELETE",
+        "/toolkits/{id}/credentials/{cred_id}",
+    ),  # 204 - agents can unbind (should be human-only)
     ("PATCH", "/toolkits/{id}/keys/{key_id}"),  # 404 when key doesn't exist, but no auth check
     ("DELETE", "/toolkits/{id}/keys/{key_id}"),  # 404 when key doesn't exist, but no auth check
     # Access requests (agents can file, view own)
@@ -152,6 +155,7 @@ HUMAN_ONLY_ENDPOINTS = {
 
 # ── Tests ─────────────────────────────────────────────────────────────────────
 
+
 def test_public_endpoints_accessible_without_auth(client):
     """Public endpoints should be accessible without any auth."""
     # Test a few representative public endpoints
@@ -181,7 +185,6 @@ def test_agent_accessible_endpoints_reject_no_auth(app):
     other protected endpoints correctly reject unauthenticated access.
     """
     # Use a fresh client to avoid session cookie leakage from other tests
-    from starlette.testclient import TestClient
     with TestClient(app, raise_server_exceptions=False) as fresh_client:
         # Representative protected endpoint: should fail auth before any resource lookup.
         # Test POST /credentials (requires auth) - should return 401 without auth
@@ -214,14 +217,23 @@ def test_human_only_endpoints_reject_agent_key(client, agent_key_header):
     # documented in AGENT_ACCESSIBLE_ENDPOINTS with TODO markers for Phase 2/3 fix.
 
     # POST /credentials with agent key returns 403 (correct) or 409 if already exists
-    response = client.post("/credentials", headers=agent_key_header, json={
-        "label": "Test Auth Boundary", "value": "secret", "api_id": "test-boundary.com", "auth_type": "bearer"
-    })
-    assert response.status_code in (403, 409), f"POST /credentials should reject agent key (403) or conflict (409), got {response.status_code}"
+    response = client.post(
+        "/credentials",
+        headers=agent_key_header,
+        json={
+            "label": "Test Auth Boundary",
+            "value": "secret",
+            "api_id": "test-boundary.com",
+            "auth_type": "bearer",
+        },
+    )
+    assert response.status_code in (403, 409), (
+        f"POST /credentials should reject agent key (403) or conflict (409), got {response.status_code}"
+    )
 
     # These 404 because resource doesn't exist, but would be 403 if it did
     response = client.patch("/toolkits/nonexistent", headers=agent_key_header, json={"name": "New"})
-    assert response.status_code in (403, 404), f"PATCH /toolkits should reject agent key"
+    assert response.status_code in (403, 404), "PATCH /toolkits should reject agent key"
 
 
 def test_openapi_spec_endpoint_count_unchanged(client):
@@ -312,6 +324,5 @@ def test_no_unintended_public_endpoints(client):
                     unexpected_public.append(endpoint_str)
 
     assert len(unexpected_public) == 0, (
-        f"Operations unexpectedly marked as public: {unexpected_public}. "
-        "These should require auth!"
+        f"Operations unexpectedly marked as public: {unexpected_public}. These should require auth!"
     )

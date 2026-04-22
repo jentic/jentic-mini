@@ -3,10 +3,12 @@
 Ensures that both local and catalog workflows can be successfully imported
 and loaded without errors (regression test for pathlib.Path shadowing issue).
 """
+
 import json
 from pathlib import Path
 
 import pytest
+from src.config import JENTIC_PUBLIC_HOSTNAME
 
 
 @pytest.fixture(scope="module")
@@ -57,7 +59,6 @@ def test_load_workflow_detail(client, admin_session, imported_workflow):
 
 def test_inspect_workflow_capability(client, admin_session, imported_workflow):
     """Load workflow via inspect endpoint — tests capability.py pathlib usage."""
-    from src.config import JENTIC_PUBLIC_HOSTNAME
     capability_id = f"POST/{JENTIC_PUBLIC_HOSTNAME}/workflows/test-workflow"
 
     resp = client.get(f"/inspect/{capability_id}", cookies=admin_session)
@@ -73,23 +74,16 @@ def test_import_inline_workflow(client, admin_session):
     """Import a workflow via inline content (tests inline import path)."""
     workflow_content = {
         "arazzo": "1.0.0",
-        "info": {
-            "title": "Inline Test Workflow",
-            "version": "1.0.0"
-        },
+        "info": {"title": "Inline Test Workflow", "version": "1.0.0"},
         "workflows": [
             {
                 "workflowId": "inline-test",
                 "summary": "Inline workflow",
                 "steps": [
-                    {
-                        "stepId": "step1",
-                        "description": "First step",
-                        "operationId": "test.op1"
-                    }
-                ]
+                    {"stepId": "step1", "description": "First step", "operationId": "test.op1"}
+                ],
             }
-        ]
+        ],
     }
 
     resp = client.post(
@@ -99,7 +93,7 @@ def test_import_inline_workflow(client, admin_session):
                 {
                     "type": "inline",
                     "content": json.dumps(workflow_content),
-                    "filename": "inline-test.arazzo.json"
+                    "filename": "inline-test.arazzo.json",
                 }
             ]
         },

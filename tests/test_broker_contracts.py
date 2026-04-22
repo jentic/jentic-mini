@@ -6,6 +6,9 @@ paths return 404, and that broker-like requests to unreachable targets
 return error responses rather than succeeding.
 """
 
+from src.main import app as _app
+from starlette.testclient import TestClient
+
 
 def test_broker_requires_dot_in_host(client, agent_key_header):
     """Paths without a dot in the first segment are not broker routes."""
@@ -29,8 +32,6 @@ def test_broker_unauthenticated_passes_through(client):
     To make a truly unauthenticated (no toolkit_id) request we must use a
     separate client instance with no cookies.
     """
-    from starlette.testclient import TestClient
-    from src.main import app as _app
     with TestClient(_app, raise_server_exceptions=False) as anon:
         resp = anon.get("/127.0.0.2/v1/test")
     # Without a key or session, toolkit_id=None, so no credential lookup — broker attempts

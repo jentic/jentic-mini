@@ -3,13 +3,13 @@
 Runs raw-SQL migrations against the SQLite database at DB_PATH.
 No SQLAlchemy ORM models — all migrations use op.execute().
 """
+
 from logging.config import fileConfig
 
-from sqlalchemy import create_engine, inspect, pool, text
-
 from alembic import context
-
+from sqlalchemy import create_engine, inspect, pool, text
 from src.config import DB_PATH
+
 
 # Alembic Config object
 config = context.config
@@ -35,9 +35,7 @@ def _auto_stamp_pre_alembic_db(connection):
     inspector = inspect(connection)
     tables = inspector.get_table_names()
     if "alembic_version" not in tables and "apis" in tables:
-        connection.execute(
-            text("CREATE TABLE alembic_version (version_num VARCHAR(32) NOT NULL)")
-        )
+        connection.execute(text("CREATE TABLE alembic_version (version_num VARCHAR(32) NOT NULL)"))
         connection.execute(text("INSERT INTO alembic_version VALUES ('0001')"))
         connection.commit()
 

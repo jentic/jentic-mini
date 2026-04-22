@@ -27,21 +27,21 @@ The subnet restriction applies only to POST /default-api-key/generate (first cal
 CLI access (docker exec) is the only superuser path.
 
 """
+
 import ipaddress
 import json
 import logging
 import os
 import re
-import secrets
 import time
-from datetime import datetime, timezone
 
 import aiosqlite
-from fastapi import Request
+from fastapi import HTTPException, Request
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from src.db import DB_PATH, setup_state
+from src.db import DB_PATH, DEFAULT_TOOLKIT_ID, setup_state
+
 
 logger = logging.getLogger("jentic.auth")
 
@@ -49,19 +49,26 @@ logger = logging.getLogger("jentic.auth")
 try:
     from jose import jwt as _jwt
     from jose.exceptions import JWTError
+
     JWT_AVAILABLE = True
 except ImportError:
     JWT_AVAILABLE = False
 
 JWT_ALGORITHM = "HS256"
 JWT_TTL_SECONDS = 30 * 24 * 3600  # 30 days
-JWT_REFRESH_AFTER = 24 * 3600      # re-issue after 1 day of age
+JWT_REFRESH_AFTER = 24 * 3600  # re-issue after 1 day of age
 
 # ── Paths that never need a key ───────────────────────────────────────────────
 SKIP = {
-    "/", "/health", "/llms.txt",
-    "/docs", "/openapi.json", "/redoc",
-    "/favicon.ico", "/favicon.png", "/favicon.svg",
+    "/",
+    "/health",
+    "/llms.txt",
+    "/docs",
+    "/openapi.json",
+    "/redoc",
+    "/favicon.ico",
+    "/favicon.png",
+    "/favicon.svg",
     "/login",  # React login page (SPA route)
     "/user/login",  # API login endpoint — must be public (bug fix: was missing)
     "/user/token",  # OAuth2 password grant for Swagger UI
@@ -199,6 +206,7 @@ def is_trusted_ip(client_ip: str) -> bool:
 
 # ── JWT helpers ───────────────────────────────────────────────────────────────
 
+
 def _make_jwt(secret: str) -> str:
     now = int(time.time())
     payload = {"sub": "human", "iat": now, "exp": now + JWT_TTL_SECONDS}
@@ -216,6 +224,7 @@ def _decode_jwt(token: str, secret: str) -> dict | None:
 
 # ── Human session guard (dependency) ──────────────────────────────────────────
 
+
 def require_human_session(request: Request):
     """FastAPI dependency — raises 403 if caller is not a human session."""
     if not getattr(request.state, "is_human_session", False):
@@ -223,7 +232,6 @@ def require_human_session(request: Request):
 
 
 def _build_human_only_error():
-    from fastapi import HTTPException
     return HTTPException(
         status_code=403,
         detail={
@@ -270,7 +278,6 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
             if claims and claims.get("sub") == "human":
                 request.state.is_human_session = True
                 request.state.is_admin = True
-                from src.db import DEFAULT_TOOLKIT_ID
                 request.state.toolkit_id = DEFAULT_TOOLKIT_ID
 
                 # Rolling expiry — re-issue if token is older than JWT_REFRESH_AFTER
@@ -291,10 +298,7 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
         # Key check runs FIRST — even on trusted subnets. A request with a valid
         # tk_ key gets the toolkit identity that key is bound to. Trusted-subnet
         # passthrough (admin) is only the fallback when no key is provided.
-        provided_key = (
-            request.headers.get("X-Jentic-API-Key")
-            or ""
-        )
+        provided_key = request.headers.get("X-Jentic-API-Key") or ""
 
         if provided_key.startswith("tk_"):
             try:
@@ -305,7 +309,7 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
                            FROM toolkit_keys ck
                            JOIN toolkits c ON c.id = ck.toolkit_id
                            WHERE ck.api_key = ? AND ck.revoked_at IS NULL""",
-                        (provided_key,)
+                        (provided_key,),
                     ) as cur:
                         row = await cur.fetchone()
             except Exception:
@@ -315,8 +319,11 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
                 allowed = _ip_allowed(req_ip, row["allowed_ips"])
                 logger.debug(
                     "KEY AUTH: key=%s toolkit=%s client_ip=%r allowed_ips=%s → %s",
-                    provided_key[:12] + "…", row["toolkit_id"], req_ip,
-                    row["allowed_ips"], "ALLOW" if allowed else "DENY"
+                    provided_key[:12] + "…",
+                    row["toolkit_id"],
+                    req_ip,
+                    row["allowed_ips"],
+                    "ALLOW" if allowed else "DENY",
                 )
                 if not allowed:
                     return JSONResponse(

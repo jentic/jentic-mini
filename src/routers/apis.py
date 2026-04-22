@@ -1,20 +1,25 @@
 """API registry routes — add, list, and index operations."""
+
+import asyncio
+import copy
+import json
+import pathlib
 import re
 import uuid
-import json
-import yaml
-import copy
-import pathlib
+from typing import Annotated
 from urllib.parse import urlparse
-from typing import Annotated, Optional
 
+import yaml
 from fastapi import APIRouter, HTTPException, Path, Query
 from fastapi.responses import Response
-from src.models import ApiOut, OperationOut, ApiListPage, OperationListPage
-from src.db import get_db
-from src.config import JENTIC_PUBLIC_HOSTNAME
+
 import src.bm25 as bm25
+from src.db import get_db
+from src.models import ApiListPage, ApiOut, OperationListPage
 from src.openapi_helpers import agent_hints
+from src.routers.workflows import workflow_capability_id
+from src.utils import abbreviate
+
 
 router = APIRouter()
 
@@ -22,6 +27,7 @@ router = APIRouter()
 # ---------------------------------------------------------------------------
 # Spec helpers
 # ---------------------------------------------------------------------------
+
 
 def _deep_merge(base: dict, overlay: dict) -> dict:
     """Recursively merge overlay into base. Overlay values win on conflict."""
@@ -44,7 +50,9 @@ async def _load_spec(spec_path: str) -> dict:
         return {}
 
 
-async def _load_merged_spec(api_id: str, spec_path: str | None, include_pending: bool = False) -> dict:
+async def _load_merged_spec(
+    api_id: str, spec_path: str | None, include_pending: bool = False
+) -> dict:
     """
     Return the base spec with all confirmed overlays applied.
 
@@ -55,7 +63,9 @@ async def _load_merged_spec(api_id: str, spec_path: str | None, include_pending:
     spec = await _load_spec(spec_path) if spec_path else {}
     unapplied = []
 
-    status_filter = "status IN ('confirmed', 'pending')" if include_pending else "status='confirmed'"
+    status_filter = (
+        "status IN ('confirmed', 'pending')" if include_pending else "status='confirmed'"
+    )
     async with get_db() as db:
         async with db.execute(
             f"SELECT overlay FROM api_overlays WHERE api_id=? AND {status_filter} ORDER BY created_at ASC",
@@ -72,7 +82,9 @@ async def _load_merged_spec(api_id: str, spec_path: str | None, include_pending:
                 if target == "$" and isinstance(update, dict):
                     spec = _deep_merge(spec, update)
                 else:
-                    unapplied.append({"target": target, "note": "non-root target, not applied to merged view"})
+                    unapplied.append(
+                        {"target": target, "note": "non-root target, not applied to merged view"}
+                    )
         except Exception:
             pass
 
@@ -107,7 +119,7 @@ def _extract_vendor(api_id: str | None) -> str | None:
     """
     if not api_id:
         return None
-    hostname = api_id.split("/")[0]   # strip any path component
+    hostname = api_id.split("/")[0]  # strip any path component
     parts = hostname.split(".")
     if len(parts) >= 2:
         return ".".join(parts[-2:])
@@ -115,6 +127,7 @@ def _extract_vendor(api_id: str | None) -> str | None:
 
 
 # ── helpers ───────────────────────────────────────────────────────────────────
+
 
 def _extract_base_url(doc: dict) -> str | None:
     """
@@ -158,8 +171,7 @@ def _is_private_server_url(url: str) -> bool:
     """
     if not url:
         return False
-    from urllib.parse import urlparse as _up
-    parsed = _up(url)
+    parsed = urlparse(url)
     host = parsed.hostname or parsed.netloc or ""
     # Strip port
     host = host.split(":")[0].lower()
@@ -174,8 +186,7 @@ def _is_private_server_url(url: str) -> bool:
         return True
     if host.startswith("192.168."):
         return True
-    import re as _re
-    if _re.match(r"172\.(1[6-9]|2[0-9]|3[0-1])\.", host):
+    if re.match(r"172\.(1[6-9]|2[0-9]|3[0-1])\.", host):
         return True
     return False
 
@@ -246,8 +257,8 @@ def _derive_api_id(base_url: str, title: str | None = None) -> str:
     path = _strip_version_suffix(path)
 
     # Strip template vars from hostname (e.g. {dc}.api.mailchimp.com → api.mailchimp.com)
-    host = re.sub(r"\{[^}]+\}\.", "", host)   # leading template labels
-    host = re.sub(r"\.\{[^}]+\}", "", host)   # trailing template labels
+    host = re.sub(r"\{[^}]+\}\.", "", host)  # leading template labels
+    host = re.sub(r"\.\{[^}]+\}", "", host)  # trailing template labels
     host = host.strip(".")
 
     # Strip leading www. — no semantic value, diverges from catalog dir convention
@@ -304,16 +315,18 @@ def _parse_operations(api_id: str, spec_path: str, base_url: str | None = None) 
             if method.upper() not in ("GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"):
                 continue
             jentic_id = _compute_jentic_id(method, resolved_base, path)
-            ops.append({
-                "id": str(uuid.uuid4()),
-                "api_id": api_id,
-                "operation_id": op.get("operationId"),
-                "jentic_id": jentic_id,
-                "method": method.upper(),
-                "path": path,
-                "summary": op.get("summary", ""),
-                "description": op.get("description", ""),
-            })
+            ops.append(
+                {
+                    "id": str(uuid.uuid4()),
+                    "api_id": api_id,
+                    "operation_id": op.get("operationId"),
+                    "jentic_id": jentic_id,
+                    "method": method.upper(),
+                    "path": path,
+                    "summary": op.get("summary", ""),
+                    "description": op.get("description", ""),
+                }
+            )
     return ops
 
 
@@ -329,13 +342,12 @@ def _load_base_url_from_spec(spec_path: str) -> str | None:
     except Exception:
         return None
 
+
 async def _rebuild_index():
     """Rebuild BM25 index from all operations + workflows in DB.
 
     BM25 is CPU-bound; runs in a thread pool so it doesn't block the event loop.
     """
-    import asyncio
-    import json as _json
     async with get_db() as db:
         async with db.execute(
             """SELECT o.id, o.api_id, o.operation_id, o.jentic_id, o.method, o.path,
@@ -353,7 +365,7 @@ async def _rebuild_index():
         {
             "_id": r[0],
             "_operation_id": r[2],
-            "_api_id": r[1],           # raw api_id for _links construction
+            "_api_id": r[1],  # raw api_id for _links construction
             "id": r[3],
             "summary": r[6],
             "description": r[7],
@@ -362,12 +374,6 @@ async def _rebuild_index():
         for r in op_rows
     ]
 
-    # Import here to avoid circular import at module load time
-    try:
-        from src.routers.workflows import workflow_capability_id
-    except Exception:
-        workflow_capability_id = lambda s: f"POST/{JENTIC_PUBLIC_HOSTNAME}/workflows/{s}"
-
     wfs = [
         {
             "id": workflow_capability_id(r[0]),
@@ -375,14 +381,13 @@ async def _rebuild_index():
             "name": r[1],
             "summary": r[1],
             "description": r[2],
-            "involved_apis": _json.loads(r[3]) if r[3] else [],
+            "involved_apis": json.loads(r[3]) if r[3] else [],
         }
         for r in wf_rows
     ]
 
     loop = asyncio.get_event_loop()
     await loop.run_in_executor(None, bm25.build, ops, wfs)
-
 
 
 async def _fetch_oauth_brokers(db, api_ids: list[str]) -> dict[str, list[dict]]:
@@ -397,7 +402,9 @@ async def _fetch_oauth_brokers(db, api_ids: list[str]) -> dict[str, list[dict]]:
         rows = await cur.fetchall()
     result: dict[str, list[dict]] = {}
     for api_id, broker_id, broker_app_id in rows:
-        result.setdefault(api_id, []).append({"broker_id": broker_id, "broker_app_id": broker_app_id})
+        result.setdefault(api_id, []).append(
+            {"broker_id": broker_id, "broker_app_id": broker_app_id}
+        )
     return result
 
 
@@ -407,7 +414,6 @@ def _row_to_op(r) -> dict:
     Row order: id, api_id, operation_id, jentic_id, method, path, summary, description
     DB jentic_id → public id. Description is abbreviated for token efficiency.
     """
-    from src.utils import abbreviate
     return {
         "id": r[3],
         "summary": r[6],
@@ -416,6 +422,7 @@ def _row_to_op(r) -> dict:
 
 
 # ── routes ────────────────────────────────────────────────────────────────────
+
 
 @router.get(
     "/apis",
@@ -429,8 +436,8 @@ def _row_to_op(r) -> dict:
             "GET /apis/{api_id} — get detailed API metadata including security schemes and credential status",
             "GET /apis/{api_id}/operations — list all operations for a specific API",
             "GET /search — search for capabilities across all APIs by natural language intent",
-            "POST /credentials — add credentials for an API (imports from catalog if not yet registered)"
-        ]
+            "POST /credentials — add credentials for an API (imports from catalog if not yet registered)",
+        ],
     ),
 )
 async def list_apis(
@@ -452,14 +459,21 @@ async def list_apis(
     Use `?source=local` or `?source=catalog` to filter. Default returns all.
     To use a catalog API: call `POST /credentials` with `api_id` set — the spec is imported automatically.
     """
-    from src.routers.catalog import _load_manifest, _catalog_vendor_set, GITHUB_REPO
+    from src.routers.catalog import (  # noqa: PLC0415  # circular: catalog imports _extract_vendor from here
+        GITHUB_REPO,
+        _load_manifest,
+    )
 
     # ── Load local APIs ────────────────────────────────────────────────────────
     async with get_db() as db:
-        async with db.execute("SELECT id, name, description, spec_path, base_url, created_at FROM apis ORDER BY id") as cur:
+        async with db.execute(
+            "SELECT id, name, description, spec_path, base_url, created_at FROM apis ORDER BY id"
+        ) as cur:
             local_rows = await cur.fetchall()
         # Which local API ids have credentials?
-        async with db.execute("SELECT DISTINCT api_id FROM credentials WHERE api_id IS NOT NULL") as cur:
+        async with db.execute(
+            "SELECT DISTINCT api_id FROM credentials WHERE api_id IS NOT NULL"
+        ) as cur:
             cred_api_ids: set[str] = {r[0] for r in await cur.fetchall()}
         # Fetch oauth broker mappings for all local APIs
         local_api_ids = [r[0] for r in local_rows]
@@ -480,8 +494,6 @@ async def list_apis(
         for r in local_rows
         if not q or q.lower() in r[0].lower() or (r[1] and q.lower() in r[1].lower())
     ]
-    local_vendor_set = _catalog_vendor_set({e["id"] for e in local_entries})
-
     # ── Build precise coverage sets for catalog dedup ──────────────────────────
     # For LOCAL api ids, compute:
     #   covered_sub_apis: exact catalog sub-api ids that are locally covered
@@ -524,18 +536,20 @@ async def list_apis(
                     continue
             if api_id in {r[0] for r in local_rows}:
                 continue  # exact local match
-            catalog_entries.append({
-                "id": api_id,
-                "name": api_id,
-                "vendor": _extract_vendor(api_id),
-                "source": "catalog",
-                "has_credentials": False,
-                "description": None,
-                "_links": {
-                    "catalog": f"/catalog/{api_id}",
-                    "github": f"https://github.com/{GITHUB_REPO}/tree/main/{e['path']}",
-                },
-            })
+            catalog_entries.append(
+                {
+                    "id": api_id,
+                    "name": api_id,
+                    "vendor": _extract_vendor(api_id),
+                    "source": "catalog",
+                    "has_credentials": False,
+                    "description": None,
+                    "_links": {
+                        "catalog": f"/catalog/{api_id}",
+                        "github": f"https://github.com/{GITHUB_REPO}/tree/main/{e['path']}",
+                    },
+                }
+            )
 
     # ── Merge, filter, paginate ────────────────────────────────────────────────
     if source == "local":
@@ -547,7 +561,7 @@ async def list_apis(
 
     total = len(combined)
     offset = (page - 1) * limit
-    data = combined[offset: offset + limit]
+    data = combined[offset : offset + limit]
     total_pages = max(1, (total + limit - 1) // limit)
     has_more = page < total_pages
 
@@ -572,13 +586,15 @@ async def list_apis(
 _API_CONTENT_TYPES = {
     "application/json": {"schema": {"type": "object"}},
     "application/yaml": {"schema": {"type": "string", "description": "API detail as YAML"}},
-    "text/markdown":    {"schema": {"type": "string", "description": "LLM-friendly API summary"}},
+    "text/markdown": {"schema": {"type": "string", "description": "LLM-friendly API summary"}},
 }
 
 _OP_LIST_CONTENT_TYPES = {
     "application/json": {"schema": {"type": "object"}},
     "application/yaml": {"schema": {"type": "string", "description": "Operation list as YAML"}},
-    "text/markdown":    {"schema": {"type": "string", "description": "Operation list as Markdown table"}},
+    "text/markdown": {
+        "schema": {"type": "string", "description": "Operation list as Markdown table"}
+    },
 }
 
 _VALID_SECTIONS = {"info", "servers", "security", "tags", "paths", "components", "webhooks"}
@@ -595,7 +611,7 @@ _LARGE_SECTIONS = {"paths", "components", "webhooks"}
         when_to_use="Use when you need the full OpenAPI specification file for an API with all confirmed overlays applied (security scheme corrections, server URL fixes). Returns complete spec as JSON download with Content-Disposition attachment header. Overlay actions with target: $ are deep-merged; other actions listed in x-jentic-unapplied-overlays. Useful for SDK generation, schema analysis, or importing into external tools.",
         prerequisites=[
             "Requires authentication (toolkit key or human session)",
-            "Valid API ID from GET /apis (format: hostname or hostname/path)"
+            "Valid API ID from GET /apis (format: hostname or hostname/path)",
         ],
         avoid_when="Do not use for lightweight API inspection — use GET /apis/{api_id}?sections=info,servers,security instead. Do not use to browse operations — use GET /apis/{api_id}/operations for paginated operation list.",
         related_operations=[
@@ -603,11 +619,13 @@ _LARGE_SECTIONS = {"paths", "components", "webhooks"}
             "GET /apis/{api_id}/openapi.yaml — download the same spec in YAML format",
             "GET /apis/{api_id}/operations — list operations without downloading full spec",
             "GET /apis/{api_id}/overlays — view overlays that are merged into this spec",
-            "POST /apis/{api_id}/overlays — submit a new overlay to correct security schemes or servers"
-        ]
+            "POST /apis/{api_id}/overlays — submit a new overlay to correct security schemes or servers",
+        ],
     ),
 )
-async def get_api_openapi_json(api_id: Annotated[str, Path(description="API ID (hostname or hostname/path format)")]):
+async def get_api_openapi_json(
+    api_id: Annotated[str, Path(description="API ID (hostname or hostname/path format)")],
+):
     """
     Returns the full merged OpenAPI spec for this API as a JSON download.
 
@@ -643,7 +661,7 @@ async def get_api_openapi_json(api_id: Annotated[str, Path(description="API ID (
         when_to_use="Use when you need the full OpenAPI specification file for an API in YAML format with all confirmed overlays applied. Same content as GET /apis/{api_id}/openapi.json but in YAML. Useful for human readability, configuration files, or tools that prefer YAML format.",
         prerequisites=[
             "Requires authentication (toolkit key or human session)",
-            "Valid API ID from GET /apis (format: hostname or hostname/path)"
+            "Valid API ID from GET /apis (format: hostname or hostname/path)",
         ],
         avoid_when="Do not use for lightweight API inspection — use GET /apis/{api_id}?sections=info,servers,security instead. Do not use to browse operations — use GET /apis/{api_id}/operations for paginated operation list.",
         related_operations=[
@@ -651,11 +669,13 @@ async def get_api_openapi_json(api_id: Annotated[str, Path(description="API ID (
             "GET /apis/{api_id}/openapi.json — download the same spec in JSON format",
             "GET /apis/{api_id}/operations — list operations without downloading full spec",
             "GET /apis/{api_id}/overlays — view overlays that are merged into this spec",
-            "POST /apis/{api_id}/overlays — submit a new overlay to correct security schemes or servers"
-        ]
+            "POST /apis/{api_id}/overlays — submit a new overlay to correct security schemes or servers",
+        ],
     ),
 )
-async def get_api_openapi_yaml(api_id: Annotated[str, Path(description="API ID (hostname or hostname/path format)")]):
+async def get_api_openapi_yaml(
+    api_id: Annotated[str, Path(description="API ID (hostname or hostname/path format)")],
+):
     """
     Returns the full merged OpenAPI spec for this API as a YAML download.
 
@@ -688,20 +708,25 @@ async def get_api_openapi_yaml(api_id: Annotated[str, Path(description="API ID (
     "/apis/{api_id:path}/operations",
     summary="List operations for an API — enumerate all available actions",
     response_model=OperationListPage,
-    responses={200: {"description": "Operation list — format controlled by Accept header.", "content": _OP_LIST_CONTENT_TYPES}},
+    responses={
+        200: {
+            "description": "Operation list — format controlled by Accept header.",
+            "content": _OP_LIST_CONTENT_TYPES,
+        }
+    },
     openapi_extra=agent_hints(
         when_to_use="Use after finding an API via GET /apis to enumerate all available operations (endpoints) for that API. Returns paginated list of capability IDs, summaries, and descriptions. Each operation can then be inspected via GET /inspect/{id} for full parameter schemas and auth requirements before execution. Useful for discovering what actions an API supports.",
         prerequisites=[
             "Requires authentication (toolkit key or human session)",
-            "Valid API ID from GET /apis (format: hostname or hostname/path)"
+            "Valid API ID from GET /apis (format: hostname or hostname/path)",
         ],
         avoid_when="Do not use for natural language capability discovery across all APIs — use GET /search instead. Do not use to inspect a specific operation's parameters — use GET /inspect/{id} after finding the capability ID.",
         related_operations=[
             "GET /apis — list available APIs to find the api_id",
             "GET /inspect/{id} — inspect operation details (parameters, request/response schemas, auth)",
             "GET /search — search for specific capabilities by natural language intent instead of browsing",
-            "GET /{target} (broker) — execute an operation after finding its capability ID"
-        ]
+            "GET /{target} (broker) — execute an operation after finding its capability ID",
+        ],
     ),
 )
 async def list_api_operations(
@@ -749,12 +774,17 @@ async def list_api_operations(
     "/apis/{api_id:path}",
     summary="Get API details — metadata, auth schemes, servers, and optional spec sections",
     response_model=ApiOut,
-    responses={200: {"description": "API detail — format controlled by Accept header.", "content": _API_CONTENT_TYPES}},
+    responses={
+        200: {
+            "description": "API detail — format controlled by Accept header.",
+            "content": _API_CONTENT_TYPES,
+        }
+    },
     openapi_extra=agent_hints(
         when_to_use="Use after finding an API via GET /apis or GET /search to inspect its authentication requirements, security schemes, and available credential setup options. Critical for understanding which auth types need credentials before calling operations. Returns API metadata enriched with OpenAPI spec sections (info, servers, security_schemes). Use ?sections= to request additional spec sections (tags, paths, components).",
         prerequisites=[
             "Requires authentication (toolkit key or human session)",
-            "Valid API ID from GET /apis or catalog (format: hostname or hostname/path)"
+            "Valid API ID from GET /apis or catalog (format: hostname or hostname/path)",
         ],
         avoid_when="Do not use to download the full OpenAPI spec — use GET /apis/{api_id}/openapi.json for that. Do not use to list operations — use GET /apis/{api_id}/operations instead.",
         related_operations=[
@@ -762,8 +792,8 @@ async def list_api_operations(
             "GET /apis/{api_id}/openapi.json — download full merged OpenAPI spec with overlays applied",
             "GET /apis/{api_id}/operations — list all operations for this API",
             "POST /credentials — add credentials after inspecting security_schemes",
-            "GET /credentials?api_id={api_id} — check which credentials are configured"
-        ]
+            "GET /credentials?api_id={api_id} — check which credentials are configured",
+        ],
     ),
 )
 async def get_api(
@@ -819,9 +849,7 @@ async def get_api(
         if not row:
             raise HTTPException(404, f"API '{api_id}' not found")
 
-        async with db.execute(
-            "SELECT COUNT(*) FROM operations WHERE api_id=?", (api_id,)
-        ) as cur:
+        async with db.execute("SELECT COUNT(*) FROM operations WHERE api_id=?", (api_id,)) as cur:
             op_count = (await cur.fetchone())[0]
 
         async with db.execute(
@@ -851,8 +879,11 @@ async def get_api(
         requested = {s.strip().lower() for s in sections.split(",") if s.strip()}
         unknown = requested - _VALID_SECTIONS
         if unknown:
-            raise HTTPException(400, f"Unknown section(s): {', '.join(sorted(unknown))}. "
-                                     f"Valid: {', '.join(sorted(_VALID_SECTIONS))}")
+            raise HTTPException(
+                400,
+                f"Unknown section(s): {', '.join(sorted(unknown))}. "
+                f"Valid: {', '.join(sorted(_VALID_SECTIONS))}",
+            )
 
     spec_path = row[3]
     spec_description = row[2]
@@ -916,11 +947,11 @@ async def get_api(
 @router.delete("/apis", status_code=204, include_in_schema=False)
 async def delete_api(
     id: str = Query(..., description="API id to delete, e.g. api.elevenlabs.io"),
-    rebuild: bool = Query(False, description="Rebuild BM25 index after delete (slow)")
+    rebuild: bool = Query(False, description="Rebuild BM25 index after delete (slow)"),
 ):
     """Delete an API and all its operations.
-    
-    By default, does NOT rebuild the search index (performance). Call 
+
+    By default, does NOT rebuild the search index (performance). Call
     POST /admin/rebuild-index manually after batch deletes.
     """
     async with get_db() as db:
@@ -933,14 +964,13 @@ async def delete_api(
     if rebuild:
         await _rebuild_index()
 
-
     await _rebuild_index()
 
 
 @router.post("/admin/rebuild-index", status_code=200, include_in_schema=False)
 async def rebuild_search_index():
     """Manually rebuild the BM25 search index from all operations in the DB.
-    
+
     Call this after batch API/operation changes to refresh search results.
     """
     await _rebuild_index()
@@ -966,8 +996,7 @@ async def purge_old_api_ids():
             all_ids = [r[0] for r in await cur.fetchall()]
 
         to_delete = [
-            aid for aid in all_ids
-            if "." not in aid or aid.startswith("{") or aid in BAD_IDS
+            aid for aid in all_ids if "." not in aid or aid.startswith("{") or aid in BAD_IDS
         ]
 
         for aid in to_delete:

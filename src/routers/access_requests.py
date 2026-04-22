@@ -17,6 +17,7 @@ URL structure (nested under /toolkits):
   POST   /toolkits/{toolkit_id}/access-requests/{req_id}/deny
   GET    /toolkits/{toolkit_id}/access-requests/approve/{req_id}  (HTML UI)
 """
+
 import html as _html
 import json
 import logging
@@ -25,14 +26,17 @@ import uuid
 from typing import Annotated, Literal
 from urllib.parse import quote
 
-from fastapi import APIRouter, HTTPException, Path, Query, Depends, Request
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
+from pydantic import Field
+
 from src.auth import require_human_session
-from pydantic import BaseModel, Field
-from src.validators import NormModel
-from src.utils import build_absolute_url
 from src.db import get_db
 from src.models import AccessRequestOut, PermissionRule
+from src.routers.toolkits import _write_credential_permissions
+from src.utils import build_absolute_url
+from src.validators import NormModel
+
 
 log = logging.getLogger("jentic")
 
@@ -40,6 +44,7 @@ router = APIRouter()
 
 
 # ── Request body ──────────────────────────────────────────────────────────────
+
 
 class AccessRequestBody(NormModel):
     """Body for POST /toolkits/{id}/access-requests.
@@ -64,6 +69,7 @@ class AccessRequestBody(NormModel):
     }
     ```
     """
+
     type: Literal["grant", "modify_permissions"] = Field(
         description=(
             "`grant` — bind an upstream API credential to this toolkit. "
@@ -85,31 +91,31 @@ class AccessRequestBody(NormModel):
             "For `modify_permissions`, replaces the current agent rules entirely. "
             "System safety rules (deny writes, deny sensitive paths) are always appended after these and cannot be removed.\n\n"
             "Each `PermissionRule` object — all fields except `effect` are optional and AND-combined:\n"
-            "- `effect` *(required)*: `\"allow\"` or `\"deny\"`\n"
-            "- `methods`: list of HTTP verbs to match, e.g. `[\"GET\", \"POST\"]` — omit to match all\n"
+            '- `effect` *(required)*: `"allow"` or `"deny"`\n'
+            '- `methods`: list of HTTP verbs to match, e.g. `["GET", "POST"]` — omit to match all\n'
             "- `path`: Python regex matched against the **path component only** of the upstream URL "
             "(host and query string are excluded). Uses `re.search()` — **substring match by default**, "
             "case-insensitive. Use `^`/`$` to anchor. `|` is regex OR.\n"
-            "  - Unanchored: `\"issues\"` matches any path *containing* the word — often too broad\n"
-            "  - Prefix: `\"^/repos/myorg/myrepo/\"` — everything under that path\n"
-            "  - Exact: `\"^/v1/voices$\"` — only that specific endpoint\n"
+            '  - Unanchored: `"issues"` matches any path *containing* the word — often too broad\n'
+            '  - Prefix: `"^/repos/myorg/myrepo/"` — everything under that path\n'
+            '  - Exact: `"^/v1/voices$"` — only that specific endpoint\n'
             "  - **Tip:** always anchor with `^` when generating allow rules to avoid unintended matches\n"
             "- `operations`: list of regexes matched against the operation ID\n\n"
             "**Examples:**\n"
             "```json\n"
-            "[{\"effect\": \"allow\", \"methods\": [\"POST\"], \"path\": \"^/v1/text-to-speech$\"}]\n"
-            "[{\"effect\": \"deny\",  \"path\": \"admin|billing|pay\"}]\n"
-            "[{\"effect\": \"allow\", \"operations\": [\"^get_voices$\", \"^tts\"]}]\n"
+            '[{"effect": "allow", "methods": ["POST"], "path": "^/v1/text-to-speech$"}]\n'
+            '[{"effect": "deny",  "path": "admin|billing|pay"}]\n'
+            '[{"effect": "allow", "operations": ["^get_voices$", "^tts"]}]\n'
             "```"
-        )
+        ),
     )
     api_id: str | None = Field(
         default=None,
-        description="Optional. Shown in the human approval UI. Usually inferred automatically from the credential."
+        description="Optional. Shown in the human approval UI. Usually inferred automatically from the credential.",
     )
     reason: str | None = Field(
         default=None,
-        description="Explain to the human why access is needed. Shown in the approval UI."
+        description="Explain to the human why access is needed. Shown in the approval UI.",
     )
 
     model_config = {
@@ -119,14 +125,17 @@ class AccessRequestBody(NormModel):
                     "type": "grant",
                     "credential_id": "api.elevenlabs.io",
                     "rules": [{"effect": "allow", "methods": ["POST"], "path": "text-to-speech"}],
-                    "reason": "I need to generate audio narration"
+                    "reason": "I need to generate audio narration",
                 },
                 {
                     "type": "modify_permissions",
                     "credential_id": "api.elevenlabs.io",
-                    "rules": [{"effect": "allow", "methods": ["GET"]}, {"effect": "allow", "methods": ["POST"], "path": "text-to-speech"}],
-                    "reason": "Requesting read access plus TTS writes"
-                }
+                    "rules": [
+                        {"effect": "allow", "methods": ["GET"]},
+                        {"effect": "allow", "methods": ["POST"], "path": "text-to-speech"},
+                    ],
+                    "reason": "Requesting read access plus TTS writes",
+                },
             ]
         }
     }
@@ -134,15 +143,24 @@ class AccessRequestBody(NormModel):
 
 # ── Routes ────────────────────────────────────────────────────────────────────
 
+
 @router.post(
     "/{toolkit_id}/access-requests",
     status_code=202,
     summary="Request access — ask a human to grant a credential or adjust permissions",
     tags=["toolkits"],
     response_model=AccessRequestOut,
-    openapi_extra={"requestBody": {"description": "Access request: type (grant/modify_permissions), credential_id, optional permission rules, and optional reason explaining why access is needed"}},
+    openapi_extra={
+        "requestBody": {
+            "description": "Access request: type (grant/modify_permissions), credential_id, optional permission rules, and optional reason explaining why access is needed"
+        }
+    },
 )
-async def create_access_request(toolkit_id: Annotated[str, Path(description="Toolkit ID")], request: Request, body: AccessRequestBody):
+async def create_access_request(
+    toolkit_id: Annotated[str, Path(description="Toolkit ID")],
+    request: Request,
+    body: AccessRequestBody,
+):
     """Agent submits an access request. A human approves or denies it at the `approve_url`.
 
     **Workflow:**
@@ -184,7 +202,7 @@ async def create_access_request(toolkit_id: Annotated[str, Path(description="Too
                 body.reason,
                 approve_url,
                 time.time(),
-            )
+            ),
         )
         await db.commit()
 
@@ -211,7 +229,10 @@ async def create_access_request(toolkit_id: Annotated[str, Path(description="Too
 @router.get("/{toolkit_id}/access-requests/approve/{req_id}", include_in_schema=False)
 async def approval_ui(toolkit_id: str, req_id: str):
     """Redirect to the React SPA approval page. Kept for backward compat with old approve_urls."""
-    return RedirectResponse(url=f"/approve/{quote(toolkit_id, safe='')}/{quote(req_id, safe='')}", status_code=302)
+    return RedirectResponse(
+        url=f"/approve/{quote(toolkit_id, safe='')}/{quote(req_id, safe='')}", status_code=302
+    )
+
 
 @router.get("/{toolkit_id}/access-requests/approve/{req_id}/legacy", include_in_schema=False)
 async def approval_ui_legacy(toolkit_id: str, req_id: str):
@@ -219,7 +240,7 @@ async def approval_ui_legacy(toolkit_id: str, req_id: str):
     async with get_db() as db:
         async with db.execute(
             "SELECT id, type, toolkit_id, reason, payload, status FROM permission_requests WHERE id=? AND toolkit_id=?",
-            (req_id, toolkit_id)
+            (req_id, toolkit_id),
         ) as cur:
             row = await cur.fetchone()
 
@@ -259,7 +280,7 @@ async def approval_ui_legacy(toolkit_id: str, req_id: str):
         }}
         </script>"""
     else:
-        resolved_html = f'<p><em>This request has already been resolved: <strong>{_html.escape(status)}</strong></em></p>'
+        resolved_html = f"<p><em>This request has already been resolved: <strong>{_html.escape(status)}</strong></em></p>"
 
     html = f"""<!DOCTYPE html>
 <html>
@@ -284,10 +305,10 @@ async def approval_ui_legacy(toolkit_id: str, req_id: str):
   <div class="card">
     <p><span class="label">Request ID</span><br>{_html.escape(row_id)}</p>
     <p><span class="label">Type</span><br>{_html.escape(req_type)}</p>
-    <p><span class="label">Toolkit</span><br>{_html.escape(row_toolkit_id or 'N/A')}</p>
+    <p><span class="label">Toolkit</span><br>{_html.escape(row_toolkit_id or "N/A")}</p>
     <p><span class="label">Status</span><br><span class="status-{_html.escape(status)}">{_html.escape(status)}</span></p>
     <p><span class="label">What the agent is requesting</span><br>{_html.escape(description)}</p>
-    <p><span class="label">Reason from agent</span><br>{_html.escape(reason) if reason else '<em>No reason provided</em>'}</p>
+    <p><span class="label">Reason from agent</span><br>{_html.escape(reason) if reason else "<em>No reason provided</em>"}</p>
     <p><span class="label">Payload</span></p>
     <pre>{_html.escape(json.dumps(payload, indent=2))}</pre>
   </div>
@@ -297,10 +318,17 @@ async def approval_ui_legacy(toolkit_id: str, req_id: str):
     return HTMLResponse(html)
 
 
-@router.get("/{toolkit_id}/access-requests/{req_id}",
-            summary="Poll an access request — check approval status",
-            tags=["toolkits"], response_model=AccessRequestOut)
-async def get_access_request(toolkit_id: Annotated[str, Path(description="Toolkit ID")], req_id: Annotated[str, Path(description="Access request ID (format: areq_xxxxxxxx)")], request: Request):
+@router.get(
+    "/{toolkit_id}/access-requests/{req_id}",
+    summary="Poll an access request — check approval status",
+    tags=["toolkits"],
+    response_model=AccessRequestOut,
+)
+async def get_access_request(
+    toolkit_id: Annotated[str, Path(description="Toolkit ID")],
+    req_id: Annotated[str, Path(description="Access request ID (format: areq_xxxxxxxx)")],
+    request: Request,
+):
     """
     Poll the status of a specific access request.
 
@@ -321,7 +349,7 @@ async def get_access_request(toolkit_id: Annotated[str, Path(description="Toolki
         async with db.execute(
             """SELECT id, toolkit_id, type, payload, reason, status, user_url, created_at, resolved_at
                FROM permission_requests WHERE id=? AND toolkit_id=?""",
-            (req_id, toolkit_id)
+            (req_id, toolkit_id),
         ) as cur:
             row = await cur.fetchone()
 
@@ -341,13 +369,18 @@ async def get_access_request(toolkit_id: Annotated[str, Path(description="Toolki
     }
 
 
-@router.get("/{toolkit_id}/access-requests",
-            summary="List access requests for this toolkit",
-            tags=["toolkits"], response_model=list[AccessRequestOut])
+@router.get(
+    "/{toolkit_id}/access-requests",
+    summary="List access requests for this toolkit",
+    tags=["toolkits"],
+    response_model=list[AccessRequestOut],
+)
 async def list_access_requests(
     toolkit_id: Annotated[str, Path(description="Toolkit ID")],
     request: Request,
-    status: Annotated[str | None, Query(description="Filter by status (pending, approved, denied)")] = None
+    status: Annotated[
+        str | None, Query(description="Filter by status (pending, approved, denied)")
+    ] = None,
 ):
     """
     List access requests for a toolkit, newest first.
@@ -379,23 +412,37 @@ async def list_access_requests(
         async with db.execute(
             f"""SELECT id, toolkit_id, type, payload, reason, status, user_url, created_at, resolved_at
                FROM permission_requests {where} ORDER BY created_at DESC LIMIT 100""",
-            params
+            params,
         ) as cur:
             rows = await cur.fetchall()
 
     return [
         {
-            "id": r[0], "toolkit_id": r[1], "type": r[2], "payload": json.loads(r[3] or "{}"),
-            "reason": r[4], "status": r[5], "approve_url": r[6], "created_at": r[7], "resolved_at": r[8],
+            "id": r[0],
+            "toolkit_id": r[1],
+            "type": r[2],
+            "payload": json.loads(r[3] or "{}"),
+            "reason": r[4],
+            "status": r[5],
+            "approve_url": r[6],
+            "created_at": r[7],
+            "resolved_at": r[8],
         }
         for r in rows
     ]
 
 
-@router.post("/{toolkit_id}/access-requests/{req_id}/approve",
-             summary="Approve an access request (human session only)",
-             tags=["toolkits"], response_model=AccessRequestOut)
-async def approve_access_request(toolkit_id: Annotated[str, Path(description="Toolkit ID")], req_id: Annotated[str, Path(description="Access request ID to approve")], _: None = Depends(require_human_session)):
+@router.post(
+    "/{toolkit_id}/access-requests/{req_id}/approve",
+    summary="Approve an access request (human session only)",
+    tags=["toolkits"],
+    response_model=AccessRequestOut,
+)
+async def approve_access_request(
+    toolkit_id: Annotated[str, Path(description="Toolkit ID")],
+    req_id: Annotated[str, Path(description="Access request ID to approve")],
+    _: None = Depends(require_human_session),
+):
     """
     Approve a pending access request (human or admin action — agent keys cannot do this).
 
@@ -411,10 +458,17 @@ async def approve_access_request(toolkit_id: Annotated[str, Path(description="To
         raise HTTPException(500, "Failed to process approval. Check server logs.")
 
 
-@router.post("/{toolkit_id}/access-requests/{req_id}/deny",
-             summary="Deny an access request (human session only)",
-             tags=["toolkits"], response_model=AccessRequestOut)
-async def deny_access_request(toolkit_id: Annotated[str, Path(description="Toolkit ID")], req_id: Annotated[str, Path(description="Access request ID to deny")], _: None = Depends(require_human_session)):
+@router.post(
+    "/{toolkit_id}/access-requests/{req_id}/deny",
+    summary="Deny an access request (human session only)",
+    tags=["toolkits"],
+    response_model=AccessRequestOut,
+)
+async def deny_access_request(
+    toolkit_id: Annotated[str, Path(description="Toolkit ID")],
+    req_id: Annotated[str, Path(description="Access request ID to deny")],
+    _: None = Depends(require_human_session),
+):
     """Deny a pending access request.
 
     Permanently rejects the request. The agent will receive a 403 error if it continues
@@ -441,11 +495,12 @@ async def deny_access_request(toolkit_id: Annotated[str, Path(description="Toolk
 
 # ── Internals ─────────────────────────────────────────────────────────────────
 
+
 async def _resolve(toolkit_id: str, req_id: str, status: str) -> dict:
     async with get_db() as db:
         async with db.execute(
             "SELECT type, toolkit_id, payload, status FROM permission_requests WHERE id=? AND toolkit_id=?",
-            (req_id, toolkit_id)
+            (req_id, toolkit_id),
         ) as cur:
             row = await cur.fetchone()
 
@@ -467,7 +522,7 @@ async def _resolve(toolkit_id: str, req_id: str, status: str) -> dict:
     async with get_db() as db:
         await db.execute(
             "UPDATE permission_requests SET status=?, resolved_at=? WHERE id=?",
-            (status, time.time(), req_id)
+            (status, time.time(), req_id),
         )
         await db.commit()
 
@@ -492,7 +547,11 @@ async def _describe_request(req_type: str, payload: dict) -> str:
                     "SELECT label, api_id FROM credentials WHERE id=?", (cred_id,)
                 ) as cur:
                     row = await cur.fetchone()
-            base = f"Grant access to credential '{row[0]}' (for {row[1] or 'unknown API'})" if row else f"Grant access to credential '{cred_id}'"
+            base = (
+                f"Grant access to credential '{row[0]}' (for {row[1] or 'unknown API'})"
+                if row
+                else f"Grant access to credential '{cred_id}'"
+            )
         else:
             base = f"Grant access to a credential for {payload.get('api_id', 'unknown API')}"
         if rules:
@@ -504,7 +563,9 @@ async def _describe_request(req_type: str, payload: dict) -> str:
     return f"Request type: {req_type}"
 
 
-async def _apply_approved_request(req_type: str, toolkit_id: str | None, payload: dict) -> str | None:
+async def _apply_approved_request(
+    req_type: str, toolkit_id: str | None, payload: dict
+) -> str | None:
     """Apply side effects when an access request is approved."""
     if req_type == "grant" and toolkit_id:
         cred_id = payload.get("credential_id")
@@ -513,7 +574,9 @@ async def _apply_approved_request(req_type: str, toolkit_id: str | None, payload
         if cred_id:
             try:
                 async with get_db() as db:
-                    async with db.execute("SELECT label FROM credentials WHERE id=?", (cred_id,)) as cur:
+                    async with db.execute(
+                        "SELECT label FROM credentials WHERE id=?", (cred_id,)
+                    ) as cur:
                         cred = await cur.fetchone()
                     if cred:
                         cc_id = str(uuid.uuid4())
@@ -521,7 +584,7 @@ async def _apply_approved_request(req_type: str, toolkit_id: str | None, payload
                             """INSERT OR IGNORE INTO toolkit_credentials
                                (id, toolkit_id, credential_id, alias, created_at)
                                VALUES (?, ?, ?, ?, ?)""",
-                            (cc_id, toolkit_id, cred_id, cred[0], time.time())
+                            (cc_id, toolkit_id, cred_id, cred[0], time.time()),
                         )
                         await db.commit()
                         effects.append(f"Credential '{cred[0]}' bound to toolkit {toolkit_id}")
@@ -532,8 +595,10 @@ async def _apply_approved_request(req_type: str, toolkit_id: str | None, payload
 
         if rules and cred_id:
             try:
-                from src.routers.toolkits import _write_credential_permissions
-                clean_rules = [r if isinstance(r, dict) else PermissionRule(**r).model_dump(exclude_none=True) for r in rules]
+                clean_rules = [
+                    r if isinstance(r, dict) else PermissionRule(**r).model_dump(exclude_none=True)
+                    for r in rules
+                ]
                 await _write_credential_permissions(cred_id, clean_rules)
                 effects.append(f"{len(rules)} permission rule(s) applied to credential {cred_id}")
             except Exception as e:
@@ -548,7 +613,6 @@ async def _apply_approved_request(req_type: str, toolkit_id: str | None, payload
         if not cred_id:
             return "modify_permissions requires credential_id in payload"
         try:
-            from src.routers.toolkits import _write_credential_permissions
             await _write_credential_permissions(cred_id, rules)
             return f"Permissions updated for credential {cred_id}"
         except Exception as e:

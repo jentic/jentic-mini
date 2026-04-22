@@ -12,25 +12,29 @@ Current broker types:
 Future:
   jentic    — Jentic's own OAuth service (once app approvals are in place)
 """
+
 import logging
 import time
-from typing import Annotated, Any
-
+import urllib.error
 import urllib.parse
+import urllib.request
+import uuid
+from typing import Annotated, Any
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, Field
-from src.validators import NormModel, NormStr
-from src.utils import build_absolute_url
 
-from src.auth import require_human_session
-from src.brokers.pipedream import api_host_to_pd_slug, broker_credential_id
+import src.vault as vault
+from src.auth import _build_human_only_error, require_human_session
+from src.brokers.pipedream import PipedreamOAuthBroker, api_host_to_pd_slug, broker_credential_id
 from src.db import get_db
 from src.oauth_broker import registry as oauth_broker_registry
-import src.vault as vault
 from src.openapi_helpers import agent_hints
+from src.utils import build_absolute_url
+from src.validators import NormModel
+
 
 log = logging.getLogger("jentic.routers.oauth_brokers")
 
@@ -50,7 +54,9 @@ _SUPPORTED_TYPES = ("pipedream",)
 
 # Annotated path/query helpers with pre-filled Swagger examples
 BrokerIdPath = Annotated[str, Path(description="The broker ID", examples=["pipedream"])]
-ExternalUserIdQuery = Annotated[str | None, Query(description="Filter by external user ID", examples=["default"])]
+ExternalUserIdQuery = Annotated[
+    str | None, Query(description="Filter by external user ID", examples=["default"])
+]
 
 _CREATE_EXAMPLE = {
     "type": "pipedream",
@@ -114,7 +120,10 @@ automatically proxied with the user's OAuth token injected server-side.
 
 class OAuthBrokerCreate(NormModel):
     """Register a new OAuth broker for delegated credential management via Pipedream or other providers."""
-    id: str | None = Field(None, description="Optional custom broker ID. Auto-generated from type if omitted.")
+
+    id: str | None = Field(
+        None, description="Optional custom broker ID. Auto-generated from type if omitted."
+    )
     type: str = Field(..., description="Broker backend type. Currently supported: `pipedream`.")
     config: dict[str, Any] = Field(
         ...,
@@ -133,15 +142,27 @@ class OAuthBrokerCreate(NormModel):
 
 class OAuthBrokerOut(BaseModel):
     """OAuth broker configuration with discovered accounts count. Config excludes sensitive fields."""
-    id: str = Field(examples=["broker_abc123xyz"], description="Broker ID (format: broker_{12chars})")
-    type: str = Field(examples=["pipedream"], description="Broker type: 'pipedream' or other provider")
-    config: dict[str, Any] = Field(description="Public broker configuration (excludes encrypted secret fields)")
-    created_at: float = Field(examples=[1609459200], description="Unix timestamp when broker was registered")
-    accounts_discovered: int = Field(default=0, examples=[3], description="Number of OAuth accounts discovered from this broker")
+
+    id: str = Field(
+        examples=["broker_abc123xyz"], description="Broker ID (format: broker_{12chars})"
+    )
+    type: str = Field(
+        examples=["pipedream"], description="Broker type: 'pipedream' or other provider"
+    )
+    config: dict[str, Any] = Field(
+        description="Public broker configuration (excludes encrypted secret fields)"
+    )
+    created_at: float = Field(
+        examples=[1609459200], description="Unix timestamp when broker was registered"
+    )
+    accounts_discovered: int = Field(
+        default=0, examples=[3], description="Number of OAuth accounts discovered from this broker"
+    )
 
 
 class SyncRequest(NormModel):
     """Request body for syncing discovered OAuth accounts from a broker into Jentic credentials."""
+
     external_user_id: str = Field(
         "default",
         description=(
@@ -153,6 +174,7 @@ class SyncRequest(NormModel):
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
+
 
 def _row_to_out(row: tuple, accounts_discovered: int = 0) -> OAuthBrokerOut:
     broker_id, broker_type, client_id, project_id, default_external_user_id, created_at = row
@@ -190,15 +212,23 @@ def _extract_pipedream_config(config: dict) -> tuple[str, str, str, str | None, 
         raise HTTPException(
             400,
             f"Missing required Pipedream config fields: {', '.join(missing)}. "
-            "Expected: client_id, client_secret, project_id"
+            "Expected: client_id, client_secret, project_id",
         )
     support_email = config.get("support_email") or None
     environment = config.get("environment") or "production"
     default_external_user_id = config.get("default_external_user_id") or "default"
-    return config["client_id"], config["client_secret"], config["project_id"], support_email, environment, default_external_user_id
+    return (
+        config["client_id"],
+        config["client_secret"],
+        config["project_id"],
+        support_email,
+        environment,
+        default_external_user_id,
+    )
 
 
 # ── Routes ────────────────────────────────────────────────────────────────────
+
 
 @router.post(
     "",
@@ -206,7 +236,11 @@ def _extract_pipedream_config(config: dict) -> tuple[str, str, str, str | None, 
     summary="Register an OAuth broker",
     description=_CREATE_DESCRIPTION,
     dependencies=[Depends(require_human_session)],
-    openapi_extra={"requestBody": {"description": "Broker configuration: type (e.g. 'pipedream'), provider-specific config, and encrypted credentials"}},
+    openapi_extra={
+        "requestBody": {
+            "description": "Broker configuration: type (e.g. 'pipedream'), provider-specific config, and encrypted credentials"
+        }
+    },
 )
 async def create_oauth_broker(body: OAuthBrokerCreate):
     if body.type not in _SUPPORTED_TYPES:
@@ -220,7 +254,11 @@ async def create_oauth_broker(body: OAuthBrokerCreate):
         async with db.execute("SELECT id FROM oauth_brokers") as cur:
             existing_ids = [r[0] for r in await cur.fetchall()]
 
-        broker_id = body.id if body.id and body.id not in existing_ids else _make_broker_id(body.type, existing_ids)
+        broker_id = (
+            body.id
+            if body.id and body.id not in existing_ids
+            else _make_broker_id(body.type, existing_ids)
+        )
         secret_enc = vault.encrypt(client_secret)
 
         await db.execute(
@@ -228,12 +266,19 @@ async def create_oauth_broker(body: OAuthBrokerCreate):
                (id, type, client_id, client_secret_enc, project_id,
                 environment, default_external_user_id, created_at)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-            (broker_id, body.type, client_id, secret_enc,
-             project_id, environment, default_external_user_id, time.time()),
+            (
+                broker_id,
+                body.type,
+                client_id,
+                secret_enc,
+                project_id,
+                environment,
+                default_external_user_id,
+                time.time(),
+            ),
         )
         await db.commit()
 
-    from src.brokers.pipedream import PipedreamOAuthBroker
     broker = PipedreamOAuthBroker(
         broker_id=broker_id,
         client_id=client_id,
@@ -265,7 +310,11 @@ async def create_oauth_broker(body: OAuthBrokerCreate):
     return OAuthBrokerOut(
         id=broker_id,
         type=body.type,
-        config={"client_id": client_id, "project_id": project_id, "default_external_user_id": default_external_user_id},
+        config={
+            "client_id": client_id,
+            "project_id": project_id,
+            "default_external_user_id": default_external_user_id,
+        },
         created_at=time.time(),
         accounts_discovered=accounts_discovered,
     )
@@ -273,6 +322,7 @@ async def create_oauth_broker(body: OAuthBrokerCreate):
 
 class OAuthBrokerUpdate(NormModel):
     """Update OAuth broker configuration. Only provided fields are changed; secrets remain encrypted."""
+
     config: dict[str, Any] = Field(
         ...,
         description=(
@@ -290,7 +340,11 @@ class OAuthBrokerUpdate(NormModel):
     response_model=OAuthBrokerOut,
     summary="Update an OAuth broker configuration",
     dependencies=[Depends(require_human_session)],
-    openapi_extra={"requestBody": {"description": "Provider-specific config fields to update: client_id, client_secret, project_id — only provided fields are changed, secrets re-encrypted"}},
+    openapi_extra={
+        "requestBody": {
+            "description": "Provider-specific config fields to update: client_id, client_secret, project_id — only provided fields are changed, secrets re-encrypted"
+        }
+    },
 )
 async def update_oauth_broker(broker_id: BrokerIdPath, body: OAuthBrokerUpdate):
     """Update client_id, client_secret, and/or project_id for an existing broker.
@@ -307,7 +361,16 @@ async def update_oauth_broker(broker_id: BrokerIdPath, body: OAuthBrokerUpdate):
         if not row:
             raise HTTPException(404, f"OAuth broker '{broker_id}' not found")
 
-        _, broker_type, old_client_id, old_secret_enc, old_project_id, environment, ext_user_id, created_at = row
+        (
+            _,
+            broker_type,
+            old_client_id,
+            old_secret_enc,
+            old_project_id,
+            environment,
+            ext_user_id,
+            created_at,
+        ) = row
 
         new_client_id = body.config.get("client_id") or old_client_id
         new_project_id = body.config.get("project_id") or old_project_id
@@ -327,7 +390,6 @@ async def update_oauth_broker(broker_id: BrokerIdPath, body: OAuthBrokerUpdate):
         await db.commit()
 
     # Re-register broker in registry with updated credentials
-    from src.brokers.pipedream import PipedreamOAuthBroker
     broker = PipedreamOAuthBroker(
         broker_id=broker_id,
         client_id=new_client_id,
@@ -352,7 +414,11 @@ async def update_oauth_broker(broker_id: BrokerIdPath, body: OAuthBrokerUpdate):
     return OAuthBrokerOut(
         id=broker_id,
         type=broker_type,
-        config={"client_id": new_client_id, "project_id": new_project_id, "default_external_user_id": ext_user_id or "default"},
+        config={
+            "client_id": new_client_id,
+            "project_id": new_project_id,
+            "default_external_user_id": ext_user_id or "default",
+        },
         created_at=created_at,
     )
 
@@ -369,8 +435,8 @@ async def update_oauth_broker(broker_id: BrokerIdPath, body: OAuthBrokerUpdate):
             "POST /oauth-brokers — register a new OAuth broker (Pipedream)",
             "GET /oauth-brokers/{broker_id} — get detailed broker configuration and account statistics",
             "POST /oauth-brokers/{broker_id}/connect-link — initiate OAuth flow for an API via broker",
-            "POST /oauth-brokers/{broker_id}/sync — pull connected accounts into Jentic after OAuth"
-        ]
+            "POST /oauth-brokers/{broker_id}/sync — pull connected accounts into Jentic after OAuth",
+        ],
     ),
 )
 async def list_oauth_brokers():
@@ -415,6 +481,7 @@ async def get_oauth_broker(broker_id: BrokerIdPath):
 
 class ConnectLinkRequest(NormModel):
     """Generate a Pipedream Connect Link for authorizing a new OAuth account. Returns URL for user authorization."""
+
     app: str = Field(
         ...,
         description=(
@@ -453,7 +520,11 @@ class ConnectLinkRequest(NormModel):
 @router.post(
     "/{broker_id}/connect-link",
     summary="Generate a Pipedream Connect Link for authorising apps",
-    openapi_extra={"requestBody": {"description": "Connect link request: Pipedream app slug (e.g. gmail, slack), human-readable label for the connection, and optional api_id override for catalog binding"}},
+    openapi_extra={
+        "requestBody": {
+            "description": "Connect link request: Pipedream app slug (e.g. gmail, slack), human-readable label for the connection, and optional api_id override for catalog binding"
+        }
+    },
 )
 async def create_connect_link(broker_id: BrokerIdPath, body: ConnectLinkRequest, request: Request):
     """Generate a short-lived Pipedream Connect Link URL.
@@ -470,7 +541,6 @@ async def create_connect_link(broker_id: BrokerIdPath, body: ConnectLinkRequest,
     complete the OAuth flow, so generating the link is safe for agents to initiate.
     Requires at minimum a valid toolkit key or trusted-subnet (admin) access.
     """
-    from src.auth import _build_human_only_error
     is_admin = getattr(request.state, "is_admin", False)
     is_human = getattr(request.state, "is_human_session", False)
     has_toolkit = getattr(request.state, "toolkit_id", None) is not None
@@ -481,7 +551,6 @@ async def create_connect_link(broker_id: BrokerIdPath, body: ConnectLinkRequest,
         None,
     )
     if live_broker is None:
-        from src.brokers.pipedream import PipedreamOAuthBroker
         brokers = await PipedreamOAuthBroker.from_db()
         live_broker = next((b for b in brokers if b.broker_id == broker_id), None)
         if live_broker:
@@ -491,7 +560,7 @@ async def create_connect_link(broker_id: BrokerIdPath, body: ConnectLinkRequest,
         raise HTTPException(404, f"OAuth broker '{broker_id}' not found or could not be loaded")
 
     if not hasattr(live_broker, "create_connect_token"):
-        raise HTTPException(400, f"Broker type does not support Connect Links")
+        raise HTTPException(400, "Broker type does not support Connect Links")
 
     # Resolve app slug from api_id if the provided slug looks like a path segment
     # rather than a valid Pipedream slug (e.g. "calendar" instead of "google_calendar").
@@ -516,7 +585,9 @@ async def create_connect_link(broker_id: BrokerIdPath, body: ConnectLinkRequest,
     }
     if body.api_id:
         callback_params["api_id"] = body.api_id
-    callback_path = f"/oauth-brokers/{broker_id}/connect-callback?{urllib.parse.urlencode(callback_params)}"
+    callback_path = (
+        f"/oauth-brokers/{broker_id}/connect-callback?{urllib.parse.urlencode(callback_params)}"
+    )
     success_redirect_uri = build_absolute_url(request, callback_path)
 
     try:
@@ -554,7 +625,9 @@ async def connect_callback(
     app: str = Query(..., description="Pipedream app slug"),
     external_user_id: str = Query("default"),
     api_id: str | None = Query(None),
-    replace_account_id: str | None = Query(None, description="Account ID to delete after successful reconnect"),
+    replace_account_id: str | None = Query(
+        None, description="Account ID to delete after successful reconnect"
+    ),
 ):
     """Browser callback after Pipedream OAuth completion.
 
@@ -566,8 +639,6 @@ async def connect_callback(
     This endpoint is hit by the user's browser — no auth token required.
     Labels come from URL params encoded at connect-link time.
     """
-    import uuid as _uuid
-
     # Write the pending label — safe to INSERT OR REPLACE here because we are
     # processing one completion at a time (browser callback is synchronous
     # from the user's perspective). The race that motivated this redesign was
@@ -579,8 +650,13 @@ async def connect_callback(
                (id, broker_id, external_user_id, app_slug, label, api_id, created_at)
                VALUES (?, ?, ?, ?, ?, ?, ?)""",
             (
-                str(_uuid.uuid4()), broker_id, external_user_id,
-                app, label, api_id, time.time(),
+                str(uuid.uuid4()),
+                broker_id,
+                external_user_id,
+                app,
+                label,
+                api_id,
+                time.time(),
             ),
         )
         await db.commit()
@@ -591,7 +667,6 @@ async def connect_callback(
         None,
     )
     if live_broker is None:
-        from src.brokers.pipedream import PipedreamOAuthBroker
         brokers = await PipedreamOAuthBroker.from_db()
         live_broker = next((b for b in brokers if b.broker_id == broker_id), None)
         if live_broker:
@@ -602,15 +677,21 @@ async def connect_callback(
         try:
             await live_broker.discover_accounts(external_user_id)
             synced_ok = True
-            log.info("connect-callback: sync ok for broker %s, replace_account_id=%s",
-                     broker_id, replace_account_id)
+            log.info(
+                "connect-callback: sync ok for broker %s, replace_account_id=%s",
+                broker_id,
+                replace_account_id,
+            )
         except Exception as exc:
             log.warning("connect-callback: sync failed for broker %s: %s", broker_id, exc)
             # Don't block the redirect — user will see the credential once they
             # manually sync, or on next automatic sync.
     else:
-        log.warning("connect-callback: no live_broker found for %s — sync skipped, replace_account_id=%s will NOT be cleaned up",
-                    broker_id, replace_account_id)
+        log.warning(
+            "connect-callback: no live_broker found for %s — sync skipped, replace_account_id=%s will NOT be cleaned up",
+            broker_id,
+            replace_account_id,
+        )
 
     # If this was a reconnect, clean up the old account — but only after sync
     # confirmed the new connection is present.
@@ -626,8 +707,11 @@ async def connect_callback(
             ) as cur:
                 new_row = await cur.fetchone()
         if new_row:
-            log.info("Reconnect: new account %s confirmed, deleting old account %s",
-                     new_row[0], replace_account_id)
+            log.info(
+                "Reconnect: new account %s confirmed, deleting old account %s",
+                new_row[0],
+                replace_account_id,
+            )
             try:
                 # Fetch all api_hosts for this account (may have multiple host mappings)
                 async with get_db() as db:
@@ -638,14 +722,18 @@ async def connect_callback(
                         old_rows = await cur.fetchall()
 
                 if old_rows:
-                    old_cred_ids = [broker_credential_id(broker_id, replace_account_id, r[0]) for r in old_rows]
+                    old_cred_ids = [
+                        broker_credential_id(broker_id, replace_account_id, r[0]) for r in old_rows
+                    ]
 
                     # 1. Revoke upstream in Pipedream (best-effort, async)
                     if live_broker is not None:
                         try:
                             pd_token = await live_broker._get_access_token()
-                            pd_url = (f"https://api.pipedream.com/v1/connect/"
-                                      f"{live_broker.project_id}/accounts/{replace_account_id}")
+                            pd_url = (
+                                f"https://api.pipedream.com/v1/connect/"
+                                f"{live_broker.project_id}/accounts/{replace_account_id}"
+                            )
                             async with httpx.AsyncClient(timeout=10) as client:
                                 await client.delete(
                                     pd_url,
@@ -654,16 +742,23 @@ async def connect_callback(
                                         "X-PD-Environment": live_broker.environment,
                                     },
                                 )
-                            log.info("Reconnect: revoked old Pipedream account %s", replace_account_id)
+                            log.info(
+                                "Reconnect: revoked old Pipedream account %s", replace_account_id
+                            )
                         except Exception as pd_exc:
-                            log.warning("Reconnect: Pipedream revoke failed for %s (continuing): %s",
-                                        replace_account_id, pd_exc)
+                            log.warning(
+                                "Reconnect: Pipedream revoke failed for %s (continuing): %s",
+                                replace_account_id,
+                                pd_exc,
+                            )
 
                     # 2. Remove from toolkit provisioning + oauth_broker_accounts
                     async with get_db() as db:
                         for old_cred_id in old_cred_ids:
-                            await db.execute("DELETE FROM toolkit_credentials WHERE credential_id=?",
-                                             (old_cred_id,))
+                            await db.execute(
+                                "DELETE FROM toolkit_credentials WHERE credential_id=?",
+                                (old_cred_id,),
+                            )
                         await db.execute(
                             "DELETE FROM oauth_broker_accounts WHERE broker_id=? AND account_id=?",
                             (broker_id, replace_account_id),
@@ -674,16 +769,28 @@ async def connect_callback(
                     for old_cred_id in old_cred_ids:
                         await vault.delete_credential(old_cred_id)
 
-                    log.info("Reconnect: removed old account %s (%d credentials) after successful reconnect",
-                             replace_account_id, len(old_cred_ids))
+                    log.info(
+                        "Reconnect: removed old account %s (%d credentials) after successful reconnect",
+                        replace_account_id,
+                        len(old_cred_ids),
+                    )
                 else:
-                    log.warning("Reconnect: old account %s already gone from DB — nothing to clean up",
-                                replace_account_id)
+                    log.warning(
+                        "Reconnect: old account %s already gone from DB — nothing to clean up",
+                        replace_account_id,
+                    )
             except Exception as exc:
-                log.warning("Reconnect: failed to remove old account %s: %s", replace_account_id, exc)
+                log.warning(
+                    "Reconnect: failed to remove old account %s: %s", replace_account_id, exc
+                )
         else:
-            log.warning("Reconnect: new account NOT found in DB after sync for broker=%s app=%s external_user_id=%s (replacing %s)",
-                        broker_id, app, external_user_id, replace_account_id)
+            log.warning(
+                "Reconnect: new account NOT found in DB after sync for broker=%s app=%s external_user_id=%s (replacing %s)",
+                broker_id,
+                app,
+                external_user_id,
+                replace_account_id,
+            )
 
     # Redirect to the appropriate UI page (return_to defaults to /oauth-brokers)
     return_to = request.query_params.get("return_to", "/oauth-brokers")
@@ -697,7 +804,11 @@ async def connect_callback(
 @router.post(
     "/{broker_id}/sync",
     summary="Sync connected accounts from the OAuth broker",
-    openapi_extra={"requestBody": {"description": "Sync request: list of API slugs to sync accounts for (fetches connected accounts from broker and imports as Jentic credentials)"}},
+    openapi_extra={
+        "requestBody": {
+            "description": "Sync request: list of API slugs to sync accounts for (fetches connected accounts from broker and imports as Jentic credentials)"
+        }
+    },
 )
 async def sync_broker_accounts(broker_id: BrokerIdPath, body: SyncRequest, request: Request):
     """Re-fetch connected accounts from the provider and update local mappings.
@@ -711,7 +822,6 @@ async def sync_broker_accounts(broker_id: BrokerIdPath, body: SyncRequest, reque
     Intentionally open to agents: syncing pulls in credentials the human already
     authorised. No new OAuth flows are initiated.
     """
-    from src.auth import _build_human_only_error
     is_admin = getattr(request.state, "is_admin", False)
     is_human = getattr(request.state, "is_human_session", False)
     has_toolkit = getattr(request.state, "toolkit_id", None) is not None
@@ -729,7 +839,6 @@ async def sync_broker_accounts(broker_id: BrokerIdPath, body: SyncRequest, reque
         None,
     )
     if live_broker is None:
-        from src.brokers.pipedream import PipedreamOAuthBroker
         brokers = await PipedreamOAuthBroker.from_db()
         live_broker = next((b for b in brokers if b.broker_id == broker_id), None)
         if live_broker:
@@ -773,7 +882,9 @@ async def sync_broker_accounts(broker_id: BrokerIdPath, body: SyncRequest, reque
     summary="List connected accounts for an OAuth broker",
     tags=["inspect"],
 )
-async def list_broker_accounts(broker_id: BrokerIdPath, external_user_id: ExternalUserIdQuery = None):
+async def list_broker_accounts(
+    broker_id: BrokerIdPath, external_user_id: ExternalUserIdQuery = None
+):
     """List the OAuth-connected account mappings stored for this broker.
 
     Each entry represents a SaaS app the user has connected via Pipedream's OAuth
@@ -801,7 +912,15 @@ async def list_broker_accounts(broker_id: BrokerIdPath, external_user_id: Extern
         async with db.execute(query, params) as cur:
             rows = await cur.fetchall()
 
-    cols = ["external_user_id", "api_host", "app_slug", "account_id", "label", "healthy", "synced_at"]
+    cols = [
+        "external_user_id",
+        "api_host",
+        "app_slug",
+        "account_id",
+        "label",
+        "healthy",
+        "synced_at",
+    ]
     return [dict(zip(cols, r)) for r in rows]
 
 
@@ -810,7 +929,10 @@ async def list_broker_accounts(broker_id: BrokerIdPath, external_user_id: Extern
     summary="Remove a connected account from an OAuth broker",
     dependencies=[Depends(require_human_session)],
 )
-async def delete_broker_account(broker_id: BrokerIdPath, account_id: Annotated[str, Path(description="Connected account ID to delete")]):
+async def delete_broker_account(
+    broker_id: BrokerIdPath,
+    account_id: Annotated[str, Path(description="Connected account ID to delete")],
+):
     """Remove a specific connected account from this broker.
 
     This performs three actions in order:
@@ -832,7 +954,9 @@ async def delete_broker_account(broker_id: BrokerIdPath, account_id: Annotated[s
             rows = await cur.fetchall()
 
     if not rows:
-        raise HTTPException(404, f"No connected account '{account_id}' found for broker '{broker_id}'")
+        raise HTTPException(
+            404, f"No connected account '{account_id}' found for broker '{broker_id}'"
+        )
     # An account can map to multiple api_hosts (e.g. Google Sheets → sheets.googleapis.com + googleapis.com/sheets)
     cred_ids = [broker_credential_id(broker_id, account_id, r[1]) for r in rows]
 
@@ -843,30 +967,36 @@ async def delete_broker_account(broker_id: BrokerIdPath, account_id: Annotated[s
         None,
     )
     if live_broker is None:
-        from src.brokers.pipedream import PipedreamOAuthBroker
         brokers = await PipedreamOAuthBroker.from_db()
         live_broker = next((b for b in brokers if b.broker_id == broker_id), None)
 
     if live_broker is not None:
         try:
-            import urllib.request as _urlreq
-            import urllib.error as _urlerr
             pd_token = await live_broker._get_access_token()
             pd_url = f"https://api.pipedream.com/v1/connect/{live_broker.project_id}/accounts/{account_id}"
-            req = _urlreq.Request(pd_url, method="DELETE")
+            req = urllib.request.Request(pd_url, method="DELETE")
             req.add_header("Authorization", f"Bearer {pd_token}")
             req.add_header("X-PD-Environment", live_broker.environment)
             try:
-                with _urlreq.urlopen(req, timeout=10):
+                with urllib.request.urlopen(req, timeout=10):
                     pass
                 pipedream_revoked = True
                 log.info("Pipedream account %s revoked via API", account_id)
-            except _urlerr.HTTPError as http_err:
+            except urllib.error.HTTPError as http_err:
                 body = http_err.read().decode("utf-8", errors="replace")
-                log.warning("Failed to revoke Pipedream account %s: HTTP %s %s — body: %s — continuing with local cleanup",
-                            account_id, http_err.code, http_err.reason, body)
+                log.warning(
+                    "Failed to revoke Pipedream account %s: HTTP %s %s — body: %s — continuing with local cleanup",
+                    account_id,
+                    http_err.code,
+                    http_err.reason,
+                    body,
+                )
         except Exception as exc:
-            log.warning("Failed to revoke Pipedream account %s: %s — continuing with local cleanup", account_id, exc)
+            log.warning(
+                "Failed to revoke Pipedream account %s: %s — continuing with local cleanup",
+                account_id,
+                exc,
+            )
 
     # 2. Remove from toolkit provisioning + vault for all host mappings
     async with get_db() as db:
@@ -897,16 +1027,25 @@ async def delete_broker_account(broker_id: BrokerIdPath, account_id: Annotated[s
 
 class AccountUpdate(NormModel):
     """Rename a connected OAuth account. Label is used in UI and credential binding displays."""
+
     label: str = Field(..., min_length=1, description="New display label for this account")
 
 
 @router.patch(
     "/{broker_id}/accounts/{account_id}",
     summary="Update a connected account (e.g. rename label)",
-    openapi_extra={"requestBody": {"description": "Account update: new display label for this connected OAuth account"}},
+    openapi_extra={
+        "requestBody": {
+            "description": "Account update: new display label for this connected OAuth account"
+        }
+    },
     dependencies=[Depends(require_human_session)],
 )
-async def update_broker_account(broker_id: BrokerIdPath, account_id: Annotated[str, Path(description="Connected account ID to update")], body: AccountUpdate):
+async def update_broker_account(
+    broker_id: BrokerIdPath,
+    account_id: Annotated[str, Path(description="Connected account ID to update")],
+    body: AccountUpdate,
+):
     """Patch a connected account record.
 
     Updates the display label for a connected OAuth account. The account remains linked
@@ -934,7 +1073,9 @@ async def update_broker_account(broker_id: BrokerIdPath, account_id: Annotated[s
             (broker_id, account_id),
         ) as cur:
             if not await cur.fetchone():
-                raise HTTPException(404, f"No connected account '{account_id}' found for broker '{broker_id}'")
+                raise HTTPException(
+                    404, f"No connected account '{account_id}' found for broker '{broker_id}'"
+                )
         await db.execute(
             "UPDATE oauth_broker_accounts SET label=? WHERE broker_id=? AND account_id=?",
             (new_label.strip(), broker_id, account_id),
@@ -956,7 +1097,7 @@ async def update_broker_account(broker_id: BrokerIdPath, account_id: Annotated[s
 async def reconnect_account_link(
     broker_id: BrokerIdPath,
     account_id: Annotated[str, Path(description="OAuth broker account ID to reconnect")],
-    request: Request
+    request: Request,
 ):
     """Generate a new OAuth connect link for an existing connected account.
 
@@ -979,7 +1120,9 @@ async def reconnect_account_link(
             row = await cur.fetchone()
 
     if not row:
-        raise HTTPException(404, f"No connected account '{account_id}' found for broker '{broker_id}'")
+        raise HTTPException(
+            404, f"No connected account '{account_id}' found for broker '{broker_id}'"
+        )
 
     app_slug, label, api_id, external_user_id = row
     label = label or app_slug
@@ -991,7 +1134,6 @@ async def reconnect_account_link(
         None,
     )
     if live_broker is None:
-        from src.brokers.pipedream import PipedreamOAuthBroker
         brokers = await PipedreamOAuthBroker.from_db()
         live_broker = next((b for b in brokers if b.broker_id == broker_id), None)
         if live_broker:
@@ -1001,7 +1143,7 @@ async def reconnect_account_link(
         raise HTTPException(404, f"OAuth broker '{broker_id}' not found or could not be loaded")
 
     if not hasattr(live_broker, "create_connect_token"):
-        raise HTTPException(400, f"Broker type does not support reconnect links")
+        raise HTTPException(400, "Broker type does not support reconnect links")
 
     # Build callback URL — includes replace_account_id so the old account is
     # cleaned up automatically after the new one is confirmed present
@@ -1014,7 +1156,9 @@ async def reconnect_account_link(
     }
     if api_id:
         callback_params["api_id"] = api_id
-    callback_path = f"/oauth-brokers/{broker_id}/connect-callback?{urllib.parse.urlencode(callback_params)}"
+    callback_path = (
+        f"/oauth-brokers/{broker_id}/connect-callback?{urllib.parse.urlencode(callback_params)}"
+    )
     success_redirect_uri = build_absolute_url(request, callback_path)
 
     try:
@@ -1074,9 +1218,7 @@ async def delete_oauth_broker(broker_id: BrokerIdPath):
 
         # Remove toolkit bindings and broker account rows
         for cred_id in cred_ids:
-            await db.execute(
-                "DELETE FROM toolkit_credentials WHERE credential_id=?", (cred_id,)
-            )
+            await db.execute("DELETE FROM toolkit_credentials WHERE credential_id=?", (cred_id,))
         await db.execute("DELETE FROM oauth_broker_accounts WHERE broker_id=?", (broker_id,))
         await db.execute("DELETE FROM oauth_broker_connect_labels WHERE broker_id=?", (broker_id,))
         await db.execute("DELETE FROM oauth_brokers WHERE id=?", (broker_id,))
@@ -1087,9 +1229,16 @@ async def delete_oauth_broker(broker_id: BrokerIdPath):
         try:
             await vault.delete_credential(cred_id)
         except Exception:
-            log.warning("Could not delete credential '%s' from vault during broker removal", cred_id)
+            log.warning(
+                "Could not delete credential '%s' from vault during broker removal", cred_id
+            )
 
     oauth_broker_registry.deregister(broker_id)
     log.info("OAuth broker '%s' removed along with %d credential(s)", broker_id, len(cred_ids))
 
-    return {"status": "ok", "broker_id": broker_id, "deleted": True, "credentials_removed": len(cred_ids)}
+    return {
+        "status": "ok",
+        "broker_id": broker_id,
+        "deleted": True,
+        "credentials_removed": len(cred_ids),
+    }

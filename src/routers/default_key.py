@@ -14,16 +14,17 @@ Subsequent calls (human session required):
 
 Used by agents during self-enrollment and by humans for key rotation/rescue.
 """
+
 import json
 import secrets
 import time
-import uuid
 
 from fastapi import APIRouter, HTTPException, Request, Response
 
-from src.auth import is_trusted_ip, client_ip, default_allowed_ips
-from src.db import DEFAULT_TOOLKIT_ID, get_db, get_setting, set_setting, setup_state
+from src.auth import client_ip, default_allowed_ips, is_trusted_ip
+from src.db import DEFAULT_TOOLKIT_ID, get_db, set_setting, setup_state
 from src.utils import build_absolute_url
+
 
 router = APIRouter(tags=["user"])
 
@@ -96,9 +97,14 @@ async def generate_default_key(request: Request, response: Response):
             """INSERT OR REPLACE INTO toolkit_keys
                (id, toolkit_id, api_key, label, allowed_ips, created_at)
                VALUES (?, ?, ?, ?, ?, ?)""",
-            (_DEFAULT_KEY_DB_ID, DEFAULT_TOOLKIT_ID, raw_key, _DEFAULT_KEY_LABEL,
-             json.dumps(default_allowed_ips()) if default_allowed_ips() else None,
-             time.time()),
+            (
+                _DEFAULT_KEY_DB_ID,
+                DEFAULT_TOOLKIT_ID,
+                raw_key,
+                _DEFAULT_KEY_LABEL,
+                json.dumps(default_allowed_ips()) if default_allowed_ips() else None,
+                time.time(),
+            ),
         )
         await db.commit()
 

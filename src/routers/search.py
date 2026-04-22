@@ -1,10 +1,19 @@
 """BM25 search over registered operations AND workflows, with automatic catalog blending."""
-from urllib.parse import quote
+
 from fastapi import APIRouter, Query
-from src.utils import abbreviate
+
+import src.bm25 as bm25
 from src.models import SearchResult
 from src.openapi_helpers import agent_hints
-import src.bm25 as bm25
+from src.routers.catalog import (
+    GITHUB_REPO,
+    _get_registered_api_ids,
+    _load_manifest,
+    _load_workflow_manifest,
+    _search_manifest,
+)
+from src.utils import abbreviate
+
 
 router = APIRouter()
 
@@ -13,7 +22,6 @@ _OP_INTERNAL_KEYS = {"_id", "_operation_id", "_api_id", "_vendor"}
 
 def _op_links(op_id: str, api_id: str) -> dict:
     """Build _links for an operation result."""
-    encoded = quote(op_id, safe="")
     links = {"inspect": f"/inspect/{op_id}"}
     if api_id:
         links["api"] = f"/apis/{api_id}"
@@ -23,7 +31,6 @@ def _op_links(op_id: str, api_id: str) -> dict:
 
 def _workflow_links(slug: str, wf_id: str) -> dict:
     """Build _links for a workflow result."""
-    encoded = quote(wf_id, safe="")
     return {
         "inspect": f"/inspect/{wf_id}",
         "definition": f"/workflows/{slug}",
@@ -41,8 +48,8 @@ def _workflow_links(slug: str, wf_id: str) -> dict:
         related_operations=[
             "GET /inspect/{id} — get full operation details after finding it via search",
             "GET /apis — browse APIs by provider when you know the vendor",
-            "GET /workflows — list all workflows when browsing by category"
-        ]
+            "GET /workflows — list all workflows when browsing by category",
+        ],
     ),
 )
 async def search(
@@ -66,17 +73,19 @@ async def search(
         if doc_type == "workflow":
             wf_id = doc.get("id", "")
             slug = doc.get("slug", "")
-            out.append({
-                "type": "workflow",
-                "source": "local",
-                "id": wf_id,
-                "slug": slug,
-                "summary": doc.get("summary") or doc.get("name"),
-                "description": abbreviate(doc.get("description", "") or ""),
-                "involved_apis": doc.get("involved_apis", []),
-                "score": round(score, 4),
-                "_links": _workflow_links(slug, wf_id),
-            })
+            out.append(
+                {
+                    "type": "workflow",
+                    "source": "local",
+                    "id": wf_id,
+                    "slug": slug,
+                    "summary": doc.get("summary") or doc.get("name"),
+                    "description": abbreviate(doc.get("description", "") or ""),
+                    "involved_apis": doc.get("involved_apis", []),
+                    "score": round(score, 4),
+                    "_links": _workflow_links(slug, wf_id),
+                }
+            )
         else:
             op_id = doc.get("id", "")
             api_id = doc.get("_api_id") or ""
@@ -86,17 +95,17 @@ async def search(
             clean = {k: v for k, v in doc.items() if k not in _OP_INTERNAL_KEYS}
             if "description" in clean:
                 clean["description"] = abbreviate(clean["description"] or "")
-            out.append({
-                "type": "operation",
-                "source": "local",
-                **clean,
-                "score": round(score, 4),
-                "_links": _op_links(op_id, api_id),
-            })
+            out.append(
+                {
+                    "type": "operation",
+                    "source": "local",
+                    **clean,
+                    "score": round(score, 4),
+                    "_links": _op_links(op_id, api_id),
+                }
+            )
 
     # ── Catalog blending (always-on) ──────────────────────────────────────────
-    from src.routers.catalog import _load_manifest, _search_manifest, _get_registered_api_ids, _catalog_vendor_set, GITHUB_REPO
-
     manifest = _load_manifest()
     if manifest:
         registered_ids = await _get_registered_api_ids()
@@ -125,32 +134,37 @@ async def search(
                 if api_id in covered_sub_apis:
                     continue
             else:
-                vendor = (api_id.split(".")[-2] + "." + api_id.split(".")[-1]) if "." in api_id else api_id
+                vendor = (
+                    (api_id.split(".")[-2] + "." + api_id.split(".")[-1])
+                    if "." in api_id
+                    else api_id
+                )
                 if vendor in covered_leaf_vendors:
                     continue
-            out.append({
-                "type": "catalog_api",
-                "source": "catalog",
-                "id": api_id,
-                "api_id": api_id,
-                "summary": f"{api_id} — available in Jentic public catalog",
-                "description": None,
-                "score": 0.0,
-                "_links": {
-                    "catalog": f"/catalog/{api_id}",
-                    "credentials": f"/credentials",
-                    "github": f"https://github.com/{GITHUB_REPO}/tree/main/{entry['path']}",
-                },
-            })
+            out.append(
+                {
+                    "type": "catalog_api",
+                    "source": "catalog",
+                    "id": api_id,
+                    "api_id": api_id,
+                    "summary": f"{api_id} — available in Jentic public catalog",
+                    "description": None,
+                    "score": 0.0,
+                    "_links": {
+                        "catalog": f"/catalog/{api_id}",
+                        "credentials": "/credentials",
+                        "github": f"https://github.com/{GITHUB_REPO}/tree/main/{entry['path']}",
+                    },
+                }
+            )
 
     # ── Catalog workflow blending ──────────────────────────────────────────────
-    from src.routers.catalog import _load_workflow_manifest, _search_manifest as _search_wf_manifest
-
     wf_manifest = _load_workflow_manifest()
     if wf_manifest and q:
         # Match workflow sources by source_id/api_id
         wf_matches = [
-            e for e in wf_manifest
+            e
+            for e in wf_manifest
             if q.lower() in e["source_id"].lower() or q.lower() in e["api_id"].lower()
         ][:n]
         for entry in wf_matches:
@@ -162,23 +176,29 @@ async def search(
                 if api_id in covered_sub_apis:
                     continue
             else:
-                vendor = (api_id.split(".")[-2] + "." + api_id.split(".")[-1]) if "." in api_id else api_id
+                vendor = (
+                    (api_id.split(".")[-2] + "." + api_id.split(".")[-1])
+                    if "." in api_id
+                    else api_id
+                )
                 if vendor in covered_leaf_vendors:
                     continue
-            out.append({
-                "type": "catalog_workflow_source",
-                "source": "catalog",
-                "id": f"catalog:workflows:{entry['source_id']}",
-                "api_id": api_id,
-                "summary": f"{api_id} workflows — available in Jentic public catalog",
-                "description": f"Multi-step Arazzo workflows for {api_id}. Add credentials to import.",
-                "score": 0.0,
-                "_links": {
-                    "catalog_api": f"/catalog/{api_id}",
-                    "workflows": f"/workflows?source=catalog&q={api_id}",
-                    "credentials": "/credentials",
-                    "github": f"https://github.com/{GITHUB_REPO}/tree/main/{entry['path']}",
-                },
-            })
+            out.append(
+                {
+                    "type": "catalog_workflow_source",
+                    "source": "catalog",
+                    "id": f"catalog:workflows:{entry['source_id']}",
+                    "api_id": api_id,
+                    "summary": f"{api_id} workflows — available in Jentic public catalog",
+                    "description": f"Multi-step Arazzo workflows for {api_id}. Add credentials to import.",
+                    "score": 0.0,
+                    "_links": {
+                        "catalog_api": f"/catalog/{api_id}",
+                        "workflows": f"/workflows?source=catalog&q={api_id}",
+                        "credentials": "/credentials",
+                        "github": f"https://github.com/{GITHUB_REPO}/tree/main/{entry['path']}",
+                    },
+                }
+            )
 
     return out

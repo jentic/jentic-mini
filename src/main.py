@@ -1,6 +1,7 @@
 """
 Jentic Mini — main.py
 """
+
 import logging
 import os
 import re
@@ -8,40 +9,43 @@ import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, Request, Response
+import httpx
+from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.openapi.docs import get_redoc_html
 from fastapi.openapi.utils import get_openapi
-from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, HTMLResponse
-import httpx
+from fastapi.staticfiles import StaticFiles
 
 from src.auth import APIKeyMiddleware
-from src.negotiate import negotiate_middleware
+from src.brokers.pipedream import PipedreamOAuthBroker
+from src.config import APP_VERSION
 from src.db import run_migrations, setup_state
+from src.negotiate import negotiate_middleware
+from src.oauth_broker import registry as oauth_broker_registry
+from src.routers import access_requests as access_requests_router
 from src.routers import apis as apis_router
-from src.routers import search as search_router
+from src.routers import broker as broker_router
+from src.routers import capability as capability_router
+from src.routers import catalog as catalog_router
 from src.routers import credentials as creds_router
 from src.routers import debug as debug_router
-from src.routers import toolkits as toolkits_router
-from src.routers.toolkits import policy_router as toolkits_policy_router
-from src.routers import access_requests as access_requests_router
-from src.routers import notes as notes_router
-from src.routers import capability as capability_router
-from src.routers import workflows as workflows_router
-from src.routers import import_ as import_router
-from src.routers import catalog as catalog_router
-from src.routers import traces as traces_router
-from src.routers import broker as broker_router
-from src.routers import overlays as overlays_router
-from src.routers import jobs as jobs_router
-from src.routers import user as user_router
 from src.routers import default_key as default_key_router
+from src.routers import import_ as import_router
+from src.routers import jobs as jobs_router
+from src.routers import notes as notes_router
 from src.routers import oauth_brokers as oauth_brokers_router
+from src.routers import overlays as overlays_router
+from src.routers import search as search_router
+from src.routers import toolkits as toolkits_router
+from src.routers import traces as traces_router
+from src.routers import user as user_router
+from src.routers import workflows as workflows_router
 from src.routers.apis import rebuild_index_on_startup
 from src.routers.catalog import refresh_catalog_if_stale
-from src.config import APP_VERSION
-from src.startup import self_register, seed_broker_apps, _backfill_credential_routes
+from src.routers.toolkits import policy_router as toolkits_policy_router
+from src.startup import _backfill_credential_routes, seed_broker_apps, self_register
 from src.utils import build_absolute_url
+
 
 logging.basicConfig(level=(os.getenv("LOG_LEVEL") or "info").upper())
 logging.getLogger("aiosqlite").setLevel(logging.WARNING)
@@ -66,8 +70,6 @@ async def lifespan(app: FastAPI):
     log.info("Jentic seeding broker app mappings")
     await seed_broker_apps()
     log.info("Jentic loading OAuth brokers")
-    from src.brokers.pipedream import PipedreamOAuthBroker
-    from src.oauth_broker import registry as oauth_broker_registry
     _pd_brokers = await PipedreamOAuthBroker.from_db()
     for _b in _pd_brokers:
         oauth_broker_registry.register(_b)
@@ -167,27 +169,24 @@ app = FastAPI(
             "description": "Self-hosted instance (HTTPS)",
             "variables": {
                 "hostname": {"default": "localhost", "description": "Server hostname"},
-                "port": {"default": "8900", "description": "Server port"}
-            }
+                "port": {"default": "8900", "description": "Server port"},
+            },
         },
         {
             "url": "http://{hostname}:{port}",
             "description": "Local development only (HTTP)",
             "variables": {
                 "hostname": {"default": "localhost", "description": "Server hostname"},
-                "port": {"default": "8900", "description": "Server port"}
-            }
-        }
+                "port": {"default": "8900", "description": "Server port"},
+            },
+        },
     ],
     contact={
         "name": "Jentic Mini Support",
         "url": "https://github.com/jentic/jentic-mini",
-        "email": "hello@jentic.com"
+        "email": "hello@jentic.com",
     },
-    license_info={
-        "name": "Apache 2.0",
-        "identifier": "Apache-2.0"
-    },
+    license_info={"name": "Apache 2.0", "identifier": "Apache-2.0"},
 )
 
 app.add_middleware(APIKeyMiddleware)
@@ -202,7 +201,9 @@ app.include_router(import_router.router, tags=["catalog"])
 app.include_router(catalog_router.router, tags=["catalog"])
 app.include_router(jobs_router.router)
 app.include_router(traces_router.router, tags=["observe"])
-app.include_router(overlays_router.router, tags=["catalog"])  # must be before apis (path converter conflict)
+app.include_router(
+    overlays_router.router, tags=["catalog"]
+)  # must be before apis (path converter conflict)
 app.include_router(apis_router.router, tags=["catalog"])
 app.include_router(search_router.router, tags=["search"])
 app.include_router(creds_router.router, tags=["credentials"])
@@ -214,6 +215,7 @@ app.include_router(debug_router.router, include_in_schema=False)
 app.include_router(user_router.router)
 app.include_router(default_key_router.router)
 app.include_router(oauth_brokers_router.router, tags=["credentials"])
+
 
 # ── Meta routes: health + root — MUST be before broker catch-all ─────────────
 @app.get("/health", tags=["meta"])
@@ -248,13 +250,15 @@ async def health(request: Request):
             "status": "account_required",
             "message": "Agent key is active. No admin account has been created yet.",
             "next_step": "Tell your user to visit setup_url to create their admin account. "
-                         "Your agent key works immediately — you do not need to wait.",
+            "Your agent key works immediately — you do not need to wait.",
             "setup_url": build_absolute_url(request, "/user/create"),
             "version": APP_VERSION,
         }
 
     # Fully set up
-    async with __import__("aiosqlite").connect(__import__("src.db", fromlist=["DB_PATH"]).DB_PATH) as db:
+    async with __import__("aiosqlite").connect(
+        __import__("src.db", fromlist=["DB_PATH"]).DB_PATH
+    ) as db:
         async with db.execute("SELECT COUNT(*) FROM apis") as cur:
             (api_count,) = await cur.fetchone()
 
@@ -403,9 +407,19 @@ if STATIC_DIR.exists():
 # API clients (Accept: application/json) get the API response.
 # Browsers (Accept: text/html) get the React SPA.
 _SPA_PATHS = {
-    "/approve", "/search", "/catalog", "/workflows", "/toolkits",
-    "/credentials", "/traces", "/jobs", "/oauth-brokers", "/setup", "/login",
+    "/approve",
+    "/search",
+    "/catalog",
+    "/workflows",
+    "/toolkits",
+    "/credentials",
+    "/traces",
+    "/jobs",
+    "/oauth-brokers",
+    "/setup",
+    "/login",
 }
+
 
 @app.middleware("http")
 async def spa_middleware(request: Request, call_next):
@@ -415,7 +429,11 @@ async def spa_middleware(request: Request, call_next):
         wants_html = any(part.strip().startswith("text/html") for part in accept.split(","))
         # Exclude connect-callback from SPA interception (real GET endpoint, browser redirect)
         is_spa_excluded = bool(re.match(r"^/oauth-brokers/[^/]+/connect-callback", path))
-        if wants_html and not is_spa_excluded and any(path == p or path.startswith(p + "/") for p in _SPA_PATHS):
+        if (
+            wants_html
+            and not is_spa_excluded
+            and any(path == p or path.startswith(p + "/") for p in _SPA_PATHS)
+        ):
             index_path = STATIC_DIR / "index.html"
             if index_path.exists():
                 resp = FileResponse(index_path)
@@ -424,6 +442,7 @@ async def spa_middleware(request: Request, call_next):
                 return resp
             return Response(content="UI not built", status_code=404, media_type="text/plain")
     return await call_next(request)
+
 
 # ── Broker catch-all — MUST be registered last ────────────────────────────────
 app.include_router(broker_router.router)
@@ -487,6 +506,7 @@ _HUMAN_ONLY_OPERATIONS: set[tuple[str, str]] = {
     # User management
     ("/user/logout", "post"),
 }
+
 
 def custom_openapi():
     if app.openapi_schema:

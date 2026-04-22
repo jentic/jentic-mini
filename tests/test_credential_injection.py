@@ -4,15 +4,15 @@ Uses simulate mode (X-Jentic-Simulate: true) to inspect injected headers
 without making real upstream calls. Covers bearer, basic, apiKey (header),
 and compound (Secret + Identity) two-header auth schemes.
 """
+
 import asyncio
-import base64
 import json
 import os
 
 import aiosqlite
 import pytest
-
 from src import vault
+
 
 BEARER_HOST = "127.0.10.1"
 BASIC_HOST = "127.0.10.2"
@@ -34,7 +34,9 @@ def injection_credentials(client, admin_session, agent_key_header):
                 "value": "my-secret-bearer-token",
                 "api_id": BEARER_HOST,
                 "auth_type": "bearer",
-                "scheme": json.dumps({"in": "header", "name": "Authorization", "prefix": "Bearer "}),
+                "scheme": json.dumps(
+                    {"in": "header", "name": "Authorization", "prefix": "Bearer "}
+                ),
                 "host": BEARER_HOST,
             },
             {
@@ -44,7 +46,14 @@ def injection_credentials(client, admin_session, agent_key_header):
                 "api_id": BASIC_HOST,
                 "auth_type": "basic",
                 "identity": "myuser",
-                "scheme": json.dumps({"in": "header", "name": "Authorization", "prefix": "Basic ", "encode": "base64"}),
+                "scheme": json.dumps(
+                    {
+                        "in": "header",
+                        "name": "Authorization",
+                        "prefix": "Basic ",
+                        "encode": "base64",
+                    }
+                ),
                 "host": BASIC_HOST,
             },
             {
@@ -63,10 +72,12 @@ def injection_credentials(client, admin_session, agent_key_header):
                 "api_id": COMPOUND_HOST,
                 "auth_type": "apiKey",
                 "identity": "admin-user",
-                "scheme": json.dumps({
-                    "secret": {"in": "header", "name": "Api-Key"},
-                    "identity": {"in": "header", "name": "Api-Username"},
-                }),
+                "scheme": json.dumps(
+                    {
+                        "secret": {"in": "header", "name": "Api-Key"},
+                        "identity": {"in": "header", "name": "Api-Username"},
+                    }
+                ),
                 "host": COMPOUND_HOST,
             },
         ]
@@ -78,9 +89,16 @@ def injection_credentials(client, admin_session, agent_key_header):
                     "INSERT OR IGNORE INTO credentials "
                     "(id, label, env_var, encrypted_value, api_id, auth_type, identity, scheme) "
                     "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                    (c["id"], c["label"], c["id"].upper().replace("-", "_"),
-                     enc, c["api_id"], c["auth_type"],
-                     c.get("identity"), c.get("scheme")),
+                    (
+                        c["id"],
+                        c["label"],
+                        c["id"].upper().replace("-", "_"),
+                        enc,
+                        c["api_id"],
+                        c["auth_type"],
+                        c.get("identity"),
+                        c.get("scheme"),
+                    ),
                 )
                 await db.execute(
                     "INSERT OR IGNORE INTO credential_routes (credential_id, host) VALUES (?, ?)",

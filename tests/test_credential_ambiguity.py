@@ -6,13 +6,13 @@ Uses direct DB setup to create the ambiguous state, then makes broker
 requests to verify header behavior. The upstream calls will fail (non-routable)
 but we can still verify the credential selection via response headers.
 """
+
 import asyncio
 import os
 import uuid
 
 import aiosqlite
 import pytest
-
 import src.vault as vault
 
 
@@ -86,13 +86,25 @@ def ambiguous_credentials(client, admin_session):
                 "INSERT OR IGNORE INTO oauth_broker_accounts "
                 "(id, broker_id, external_user_id, api_host, app_slug, account_id, label, healthy, synced_at) "
                 "VALUES (?, ?, 'default', ?, ?, ?, 'Calendar', 1, 0)",
-                (f"{BROKER_ID}:default:{API_HOST}:{ACCOUNT_ID_A}", BROKER_ID, API_HOST, APP_SLUG_A, ACCOUNT_ID_A),
+                (
+                    f"{BROKER_ID}:default:{API_HOST}:{ACCOUNT_ID_A}",
+                    BROKER_ID,
+                    API_HOST,
+                    APP_SLUG_A,
+                    ACCOUNT_ID_A,
+                ),
             )
             await db.execute(
                 "INSERT OR IGNORE INTO oauth_broker_accounts "
                 "(id, broker_id, external_user_id, api_host, app_slug, account_id, label, healthy, synced_at) "
                 "VALUES (?, ?, 'default', ?, ?, ?, 'Gmail', 1, 0)",
-                (f"{BROKER_ID}:default:{API_HOST}:{ACCOUNT_ID_B}", BROKER_ID, API_HOST, APP_SLUG_B, ACCOUNT_ID_B),
+                (
+                    f"{BROKER_ID}:default:{API_HOST}:{ACCOUNT_ID_B}",
+                    BROKER_ID,
+                    API_HOST,
+                    APP_SLUG_B,
+                    ACCOUNT_ID_B,
+                ),
             )
 
             await db.commit()
@@ -103,8 +115,14 @@ def ambiguous_credentials(client, admin_session):
     async def teardown():
         db_path = os.environ["DB_PATH"]
         async with aiosqlite.connect(db_path) as db:
-            await db.execute("DELETE FROM credential_routes WHERE credential_id IN (?, ?)", (CRED_ID_A, CRED_ID_B))
-            await db.execute("DELETE FROM toolkit_credentials WHERE credential_id IN (?, ?)", (CRED_ID_A, CRED_ID_B))
+            await db.execute(
+                "DELETE FROM credential_routes WHERE credential_id IN (?, ?)",
+                (CRED_ID_A, CRED_ID_B),
+            )
+            await db.execute(
+                "DELETE FROM toolkit_credentials WHERE credential_id IN (?, ?)",
+                (CRED_ID_A, CRED_ID_B),
+            )
             await db.execute("DELETE FROM credentials WHERE id IN (?, ?)", (CRED_ID_A, CRED_ID_B))
             await db.execute("DELETE FROM oauth_broker_accounts WHERE broker_id=?", (BROKER_ID,))
             await db.execute("DELETE FROM oauth_brokers WHERE id=?", (BROKER_ID,))
