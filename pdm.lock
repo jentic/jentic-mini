@@ -5,7 +5,7 @@
 groups = ["default", "dev"]
 strategy = ["inherit_metadata"]
 lock_version = "4.5.0"
-content_hash = "sha256:07c9cde53baa0dce75dce892b4c9a068e53dd39b4373a7b2da0026a2f6fdf8fa"
+content_hash = "sha256:81830e10b88b5f4e901fa95f7f6fa7d7dd8cd0999d20ba11ea736a5e4c8fba72"
 
 [[metadata.targets]]
 requires_python = ">=3.11"
@@ -211,6 +211,24 @@ files = [
 ]
 
 [[package]]
+name = "arazzo-runner"
+version = "0.9.5"
+requires_python = "<4.0,>=3.11"
+summary = "Execution libraries and test tools for Arazzo workflows and Open API operations"
+groups = ["default"]
+dependencies = [
+    "jsonpath-ng>=1.5.0",
+    "jsonpointer>=3.0.0",
+    "pydantic>=2.0.0",
+    "pyyaml>=6.0",
+    "requests>=2.28.0",
+]
+files = [
+    {file = "arazzo_runner-0.9.5-py3-none-any.whl", hash = "sha256:2a114f5f45e05e51f677e586570da0372319046806e8010a649b63641d213ef6"},
+    {file = "arazzo_runner-0.9.5.tar.gz", hash = "sha256:fa1fb68aad6d05a33d9d7f6cdfec08eec72e58d0037f7ce9eedea973fe29f9cf"},
+]
+
+[[package]]
 name = "attrs"
 version = "26.1.0"
 requires_python = ">=3.9"
@@ -295,13 +313,13 @@ files = [
 
 [[package]]
 name = "certifi"
-version = "2026.2.25"
+version = "2026.4.22"
 requires_python = ">=3.7"
 summary = "Python package for providing Mozilla's CA Bundle."
 groups = ["default", "dev"]
 files = [
-    {file = "certifi-2026.2.25-py3-none-any.whl", hash = "sha256:027692e4402ad994f1c42e52a4997a9763c646b73e4096e4d5d6db8af1d6f0fa"},
-    {file = "certifi-2026.2.25.tar.gz", hash = "sha256:e887ab5cee78ea814d3472169153c2d12cd43b14bd03329a39a9c6e2e80bfba7"},
+    {file = "certifi-2026.4.22-py3-none-any.whl", hash = "sha256:3cb2210c8f88ba2318d29b0388d1023c8492ff72ecdde4ebdaddbb13a31b1c4a"},
+    {file = "certifi-2026.4.22.tar.gz", hash = "sha256:8d455352a37b71bf76a79caa83a3d6c25afee4a385d632127b6afb3963f1c580"},
 ]
 
 [[package]]
@@ -382,7 +400,7 @@ name = "charset-normalizer"
 version = "3.4.7"
 requires_python = ">=3.7"
 summary = "The Real First Universal Charset Detector. Open, modern and actively maintained alternative to Chardet."
-groups = ["dev"]
+groups = ["default", "dev"]
 files = [
     {file = "charset_normalizer-3.4.7-cp311-cp311-macosx_10_9_universal2.whl", hash = "sha256:7641bb8895e77f921102f72833904dcd9901df5d6d72a2ab8f31d04b7e51e4e7"},
     {file = "charset_normalizer-3.4.7-cp311-cp311-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:202389074300232baeb53ae2569a60901f7efadd4245cf3a3bf0617d60b439d7"},
@@ -938,6 +956,27 @@ groups = ["default"]
 files = [
     {file = "jentic_openapi_common-1.0.0a55-py3-none-any.whl", hash = "sha256:99a47697442749b4f2880bfdd2b30ba3a383024005a7368d945beaaed03df962"},
     {file = "jentic_openapi_common-1.0.0a55.tar.gz", hash = "sha256:6f36fb17bfad598a507aa14497ebc2aa00d121cb80252bd46773c7894cb9bdfb"},
+]
+
+[[package]]
+name = "jsonpath-ng"
+version = "1.8.0"
+summary = "A final implementation of JSONPath for Python that aims to be standard compliant, including arithmetic and binary comparison operators and providing clear AST for metaprogramming."
+groups = ["default"]
+files = [
+    {file = "jsonpath_ng-1.8.0-py3-none-any.whl", hash = "sha256:b8dde192f8af58d646fc031fac9c99fe4d00326afc4148f1f043c601a8cfe138"},
+    {file = "jsonpath_ng-1.8.0.tar.gz", hash = "sha256:54252968134b5e549ea5b872f1df1168bd7defe1a52fed5a358c194e1943ddc3"},
+]
+
+[[package]]
+name = "jsonpointer"
+version = "3.1.1"
+requires_python = ">=3.10"
+summary = "Identify specific nodes in a JSON document (RFC 6901) "
+groups = ["default"]
+files = [
+    {file = "jsonpointer-3.1.1-py3-none-any.whl", hash = "sha256:8ff8b95779d071ba472cf5bc913028df06031797532f08a7d5b602d8b2a488ca"},
+    {file = "jsonpointer-3.1.1.tar.gz", hash = "sha256:0b801c7db33a904024f6004d526dcc53bbb8a4a0f4e32bfd10beadf60adf1900"},
 ]
 
 [[package]]
@@ -1801,7 +1840,7 @@ name = "requests"
 version = "2.33.1"
 requires_python = ">=3.10"
 summary = "Python HTTP for Humans."
-groups = ["dev"]
+groups = ["default", "dev"]
 dependencies = [
     "certifi>=2023.5.7",
     "charset-normalizer<4,>=2",
@@ -2132,7 +2171,7 @@ name = "urllib3"
 version = "2.6.3"
 requires_python = ">=3.9"
 summary = "HTTP library with thread-safe connection pooling, file post, and more."
-groups = ["dev"]
+groups = ["default", "dev"]
 files = [
     {file = "urllib3-2.6.3-py3-none-any.whl", hash = "sha256:bf272323e553dfb2e87d9bfd225ca7b0f467b919d7bbd355436d3fd37cb0acd4"},
     {file = "urllib3-2.6.3.tar.gz", hash = "sha256:1b62b6884944a57dbe321509ab94fd4d3b307075e0c2eae991ac71ee15ad38ed"},

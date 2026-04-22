@@ -280,30 +280,6 @@ FROM executions ORDER BY created_at DESC LIMIT 20;
 
 ---
 
-## Vendored Arazzo Runner
-
-The arazzo-runner package is vendored at `/mnt/jentic-pe/vendor/arazzo-engine/`, branch `jpe-patches`.
-
-**Do not** `pip install arazzo-runner` from PyPI inside the container — the vendored version contains JPE-specific patches that enable broker routing.
-
-### Key patched files
-
-| File | What was changed |
-|---|---|
-| `models.py` | `RuntimeParams` extended with `auth_headers` and `server_base_url` |
-| `http.py` | `HTTPExecutor.execute_request` injects extra auth headers |
-| `runner.py` | `ArazzoRunner.__init__` accepts `runtime_params`; `_apply_jpe_runtime_params()` rewrites server URLs |
-
-### Upgrading the vendor fork
-
-If you need a feature from a newer upstream arazzo-runner:
-
-1. Check if it can be cherry-picked onto the `jpe-patches` branch
-2. If yes: `cd /mnt/jentic-pe/vendor/arazzo-engine && git fetch origin && git cherry-pick <commit>`
-3. If no: merge upstream `main` into `jpe-patches`, resolve conflicts, re-verify the patches still apply
-
-**Never** replace the vendor fork with a fresh PyPI install without re-applying the patches.
-
 ---
 
 ## Debug Endpoints

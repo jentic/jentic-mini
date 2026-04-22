@@ -20,6 +20,7 @@ dependencies = [
   "python-multipart>=0.0.26",
   "alembic>=1.18.4,<2",
   "jentic-openapi-common>=1.0.0a51",
+  "arazzo-runner>=0.9.5",
 ]
 
 [project.urls]

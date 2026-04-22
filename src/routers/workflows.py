@@ -638,19 +638,15 @@ async def _execute_workflow_core(
     # the broker can look up the right toolkit's credentials.
     # caller_api_key passed in as parameter
 
-    _VENDOR_PATH = "/app/vendor/arazzo-engine/runner"
     script = f"""
-import sys
-sys.path.insert(0, {repr(_VENDOR_PATH)})
 from arazzo_runner import ArazzoRunner
-from arazzo_runner.models import RuntimeParams
+import requests
 import json
 
-runner = ArazzoRunner.from_arazzo_path({repr(temp_arazzo)})
-# auth_headers injects X-Jentic-API-Key on every HTTP call the runner makes,
-# so the broker can authenticate and look up the correct toolkit credentials.
-rp = RuntimeParams(auth_headers={{"X-Jentic-API-Key": {repr(caller_api_key)}}})
-result = runner.execute_workflow({repr(workflow_id)}, {repr(inputs)}, runtime_params=rp)
+session = requests.Session()
+session.headers["X-Jentic-API-Key"] = {repr(caller_api_key)}
+runner = ArazzoRunner.from_arazzo_path({repr(temp_arazzo)}, http_client=session)
+result = runner.execute_workflow({repr(workflow_id)}, {repr(inputs)})
 if hasattr(result, '__dataclass_fields__') or hasattr(result, '__dict__'):
     out = {{
         'status': str(result.status),
