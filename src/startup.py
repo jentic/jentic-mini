@@ -20,10 +20,10 @@ import traceback
 import uuid
 
 import httpx
-from fastapi.openapi.utils import get_openapi as _get_openapi
+from fastapi.openapi.utils import get_openapi
 
 from src.auth import default_allowed_ips
-from src.brokers.pipedream import _API_ID_TO_PD_SLUG as _PIPEDREAM_APP_SEEDS
+from src.brokers.pipedream import _API_ID_TO_PD_SLUG
 from src.config import DATA_DIR, JENTIC_PUBLIC_HOSTNAME, SPECS_DIR
 from src.db import DEFAULT_TOOLKIT_ID, get_db
 from src.routers.import_ import _register_openapi
@@ -152,7 +152,7 @@ async def _ensure_spec_imported(app=None) -> None:
         # We don't call app.openapi() to avoid caching issues during lifespan.
         if app is None:
             raise ValueError("app instance required for spec import")
-        spec = _get_openapi(
+        spec = get_openapi(
             title=app.title,
             version=app.version,
             description=app.description,
@@ -268,7 +268,7 @@ async def seed_broker_apps(broker_id: str = "pipedream") -> None:
             local_api_ids = {r[0] for r in await cur.fetchall()}
 
         inserted = updated = 0
-        for api_id, broker_app_id in _PIPEDREAM_APP_SEEDS.items():
+        for api_id, broker_app_id in _API_ID_TO_PD_SLUG.items():
             if api_id not in local_api_ids:
                 continue
             await db.execute(

@@ -53,7 +53,7 @@ from jentic.apitools.openapi.common.uri import is_http_https_url
 import src.vault as vault
 from src.config import JENTIC_PUBLIC_HOSTNAME
 from src.db import DEFAULT_TOOLKIT_ID, get_db
-from src.oauth_broker import registry as _oauth_registry
+from src.oauth_broker import registry
 from src.openapi_helpers import agent_hints
 from src.routers.credentials import api_has_native_scheme
 from src.routers.jobs import _running_tasks, create_job, update_job
@@ -920,7 +920,7 @@ async def broker(request: Request, target: str):
                     if _eurow:
                         _ext_user = _eurow[0]
             _pd_broker = None
-            for _b in _oauth_registry.brokers:
+            for _b in registry.brokers:
                 if hasattr(_b, "proxy_request_with_account"):
                     _pd_broker = _b
                     break

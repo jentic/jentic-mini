@@ -1,6 +1,6 @@
 """Fernet-encrypted credential vault."""
 
-import json as _json
+import json
 import logging
 import os
 import re
@@ -305,7 +305,7 @@ async def create_credential(
         if not env_var:
             env_var = re.sub(r"[^a-zA-Z0-9]+", "_", cid).strip("_").upper()
 
-        sv_json = _json.dumps(server_variables) if server_variables else None
+        sv_json = json.dumps(server_variables) if server_variables else None
 
         # Derive routes if not explicitly provided
         if routes is None:
@@ -325,7 +325,7 @@ async def create_credential(
         # Auto-derive scheme if not explicitly provided
         if scheme is None:
             scheme = await derive_scheme_for_credential(api_id, scheme_name, identity)
-        scheme_json = _json.dumps(scheme) if scheme else None
+        scheme_json = json.dumps(scheme) if scheme else None
 
         await db.execute(
             "INSERT INTO credentials (id, label, env_var, encrypted_value, api_id, auth_type, identity, server_variables, scheme) VALUES (?,?,?,?,?,?,?,?,?)",
@@ -415,7 +415,7 @@ async def patch_credential(
                 (identity, cid),
             )
         if server_variables is not None:
-            sv_json = _json.dumps(server_variables) if server_variables else None
+            sv_json = json.dumps(server_variables) if server_variables else None
             await db.execute(
                 "UPDATE credentials SET server_variables=?, updated_at=unixepoch() WHERE id=?",
                 (sv_json, cid),
@@ -425,7 +425,7 @@ async def patch_credential(
         if scheme is not None:
             await db.execute(
                 "UPDATE credentials SET scheme=?, updated_at=unixepoch() WHERE id=?",
-                (_json.dumps(scheme), cid),
+                (json.dumps(scheme), cid),
             )
         elif any(x is not None for x in [api_id, scheme_name, identity]):
             async with db.execute(
@@ -441,7 +441,7 @@ async def patch_credential(
                 if _derived:
                     await db.execute(
                         "UPDATE credentials SET scheme=?, updated_at=unixepoch() WHERE id=?",
-                        (_json.dumps(_derived), cid),
+                        (json.dumps(_derived), cid),
                     )
 
         # Update credential_routes
@@ -463,9 +463,9 @@ async def patch_credential(
             if _row:
                 _current_api_id = api_id if api_id is not None else _row[0]
                 _current_sv_raw = (
-                    _json.dumps(server_variables) if server_variables is not None else _row[1]
+                    json.dumps(server_variables) if server_variables is not None else _row[1]
                 )
-                _current_sv = _json.loads(_current_sv_raw) if _current_sv_raw else None
+                _current_sv = json.loads(_current_sv_raw) if _current_sv_raw else None
                 computed_host = await _resolve_server_url(_current_api_id, _current_sv)
                 new_route = computed_host or _current_api_id
                 if new_route:
@@ -571,7 +571,7 @@ async def get_credentials_for_route(toolkit_id: str, host: str, path: str) -> li
             continue
         cid, enc_val, auth_type, identity, sv_raw, scheme_raw, api_id = row
         try:
-            server_variables = _json.loads(sv_raw) if sv_raw else None
+            server_variables = json.loads(sv_raw) if sv_raw else None
         except Exception:
             server_variables = None
         result.append(
@@ -581,7 +581,7 @@ async def get_credentials_for_route(toolkit_id: str, host: str, path: str) -> li
                 "auth_type": auth_type,
                 "identity": identity,
                 "server_variables": server_variables,
-                "scheme": _json.loads(scheme_raw) if scheme_raw else None,
+                "scheme": json.loads(scheme_raw) if scheme_raw else None,
                 "api_id": api_id,
             }
         )
@@ -595,7 +595,7 @@ def _row_to_dict(row) -> dict:
     # routes is synthetic — appended by _fetch_credential_row as the last element
     sv_raw = row[7] if len(row) > 7 else None
     try:
-        server_variables = _json.loads(sv_raw) if sv_raw else None
+        server_variables = json.loads(sv_raw) if sv_raw else None
     except Exception:
         server_variables = None
     scheme_raw = row[8] if len(row) > 8 else None
@@ -610,6 +610,6 @@ def _row_to_dict(row) -> dict:
         "auth_type": row[5] if len(row) > 5 else None,
         "identity": row[6] if len(row) > 6 else None,
         "server_variables": server_variables,
-        "scheme": _json.loads(scheme_raw) if scheme_raw else None,
+        "scheme": json.loads(scheme_raw) if scheme_raw else None,
         "routes": routes,
     }

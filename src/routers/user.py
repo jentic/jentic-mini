@@ -16,7 +16,7 @@ import logging
 import uuid
 from typing import Annotated
 
-import bcrypt as _bcrypt
+import bcrypt
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from fastapi.responses import RedirectResponse
 from fastapi.security import OAuth2PasswordRequestForm
@@ -94,7 +94,7 @@ async def create_user(body: UserCreate, request: Request, response: Response):
     if len(body.password) < 8:
         raise HTTPException(400, "Password must be at least 8 characters.")
 
-    pw_hash = _bcrypt.hashpw(body.password.encode(), _bcrypt.gensalt()).decode()
+    pw_hash = bcrypt.hashpw(body.password.encode(), bcrypt.gensalt()).decode()
     user_id = str(uuid.uuid4())
 
     async with get_db() as db:
@@ -187,7 +187,7 @@ async def login(
             row = await cur.fetchone()
 
     ip = client_ip(request)
-    if not row or not _bcrypt.checkpw(password.encode(), row["password_hash"].encode()):
+    if not row or not bcrypt.checkpw(password.encode(), row["password_hash"].encode()):
         audit_log.warning("LOGIN_FAILED user=%s ip=%s", username.strip(), ip)
         raise HTTPException(
             401,
@@ -254,7 +254,7 @@ async def token(form_data: OAuth2PasswordRequestForm = Depends()):
         ) as cur:
             row = await cur.fetchone()
 
-    if not row or not _bcrypt.checkpw(password.encode(), row["password_hash"].encode()):
+    if not row or not bcrypt.checkpw(password.encode(), row["password_hash"].encode()):
         raise HTTPException(
             401,
             detail={

@@ -14,7 +14,7 @@ as operation IDs. The backend detects them by matching the Jentic hostname.
 
 import asyncio
 import copy
-import html as _html
+import html
 import json
 import os
 import pathlib
@@ -370,19 +370,17 @@ async def get_workflow(
         )
 
     if "text/html" in accept:
-        _e = _html.escape
+        esc = html.escape
         steps_html = ""
         for s in meta.get("steps", []):
-            steps_html += (
-                f"<li><code>{_e(str(s.get('id', '')))}</code> — {_e(str(s.get('operation', '?')))}"
-            )
+            steps_html += f"<li><code>{esc(str(s.get('id', '')))}</code> — {esc(str(s.get('operation', '?')))}"
             if s.get("description"):
-                steps_html += f"<br><small>{_e(str(s['description']))}</small>"
+                steps_html += f"<br><small>{esc(str(s['description']))}</small>"
             steps_html += "</li>"
-        apis_html = ", ".join(f"<code>{_e(a)}</code>" for a in involved_apis) or "—"
-        html = f"""<!DOCTYPE html>
+        apis_html = ", ".join(f"<code>{esc(a)}</code>" for a in involved_apis) or "—"
+        body = f"""<!DOCTYPE html>
 <html>
-<head><title>{_e(name)} — Jentic Workflow</title>
+<head><title>{esc(name)} — Jentic Workflow</title>
 <style>body{{font-family:sans-serif;max-width:800px;margin:40px auto;padding:0 20px}}
 code{{background:#f4f4f4;padding:2px 6px;border-radius:3px}}
 pre{{background:#f4f4f4;padding:16px;border-radius:6px;overflow:auto}}
@@ -390,19 +388,19 @@ pre{{background:#f4f4f4;padding:16px;border-radius:6px;overflow:auto}}
 h1 span{{color:#888;font-weight:normal;font-size:.6em;margin-left:12px}}</style>
 </head>
 <body>
-<h1>{_e(name)} <span>workflow</span></h1>
-<p class="meta">Capability ID: <code>{_e(capability_id)}</code></p>
-<p>{_e(description or "")}</p>
+<h1>{esc(name)} <span>workflow</span></h1>
+<p class="meta">Capability ID: <code>{esc(capability_id)}</code></p>
+<p>{esc(description or "")}</p>
 <h2>Steps ({steps_count})</h2>
 <ol>{steps_html}</ol>
 <h2>APIs used</h2>
 <p>{apis_html}</p>
 <h2>Execute</h2>
-<p>POST to <code>https://{JENTIC_PUBLIC_HOSTNAME}/workflows/{_e(slug)}</code> with your inputs and <code>X-Jentic-API-Key</code> header.</p>
+<p>POST to <code>https://{JENTIC_PUBLIC_HOSTNAME}/workflows/{esc(slug)}</code> with your inputs and <code>X-Jentic-API-Key</code> header.</p>
 <h2>Arazzo source</h2>
-<pre>{_e(json.dumps(doc, indent=2)[:4000]) if doc else ""}</pre>
+<pre>{esc(json.dumps(doc, indent=2)[:4000]) if doc else ""}</pre>
 </body></html>"""
-        return HTMLResponse(html)
+        return HTMLResponse(body)
 
     if "text/markdown" in accept:
         steps_md = "\n".join(
