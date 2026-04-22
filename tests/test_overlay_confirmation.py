@@ -4,6 +4,7 @@ The broker calls confirm_overlay() after a successful upstream response.
 These tests exercise the function directly since we can't get a < 400
 response from non-routable test hosts.
 """
+
 import asyncio
 import json
 import os
@@ -11,6 +12,7 @@ import uuid
 
 import aiosqlite
 import pytest
+from src.routers.overlays import confirm_overlay
 
 
 @pytest.fixture(scope="module")
@@ -38,11 +40,22 @@ def test_confirm_overlay_transitions_pending_to_confirmed(client, admin_session,
         db_path = os.environ["DB_PATH"]
         overlay_id = f"test-overlay-{uuid.uuid4().hex[:8]}"
         execution_id = f"exec-{uuid.uuid4().hex[:8]}"
-        overlay_doc = json.dumps({
-            "actions": [{"target": "$", "update": {"components": {"securitySchemes": {
-                "BearerAuth": {"type": "http", "scheme": "bearer"}
-            }}}}]
-        })
+        overlay_doc = json.dumps(
+            {
+                "actions": [
+                    {
+                        "target": "$",
+                        "update": {
+                            "components": {
+                                "securitySchemes": {
+                                    "BearerAuth": {"type": "http", "scheme": "bearer"}
+                                }
+                            }
+                        },
+                    }
+                ]
+            }
+        )
 
         # Insert a pending overlay
         async with aiosqlite.connect(db_path) as db:
@@ -53,7 +66,6 @@ def test_confirm_overlay_transitions_pending_to_confirmed(client, admin_session,
             await db.commit()
 
         # Confirm it
-        from src.routers.overlays import confirm_overlay
         await confirm_overlay(test_api, execution_id)
 
         # Verify it's confirmed
@@ -88,7 +100,6 @@ def test_confirm_overlay_skips_when_no_pending(client, admin_session, test_api):
             await db.commit()
 
         # Call confirm — should not error, should not change anything
-        from src.routers.overlays import confirm_overlay
         await confirm_overlay(test_api, "exec-noop")
 
         # Verify the confirmed overlay is unchanged
@@ -99,7 +110,9 @@ def test_confirm_overlay_skips_when_no_pending(client, admin_session, test_api):
             ) as cur:
                 row = await cur.fetchone()
 
-        assert row[0] is None or row[0] != "exec-noop", "Should not have updated the already-confirmed overlay"
+        assert row[0] is None or row[0] != "exec-noop", (
+            "Should not have updated the already-confirmed overlay"
+        )
 
     asyncio.run(run())
 
@@ -124,7 +137,6 @@ def test_confirm_overlay_only_confirms_first_pending(client, admin_session, test
             )
             await db.commit()
 
-        from src.routers.overlays import confirm_overlay
         await confirm_overlay(test_api, "exec-first-only")
 
         async with aiosqlite.connect(db_path) as db:

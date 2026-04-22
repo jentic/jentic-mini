@@ -49,9 +49,13 @@ def test_default_toolkit_counts_all_credentials(client, admin_session):
 def test_create_and_list_key(client, admin_session):
     """POST /toolkits/{id}/keys creates a key, GET lists it."""
     # Create a key
-    resp = client.post("/toolkits/default/keys", cookies=admin_session, json={
-        "label": "test-key",
-    })
+    resp = client.post(
+        "/toolkits/default/keys",
+        cookies=admin_session,
+        json={
+            "label": "test-key",
+        },
+    )
     assert resp.status_code in (200, 201), f"Key creation failed: {resp.text}"
     data = resp.json()
     assert "key" in data  # The raw key is returned once

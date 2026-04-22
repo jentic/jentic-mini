@@ -16,12 +16,14 @@ This abstraction exists because:
 - When Jentic gets its own approvals, swap PipedreamOAuthBroker for
   JenticOAuthBroker with zero changes to the broker or API surface
 """
+
 from __future__ import annotations
 
 import logging
 from typing import Protocol, runtime_checkable
 
 import httpx
+
 
 log = logging.getLogger("jentic.oauth_broker")
 
@@ -77,17 +79,12 @@ class OAuthBrokerRegistry:
 
     def deregister(self, broker_id: str) -> None:
         """Remove broker(s) with the given id."""
-        self._brokers = [
-            b for b in self._brokers
-            if getattr(b, "broker_id", None) != broker_id
-        ]
+        self._brokers = [b for b in self._brokers if getattr(b, "broker_id", None) != broker_id]
 
     def clear(self) -> None:
         self._brokers.clear()
 
-    async def find_broker(
-        self, api_host: str, external_user_id: str
-    ) -> OAuthBroker | None:
+    async def find_broker(self, api_host: str, external_user_id: str) -> OAuthBroker | None:
         """Return the first broker that covers this host + user, or None."""
         for broker in self._brokers:
             try:

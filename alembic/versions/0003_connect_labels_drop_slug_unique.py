@@ -11,9 +11,11 @@ SQLite does not support DROP CONSTRAINT, so we recreate the table without it.
 Revision ID: 0003
 Revises: 0002
 """
+
 from __future__ import annotations
 
 from alembic import op
+
 
 revision = "0003"
 down_revision = "0002"

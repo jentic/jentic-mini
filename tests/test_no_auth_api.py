@@ -8,13 +8,14 @@ a purely route-based model:
   - auth_type=none credential  → forward without injecting auth headers  → 502 (unreachable)
   - no credential for host     → 403 policy_denied (fail-closed)
 """
+
 import asyncio
 import os
 
 import aiosqlite
 import pytest
-
 from src import vault
+
 
 NO_AUTH_HOST = "127.0.0.3"
 AUTH_HOST = "127.0.0.4"
@@ -53,7 +54,9 @@ def registered_apis(client, agent_key_header, admin_session):
         db_path = os.environ["DB_PATH"]
         async with aiosqlite.connect(db_path) as db:
             await db.execute("DELETE FROM credential_routes WHERE credential_id='no-auth-api-test'")
-            await db.execute("DELETE FROM toolkit_credentials WHERE credential_id='no-auth-api-test'")
+            await db.execute(
+                "DELETE FROM toolkit_credentials WHERE credential_id='no-auth-api-test'"
+            )
             await db.execute("DELETE FROM credentials WHERE id='no-auth-api-test'")
             await db.commit()
 

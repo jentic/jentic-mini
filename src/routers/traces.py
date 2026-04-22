@@ -9,21 +9,25 @@ Routes:
   GET /traces             list recent execution traces (paginated)
   GET /traces/{id}        full trace with step-level detail
 """
+
 import json
 import logging
 import uuid
-from typing import Annotated, Any
+from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, Path, Query
+
 from src.db import get_db
-from src.models import TraceOut, TraceListPage
+from src.models import TraceListPage, TraceOut
 from src.openapi_helpers import agent_hints
+
 
 router = APIRouter()
 log = logging.getLogger("jentic.traces")
 
 
 # ── DB helpers ────────────────────────────────────────────────────────────────
+
 
 async def write_trace(
     *,
@@ -54,13 +58,24 @@ async def write_trace(
                  duration_ms=excluded.duration_ms,
                  error=excluded.error,
                  completed_at=unixepoch()""",
-            (trace_id, toolkit_id, operation_id, workflow_id, spec_path,
-             status, http_status, duration_ms, error),
+            (
+                trace_id,
+                toolkit_id,
+                operation_id,
+                workflow_id,
+                spec_path,
+                status,
+                http_status,
+                duration_ms,
+                error,
+            ),
         )
 
         if step_outputs:
             for step_id, step_data in step_outputs.items():
-                err_ctx = step_data.get("runner_error_context") if isinstance(step_data, dict) else None
+                err_ctx = (
+                    step_data.get("runner_error_context") if isinstance(step_data, dict) else None
+                )
                 step_http = err_ctx.get("http_code") if isinstance(err_ctx, dict) else None
                 step_err = step_data.get("error") if isinstance(step_data, dict) else None
                 await db.execute(
@@ -94,6 +109,7 @@ async def safe_write_trace(**kwargs) -> None:
 
 # ── Routes ────────────────────────────────────────────────────────────────────
 
+
 @router.get(
     "/traces",
     summary="List execution traces — audit recent broker and workflow calls",
@@ -105,12 +121,14 @@ async def safe_write_trace(**kwargs) -> None:
         related_operations=[
             "GET /traces/{id} — get full trace with step-by-step detail",
             "GET /{target} (broker) — returns X-Jentic-Execution-Id header pointing to trace",
-            "POST /workflows/{slug} — workflow execution returns trace_id in response body"
-        ]
+            "POST /workflows/{slug} — workflow execution returns trace_id in response body",
+        ],
     ),
 )
 async def list_traces(
-    limit: Annotated[int, Query(description="Maximum number of traces to return (1-500)", ge=1, le=500)] = 20,
+    limit: Annotated[
+        int, Query(description="Maximum number of traces to return (1-500)", ge=1, le=500)
+    ] = 20,
     offset: Annotated[int, Query(description="Number of traces to skip for pagination", ge=0)] = 0,
 ):
     """Returns recent execution traces with status, capability id, toolkit, timestamp, and HTTP status. Use GET /traces/{trace_id} for step-level detail."""
@@ -157,17 +175,19 @@ async def list_traces(
         when_to_use="Use after executing a broker call or workflow to retrieve the full execution trace with step-by-step details. Essential for debugging workflow failures — shows which step failed, what inputs were used, and what error was returned. Trace ID comes from X-Jentic-Execution-Id response header (broker calls) or trace_id in response body (workflows).",
         prerequisites=[
             "Requires authentication (toolkit key or human session)",
-            "Valid trace ID from a previous execution (format: exec_{12chars})"
+            "Valid trace ID from a previous execution (format: exec_{12chars})",
         ],
         avoid_when="Do not use for browsing recent traces — use GET /traces with pagination instead.",
         related_operations=[
             "GET /traces — list recent traces when you don't have a specific trace ID yet",
             "GET /{target} (broker) — execution returns X-Jentic-Execution-Id header",
-            "POST /workflows/{slug} — workflow execution returns trace_id field"
-        ]
+            "POST /workflows/{slug} — workflow execution returns trace_id field",
+        ],
     ),
 )
-async def get_trace(trace_id: Annotated[str, Path(description="Trace ID (format: exec_{12chars})")]):
+async def get_trace(
+    trace_id: Annotated[str, Path(description="Trace ID (format: exec_{12chars})")],
+):
     """Returns the full execution trace with all steps: capability called, inputs, outputs, HTTP status, and timing. Useful for debugging failed workflow steps."""
     async with get_db() as db:
         async with db.execute(

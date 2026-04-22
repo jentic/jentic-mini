@@ -11,49 +11,81 @@ Synchronous (no job queue) — suitable for Jentic's local deployment.
 
 Authentication: requires toolkit key OR human session (agent-accessible).
 """
+
 import json
 import logging
 import re
-import uuid
-import os
-import urllib.request
 import urllib.error
-import yaml
+import urllib.request
+import uuid
 from pathlib import Path
-from typing import Annotated, Any
+from urllib.parse import urlparse
 
-from fastapi import APIRouter, Body, HTTPException
-from pydantic import BaseModel, Field
-from src.validators import NormModel, NormStr
-
+import yaml
+from fastapi import APIRouter
 from jentic.apitools.openapi.common.uri import is_http_https_url
-from src.db import get_db
+from pydantic import Field
+
 from src.bm25 import get_index
-import src.vault as vault
+from src.config import SPECS_DIR, WORKFLOWS_DIR
+from src.db import get_db
 from src.models import ImportOut
 from src.openapi_helpers import agent_hints
+from src.routers.apis import (
+    _derive_api_id,
+    _is_private_server_url,
+    _parse_operations,
+    _rebuild_index,
+)
+from src.routers.catalog import lazy_import_catalog_workflows
+from src.routers.workflows import workflow_capability_id
+from src.validators import NormModel, NormStr
+
 
 log = logging.getLogger("jentic")
 router = APIRouter()
 
-from src.config import SPECS_DIR, WORKFLOWS_DIR
+
 SPECS_DIR.mkdir(parents=True, exist_ok=True)
 WORKFLOWS_DIR.mkdir(parents=True, exist_ok=True)
 
 
 class ImportSource(NormModel):
     """Single import source for an OpenAPI spec or Arazzo workflow. Can be local file, URL, or inline content."""
-    type: NormStr = Field(description="Source type: 'path' (local file), 'url' (fetch from URL), or 'inline' (spec content in request)")
-    path: str | None = Field(default=None, description="Local file system path (required if type='path')")
-    url: str | None = Field(default=None, examples=["https://api.example.com/openapi.json"], description="Remote spec URL (required if type='url')")
-    filename: str | None = Field(default=None, examples=["my-api.json"], description="Override filename for saved spec (optional)")
-    content: str | None = Field(default=None, description="Inline spec content as JSON or YAML string (required if type='inline')")
-    force_api_id: str | None = Field(default=None, examples=["github"], description="Override derived API ID with catalog canonical ID (optional)")
+
+    type: NormStr = Field(
+        description="Source type: 'path' (local file), 'url' (fetch from URL), or 'inline' (spec content in request)"
+    )
+    path: str | None = Field(
+        default=None, description="Local file system path (required if type='path')"
+    )
+    url: str | None = Field(
+        default=None,
+        examples=["https://api.example.com/openapi.json"],
+        description="Remote spec URL (required if type='url')",
+    )
+    filename: str | None = Field(
+        default=None,
+        examples=["my-api.json"],
+        description="Override filename for saved spec (optional)",
+    )
+    content: str | None = Field(
+        default=None,
+        description="Inline spec content as JSON or YAML string (required if type='inline')",
+    )
+    force_api_id: str | None = Field(
+        default=None,
+        examples=["github"],
+        description="Override derived API ID with catalog canonical ID (optional)",
+    )
 
 
 class ImportRequest(NormModel):
     """Batch import request for multiple OpenAPI specs or Arazzo workflows. Sources processed in parallel."""
-    sources: list[ImportSource] = Field(description="Array of import sources (OpenAPI specs or Arazzo workflows) to register in the catalog")
+
+    sources: list[ImportSource] = Field(
+        description="Array of import sources (OpenAPI specs or Arazzo workflows) to register in the catalog"
+    )
 
 
 def _load_doc(source: ImportSource) -> tuple[dict, str | None]:
@@ -76,11 +108,23 @@ def _load_doc(source: ImportSource) -> tuple[dict, str | None]:
         req = urllib.request.Request(source.url, headers={"User-Agent": "Jentic/0.2"})
         with urllib.request.urlopen(req, timeout=30) as resp:
             raw = resp.read().decode("utf-8", errors="replace")
-        doc = yaml.safe_load(raw) if (source.url.endswith((".yaml", ".yml")) or raw.strip().startswith("openapi:") or raw.strip().startswith("arazzo:")) else json.loads(raw)
+        doc = (
+            yaml.safe_load(raw)
+            if (
+                source.url.endswith((".yaml", ".yml"))
+                or raw.strip().startswith("openapi:")
+                or raw.strip().startswith("arazzo:")
+            )
+            else json.loads(raw)
+        )
         # Save locally
         fname = source.filename or _url_to_filename(source.url)
         dest = SPECS_DIR / fname if not _is_arazzo(doc) else WORKFLOWS_DIR / fname
-        dest.write_text(json.dumps(doc, ensure_ascii=False) if isinstance(raw, str) and raw.strip().startswith("{") else raw)
+        dest.write_text(
+            json.dumps(doc, ensure_ascii=False)
+            if isinstance(raw, str) and raw.strip().startswith("{")
+            else raw
+        )
         return doc, str(dest)
 
     elif source.type == "inline":
@@ -115,15 +159,9 @@ def _url_to_filename(url: str) -> str:
 
 # ── OpenAPI registration ──────────────────────────────────────────────────────
 
+
 async def _register_openapi(doc: dict, saved_path: str, force_api_id: str | None = None) -> dict:
     """Register an OpenAPI spec as an API + operations in Jentic."""
-    # Import the heavy lifting from apis.py
-    from src.routers.apis import (
-        _extract_base_url, _derive_api_id, _parse_operations,
-        _rebuild_index, _is_private_server_url, _title_to_local_api_id,
-    )
-    _load_base_url_from_spec = _extract_base_url  # alias for compat
-
     base_url = None
     servers = doc.get("servers", [])
     if servers:
@@ -143,11 +181,7 @@ async def _register_openapi(doc: dict, saved_path: str, force_api_id: str | None
     description = doc.get("info", {}).get("description")
 
     # Detect self-hosted API: private/localhost server URL → api_id ends in .local
-    is_self_hosted = (
-        not force_api_id
-        and base_url is not None
-        and _is_private_server_url(base_url)
-    )
+    is_self_hosted = not force_api_id and base_url is not None and _is_private_server_url(base_url)
 
     async with get_db() as db:
         await db.execute(
@@ -176,8 +210,7 @@ async def _register_openapi(doc: dict, saved_path: str, force_api_id: str | None
     # without requiring users to manually upload an overlay.
     overlay_generated = False
     if is_self_hosted and base_url and "{" not in base_url:
-        from urllib.parse import urlparse as _up
-        _parsed = _up(base_url)
+        _parsed = urlparse(base_url)
         _path = _parsed.path.rstrip("/") or ""
         # Preserve any path component (e.g. http://localhost:8123/api → http://{host}/api)
         _template_url = "http://{host}" + _path
@@ -224,11 +257,11 @@ async def _register_openapi(doc: dict, saved_path: str, force_api_id: str | None
     workflows_imported = []
     if force_api_id:
         try:
-            from src.routers.catalog import lazy_import_catalog_workflows
             workflows_imported = await lazy_import_catalog_workflows(api_id)
         except Exception as e:
-            import logging
-            logging.getLogger("jentic.import").warning("Workflow auto-import failed for '%s': %s", api_id, e)
+            logging.getLogger("jentic.import").warning(
+                "Workflow auto-import failed for '%s': %s", api_id, e
+            )
 
     result = {
         "type": "api",
@@ -247,10 +280,9 @@ async def _register_openapi(doc: dict, saved_path: str, force_api_id: str | None
 
 # ── Arazzo registration ───────────────────────────────────────────────────────
 
+
 async def _register_arazzo(doc: dict, saved_path: str, slug_hint: str | None = None) -> dict:
     """Register an Arazzo workflow file in Jentic."""
-    import json as _json
-
     info = doc.get("info", {})
     workflows_list = doc.get("workflows", [])
     if not workflows_list:
@@ -291,10 +323,13 @@ async def _register_arazzo(doc: dict, saved_path: str, slug_hint: str | None = N
                (slug, name, description, arazzo_path, input_schema, steps_count, involved_apis)
                VALUES (?,?,?,?,?,?,?)""",
             (
-                slug, name, description, saved_path,
-                _json.dumps(input_schema) if input_schema else None,
+                slug,
+                name,
+                description,
+                saved_path,
+                json.dumps(input_schema) if input_schema else None,
                 steps_count,
-                _json.dumps(involved_apis),
+                json.dumps(involved_apis),
             ),
         )
         await db.commit()
@@ -303,7 +338,6 @@ async def _register_arazzo(doc: dict, saved_path: str, slug_hint: str | None = N
     index = get_index()
     index.add_workflow(slug, name, description, involved_apis)
 
-    from src.routers.workflows import workflow_capability_id
     return {
         "type": "workflow",
         "id": workflow_capability_id(slug),
@@ -315,6 +349,7 @@ async def _register_arazzo(doc: dict, saved_path: str, slug_hint: str | None = N
 
 
 # ── Route ─────────────────────────────────────────────────────────────────────
+
 
 @router.post(
     "/import",
@@ -328,17 +363,19 @@ async def _register_arazzo(doc: dict, saved_path: str, slug_hint: str | None = N
                 "Valid OpenAPI 3.x or Arazzo 1.0 document",
                 "For url type: publicly accessible spec URL",
                 "For path type: local file system path (server must have read access)",
-                "For inline type: spec content as JSON or YAML string"
+                "For inline type: spec content as JSON or YAML string",
             ],
             avoid_when="Do not use for APIs already in the catalog — check GET /apis or GET /catalog first. Do not use to add credentials (use POST /credentials). Do not use to update existing specs — delete and re-import instead.",
             related_operations=[
                 "GET /apis — check if API is already registered before importing",
                 "GET /catalog — browse available APIs in public catalog before importing",
                 "POST /credentials — add credentials after importing an API",
-                "GET /search — verify imported operations are searchable"
-            ]
+                "GET /search — verify imported operations are searchable",
+            ],
         ),
-        "requestBody": {"description": "Array of import sources (local file paths, URLs, or inline spec content) to register in the catalog — supports OpenAPI 3.x and Arazzo 1.0"}
+        "requestBody": {
+            "description": "Array of import sources (local file paths, URLs, or inline spec content) to register in the catalog — supports OpenAPI 3.x and Arazzo 1.0"
+        },
     },
 )
 async def import_sources(body: ImportRequest):
@@ -357,14 +394,16 @@ async def import_sources(body: ImportRequest):
             else:
                 result = await _register_openapi(doc, saved_path, force_api_id=source.force_api_id)
             results.append({"index": i, "status": "success", **result})
-        except Exception as e:
+        except Exception:
             log.exception("Import failed for source %d", i)
-            results.append({
-                "index": i,
-                "status": "failed",
-                "error": "Import failed. Check server logs for details.",
-                "source": source.model_dump(exclude_none=True),
-            })
+            results.append(
+                {
+                    "index": i,
+                    "status": "failed",
+                    "error": "Import failed. Check server logs for details.",
+                    "source": source.model_dump(exclude_none=True),
+                }
+            )
 
     succeeded = sum(1 for r in results if r["status"] == "success")
     failed = len(results) - succeeded

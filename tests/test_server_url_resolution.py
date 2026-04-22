@@ -6,13 +6,13 @@ broker would construct, without making a real upstream call.
 Regression test for issue where the resolved scheme from server_variables was
 discarded and re-inferred from port heuristics — broke HTTPS on default port 443.
 """
+
 import asyncio
 import json
 import os
 
 import aiosqlite
 import pytest
-
 from src import vault
 
 
@@ -33,9 +33,15 @@ def local_apis_with_credentials(client, admin_session, agent_key_header):
         https_spec = {
             "openapi": "3.0.3",
             "info": {"title": "HTTPS Local API", "version": "1.0"},
-            "servers": [{"url": "https://{host}", "variables": {"host": {"default": "localhost:9443"}}}],
+            "servers": [
+                {"url": "https://{host}", "variables": {"host": {"default": "localhost:9443"}}}
+            ],
             "components": {"securitySchemes": {"BearerAuth": {"type": "http", "scheme": "bearer"}}},
-            "paths": {"/api": {"get": {"operationId": "test", "responses": {"200": {"description": "ok"}}}}},
+            "paths": {
+                "/api": {
+                    "get": {"operationId": "test", "responses": {"200": {"description": "ok"}}}
+                }
+            },
         }
         https_path = os.path.join(specs_dir, "https_local.json")
         with open(https_path, "w") as f:
@@ -45,9 +51,15 @@ def local_apis_with_credentials(client, admin_session, agent_key_header):
         http_spec = {
             "openapi": "3.0.3",
             "info": {"title": "HTTP Local API", "version": "1.0"},
-            "servers": [{"url": "http://{host}", "variables": {"host": {"default": "localhost:8123"}}}],
+            "servers": [
+                {"url": "http://{host}", "variables": {"host": {"default": "localhost:8123"}}}
+            ],
             "components": {"securitySchemes": {"BearerAuth": {"type": "http", "scheme": "bearer"}}},
-            "paths": {"/api": {"get": {"operationId": "test", "responses": {"200": {"description": "ok"}}}}},
+            "paths": {
+                "/api": {
+                    "get": {"operationId": "test", "responses": {"200": {"description": "ok"}}}
+                }
+            },
         }
         http_path = os.path.join(specs_dir, "http_local.json")
         with open(http_path, "w") as f:
@@ -70,17 +82,29 @@ def local_apis_with_credentials(client, admin_session, agent_key_header):
                 "INSERT OR IGNORE INTO credentials "
                 "(id, label, env_var, encrypted_value, api_id, auth_type, server_variables, scheme) "
                 "VALUES (?, ?, ?, ?, ?, 'bearer', ?, ?)",
-                ("https-local-cred", "HTTPS Local Token", "HTTPS_LOCAL", enc, HTTPS_API_ID,
-                 json.dumps({"host": "10.0.0.2"}),
-                 json.dumps({"in": "header", "name": "Authorization", "prefix": "Bearer "})),
+                (
+                    "https-local-cred",
+                    "HTTPS Local Token",
+                    "HTTPS_LOCAL",
+                    enc,
+                    HTTPS_API_ID,
+                    json.dumps({"host": "10.0.0.2"}),
+                    json.dumps({"in": "header", "name": "Authorization", "prefix": "Bearer "}),
+                ),
             )
             await db.execute(
                 "INSERT OR IGNORE INTO credentials "
                 "(id, label, env_var, encrypted_value, api_id, auth_type, server_variables, scheme) "
                 "VALUES (?, ?, ?, ?, ?, 'bearer', ?, ?)",
-                ("http-local-cred", "HTTP Local Token", "HTTP_LOCAL", enc, HTTP_API_ID,
-                 json.dumps({"host": "192.168.1.50:8123"}),
-                 json.dumps({"in": "header", "name": "Authorization", "prefix": "Bearer "})),
+                (
+                    "http-local-cred",
+                    "HTTP Local Token",
+                    "HTTP_LOCAL",
+                    enc,
+                    HTTP_API_ID,
+                    json.dumps({"host": "192.168.1.50:8123"}),
+                    json.dumps({"in": "header", "name": "Authorization", "prefix": "Bearer "}),
+                ),
             )
 
             # Create routes
@@ -119,7 +143,9 @@ def local_apis_with_credentials(client, admin_session, agent_key_header):
     asyncio.run(teardown())
 
 
-def test_broker_uses_https_for_https_template(client, agent_key_header, local_apis_with_credentials):
+def test_broker_uses_https_for_https_template(
+    client, agent_key_header, local_apis_with_credentials
+):
     """Broker should use https:// when the spec's server URL template is https://{host}.
 
     Regression: previously the scheme was discarded and re-inferred from port.

@@ -8,14 +8,17 @@ This test ensures the broker correctly distinguishes authenticated from
 anonymous requests, validating the session header injection used by
 arazzo-runner workflow execution.
 """
+
 import asyncio
 import json
 import os
 
 import aiosqlite
 import pytest
-
 from src import vault
+from src.main import app
+from starlette.testclient import TestClient
+
 
 WORKFLOW_AUTH_HOST = "127.0.10.50"
 
@@ -32,9 +35,15 @@ def workflow_auth_credential(client, admin_session, agent_key_header):
                 "INSERT OR IGNORE INTO credentials "
                 "(id, label, env_var, encrypted_value, api_id, auth_type, scheme) "
                 "VALUES (?, ?, ?, ?, ?, ?, ?)",
-                ("wf-auth-test", "Workflow Auth Test", "WF_AUTH_TEST",
-                 enc, WORKFLOW_AUTH_HOST, "apiKey",
-                 json.dumps({"in": "header", "name": "X-Api-Key"})),
+                (
+                    "wf-auth-test",
+                    "Workflow Auth Test",
+                    "WF_AUTH_TEST",
+                    enc,
+                    WORKFLOW_AUTH_HOST,
+                    "apiKey",
+                    json.dumps({"in": "header", "name": "X-Api-Key"}),
+                ),
             )
             await db.execute(
                 "INSERT OR IGNORE INTO credential_routes (credential_id, host) VALUES (?, ?)",
@@ -60,7 +69,9 @@ def workflow_auth_credential(client, admin_session, agent_key_header):
     asyncio.run(teardown())
 
 
-def test_broker_injects_credentials_with_api_key(client, agent_key_header, workflow_auth_credential):
+def test_broker_injects_credentials_with_api_key(
+    client, agent_key_header, workflow_auth_credential
+):
     """Broker injects credentials when X-Jentic-API-Key is present (authenticated path)."""
     resp = client.get(
         f"/{WORKFLOW_AUTH_HOST}/api/test",
@@ -69,7 +80,9 @@ def test_broker_injects_credentials_with_api_key(client, agent_key_header, workf
     assert resp.status_code == 200, f"Simulate failed: {resp.text}"
     body = resp.json()
     headers = {k.lower(): v for k, v in body["would_send"]["headers"].items()}
-    assert "x-api-key" in headers, f"Expected credential injection, got headers: {list(headers.keys())}"
+    assert "x-api-key" in headers, (
+        f"Expected credential injection, got headers: {list(headers.keys())}"
+    )
     assert headers["x-api-key"] == "wf-test-secret-key"
 
 
@@ -82,8 +95,6 @@ def test_broker_skips_credentials_without_api_key(workflow_auth_credential):
 
     Uses a fresh client to avoid session cookie leakage.
     """
-    from starlette.testclient import TestClient
-    from src.main import app
     with TestClient(app, raise_server_exceptions=False) as anon_client:
         resp = anon_client.get(
             f"/{WORKFLOW_AUTH_HOST}/api/test",
@@ -93,5 +104,5 @@ def test_broker_skips_credentials_without_api_key(workflow_auth_credential):
     body = resp.json()
     headers = {k.lower(): v for k, v in body["would_send"]["headers"].items()}
     assert "x-api-key" not in headers, (
-        f"Expected NO credential injection for anonymous request, but got x-api-key in headers"
+        "Expected NO credential injection for anonymous request, but got x-api-key in headers"
     )

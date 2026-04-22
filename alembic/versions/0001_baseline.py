@@ -8,12 +8,14 @@ This is the initial schema for Jentic Mini, consolidating all tables
 that were previously created inline in src/db.py. All columns are in
 their final form — no ALTER TABLE migrations needed.
 """
+
 from typing import Sequence, Union
 
 from alembic import op
 
+
 # revision identifiers, used by Alembic.
-revision: str = '0001'
+revision: str = "0001"
 down_revision: Union[str, Sequence[str], None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None

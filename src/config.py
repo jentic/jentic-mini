@@ -1,6 +1,8 @@
 """Centralised configuration constants for Jentic Mini."""
+
 import os
 from pathlib import Path
+
 
 # ── Version ───────────────────────────────────────────────────────────────────
 # In Docker, APP_VERSION is set via Dockerfile ARG/ENV (CI overrides with

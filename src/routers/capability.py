@@ -13,22 +13,26 @@ so the split is unambiguous: first path segment = method, rest = host/path.
 Workflow IDs are detected by matching the Jentic hostname + /workflows/ path.
 The backend transparently handles both types — callers need not distinguish.
 """
+
 import json
 import pathlib
 import re
-import yaml
 from typing import Annotated, Any
 from urllib.parse import quote
 
+import yaml
 from fastapi import APIRouter, HTTPException, Path, Query, Request
 from fastapi.responses import Response
-from src.db import get_db
+
 from src.config import JENTIC_PUBLIC_HOSTNAME
+from src.db import get_db
 from src.openapi_helpers import agent_hints
+
 
 router = APIRouter()
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
+
 
 def _resolve_refs(schema: Any, doc: dict, depth: int = 0) -> Any:
     if depth > 6 or not isinstance(schema, dict):
@@ -42,8 +46,10 @@ def _resolve_refs(schema: Any, doc: dict, depth: int = 0) -> Any:
                 resolved = resolved.get(part, {})
             return _resolve_refs(resolved, doc, depth + 1)
         return schema
-    result = {k: _resolve_refs(v, doc, depth + 1) if isinstance(v, (dict, list)) else v
-              for k, v in schema.items()}
+    result = {
+        k: _resolve_refs(v, doc, depth + 1) if isinstance(v, (dict, list)) else v
+        for k, v in schema.items()
+    }
     if "items" in schema:
         result["items"] = _resolve_refs(schema["items"], doc, depth + 1)
     return result
@@ -60,20 +66,26 @@ def _translate_auth(security_schemes: dict, security_requirements: list) -> list
                 entry["type"] = "api_key"
                 entry["in"] = scheme.get("in", "header")
                 entry["name"] = scheme.get("name", scheme_name)
-                entry["instruction"] = f"Set {scheme.get('in','header')} `{scheme.get('name', scheme_name)}`"
+                entry["instruction"] = (
+                    f"Set {scheme.get('in', 'header')} `{scheme.get('name', scheme_name)}`"
+                )
             elif s_type == "http":
                 http_scheme = scheme.get("scheme", "bearer").lower()
                 entry["type"] = f"http_{http_scheme}"
                 if http_scheme == "bearer":
                     entry["instruction"] = "Set header `Authorization: Bearer <token>`"
                 else:
-                    entry["instruction"] = f"Set header `Authorization: {http_scheme.capitalize()} <credentials>`"
+                    entry["instruction"] = (
+                        f"Set header `Authorization: {http_scheme.capitalize()} <credentials>`"
+                    )
             elif s_type == "oauth2":
                 entry["type"] = "oauth2"
                 flows = scheme.get("flows", {})
                 entry["flows"] = list(flows.keys())
                 entry["scopes"] = scopes
-                entry["instruction"] = f"OAuth2 ({', '.join(flows.keys())}); required scopes: {scopes or 'none'}"
+                entry["instruction"] = (
+                    f"OAuth2 ({', '.join(flows.keys())}); required scopes: {scopes or 'none'}"
+                )
             else:
                 entry["type"] = s_type
                 entry["instruction"] = f"Auth scheme '{scheme_name}' (type: {s_type})"
@@ -87,12 +99,14 @@ def _extract_parameters(op: dict, path_item: dict, doc: dict) -> dict:
     for param in all_params:
         param = _resolve_refs(param, doc)
         loc = param.get("in", "query")
-        by_location.setdefault(loc, []).append({
-            "name": param.get("name"),
-            "required": param.get("required", False),
-            "description": param.get("description"),
-            "schema": _resolve_refs(param.get("schema", {}), doc),
-        })
+        by_location.setdefault(loc, []).append(
+            {
+                "name": param.get("name"),
+                "required": param.get("required", False),
+                "description": param.get("description"),
+                "schema": _resolve_refs(param.get("schema", {}), doc),
+            }
+        )
     body = op.get("requestBody", {})
     if body:
         body = _resolve_refs(body, doc)
@@ -147,6 +161,7 @@ def _parse_capability_id(capability_id: str) -> tuple[str, str]:
 
 # ── Workflow capability helper ────────────────────────────────────────────────
 
+
 async def _get_workflow_capability(slug: str, capability_id: str, toolkit_id: str | None) -> dict:
     """Return agent-facing detail for a workflow.
 
@@ -173,18 +188,30 @@ async def _get_workflow_capability(slug: str, capability_id: str, toolkit_id: st
     if not row:
         raise HTTPException(404, f"Workflow not found: {slug}")
 
-    (db_slug, name, description, arazzo_path, input_schema_str,
-     steps_count, involved_apis_str, created_at) = row
+    (
+        db_slug,
+        name,
+        description,
+        arazzo_path,
+        input_schema_str,
+        steps_count,
+        involved_apis_str,
+        created_at,
+    ) = row
 
     # Load Arazzo doc for authoritative inputs, outputs, step info
     arazzo_file = pathlib.Path(arazzo_path)
     doc: dict = {}
     if arazzo_file.exists():
         raw = arazzo_file.read_text()
-        doc = yaml.safe_load(raw) if str(arazzo_file).endswith((".yaml", ".yml")) else json.loads(raw)
+        doc = (
+            yaml.safe_load(raw) if str(arazzo_file).endswith((".yaml", ".yml")) else json.loads(raw)
+        )
 
     workflows_list = doc.get("workflows", [])
-    wf = next((w for w in workflows_list if w.get("workflowId") == slug), {}) or (workflows_list[0] if workflows_list else {})
+    wf = next((w for w in workflows_list if w.get("workflowId") == slug), {}) or (
+        workflows_list[0] if workflows_list else {}
+    )
 
     # ── Inputs: authoritative from Arazzo file; filter out broker-managed creds ──
     # Credentials stored in the vault are injected transparently by the broker.
@@ -213,17 +240,34 @@ async def _get_workflow_capability(slug: str, capability_id: str, toolkit_id: st
     # ── Errors: derive from the APIs involved in this workflow ──
     # Standard HTTP error taxonomy for broker-executed workflows
     errors = [
-        {"status": 401, "description": "A required credential is missing or has expired. Check toolkit credentials for the APIs involved."},
-        {"status": 403, "description": "Insufficient permissions — either the credential lacks scope, or a toolkit policy is blocking the operation."},
-        {"status": 400, "description": "Invalid request — check that all required inputs are provided and correctly typed."},
-        {"status": 422, "description": "Validation error in a workflow step — the request was structurally invalid for one of the APIs."},
-        {"status": 429, "description": "Rate limit hit on one of the upstream APIs. Retry after a delay."},
-        {"status": 502, "description": "An upstream API returned an unexpected response. The workflow step may need updated inputs or the API may be unavailable."},
+        {
+            "status": 401,
+            "description": "A required credential is missing or has expired. Check toolkit credentials for the APIs involved.",
+        },
+        {
+            "status": 403,
+            "description": "Insufficient permissions — either the credential lacks scope, or a toolkit policy is blocking the operation.",
+        },
+        {
+            "status": 400,
+            "description": "Invalid request — check that all required inputs are provided and correctly typed.",
+        },
+        {
+            "status": 422,
+            "description": "Validation error in a workflow step — the request was structurally invalid for one of the APIs.",
+        },
+        {
+            "status": 429,
+            "description": "Rate limit hit on one of the upstream APIs. Retry after a delay.",
+        },
+        {
+            "status": 502,
+            "description": "An upstream API returned an unexpected response. The workflow step may need updated inputs or the API may be unavailable.",
+        },
     ]
 
     involved_apis = json.loads(involved_apis_str) if involved_apis_str else []
 
-    workflow_url = f"https://{JENTIC_PUBLIC_HOSTNAME}/workflows/{slug}"
     encoded_id = quote(capability_id, safe="")
 
     result: dict = {
@@ -252,10 +296,17 @@ async def _get_workflow_capability(slug: str, capability_id: str, toolkit_id: st
 # ── Route ─────────────────────────────────────────────────────────────────────
 
 _CAPABILITY_CONTENT_TYPES = {
-    "application/json":       {"schema": {"type": "object", "description": "Structured JSON with resolved schemas"}},
-    "text/markdown":          {"schema": {"type": "string", "description": "LLM-friendly prose description"}},
-    "application/openapi+yaml": {"schema": {"type": "string", "description": "Filtered, dereferenced OpenAPI fragment"}},
+    "application/json": {
+        "schema": {"type": "object", "description": "Structured JSON with resolved schemas"}
+    },
+    "text/markdown": {
+        "schema": {"type": "string", "description": "LLM-friendly prose description"}
+    },
+    "application/openapi+yaml": {
+        "schema": {"type": "string", "description": "Filtered, dereferenced OpenAPI fragment"}
+    },
 }
+
 
 @router.get(
     "/inspect/{capability_id:path}",
@@ -270,20 +321,24 @@ _CAPABILITY_CONTENT_TYPES = {
         when_to_use="Use after finding an operation via GET /search when you need complete parameter schemas, authentication requirements, and response formats before making the actual call. Essential step between discovery and execution.",
         prerequisites=[
             "Valid capability ID from GET /search results (format: METHOD/host/path)",
-            "Optional: Pass ?toolkit_id={id} to check credential configuration status"
+            "Optional: Pass ?toolkit_id={id} to check credential configuration status",
         ],
         avoid_when="Do not use for bulk inspection — prefer GET /apis/{api_id}/operations when browsing an entire API's operation list.",
         related_operations=[
             "GET /search — find capabilities by natural language query first",
             "GET /{target} — execute the operation after inspecting",
-            "GET /apis/{api_id}/operations — list all operations for an API"
-        ]
+            "GET /apis/{api_id}/operations — list all operations for an API",
+        ],
     ),
 )
 async def get_capability(
-    capability_id: Annotated[str, Path(description="Capability ID (METHOD/host/path format) or workflow slug")],
+    capability_id: Annotated[
+        str, Path(description="Capability ID (METHOD/host/path format) or workflow slug")
+    ],
     request: Request,
-    toolkit_id: str | None = Query(None, description="Pass to include credential status for this toolkit"),
+    toolkit_id: str | None = Query(
+        None, description="Pass to include credential status for this toolkit"
+    ),
 ):
     """Returns everything needed to call an operation or workflow: resolved parameter schema
     (all $refs inlined), response schema, auth translated to concrete header instructions,
@@ -325,8 +380,20 @@ async def get_capability(
     if not row:
         raise HTTPException(404, f"Capability not found: {capability_id}")
 
-    (_, api_id, operation_id, jid, op_method, path,
-     summary, description, spec_path, base_url, api_name, api_description) = row
+    (
+        _,
+        api_id,
+        operation_id,
+        jid,
+        op_method,
+        path,
+        summary,
+        description,
+        spec_path,
+        base_url,
+        api_name,
+        api_description,
+    ) = row
 
     spec_file = pathlib.Path(spec_path) if spec_path else None
     doc: dict = {}
@@ -343,7 +410,8 @@ async def get_capability(
     op_tags = op_spec.get("tags", [])
     tag_descriptions = [
         {"tag": t, "description": all_tags[t].get("description")}
-        for t in op_tags if t in all_tags and all_tags[t].get("description")
+        for t in op_tags
+        if t in all_tags and all_tags[t].get("description")
     ]
 
     security_schemes = doc.get("components", {}).get("securitySchemes", {})
@@ -361,8 +429,6 @@ async def get_capability(
     # OpenAPI server variables are how self-hosted software (Discourse, Jenkins, HA, etc.)
     # express that the base URL is instance-specific. We surface them here so callers know
     # what needs to be configured before the broker can route the request.
-    import re as _re
-    import json as _json
     server_variable_defs: dict | None = None
     if servers:
         all_vars: dict = {}
@@ -379,7 +445,7 @@ async def get_capability(
             }
     # Also detect implicit variables from URL templates not covered by a variables block
     if server_url:
-        _implicit = _re.findall(r"\{([^}]+)\}", server_url)
+        _implicit = re.findall(r"\{([^}]+)\}", server_url)
         for _v in _implicit:
             if server_variable_defs is None:
                 server_variable_defs = {}
@@ -403,18 +469,20 @@ async def get_capability(
                 sv_raw = cred_row[2] if len(cred_row) > 2 else None
                 if sv_raw:
                     try:
-                        configured_vars = _json.loads(sv_raw)
+                        configured_vars = json.loads(sv_raw)
                         break
                     except Exception:
                         pass
         credentials = (
-            {"status": "configured",
-             "available": [{"id": c[0], "label": c[1]} for c in creds],
-             **(({"server_variables_configured": configured_vars}) if configured_vars else {})}
-            if creds else {"status": "not_configured"}
+            {
+                "status": "configured",
+                "available": [{"id": c[0], "label": c[1]} for c in creds],
+                **(({"server_variables_configured": configured_vars}) if configured_vars else {}),
+            }
+            if creds
+            else {"status": "not_configured"}
         )
 
-    encoded_id = quote(jid, safe="")
     broker_url = f"/{api_id}{path}" if api_id and path else None
     links: dict = {
         "self": f"/inspect/{jid}",
@@ -430,13 +498,17 @@ async def get_capability(
         "name": op_spec.get("operationId") or summary,
         "summary": summary,
         "description": op_spec.get("description") or description,
-        "api": {k: v for k, v in {
-            "id": api_id,
-            "name": info.get("title") or api_name,
-            "version": info.get("version"),
-            "description": info.get("description") or api_description,
-            "tag_descriptions": tag_descriptions or None,
-        }.items() if v is not None},
+        "api": {
+            k: v
+            for k, v in {
+                "id": api_id,
+                "name": info.get("title") or api_name,
+                "version": info.get("version"),
+                "description": info.get("description") or api_description,
+                "tag_descriptions": tag_descriptions or None,
+            }.items()
+            if v is not None
+        },
         "parameters": parameters or None,
         "response_schema": response_schema,
         "auth": auth or None,
@@ -467,12 +539,22 @@ async def get_capability(
                         req_mark = " *(required)*" if pname in req else ""
                         ptype = pschema.get("type", "any") if isinstance(pschema, dict) else "any"
                         pdesc = pschema.get("description", "") if isinstance(pschema, dict) else ""
-                        lines.append(f"  - `{pname}` ({ptype}, body){req_mark}: {pdesc}".rstrip(": "))
+                        lines.append(
+                            f"  - `{pname}` ({ptype}, body){req_mark}: {pdesc}".rstrip(": ")
+                        )
                 elif isinstance(items, list):
                     for p in items[:6]:
                         req_mark = " *(required)*" if p.get("required") else ""
-                        ptype = p.get("schema", {}).get("type", "any") if isinstance(p.get("schema"), dict) else "any"
-                        lines.append(f"  - `{p.get('name')}` ({ptype}, {loc}){req_mark}: {p.get('description','') or ''}".rstrip(": "))
+                        ptype = (
+                            p.get("schema", {}).get("type", "any")
+                            if isinstance(p.get("schema"), dict)
+                            else "any"
+                        )
+                        lines.append(
+                            f"  - `{p.get('name')}` ({ptype}, {loc}){req_mark}: {p.get('description', '') or ''}".rstrip(
+                                ": "
+                            )
+                        )
             if lines:
                 params_md = "\n**Parameters:**\n" + "\n".join(lines)
         api_ctx = result.get("api", {})
@@ -481,8 +563,9 @@ async def get_capability(
         if auth_val:
             auth_list = auth_val if isinstance(auth_val, list) else [auth_val]
             auth_lines = [
-                f"`{a.get('header','?')}: {a.get('format','...')}`"
-                for a in auth_list if isinstance(a, dict)
+                f"`{a.get('header', '?')}: {a.get('format', '...')}`"
+                for a in auth_list
+                if isinstance(a, dict)
             ]
             if auth_lines:
                 auth_md = f"\n**Auth:** {', '.join(auth_lines)}"
@@ -491,8 +574,8 @@ async def get_capability(
             f"`{result['id']}`\n\n"
             f"{result.get('description') or ''}\n"
             f"{params_md}{auth_md}\n\n"
-            f"**API:** {api_ctx.get('name','')} {('— ' + api_ctx.get('description',''))[:120] if api_ctx.get('description') else ''}\n\n"
-            f"**Execute:** `https://exec.jentic.com/{result['id'].split('/', 1)[1] if '/' in result.get('id','') else result.get('url','')}`"
+            f"**API:** {api_ctx.get('name', '')} {('— ' + api_ctx.get('description', ''))[:120] if api_ctx.get('description') else ''}\n\n"
+            f"**Execute:** `https://exec.jentic.com/{result['id'].split('/', 1)[1] if '/' in result.get('id', '') else result.get('url', '')}`"
         )
         return Response(content=md, media_type="text/markdown")
 
@@ -511,13 +594,18 @@ async def get_capability(
                         "parameters": [],
                         "requestBody": (
                             {"content": {"application/json": {"schema": result["parameters"]}}}
-                            if result.get("parameters") and op_method.upper() in ("POST", "PUT", "PATCH")
+                            if result.get("parameters")
+                            and op_method.upper() in ("POST", "PUT", "PATCH")
                             else None
                         ),
                         "responses": {
                             "200": {
                                 "description": "Success",
-                                "content": {"application/json": {"schema": result.get("response_schema", {})}},
+                                "content": {
+                                    "application/json": {
+                                        "schema": result.get("response_schema", {})
+                                    }
+                                },
                             }
                         },
                     }

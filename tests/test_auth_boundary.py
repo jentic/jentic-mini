@@ -23,12 +23,16 @@ def test_agent_cannot_create_credentials(client, agent_key_header):
     """Agents cannot create credentials without explicit permission.
     Returns 403 (permission denied) or 409 (no security scheme) — either
     way the credential is NOT created."""
-    resp = client.post("/credentials", headers=agent_key_header, json={
-        "label": "test",
-        "value": "secret123",
-        "api_id": "test.example.com",
-        "auth_type": "bearer",
-    })
+    resp = client.post(
+        "/credentials",
+        headers=agent_key_header,
+        json={
+            "label": "test",
+            "value": "secret123",
+            "api_id": "test.example.com",
+            "auth_type": "bearer",
+        },
+    )
     assert resp.status_code in (403, 409)
 
 

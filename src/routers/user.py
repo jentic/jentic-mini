@@ -11,22 +11,21 @@ Endpoints:
 Password reset is CLI-only:
   docker exec jentic-mini python3 -m jentic reset-password
 """
+
 import logging
-import time
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Form, HTTPException, Path, Query, Request, Response
-from fastapi.responses import HTMLResponse, RedirectResponse
+import bcrypt as _bcrypt
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
+from fastapi.responses import RedirectResponse
 from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import BaseModel, Field, field_validator
-from src.validators import NormModel
 
-from src.auth import client_ip, _make_jwt, JWT_TTL_SECONDS
-from src.db import get_db, get_setting, set_setting, setup_state
-from src.models import TokenRequest, UserOut
+from src.auth import JWT_TTL_SECONDS, _make_jwt, client_ip
+from src.db import get_db, set_setting, setup_state
+from src.models import UserOut
 
-import bcrypt as _bcrypt
 
 audit_log = logging.getLogger("jentic.audit")
 router = APIRouter(prefix="/user", tags=["user"])
@@ -34,8 +33,10 @@ router = APIRouter(prefix="/user", tags=["user"])
 
 # ── Models ────────────────────────────────────────────────────────────────────
 
+
 class UserCreate(BaseModel):
     """Request body for creating the root admin account. One-time only — POST /user/create returns 410 after first use."""
+
     username: str = Field(description="Admin account username (will be trimmed of whitespace)")
     password: str = Field(description="Admin account password (stored as bcrypt hash)")
 
@@ -57,11 +58,16 @@ class UserLogin(BaseModel):
 
 # ── Routes ────────────────────────────────────────────────────────────────────
 
+
 @router.post(
     "/create",
     status_code=201,
     summary="Create the root admin account (one-time setup)",
-    openapi_extra={"requestBody": {"description": "Account credentials: username (trimmed of whitespace) and password (stored as bcrypt hash) for the root admin"}},
+    openapi_extra={
+        "requestBody": {
+            "description": "Account credentials: username (trimmed of whitespace) and password (stored as bcrypt hash) for the root admin"
+        }
+    },
 )
 async def create_user(body: UserCreate, request: Request, response: Response):
     """Create the single root account for this instance.
@@ -71,7 +77,7 @@ async def create_user(body: UserCreate, request: Request, response: Response):
 
     Requires `bcrypt` installed (bundled in Docker image).
     """
-        # One-time guard
+    # One-time guard
     state = await setup_state()
     if state["account_created"]:
         raise HTTPException(
@@ -145,7 +151,9 @@ async def create_user(body: UserCreate, request: Request, response: Response):
 async def login(
     request: Request,
     response: Response,
-    redirect_to: Annotated[str | None, Query(description="Redirect URL after successful login (relative path only)")] = None
+    redirect_to: Annotated[
+        str | None, Query(description="Redirect URL after successful login (relative path only)")
+    ] = None,
 ):
     """Authenticate with username and password.
 
@@ -198,7 +206,9 @@ async def login(
         if not redirect_to.startswith("/") or redirect_to.startswith("//"):
             redirect_to = "/"
         redir = RedirectResponse(url=redirect_to, status_code=303)
-        redir.set_cookie("jentic_session", token, httponly=True, samesite="strict", max_age=JWT_TTL_SECONDS)
+        redir.set_cookie(
+            "jentic_session", token, httponly=True, samesite="strict", max_age=JWT_TTL_SECONDS
+        )
         return redir
 
     response.set_cookie(
@@ -216,7 +226,11 @@ async def login(
     "/token",
     summary="OAuth2 password grant — returns Bearer JWT",
     response_description="Access token for use in Authorization: Bearer header",
-    openapi_extra={"requestBody": {"description": "OAuth2 password grant form: username, password, and grant_type='password' (form-urlencoded format)"}},
+    openapi_extra={
+        "requestBody": {
+            "description": "OAuth2 password grant form: username, password, and grant_type='password' (form-urlencoded format)"
+        }
+    },
 )
 async def token(form_data: OAuth2PasswordRequestForm = Depends()):
     """OAuth2 password grant endpoint.
@@ -243,7 +257,10 @@ async def token(form_data: OAuth2PasswordRequestForm = Depends()):
     if not row or not _bcrypt.checkpw(password.encode(), row["password_hash"].encode()):
         raise HTTPException(
             401,
-            detail={"error": "invalid_client", "error_description": "Username or password incorrect."},
+            detail={
+                "error": "invalid_client",
+                "error_description": "Username or password incorrect.",
+            },
             headers={"WWW-Authenticate": "Bearer"},
         )
 
@@ -310,7 +327,11 @@ async def me(request: Request):
         return {"logged_in": True, "username": row[0] if row else "unknown"}
     elif getattr(request.state, "is_admin", False):
         # Trusted-subnet passthrough — admin access without an explicit session
-        return {"logged_in": False, "admin": True, "note": "Trusted-subnet access. Log in for a named session."}
+        return {
+            "logged_in": False,
+            "admin": True,
+            "note": "Trusted-subnet access. Log in for a named session.",
+        }
     elif getattr(request.state, "toolkit_id", None):
         return {"logged_in": False, "agent_key": True, "toolkit_id": request.state.toolkit_id}
     else:

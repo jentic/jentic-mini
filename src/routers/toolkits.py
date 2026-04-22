@@ -7,56 +7,81 @@ A toolkit is the central agent identity in Jentic:
 
 This models the Jentic v2 design spec's toolkits concept exactly.
 """
+
 import json
 import logging
-import re as _re
+import re
 import secrets
 import time
 import uuid
+from typing import Annotated
 
 import yaml
-
-from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Path, Request, Response
 from pydantic import BaseModel, Field
-from src.validators import NormModel
-from typing import Annotated, Any
 
 from src.auth import client_ip, default_allowed_ips, require_human_session
-from src.db import get_db, DEFAULT_TOOLKIT_ID
-import src.vault as vault
+from src.db import DEFAULT_TOOLKIT_ID, get_db
 from src.models import (
-    ToolkitOut, ToolkitKeyOut, ToolkitKeyCreated,
-    CredentialBindingOut, PermissionRule, PermissionRuleOut, PermissionsPatch,
+    CredentialBindingOut,
+    PermissionRule,
+    PermissionRuleOut,
+    PermissionsPatch,
+    ToolkitKeyCreated,
+    ToolkitKeyOut,
+    ToolkitOut,
 )
+from src.validators import NormModel
+
 
 audit_log = logging.getLogger("jentic.audit")
 router = APIRouter(prefix="/toolkits")
-policy_router = APIRouter()  # mounted separately with tags=["permissions"], prefix="/toolkits" added at include time
+policy_router = (
+    APIRouter()
+)  # mounted separately with tags=["permissions"], prefix="/toolkits" added at include time
 
 
 # ── Models ────────────────────────────────────────────────────────────────────
 
+
 class ToolkitCreate(NormModel):
     """Create a new toolkit with scoped credentials and access control. Optionally generates first API key."""
+
     name: str = Field(description="Toolkit name for identification")
-    description: str | None = Field(default=None, description="Optional description of this toolkit's purpose")
-    simulate: bool = Field(default=False, description="If true, toolkit operates in dry-run mode (no real API calls)")
-    initial_key_label: str | None = Field(None, description="Label for the first key created with this toolkit (e.g. 'Agent A')")
-    initial_key_allowed_ips: list[str] | None = Field(None, description="IP allowlist for the first key. NULL = unrestricted.")
+    description: str | None = Field(
+        default=None, description="Optional description of this toolkit's purpose"
+    )
+    simulate: bool = Field(
+        default=False, description="If true, toolkit operates in dry-run mode (no real API calls)"
+    )
+    initial_key_label: str | None = Field(
+        None, description="Label for the first key created with this toolkit (e.g. 'Agent A')"
+    )
+    initial_key_allowed_ips: list[str] | None = Field(
+        None, description="IP allowlist for the first key. NULL = unrestricted."
+    )
 
 
 class ToolkitPatch(NormModel):
     """Update toolkit metadata or toggle disabled/simulate flags. Only provided fields are changed."""
+
     name: str | None = Field(default=None, description="New toolkit name (optional)")
     description: str | None = Field(default=None, description="New description (optional)")
     simulate: bool | None = Field(default=None, description="Toggle dry-run mode (optional)")
-    disabled: bool | None = Field(default=None, description="Toggle toolkit disabled state (optional)")
+    disabled: bool | None = Field(
+        default=None, description="Toggle toolkit disabled state (optional)"
+    )
 
 
 class KeyCreate(NormModel):
     """Create a new API key for this toolkit. The full key value is only returned once at creation time."""
-    label: str | None = Field(None, description="Human-readable label, e.g. 'Agent A', 'Staging bot'")
-    allowed_ips: list[str] | None = Field(None, description="IP allowlist for this key only. NULL = unrestricted.")
+
+    label: str | None = Field(
+        None, description="Human-readable label, e.g. 'Agent A', 'Staging bot'"
+    )
+    allowed_ips: list[str] | None = Field(
+        None, description="IP allowlist for this key only. NULL = unrestricted."
+    )
 
 
 class KeyOut(BaseModel):
@@ -70,15 +95,14 @@ class KeyOut(BaseModel):
 
 class ToolkitCredentialAdd(NormModel):
     """Bind an existing credential to this toolkit. Agent rules apply; system safety rules are always active."""
-    credential_id: str = Field(description="Credential ID to bind to this toolkit (format: cred_{12chars})")
 
-
+    credential_id: str = Field(
+        description="Credential ID to bind to this toolkit (format: cred_{12chars})"
+    )
 
 
 # Keep PolicyRule as an alias for backward compat within this file
 PolicyRule = PermissionRule
-
-
 
 
 # System safety rules — always appended after agent rules.
@@ -105,13 +129,14 @@ SYSTEM_SAFETY_RULES: list[dict] = [
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
+
 def _slugify(name: str) -> str:
     """Convert a display name to a URL-safe hyphen slug.
     'My ElevenLabs Toolkit' → 'my-elevenlabs-toolkit'
     Lowercased, non-alphanumeric runs replaced with hyphens, leading/trailing stripped.
     """
     slug = name.lower()
-    slug = _re.sub(r"[^a-z0-9]+", "-", slug)
+    slug = re.sub(r"[^a-z0-9]+", "-", slug)
     slug = slug.strip("-")
     return slug or "toolkit"
 
@@ -144,16 +169,17 @@ def _generate_policy_summary(rules: list[dict]) -> str:
     return f"Agent rules: {', '.join(parts)}. System safety rules apply below."
 
 
-def _check_policy(agent_rules: list[dict], operation_id: str | None,
-                  method: str | None = None,
-                  path: str | None = None) -> tuple[bool, str]:
+def _check_policy(
+    agent_rules: list[dict],
+    operation_id: str | None,
+    method: str | None = None,
+    path: str | None = None,
+) -> tuple[bool, str]:
     """
     Evaluate access for a request against a credential's rules.
     Order: agent rules → system safety rules → explicit allow-all.
     Returns (allowed: bool, reason: str).
     """
-    import re
-
     all_rules = list(agent_rules) + SYSTEM_SAFETY_RULES
 
     for rule in all_rules:
@@ -185,8 +211,7 @@ def _check_policy(agent_rules: list[dict], operation_id: str | None,
             if operation_id:
                 try:
                     op_match = any(
-                        re.search(pat, operation_id, re.IGNORECASE)
-                        for pat in operation_regexes
+                        re.search(pat, operation_id, re.IGNORECASE) for pat in operation_regexes
                     )
                     if not op_match:
                         matched = False
@@ -197,12 +222,15 @@ def _check_policy(agent_rules: list[dict], operation_id: str | None,
 
         if matched:
             comment = rule.get("_comment", "")
-            return (effect == "allow"), f"Matched rule ({effect}){': ' + comment if comment else ''}"
+            return (
+                effect == "allow"
+            ), f"Matched rule ({effect}){': ' + comment if comment else ''}"
 
     return True, "Default action: allow"
 
 
 # ── Routes ────────────────────────────────────────────────────────────────────
+
 
 def _strip_key(d: dict) -> dict:
     """Remove api_key from a toolkit dict. Keys are write-once (shown only on creation)."""
@@ -214,7 +242,11 @@ def _strip_key(d: dict) -> dict:
     status_code=201,
     summary="Create a toolkit — scoped bundle of upstream API credentials with a client API key",
     response_model=ToolkitOut,
-    openapi_extra={"requestBody": {"description": "Toolkit details: name, optional description, simulate flag for dry-run mode, and optional first API key configuration"}},
+    openapi_extra={
+        "requestBody": {
+            "description": "Toolkit details: name, optional description, simulate flag for dry-run mode, and optional first API key configuration"
+        }
+    },
 )
 async def create_toolkit(body: ToolkitCreate):
     """Creates a toolkit: a named bundle of upstream API credentials with a scoped client API key for the agent.
@@ -227,30 +259,38 @@ async def create_toolkit(body: ToolkitCreate):
     api_key = _gen_toolkit_key()
     key_id = "ck_" + str(uuid.uuid4())[:8]
     key_label = body.initial_key_label or "Default key"
-    allowed_ips_json = json.dumps(body.initial_key_allowed_ips) if body.initial_key_allowed_ips is not None else json.dumps(default_allowed_ips()) if default_allowed_ips() else None
+    allowed_ips_json = (
+        json.dumps(body.initial_key_allowed_ips)
+        if body.initial_key_allowed_ips is not None
+        else json.dumps(default_allowed_ips())
+        if default_allowed_ips()
+        else None
+    )
     now = time.time()
 
     async with get_db() as db:
         async with db.execute("SELECT id FROM toolkits WHERE id=?", (coll_id,)) as cur:
             if await cur.fetchone():
-                raise HTTPException(409, f"A toolkit with slug '{coll_id}' already exists. Choose a different name.")
+                raise HTTPException(
+                    409, f"A toolkit with slug '{coll_id}' already exists. Choose a different name."
+                )
         await db.execute(
             """INSERT INTO toolkits (id, name, description, api_key, simulate, created_at, updated_at)
                VALUES (?, ?, ?, ?, ?, ?, ?)""",
-            (coll_id, body.name, body.description, api_key, int(body.simulate), now, now)
+            (coll_id, body.name, body.description, api_key, int(body.simulate), now, now),
         )
         # Store the key in toolkit_keys (authoritative for auth)
         await db.execute(
             """INSERT INTO toolkit_keys (id, toolkit_id, api_key, label, allowed_ips, created_at)
                VALUES (?, ?, ?, ?, ?, ?)""",
-            (key_id, coll_id, api_key, key_label, allowed_ips_json, now)
+            (key_id, coll_id, api_key, key_label, allowed_ips_json, now),
         )
         # Create default read-only policy (no agent rules; system safety rules apply)
         policy_id = str(uuid.uuid4())
         await db.execute(
             """INSERT INTO toolkit_policies (id, toolkit_id, default_action, rules, summary)
                VALUES (?, ?, 'allow', '[]', 'Read-only (system safety rules apply; add allow rules to unlock writes).')""",
-            (policy_id, coll_id)
+            (policy_id, coll_id),
         )
         await db.commit()
 
@@ -318,7 +358,9 @@ async def list_toolkits(request: Request):
 
     return [
         {
-            "id": r[0], "name": r[1], "description": r[2],
+            "id": r[0],
+            "name": r[1],
+            "description": r[2],
             "simulate": bool(r[3]),
             "disabled": bool(r[4]),
             "created_at": r[5],
@@ -378,23 +420,33 @@ def _toolkit_to_markdown(data: dict) -> str:
 _TOOLKIT_CONTENT_TYPES = {
     "application/json": {"schema": {"type": "object"}},
     "application/yaml": {"schema": {"type": "string", "description": "Toolkit detail as YAML"}},
-    "text/markdown":    {"schema": {"type": "string", "description": "LLM-friendly toolkit summary"}},
+    "text/markdown": {"schema": {"type": "string", "description": "LLM-friendly toolkit summary"}},
 }
 
 
 @router.get(
     "/{toolkit_id}",
     summary="Get toolkit — metadata, bound upstream API credentials, client API keys, and policy summary",
-    responses={200: {"description": "Toolkit detail — format controlled by Accept header.", "content": _TOOLKIT_CONTENT_TYPES}},
+    responses={
+        200: {
+            "description": "Toolkit detail — format controlled by Accept header.",
+            "content": _TOOLKIT_CONTENT_TYPES,
+        }
+    },
 )
-async def get_toolkit(toolkit_id: Annotated[str, Path(description="Toolkit ID (e.g. 'default' or custom toolkit identifier)")], request: Request):
+async def get_toolkit(
+    toolkit_id: Annotated[
+        str, Path(description="Toolkit ID (e.g. 'default' or custom toolkit identifier)")
+    ],
+    request: Request,
+):
     """Get toolkit with all inline context: metadata, bound upstream API credentials, client API key count, and policy summary.
     The default toolkit implicitly contains ALL upstream API credentials — no explicit binding needed.
     """
     async with get_db() as db:
         async with db.execute(
             "SELECT id, name, description, simulate, disabled, created_at FROM toolkits WHERE id=?",
-            (toolkit_id,)
+            (toolkit_id,),
         ) as cur:
             row = await cur.fetchone()
     if not row:
@@ -413,7 +465,7 @@ async def get_toolkit(toolkit_id: Annotated[str, Path(description="Toolkit ID (e
                    FROM toolkit_credentials cc
                    JOIN credentials c ON cc.credential_id = c.id
                    WHERE cc.toolkit_id = ?""",
-                (toolkit_id,)
+                (toolkit_id,),
             ) as cur:
                 cred_rows = await cur.fetchall()
 
@@ -424,7 +476,7 @@ async def get_toolkit(toolkit_id: Annotated[str, Path(description="Toolkit ID (e
             placeholders = ",".join("?" * len(cred_ids))
             async with db.execute(
                 f"SELECT credential_id, rules FROM credential_policies WHERE credential_id IN ({placeholders})",
-                cred_ids
+                cred_ids,
             ) as cur:
                 for pol_row in await cur.fetchall():
                     cred_policies[pol_row[0]] = json.loads(pol_row[1])
@@ -474,9 +526,18 @@ async def get_toolkit(toolkit_id: Annotated[str, Path(description="Toolkit ID (e
     "/{toolkit_id}",
     summary="Update toolkit — rename or update description",
     response_model=ToolkitOut,
-    openapi_extra={"requestBody": {"description": "Fields to update: name, description, simulate flag, or disabled flag — only provided fields are changed"}},
-              dependencies=[Depends(require_human_session)])
-async def patch_toolkit(toolkit_id: Annotated[str, Path(description="Toolkit ID to update")], body: ToolkitPatch, request: Request):
+    openapi_extra={
+        "requestBody": {
+            "description": "Fields to update: name, description, simulate flag, or disabled flag — only provided fields are changed"
+        }
+    },
+    dependencies=[Depends(require_human_session)],
+)
+async def patch_toolkit(
+    toolkit_id: Annotated[str, Path(description="Toolkit ID to update")],
+    body: ToolkitPatch,
+    request: Request,
+):
     """
     Update toolkit metadata — name, description, disabled state, or simulation mode.
 
@@ -486,8 +547,12 @@ async def patch_toolkit(toolkit_id: Annotated[str, Path(description="Toolkit ID 
 
     **Auth:** Requires human session (admin).
     """
-    if toolkit_id == DEFAULT_TOOLKIT_ID and (body.name is not None or body.description is not None or body.simulate is not None):
-        raise HTTPException(403, "The default toolkit's name, description and simulate flag cannot be modified.")
+    if toolkit_id == DEFAULT_TOOLKIT_ID and (
+        body.name is not None or body.description is not None or body.simulate is not None
+    ):
+        raise HTTPException(
+            403, "The default toolkit's name, description and simulate flag cannot be modified."
+        )
     async with get_db() as db:
         async with db.execute("SELECT id FROM toolkits WHERE id=?", (toolkit_id,)) as cur:
             if not await cur.fetchone():
@@ -506,14 +571,18 @@ async def patch_toolkit(toolkit_id: Annotated[str, Path(description="Toolkit ID 
             set_clause = ", ".join(f"{k}=?" for k in updates)
             await db.execute(
                 f"UPDATE toolkits SET {set_clause} WHERE id=?",
-                list(updates.values()) + [toolkit_id]
+                list(updates.values()) + [toolkit_id],
             )
             await db.commit()
     return await get_toolkit(toolkit_id, request)
 
 
-@router.delete("/{toolkit_id}", status_code=204, summary="Delete toolkit and revoke all its client API keys",
-               dependencies=[Depends(require_human_session)])
+@router.delete(
+    "/{toolkit_id}",
+    status_code=204,
+    summary="Delete toolkit and revoke all its client API keys",
+    dependencies=[Depends(require_human_session)],
+)
 async def delete_toolkit(toolkit_id: Annotated[str, Path(description="Toolkit ID to delete")]):
     """
     Permanently delete a toolkit and revoke all its access keys.
@@ -539,14 +608,21 @@ async def delete_toolkit(toolkit_id: Annotated[str, Path(description="Toolkit ID
 # Each key can be individually revoked without affecting other agents.
 # IP restrictions live at the key level, not the toolkit level.
 
+
 @router.post(
     "/{toolkit_id}/keys",
     status_code=201,
     summary="Issue a new client API key for this toolkit",
     response_model=ToolkitKeyCreated,
-    openapi_extra={"requestBody": {"description": "Key configuration: optional label and optional IP allowlist (CIDR ranges)"}},
+    openapi_extra={
+        "requestBody": {
+            "description": "Key configuration: optional label and optional IP allowlist (CIDR ranges)"
+        }
+    },
 )
-async def create_toolkit_key(toolkit_id: Annotated[str, Path(description="Toolkit ID to issue key for")], body: KeyCreate):
+async def create_toolkit_key(
+    toolkit_id: Annotated[str, Path(description="Toolkit ID to issue key for")], body: KeyCreate
+):
     """Issues an additional client API key (tk_xxx) for this toolkit. Hand this key to the agent. Optionally restrict by IP (CIDR list). Returned once — not recoverable."""
     async with get_db() as db:
         async with db.execute("SELECT id FROM toolkits WHERE id=?", (toolkit_id,)) as cur:
@@ -555,14 +631,20 @@ async def create_toolkit_key(toolkit_id: Annotated[str, Path(description="Toolki
 
     api_key = _gen_toolkit_key()
     key_id = "ck_" + str(uuid.uuid4())[:8]
-    allowed_ips_json = json.dumps(body.allowed_ips) if body.allowed_ips is not None else json.dumps(default_allowed_ips()) if default_allowed_ips() else None
+    allowed_ips_json = (
+        json.dumps(body.allowed_ips)
+        if body.allowed_ips is not None
+        else json.dumps(default_allowed_ips())
+        if default_allowed_ips()
+        else None
+    )
     now = time.time()
 
     async with get_db() as db:
         await db.execute(
             """INSERT INTO toolkit_keys (id, toolkit_id, api_key, label, allowed_ips, created_at)
                VALUES (?, ?, ?, ?, ?, ?)""",
-            (key_id, toolkit_id, api_key, body.label, allowed_ips_json, now)
+            (key_id, toolkit_id, api_key, body.label, allowed_ips_json, now),
         )
         await db.commit()
 
@@ -581,8 +663,13 @@ async def create_toolkit_key(toolkit_id: Annotated[str, Path(description="Toolki
     }
 
 
-@router.get("/{toolkit_id}/keys", summary="List client API keys for this toolkit — metadata only, no secret values")
-async def list_toolkit_keys(toolkit_id: Annotated[str, Path(description="Toolkit ID to list keys for")]):
+@router.get(
+    "/{toolkit_id}/keys",
+    summary="List client API keys for this toolkit — metadata only, no secret values",
+)
+async def list_toolkit_keys(
+    toolkit_id: Annotated[str, Path(description="Toolkit ID to list keys for")],
+):
     """
     List all access keys for this toolkit.
 
@@ -597,7 +684,7 @@ async def list_toolkit_keys(toolkit_id: Annotated[str, Path(description="Toolkit
             """SELECT id, label, allowed_ips, created_at, revoked_at
                FROM toolkit_keys WHERE toolkit_id=?
                ORDER BY created_at ASC""",
-            (toolkit_id,)
+            (toolkit_id,),
         ) as cur:
             rows = await cur.fetchall()
 
@@ -625,9 +712,17 @@ async def list_toolkit_keys(toolkit_id: Annotated[str, Path(description="Toolkit
     "/{toolkit_id}/keys/{key_id}",
     summary="Update a client API key — rename or change IP restrictions",
     response_model=ToolkitKeyOut,
-    openapi_extra={"requestBody": {"description": "Fields to update: label or IP allowlist — only provided fields are changed"}},
+    openapi_extra={
+        "requestBody": {
+            "description": "Fields to update: label or IP allowlist — only provided fields are changed"
+        }
+    },
 )
-async def patch_toolkit_key(toolkit_id: Annotated[str, Path(description="Toolkit ID")], key_id: Annotated[str, Path(description="Key ID to update")], body: KeyCreate):
+async def patch_toolkit_key(
+    toolkit_id: Annotated[str, Path(description="Toolkit ID")],
+    key_id: Annotated[str, Path(description="Key ID to update")],
+    body: KeyCreate,
+):
     """Update label or IP restrictions on a client API key.
 
     Modifies the metadata for an existing toolkit key. The key value itself cannot be
@@ -650,8 +745,7 @@ async def patch_toolkit_key(toolkit_id: Annotated[str, Path(description="Toolkit
     """
     async with get_db() as db:
         async with db.execute(
-            "SELECT id FROM toolkit_keys WHERE id=? AND toolkit_id=?",
-            (key_id, toolkit_id)
+            "SELECT id FROM toolkit_keys WHERE id=? AND toolkit_id=?", (key_id, toolkit_id)
         ) as cur:
             if not await cur.fetchone():
                 raise HTTPException(404, f"Key '{key_id}' not found in toolkit '{toolkit_id}'")
@@ -666,7 +760,7 @@ async def patch_toolkit_key(toolkit_id: Annotated[str, Path(description="Toolkit
             set_clause = ", ".join(f"{k}=?" for k in updates)
             await db.execute(
                 f"UPDATE toolkit_keys SET {set_clause} WHERE id=?",
-                list(updates.values()) + [key_id]
+                list(updates.values()) + [key_id],
             )
             await db.commit()
 
@@ -674,19 +768,26 @@ async def patch_toolkit_key(toolkit_id: Annotated[str, Path(description="Toolkit
     async with get_db() as db:
         async with db.execute(
             "SELECT id, label, allowed_ips, created_at, revoked_at FROM toolkit_keys WHERE id=?",
-            (key_id,)
+            (key_id,),
         ) as cur:
             row = await cur.fetchone()
     return {
-        "id": row[0], "toolkit_id": toolkit_id, "label": row[1],
+        "id": row[0],
+        "toolkit_id": toolkit_id,
+        "label": row[1],
         "allowed_ips": json.loads(row[2]) if row[2] else None,
-        "created_at": row[3], "revoked_at": row[4],
+        "created_at": row[3],
+        "revoked_at": row[4],
         "status": "revoked" if row[4] else "active",
     }
 
 
 @router.delete("/{toolkit_id}/keys/{key_id}", status_code=204, summary="Revoke a client API key")
-async def revoke_toolkit_key(toolkit_id: Annotated[str, Path(description="Toolkit ID")], key_id: Annotated[str, Path(description="Key ID to revoke")], request: Request):
+async def revoke_toolkit_key(
+    toolkit_id: Annotated[str, Path(description="Toolkit ID")],
+    key_id: Annotated[str, Path(description="Key ID to revoke")],
+    request: Request,
+):
     """
     Revoke a single access key.
 
@@ -695,29 +796,36 @@ async def revoke_toolkit_key(toolkit_id: Annotated[str, Path(description="Toolki
     """
     async with get_db() as db:
         async with db.execute(
-            "SELECT id FROM toolkit_keys WHERE id=? AND toolkit_id=?",
-            (key_id, toolkit_id)
+            "SELECT id FROM toolkit_keys WHERE id=? AND toolkit_id=?", (key_id, toolkit_id)
         ) as cur:
             if not await cur.fetchone():
                 raise HTTPException(404, f"Key '{key_id}' not found in toolkit '{toolkit_id}'")
-        await db.execute(
-            "UPDATE toolkit_keys SET revoked_at=? WHERE id=?",
-            (time.time(), key_id)
-        )
+        await db.execute("UPDATE toolkit_keys SET revoked_at=? WHERE id=?", (time.time(), key_id))
         await db.commit()
-    audit_log.info("KEY_REVOKED toolkit=%s key=%s actor=human ip=%s", toolkit_id, key_id, client_ip(request))
+    audit_log.info(
+        "KEY_REVOKED toolkit=%s key=%s actor=human ip=%s", toolkit_id, key_id, client_ip(request)
+    )
 
 
 # ── Toolkit Credentials ────────────────────────────────────────────────────
+
 
 @router.post(
     "/{toolkit_id}/credentials",
     status_code=201,
     summary="Bind an upstream API credential to this toolkit — enable broker injection",
     response_model=CredentialBindingOut,
-    openapi_extra={"requestBody": {"description": "Credential binding: credential_id to bind to this toolkit (enables broker to inject auth for that API)"}},
+    openapi_extra={
+        "requestBody": {
+            "description": "Credential binding: credential_id to bind to this toolkit (enables broker to inject auth for that API)"
+        }
+    },
 )
-async def add_credential_to_toolkit(toolkit_id: Annotated[str, Path(description="Toolkit ID to bind credential to")], body: ToolkitCredentialAdd, request: Request):
+async def add_credential_to_toolkit(
+    toolkit_id: Annotated[str, Path(description="Toolkit ID to bind credential to")],
+    body: ToolkitCredentialAdd,
+    request: Request,
+):
     """Enrolls an existing upstream API credential in this toolkit. The broker automatically injects it into outbound calls for the API it's bound to, when the agent calls using this toolkit's client API key."""
     if not getattr(request.state, "is_admin", False):
         raise HTTPException(403, "Only the admin key can modify toolkit credentials.")
@@ -725,8 +833,9 @@ async def add_credential_to_toolkit(toolkit_id: Annotated[str, Path(description=
         async with db.execute("SELECT id FROM toolkits WHERE id=?", (toolkit_id,)) as cur:
             if not await cur.fetchone():
                 raise HTTPException(404, f"Toolkit '{toolkit_id}' not found")
-        async with db.execute("SELECT id, label FROM credentials WHERE id=?",
-                               (body.credential_id,)) as cur:
+        async with db.execute(
+            "SELECT id, label FROM credentials WHERE id=?", (body.credential_id,)
+        ) as cur:
             cred = await cur.fetchone()
         if not cred:
             raise HTTPException(404, f"Credential '{body.credential_id}' not found")
@@ -736,7 +845,7 @@ async def add_credential_to_toolkit(toolkit_id: Annotated[str, Path(description=
             await db.execute(
                 """INSERT INTO toolkit_credentials (id, toolkit_id, credential_id, alias, created_at)
                    VALUES (?, ?, ?, ?, ?)""",
-                (cc_id, toolkit_id, body.credential_id, cred[1], time.time())
+                (cc_id, toolkit_id, body.credential_id, cred[1], time.time()),
             )
             await db.commit()
         except Exception as e:
@@ -752,8 +861,15 @@ async def add_credential_to_toolkit(toolkit_id: Annotated[str, Path(description=
     }
 
 
-@router.get("/{toolkit_id}/credentials", summary="List upstream API credentials bound to this toolkit", response_model=list[CredentialBindingOut])
-async def list_toolkit_credentials(toolkit_id: Annotated[str, Path(description="Toolkit ID to list credentials for")], request: Request):
+@router.get(
+    "/{toolkit_id}/credentials",
+    summary="List upstream API credentials bound to this toolkit",
+    response_model=list[CredentialBindingOut],
+)
+async def list_toolkit_credentials(
+    toolkit_id: Annotated[str, Path(description="Toolkit ID to list credentials for")],
+    request: Request,
+):
     """List upstream API credentials bound to this toolkit.
     Admin (human session) may list any toolkit's credentials.
     Agents may list credentials for their own toolkit only.
@@ -771,7 +887,7 @@ async def list_toolkit_credentials(toolkit_id: Annotated[str, Path(description="
                FROM toolkit_credentials cc
                JOIN credentials c ON cc.credential_id = c.id
                WHERE cc.toolkit_id = ?""",
-            (toolkit_id,)
+            (toolkit_id,),
         ) as cur:
             rows = await cur.fetchall()
     return [
@@ -786,8 +902,15 @@ async def list_toolkit_credentials(toolkit_id: Annotated[str, Path(description="
     ]
 
 
-@router.delete("/{toolkit_id}/credentials/{credential_id:path}", status_code=204, summary="Unbind an upstream API credential from this toolkit")
-async def remove_credential_from_toolkit(toolkit_id: Annotated[str, Path(description="Toolkit ID")], credential_id: Annotated[str, Path(description="Credential ID to unbind")]):
+@router.delete(
+    "/{toolkit_id}/credentials/{credential_id:path}",
+    status_code=204,
+    summary="Unbind an upstream API credential from this toolkit",
+)
+async def remove_credential_from_toolkit(
+    toolkit_id: Annotated[str, Path(description="Toolkit ID")],
+    credential_id: Annotated[str, Path(description="Credential ID to unbind")],
+):
     """
     Unbind a credential from this toolkit.
 
@@ -799,12 +922,13 @@ async def remove_credential_from_toolkit(toolkit_id: Annotated[str, Path(descrip
     async with get_db() as db:
         await db.execute(
             "DELETE FROM toolkit_credentials WHERE toolkit_id=? AND credential_id=?",
-            (toolkit_id, credential_id)
+            (toolkit_id, credential_id),
         )
         await db.commit()
 
 
 # ── Credential-scoped Permissions ────────────────────────────────────────────
+
 
 @policy_router.get(
     "/{toolkit_id}/credentials/{cred_id:path}/permissions",
@@ -812,7 +936,10 @@ async def remove_credential_from_toolkit(toolkit_id: Annotated[str, Path(descrip
     tags=["toolkits"],
     response_model=list[PermissionRuleOut],
 )
-async def get_credential_permissions(toolkit_id: Annotated[str, Path(description="Toolkit ID")], cred_id: Annotated[str, Path(description="Credential ID to get permissions for")]):
+async def get_credential_permissions(
+    toolkit_id: Annotated[str, Path(description="Toolkit ID")],
+    cred_id: Annotated[str, Path(description="Credential ID to get permissions for")],
+):
     """Returns all rules in evaluation order for this credential: agent-defined rules first,
     then the immutable system safety rules appended by the server. First match wins.
 
@@ -847,9 +974,18 @@ async def get_credential_permissions(toolkit_id: Annotated[str, Path(description
     tags=["toolkits"],
     response_model=list[PermissionRuleOut],
     dependencies=[Depends(require_human_session)],
-    openapi_extra={"requestBody": {"description": "Array of permission rules to replace the entire agent rule list for this credential — each rule specifies effect (allow/deny), optional methods, optional path regex, and optional operation IDs"}},
+    openapi_extra={
+        "requestBody": {
+            "description": "Array of permission rules to replace the entire agent rule list for this credential — each rule specifies effect (allow/deny), optional methods, optional path regex, and optional operation IDs"
+        }
+    },
 )
-async def set_credential_permissions(toolkit_id: Annotated[str, Path(description="Toolkit ID")], cred_id: Annotated[str, Path(description="Credential ID to set permissions for")], body: list[PolicyRule], request: Request):
+async def set_credential_permissions(
+    toolkit_id: Annotated[str, Path(description="Toolkit ID")],
+    cred_id: Annotated[str, Path(description="Credential ID to set permissions for")],
+    body: list[PolicyRule],
+    request: Request,
+):
     """Replaces the entire agent rule list for this credential.
     System safety rules are always appended server-side and cannot be removed.
     Use `PATCH` to add or remove individual rules without replacing the full list.
@@ -861,7 +997,12 @@ async def set_credential_permissions(toolkit_id: Annotated[str, Path(description
 
     rules_list = [r.model_dump(exclude_none=True) for r in body]
     result = await _write_credential_permissions(cred_id, rules_list)
-    audit_log.info("PERMISSIONS_SET credential=%s rules=%d actor=human ip=%s", cred_id, len(rules_list), client_ip(request))
+    audit_log.info(
+        "PERMISSIONS_SET credential=%s rules=%d actor=human ip=%s",
+        cred_id,
+        len(rules_list),
+        client_ip(request),
+    )
     return result
 
 
@@ -871,9 +1012,18 @@ async def set_credential_permissions(toolkit_id: Annotated[str, Path(description
     tags=["toolkits"],
     response_model=list[PermissionRuleOut],
     dependencies=[Depends(require_human_session)],
-    openapi_extra={"requestBody": {"description": "Incremental update: arrays of rules to add and/or remove from this credential's policy — rules are matched by exact equality for removal"}},
+    openapi_extra={
+        "requestBody": {
+            "description": "Incremental update: arrays of rules to add and/or remove from this credential's policy — rules are matched by exact equality for removal"
+        }
+    },
 )
-async def patch_credential_permissions(toolkit_id: Annotated[str, Path(description="Toolkit ID")], cred_id: Annotated[str, Path(description="Credential ID to patch permissions for")], body: PermissionsPatch, request: Request):
+async def patch_credential_permissions(
+    toolkit_id: Annotated[str, Path(description="Toolkit ID")],
+    cred_id: Annotated[str, Path(description="Credential ID to patch permissions for")],
+    body: PermissionsPatch,
+    request: Request,
+):
     """Incrementally update rules for this credential without replacing the full list.
 
     - `add`: rules appended (deduplicated)
@@ -907,7 +1057,13 @@ async def patch_credential_permissions(toolkit_id: Annotated[str, Path(descripti
     result = await _write_credential_permissions(cred_id, current_rules)
     added = len(body.add) if body.add else 0
     removed = len(body.remove) if body.remove else 0
-    audit_log.info("PERMISSIONS_PATCHED credential=%s added=%d removed=%d actor=human ip=%s", cred_id, added, removed, client_ip(request))
+    audit_log.info(
+        "PERMISSIONS_PATCHED credential=%s added=%d removed=%d actor=human ip=%s",
+        cred_id,
+        added,
+        removed,
+        client_ip(request),
+    )
     return result
 
 
@@ -926,7 +1082,7 @@ async def _write_credential_permissions(credential_id: str, rules_list: list[dic
                  rules=excluded.rules,
                  summary=excluded.summary,
                  updated_at=excluded.updated_at""",
-            (policy_id, credential_id, rules_json, summary, now, now)
+            (policy_id, credential_id, rules_json, summary, now, now),
         )
         await db.commit()
 
@@ -934,6 +1090,7 @@ async def _write_credential_permissions(credential_id: str, rules_list: list[dic
 
 
 # ── Policy Enforcement (called by broker) ─────────────────────────────────────
+
 
 async def check_credential_policy(
     credential_id: str,
@@ -946,8 +1103,7 @@ async def check_credential_policy(
     """
     async with get_db() as db:
         async with db.execute(
-            "SELECT rules FROM credential_policies WHERE credential_id=?",
-            (credential_id,)
+            "SELECT rules FROM credential_policies WHERE credential_id=?", (credential_id,)
         ) as cur:
             row = await cur.fetchone()
 
@@ -965,4 +1121,3 @@ async def check_toolkit_policy(
 ) -> tuple[bool, str]:
     """Deprecated alias — use check_credential_policy. Falls back to empty rules."""
     return _check_policy([], operation_id, method, path)
-

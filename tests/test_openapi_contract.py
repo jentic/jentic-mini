@@ -3,15 +3,15 @@
 Uses Schemathesis to validate API responses match the OpenAPI spec,
 plus custom tests for Jentic-specific requirements.
 """
+
 import json
-import pytest
-import schemathesis
 from pathlib import Path
 
 
 # ────────────────────────────────────────────────────────────────
 # 1. Critical: ui/openapi.json matches served spec
 # ────────────────────────────────────────────────────────────────
+
 
 def test_ui_openapi_matches_served_spec(client):
     """The static ui/openapi.json MUST match what /openapi.json serves.
@@ -59,6 +59,7 @@ def test_ui_openapi_matches_served_spec(client):
 # ────────────────────────────────────────────────────────────────
 # 3. Jentic-specific requirements (Phase 1)
 # ────────────────────────────────────────────────────────────────
+
 
 class TestJenticRequirements:
     """Custom tests for Jentic-specific OpenAPI requirements."""
@@ -124,7 +125,11 @@ class TestJenticRequirements:
         # Check /user/token endpoint
         token_op = spec["paths"]["/user/token"]["post"]
         req_body = token_op.get("requestBody", {})
-        form_schema = req_body.get("content", {}).get("application/x-www-form-urlencoded", {}).get("schema", {})
+        form_schema = (
+            req_body.get("content", {})
+            .get("application/x-www-form-urlencoded", {})
+            .get("schema", {})
+        )
 
         # Should have a schema reference
         assert "$ref" in form_schema or "type" in form_schema, "Token endpoint must have a schema"
@@ -133,7 +138,9 @@ class TestJenticRequirements:
         if "$ref" in form_schema:
             ref = form_schema["$ref"]
             schema_name = ref.split("/")[-1]
-            assert schema_name in schemas, f"Referenced schema '{schema_name}' must exist in components/schemas"
+            assert schema_name in schemas, (
+                f"Referenced schema '{schema_name}' must exist in components/schemas"
+            )
 
             # The schema should have required OAuth2 fields
             schema_def = schemas[schema_name]
@@ -146,7 +153,9 @@ class TestJenticRequirements:
         spec = client.get("/openapi.json").json()
 
         # Handle both /inspect (Phase 1-2) and /capabilities (Phase 3+)
-        inspect_path = "/inspect/{id}" if "/inspect/{id}" in spec["paths"] else "/capabilities/{capability_id}"
+        inspect_path = (
+            "/inspect/{id}" if "/inspect/{id}" in spec["paths"] else "/capabilities/{capability_id}"
+        )
         agent_ops = [("/search", "get"), (inspect_path, "get")]
 
         for path, method in agent_ops:
