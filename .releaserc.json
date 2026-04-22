@@ -7,10 +7,10 @@
     "@semantic-release/commit-analyzer",
     "@semantic-release/release-notes-generator",
     ["@semantic-release/exec", {
-      "prepareCmd": "sed -i 's/^ARG APP_VERSION=.*/ARG APP_VERSION=${nextRelease.version}/' Dockerfile"
+      "prepareCmd": "sed -i 's/^ARG APP_VERSION=.*/ARG APP_VERSION=${nextRelease.version}/' Dockerfile && sed -i 's/^version = .*/version = \"${nextRelease.version}\"/' pyproject.toml"
     }],
     ["@semantic-release/git", {
-      "assets": ["Dockerfile"],
+      "assets": ["Dockerfile", "pyproject.toml"],
       "message": "chore(release): cut the ${nextRelease.version} release\n\n${nextRelease.notes}"
     }],
     "@semantic-release/github"

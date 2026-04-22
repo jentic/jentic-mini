@@ -6,18 +6,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Jentic Mini is the open-source, self-hosted implementation of the Jentic API. It gives AI agents a local execution layer: search APIs via BM25, broker authenticated requests (credential injection without exposing secrets to the agent), enforce access policies, and observe execution traces. Built with FastAPI + SQLite + Fernet encryption.
 
-## Running the Server
+## Development Setup
 
-```bash
-docker compose up -d
-```
-
-API at `http://localhost:8900`, Swagger UI at `http://localhost:8900/docs`.
-
-### Development workflow
-- **Python changes**: `src/` is volume-mounted into the container. Uvicorn auto-reloads on any `.py` file change — no container restart needed.
-- **UI changes**: `cd ui && npm install && npm run dev` for Vite dev server with HMR on port 5173 (proxies API calls to the container on 8900).
-- **Rebuild UI in Docker**: `cd ui && npm run build`, then `docker compose up -d --build`.
+See @DEVELOPMENT.md for prerequisites, installation, and running the server.
 
 ### Key environment variables
 - `JENTIC_VAULT_KEY` — Fernet key for credentials vault (auto-generated from `data/vault.key` if unset)
@@ -149,31 +140,10 @@ All theming is in `ui/src/index.css`. To add a new semantic color:
 
 ## Testing
 
-### Backend tests
+- **Backend**: pytest-based, exercises the API at the HTTP boundary. Uses a real temp SQLite DB with Alembic migrations — no mocking. Tests organized by trust boundary (auth, policy, vault, broker, toolkit). CI: `ci-backend.yml` (path-filtered to `src/`, `tests/`, `alembic/`).
+- **UI**: Vitest browser mode + MSW (`msw/browser`) + axe-core + Testing Library. See `ui/TESTING.md` for the full contributor guide. CI: `ci-ui.yml` (path-filtered) + `ci-docker.yml` (always runs).
 
-```bash
-pip install -r requirements-dev.txt
-python -m pytest tests/ -v
-```
-
-pytest-based test harness that exercises the API at the HTTP boundary. Uses a real temp SQLite DB with Alembic migrations — no mocking. Tests organized by trust boundary (auth, policy, vault, broker, toolkit). CI: `ci-backend.yml` (path-filtered to `src/`, `tests/`, `alembic/`).
-
-- `requirements-dev.txt` — includes production deps (`-r requirements.txt`) plus test deps (pytest, pytest-asyncio). **Not installed in the Docker image.**
-
-### UI tests
-
-See `ui/TESTING.md` for the full contributor guide.
-
-```bash
-cd ui
-npm test            # Vitest watch mode (browser mode via Playwright)
-npm run test:run    # Single CI run
-npm run test:coverage  # Istanbul coverage report
-npm run test:e2e    # Playwright E2E tests (mocked)
-npm run test:e2e:docker  # Docker E2E (real backend)
-```
-
-Stack: Vitest browser mode + MSW (`msw/browser`) + axe-core + Testing Library. CI: `ci-ui.yml` (path-filtered) + `ci-docker.yml` (always runs).
+See @DEVELOPMENT.md for commands.
 
 ## Python Code Style
 
@@ -181,17 +151,8 @@ Stack: Vitest browser mode + MSW (`msw/browser`) + axe-core + Testing Library. C
 
 ## Formatting & Linting
 
-```bash
-cd ui
-npm run lint         # ESLint — check for errors (includes Prettier via plugin)
-npm run lint:fix     # ESLint — auto-fix lint + formatting issues
-```
-
-- **Prettier** runs as an ESLint plugin (`prettier/prettier` rule) — no separate format script. `lint:fix` handles both.
-- **ESLint 9** (flat config): TypeScript, React Hooks, import ordering, unused imports, jsx-a11y accessibility, `button-has-type`, `consistent-type-imports`
-- **Husky + lint-staged**: pre-commit hook formats and lints staged files automatically
-- **`@/` imports**: all cross-directory imports use `@/` (maps to `src/`). Enforced via `no-restricted-imports` rule.
-- Config files: `ui/eslint.config.js`, `ui/prettier.config.js`, `ui/.editorconfig`
+- **UI**: ESLint 9 (flat config) with Prettier as plugin. `@/` imports enforced via `no-restricted-imports`. Config: `ui/eslint.config.js`, `ui/prettier.config.js`, `ui/.editorconfig`
+- **Husky + lint-staged**: pre-commit hook lints staged files automatically
 
 ## Data directory (all gitignored)
 - `data/jentic-mini.db` — SQLite database

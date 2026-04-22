@@ -18,3 +18,4 @@ vendor/arazzo-engine
 *.bak
 *.db
 .hypothesis/
+__pypackages__/
