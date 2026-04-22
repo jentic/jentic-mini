@@ -114,7 +114,7 @@ This means the `/inspect/{id}` endpoint and `/search` results use a single ID fo
 
 **Credentials are NEVER passed as env vars to the arazzo-runner subprocess.**
 
-Instead, the arazzo-runner rewrites each source spec's `servers[0].url` to `http://localhost:8900/{host}` before execution. This routes every step through the local broker, which:
+Instead, Jentic preprocesses each source spec before invoking `arazzo-runner`, rewriting `servers[0].url` to `http://localhost:8900/{host}`. This routes every step through the local broker, which:
 
 1. Identifies the upstream host from the rewritten URL
 2. Looks up credentials in the current toolkit bound to that API
