@@ -7,14 +7,16 @@ on:
       - 'src/**'
       - 'tests/**'
       - 'alembic/**'
-      - 'requirements*.txt'
+      - 'pyproject.toml'
+      - 'pdm.lock'
   pull_request:
     branches: [main]
     paths:
       - 'src/**'
       - 'tests/**'
       - 'alembic/**'
-      - 'requirements*.txt'
+      - 'pyproject.toml'
+      - 'pdm.lock'
   workflow_call:
   workflow_dispatch:
 
@@ -32,13 +34,15 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: '3.11'
-          cache: 'pip'
-          cache-dependency-path: 'requirements-dev.txt'
+
+      - uses: pdm-project/setup-pdm@v4
+        with:
+          python-version: '3.11'
 
       - name: Install dependencies
-        run: pip install -r requirements-dev.txt
+        run: pdm install --dev
 
       - name: Run backend tests
         env:
           JENTIC_TELEMETRY: "off"
-        run: python -m pytest tests/ -v --tb=short
+        run: pdm run python -m pytest tests/ -v --tb=short

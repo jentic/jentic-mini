@@ -5,7 +5,27 @@ COPY ui/ ./ui/
 RUN mkdir -p static
 RUN cd ui && npm ci --ignore-scripts && npm run build
 
-# Stage 2: Python runtime
+# Stage 2: Install Python dependencies
+FROM python:3.11-slim AS py-deps
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc libffi-dev curl git \
+    && rm -rf /var/lib/apt/lists/*
+WORKDIR /app
+
+RUN pip install --no-cache-dir --upgrade pip wheel setuptools
+
+# Install PDM (recommended method)
+RUN curl -sSL https://pdm-project.org/install-pdm.py | python3 -
+
+# Clone arazzo-engine and install runner from source
+RUN git clone --depth 1 https://github.com/jentic/arazzo-engine.git /opt/arazzo-engine \
+    && /root/.local/bin/pdm venv create --with-pip \
+    && /app/.venv/bin/pip install --no-cache-dir -e /opt/arazzo-engine/runner
+
+COPY pyproject.toml pdm.lock ./
+RUN /root/.local/bin/pdm install --prod --no-editable --no-self
+
+# Stage 3: Runtime
 FROM python:3.11-slim
 
 ARG APP_VERSION=0.9.0
@@ -19,21 +39,11 @@ LABEL maintainer="vladimir@jentic.com" \
       org.opencontainers.image.licenses="Apache-2.0" \
       org.opencontainers.image.version="${APP_VERSION}"
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    gcc libffi-dev curl git \
-    && rm -rf /var/lib/apt/lists/*
-
 WORKDIR /app
 
-# Upgrade pip and its dependencies to fix CVE-2026-24049 (wheel) and CVE-2026-23949 (jaraco.context)
-RUN pip install --no-cache-dir --upgrade pip wheel setuptools
-
-# Clone arazzo-engine and install runner from source
-RUN git clone --depth 1 https://github.com/jentic/arazzo-engine.git /opt/arazzo-engine \
-    && pip install --no-cache-dir -e /opt/arazzo-engine/runner
-
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+COPY --from=py-deps /app/.venv /app/.venv
+COPY --from=py-deps /opt/arazzo-engine /opt/arazzo-engine
+ENV PATH="/app/.venv/bin:$PATH"
 
 RUN mkdir -p /app/data /app/src
 
