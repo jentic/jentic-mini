@@ -8,22 +8,14 @@ RUN cd ui && npm ci --ignore-scripts && npm run build
 # Stage 2: Install Python dependencies
 FROM python:3.11-slim AS py-deps
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    gcc libffi-dev curl git \
+    gcc libffi-dev curl \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
-
-RUN pip install --no-cache-dir --upgrade pip wheel setuptools
 
 # Install PDM (recommended method, pinned version)
 RUN curl -sSL https://pdm-project.org/install-pdm.py | python3 - --version 2.25.5
 
 COPY pyproject.toml pdm.lock ./
-RUN /root/.local/bin/pdm venv create --with-pip
-
-# Clone arazzo-engine and install runner from source
-RUN git clone --depth 1 https://github.com/jentic/arazzo-engine.git /opt/arazzo-engine \
-    && /app/.venv/bin/pip install --no-cache-dir -e /opt/arazzo-engine/runner
-
 RUN /root/.local/bin/pdm install --prod --no-editable --no-self --frozen-lockfile
 
 # Stage 3: Runtime
@@ -43,7 +35,6 @@ LABEL maintainer="vladimir@jentic.com" \
 WORKDIR /app
 
 COPY --from=py-deps /app/.venv /app/.venv
-COPY --from=py-deps /opt/arazzo-engine /opt/arazzo-engine
 ENV PATH="/app/.venv/bin:$PATH"
 
 RUN mkdir -p /app/data /app/src

@@ -6,12 +6,10 @@ __pycache__/
 .env
 data/*
 !data/.gitkeep
-vendor/arazzo-engine/
 .DS_Store
 *.tmp
 /tmp/
 node_modules
-vendor/arazzo-engine
 /static/
 /src/specs/
 /src/workflows/

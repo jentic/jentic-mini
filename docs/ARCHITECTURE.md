@@ -413,9 +413,9 @@ Description is abbreviated to ≤3 sentences by `utils._abbreviate()` to keep se
 
 ## Arazzo Engine
 
-**Source:** Cloned at Docker build time from `github.com/jentic/arazzo-engine`.
+**Source:** Installed from PyPI (`arazzo-runner` package).
 
-The arazzo-engine runner adds runtime parameters so workflows route through the broker.
+The arazzo-runner executes workflows, routing HTTP calls through the broker for credential injection.
 
 ### Preprocessing in `workflows.py`
 

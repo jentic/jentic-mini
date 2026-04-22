@@ -64,13 +64,9 @@ Set in `/configs/jentic-personal-edition/docker-compose.yml`:
       debug.py               ← /debug/... (hidden from OpenAPI schema)
     static/                  ← Swagger UI + Redoc assets (no CDN, works offline)
     specs/                   ← Downloaded OpenAPI spec files + Arazzo workflows
-  vendor/
-    arazzo-engine/           ← Forked arazzo-runner (branch: jpe-patches)
   data/                      ← SQLite DB + vault.key (Docker volume, NOT in git)
   docs/                      ← This documentation
 ```
-
-**Path mapping:** `/configs/jentic-personal-edition/` on the host maps to `/app/` inside the container. `/mnt/jentic-pe/` is a bind mount to the same directory (Shirka's workspace path). They are the same files.
 
 ## Current API Corpus
 
