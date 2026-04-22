@@ -11,17 +11,21 @@ The identity of a workflow is: POST/{jentic_hostname}/workflows/{slug}
 Workflow capability IDs in search/inspect use the same METHOD/host/path format
 as operation IDs. The backend detects them by matching the Jentic hostname.
 """
+import asyncio
 import copy
 import html as _html
 import json
+import os
 import pathlib
+import sys
 import tempfile
+import time
 import uuid
 import yaml
 from typing import Annotated, Any
 
 from fastapi import APIRouter, HTTPException, Path, Query, Request
-from fastapi.responses import HTMLResponse, Response
+from fastapi.responses import HTMLResponse, JSONResponse, Response
 
 from jentic.apitools.openapi.common.uri import is_http_https_url
 from src.db import get_db
@@ -433,7 +437,6 @@ async def dispatch_workflow(
                     0.0 = return 202 immediately; None = block indefinitely
     callback_url  : X-Jentic-Callback URL to POST result when async job completes
     """
-    import asyncio
     async with get_db() as db:
         async with db.execute(
             "SELECT arazzo_path, name FROM workflows WHERE slug=?", (slug,)
@@ -596,7 +599,6 @@ async def dispatch_workflow(
             )
 
     # ── Synchronous execution path (no Prefer: wait header) ──────────────────
-    from fastapi.responses import JSONResponse
     return await _execute_workflow_core(
         slug=slug, name=name, doc=doc, workflow_id=workflow_id,
         inputs=inputs, arazzo_path=arazzo_path,
@@ -618,10 +620,6 @@ async def _execute_workflow_core(
     is_simulate: bool,
     trace_id: str | None,
 ):
-    import asyncio
-    import sys
-    import time
-    from fastapi.responses import JSONResponse
     from src.routers.traces import write_trace, new_trace_id
 
     if not trace_id:
@@ -638,17 +636,16 @@ async def _execute_workflow_core(
     # the broker can look up the right toolkit's credentials.
     # caller_api_key passed in as parameter
 
-    _VENDOR_PATH = "/app/vendor/arazzo-engine/runner"
     script = f"""
-import sys
-sys.path.insert(0, {repr(_VENDOR_PATH)})
 from arazzo_runner import ArazzoRunner
-from arazzo_runner.models import RuntimeParams
+import os
+import requests
 import json
 
-runner = ArazzoRunner.from_arazzo_path({repr(temp_arazzo)})
-rp = RuntimeParams(auth_headers={{"X-Jentic-API-Key": {repr(caller_api_key)}}})
-result = runner.execute_workflow({repr(workflow_id)}, {repr(inputs)}, runtime_params=rp)
+session = requests.Session()
+session.headers["X-Jentic-API-Key"] = os.environ["_JENTIC_CALLER_KEY"]
+runner = ArazzoRunner.from_arazzo_path({repr(temp_arazzo)}, http_client=session)
+result = runner.execute_workflow({repr(workflow_id)}, {repr(inputs)})
 if hasattr(result, '__dataclass_fields__') or hasattr(result, '__dict__'):
     out = {{
         'status': str(result.status),
@@ -663,8 +660,8 @@ else:
 print(json.dumps(out, default=str))
 """
     trace_id = new_trace_id()
-    # No vault env vars — broker handles credential injection
     env = dict(os.environ)
+    env["_JENTIC_CALLER_KEY"] = caller_api_key
     t0 = time.monotonic()
     proc = await asyncio.create_subprocess_exec(
         sys.executable, "-c", script,

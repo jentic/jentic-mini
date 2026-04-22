@@ -415,7 +415,7 @@ Description is abbreviated to ≤3 sentences by `utils._abbreviate()` to keep se
 
 **Source:** Installed from PyPI (`arazzo-runner` package).
 
-The arazzo-runner executes workflows, routing HTTP calls through the broker for credential injection.
+The arazzo-runner executes workflows via a `requests.Session` with the caller's API key as a default header, routing all HTTP calls through the broker for credential injection.
 
 ### Preprocessing in `workflows.py`
 
