@@ -1,7 +1,7 @@
 name: Dependabot lock sync
 
 on:
-  pull_request:
+  pull_request_target:
     branches: [main]
     paths:
       - 'pyproject.toml'
@@ -11,13 +11,13 @@ permissions:
 
 jobs:
   lock:
-    if: github.actor == 'dependabot[bot]'
+    if: github.event.pull_request.user.login == 'dependabot[bot]'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: ${{ github.head_ref }}
+          ref: ${{ github.event.pull_request.head.ref }}
 
       - uses: pdm-project/setup-pdm@v4
         with:
