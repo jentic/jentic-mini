@@ -26,6 +26,7 @@ import os
 import re
 from typing import Optional
 
+import yaml
 from alembic import op
 from sqlalchemy import text
 
@@ -46,12 +47,7 @@ def _load_spec(spec_path: str) -> Optional[dict]:
         with open(spec_path) as f:
             content = f.read()
         if spec_path.endswith((".yaml", ".yml")):
-            try:
-                import yaml  # noqa: PLC0415  # optional dependency for YAML specs
-
-                return yaml.safe_load(content)
-            except ImportError:
-                pass
+            return yaml.safe_load(content)
         return json.loads(content)
     except Exception:
         return None

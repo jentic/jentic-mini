@@ -18,7 +18,7 @@ URL structure (nested under /toolkits):
   GET    /toolkits/{toolkit_id}/access-requests/approve/{req_id}  (HTML UI)
 """
 
-import html as _html
+import html
 import json
 import logging
 import time
@@ -280,9 +280,9 @@ async def approval_ui_legacy(toolkit_id: str, req_id: str):
         }}
         </script>"""
     else:
-        resolved_html = f"<p><em>This request has already been resolved: <strong>{_html.escape(status)}</strong></em></p>"
+        resolved_html = f"<p><em>This request has already been resolved: <strong>{html.escape(status)}</strong></em></p>"
 
-    html = f"""<!DOCTYPE html>
+    body = f"""<!DOCTYPE html>
 <html>
 <head><title>Access Request — Jentic Mini</title>
 <style>
@@ -303,19 +303,19 @@ async def approval_ui_legacy(toolkit_id: str, req_id: str):
 <body>
   <h1>🔐 Access Request</h1>
   <div class="card">
-    <p><span class="label">Request ID</span><br>{_html.escape(row_id)}</p>
-    <p><span class="label">Type</span><br>{_html.escape(req_type)}</p>
-    <p><span class="label">Toolkit</span><br>{_html.escape(row_toolkit_id or "N/A")}</p>
-    <p><span class="label">Status</span><br><span class="status-{_html.escape(status)}">{_html.escape(status)}</span></p>
-    <p><span class="label">What the agent is requesting</span><br>{_html.escape(description)}</p>
-    <p><span class="label">Reason from agent</span><br>{_html.escape(reason) if reason else "<em>No reason provided</em>"}</p>
+    <p><span class="label">Request ID</span><br>{html.escape(row_id)}</p>
+    <p><span class="label">Type</span><br>{html.escape(req_type)}</p>
+    <p><span class="label">Toolkit</span><br>{html.escape(row_toolkit_id or "N/A")}</p>
+    <p><span class="label">Status</span><br><span class="status-{html.escape(status)}">{html.escape(status)}</span></p>
+    <p><span class="label">What the agent is requesting</span><br>{html.escape(description)}</p>
+    <p><span class="label">Reason from agent</span><br>{html.escape(reason) if reason else "<em>No reason provided</em>"}</p>
     <p><span class="label">Payload</span></p>
-    <pre>{_html.escape(json.dumps(payload, indent=2))}</pre>
+    <pre>{html.escape(json.dumps(payload, indent=2))}</pre>
   </div>
   {resolved_html}
 </body>
 </html>"""
-    return HTMLResponse(html)
+    return HTMLResponse(body)
 
 
 @router.get(
