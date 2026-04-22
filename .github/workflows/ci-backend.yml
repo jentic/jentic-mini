@@ -37,7 +37,7 @@ jobs:
           version: '2.25.5'
 
       - name: Install dependencies
-        run: pdm install --dev ${{ github.actor != 'dependabot[bot]' && '--frozen-lockfile' || '' }}
+        run: pdm install --dev --frozen-lockfile
 
       - name: Run backend tests
         env:
