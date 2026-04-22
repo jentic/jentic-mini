@@ -78,7 +78,7 @@ Credentials are **never** exposed to agents or passed as env vars. The broker:
 6. Logs a trace
 
 ### Workflow execution
-Arazzo workflows use `arazzo-engine` (cloned at Docker build time from `github.com/jentic/arazzo-engine`). The runner patches `servers[0].url` in source specs to route all HTTP calls through the local broker (`http://localhost:8900/{host}`), ensuring every step gets credential injection, tracing, and policy enforcement.
+Arazzo workflows use `arazzo-runner` (installed from PyPI). The runner patches `servers[0].url` in source specs to route all HTTP calls through the local broker (`http://localhost:8900/{host}`), ensuring every step gets credential injection, tracing, and policy enforcement.
 
 ### ID formats
 - **Capability ID**: `METHOD/host/path` (e.g., `GET/api.elevenlabs.io/v1/voices`)
