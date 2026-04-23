@@ -9,6 +9,7 @@
   ```
 - **Node.js 24+** and **npm** (for the UI)
 - **Docker** and **Docker Compose** (for running the server)
+- **GitHub CLI** (`gh`) — https://cli.github.com/
 
 ## Getting Started
 
@@ -83,6 +84,13 @@ npm run test:e2e:docker  # Docker E2E (real backend)
 ```
 
 ## Linting
+
+### Backend
+
+```bash
+pdm run lint          # Ruff check + format check
+pdm run lint:fix      # Auto-fix
+```
 
 ### UI
 
