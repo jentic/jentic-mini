@@ -87,4 +87,4 @@ Set in `/configs/jentic-personal-edition/docker-compose.yml`:
 - [ARCHITECTURE.md](ARCHITECTURE.md) — system design, component map, database schema
 - [CREDENTIALS.md](CREDENTIALS.md) — vault, credential lifecycle, auth flywheel
 - [WORKFLOWS.md](WORKFLOWS.md) — Arazzo workflows, execution model, examples
-- [DEVELOPMENT.md](DEVELOPMENT.md) — dev workflow, adding APIs, Docker layout, debugging
+- [../DEVELOPMENT.md](../DEVELOPMENT.md) — prerequisites, install, running tests, adding APIs, debug endpoints
