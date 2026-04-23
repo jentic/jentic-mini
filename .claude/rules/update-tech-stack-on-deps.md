@@ -1,3 +1,10 @@
+---
+paths:
+  - "pyproject.toml"
+  - "ui/package.json"
+  - "Dockerfile"
+---
+
 When a change touches `pyproject.toml`, `ui/package.json`, or `Dockerfile` and either **adds a library, removes a library, or changes its role in the architecture**, update `specs/tech-stack.md` in the same commit.
 
 Version bumps do NOT require a constitution update — `pyproject.toml` and `ui/package.json` are the version source of truth. Do not re-add version numbers to `specs/tech-stack.md`.
