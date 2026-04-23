@@ -28,7 +28,9 @@ Client (agent or human)
 ┌─────────────────────────────────────────────────────┐
 │  API Key Middleware  (auth.py)                       │
 │  Sets: request.state.toolkit_id                     │
+│        request.state.toolkit_key_id                 │
 │        request.state.is_admin                       │
+│        request.state.is_human_session               │
 │        request.state.simulate                       │
 └─────────────────────────────────────────────────────┘
     │
@@ -41,6 +43,8 @@ Client (agent or human)
 │  capability_router    → GET /inspect/{id}           │
 │  workflows_router     → GET/POST /workflows/...     │
 │  import_router        → POST /import                │
+│  catalog_router       → /catalog/...               │
+│  jobs_router          → /jobs/...                  │
 │  traces_router        → GET /traces/...             │
 │  overlays_router      → POST /apis/{id}/scheme      │
 │                          POST /overlays             │
@@ -52,6 +56,9 @@ Client (agent or human)
 │  access_requests      → /toolkits/{id}/access-requests │
 │  notes_router         → /notes                     │
 │  debug_router         → /debug/...  (hidden)        │
+│  user_router          → /user/...                  │
+│  default_key_router   → /default-api-key/...       │
+│  oauth_brokers_router → /oauth-brokers/...         │
 │  ── static mount (/static) ──                       │
 │  broker_router        → /{upstream_host}/{path}  ◄─ LAST │
 └─────────────────────────────────────────────────────┘
@@ -158,7 +165,7 @@ Credential binding: credentials are stored globally but scoped per-toolkit via t
 The broker catches `/{target:path}` — any path that isn't matched by an earlier route. If registered before internal routers, it would swallow all internal endpoints.
 
 **Required order in `main.py`:**
-1. All internal routers (capability, workflows, import, traces, overlays, apis, search, credentials, toolkits, policy, access-requests, notes, debug)
+1. All internal routers (capability, workflows, import, catalog, jobs, traces, overlays, apis, search, credentials, toolkits, policy, access-requests, notes, debug, user, default-key, oauth-brokers)
 2. `/health` and `/` routes
 3. `/docs`, `/redoc`, static mount
 4. `broker_router` — **last**
@@ -173,204 +180,41 @@ This allows the service to work fully offline and on patchy connections. No CDN 
 
 ---
 
-## Database Schema
+## Conceptual Data Model
 
 Database: SQLite at `/app/data/jentic-mini.db` (inside container).
 
-Schema is defined in `db.py` with inline migration support.
+**Exact schema lives in Alembic migrations** under `alembic/versions/`. `src/db.py` only opens connections and runs `run_migrations()` at startup. This document intentionally describes the **data model and relationships**, not the full column-by-column schema.
 
-### `apis`
+### Core domains
 
-Registered API catalog entries.
-
-| Column | Type | Notes |
+| Domain | Main records | Purpose |
 |---|---|---|
-| `id` | TEXT PK | Scheme-stripped base URL (e.g. `api.elevenlabs.io`) |
-| `name` | TEXT | Human-readable API name |
-| `description` | TEXT | Summary description |
-| `spec_path` | TEXT | Absolute path to the OpenAPI spec file on disk |
-| `base_url` | TEXT | Full base URL (with scheme) |
-| `created_at` | TIMESTAMP | |
+| **Catalog** | `apis`, `operations`, `workflows` | Stores imported OpenAPI specs, extracted operations, and registered Arazzo workflows |
+| **Credentials & routing** | `credentials`, `credential_routes`, `api_broker_apps` | Stores encrypted credentials plus the host/path routing metadata the broker uses to select them |
+| **Toolkits & access** | `toolkits`, `toolkit_keys`, `toolkit_credentials`, `toolkit_policies`, `credential_policies`, `permission_requests` | Groups credentials per agent, issues revocable keys, and enforces allow/deny policy with human escalation |
+| **Execution & jobs** | `executions`, `execution_steps`, `jobs` | Persists operation traces, workflow step traces, and async job state |
+| **Catalog patches & feedback** | `api_overlays`, `notes`, `auth_override_log` | Records agent-contributed auth overlays, notes, and auth-discovery evidence |
+| **Human/admin setup** | `users`, `settings` | Stores human accounts and instance-level setup state |
+| **OAuth broker integration** | `oauth_brokers`, `oauth_broker_accounts`, `oauth_broker_connect_labels` | Stores managed OAuth broker configuration and connected upstream accounts |
 
-### `operations`
+### Architecturally important relationships
 
-Individual API operations extracted from OpenAPI specs.
+- An **API** has many **operations**.
+- A **workflow** references one or more APIs via `involved_apis`, but executes as its own first-class capability.
+- **Credentials** are stored globally, but a toolkit can only use credentials bound to it through `toolkit_credentials`.
+- The broker resolves credentials primarily through **`credential_routes`** (host + path prefix), not by directly scanning API registrations.
+- A **toolkit** can issue multiple **toolkit keys**, each independently revocable and optionally IP-restricted.
+- **Toolkit policies** and **credential policies** are evaluated at broker time before the vault is touched.
+- Every brokered operation or workflow execution writes an **execution trace**; workflow runs also write **execution step** records.
+- Async execution persists state in **`jobs`**, which can point back to traces.
+- **API overlays** are stored separately from the base spec and merged at read/broker time once confirmed.
 
-| Column | Type | Notes |
-|---|---|---|
-| `id` | TEXT PK | UUID |
-| `api_id` | TEXT FK | → `apis.id` |
-| `operation_id` | TEXT | Vendor-defined operationId from the spec |
-| `jentic_id` | TEXT | Capability ID: `METHOD/host/path` |
-| `method` | TEXT | HTTP method (uppercase) |
-| `path` | TEXT | URL path template |
-| `summary` | TEXT | Short description |
-| `description` | TEXT | Full description (may be long) |
+### Design implications
 
-### `credentials`
-
-Stored credentials. Values are Fernet-encrypted.
-
-| Column | Type | Notes |
-|---|---|---|
-| `id` | TEXT PK | UUID |
-| `label` | TEXT | Human-readable label |
-| `env_var` | TEXT UNIQUE | Key for vault lookup (e.g. `ELEVENLABS_APIKEYAUTH`) |
-| `encrypted_value` | TEXT | Fernet-encrypted credential value |
-| `api_id` | TEXT | Which API this credential is for |
-| `auth_type` | TEXT | How this credential authenticates (`bearer`, `basic`, `apiKey`, `pipedream_oauth`) |
-| `created_at` | TIMESTAMP | |
-
-### `toolkits`
-
-Named bundles of credentials with access control.
-
-| Column | Type | Notes |
-|---|---|---|
-| `id` | TEXT PK | UUID |
-| `name` | TEXT | Display name |
-| `description` | TEXT | Optional description |
-| `api_key` | TEXT UNIQUE | Legacy default key (used for seeding the default toolkit) |
-| `simulate` | BOOLEAN | If true, all broker calls are simulated |
-| `created_at` | TIMESTAMP | |
-| `updated_at` | TIMESTAMP | |
-
-### `toolkit_keys`
-
-One row per issued API key. One toolkit can have multiple keys for multi-agent support.
-
-| Column | Type | Notes |
-|---|---|---|
-| `id` | TEXT PK | UUID |
-| `toolkit_id` | TEXT FK | → `toolkits.id` |
-| `api_key` | TEXT UNIQUE | The API key string (prefix `tk_`) |
-| `label` | TEXT | Which agent/purpose this key is for |
-| `allowed_ips` | TEXT | JSON array of CIDR strings; empty = unrestricted |
-| `revoked_at` | TIMESTAMP | Soft delete; NULL = active |
-| `created_at` | TIMESTAMP | |
-
-### `toolkit_credentials`
-
-Join table binding credentials to toolkits.
-
-| Column | Type | Notes |
-|---|---|---|
-| `toolkit_id` | TEXT FK | → `toolkits.id` |
-| `credential_id` | TEXT FK | → `credentials.id` |
-
-### `toolkit_policies`
-
-Per-toolkit access policy. One row per toolkit.
-
-| Column | Type | Notes |
-|---|---|---|
-| `id` | TEXT PK | UUID |
-| `toolkit_id` | TEXT FK | → `toolkits.id` |
-| `default_action` | TEXT | `allow` or `deny` |
-| `rules` | TEXT | JSON array of rule objects `{action, pattern}` |
-
-Rules are evaluated first-match-wins against the Capability ID. Example rule:
-```json
-[
-  {"action": "allow", "pattern": "*/api.openai.com/*"},
-  {"action": "deny",  "pattern": "DELETE/*"}
-]
-```
-
-### `workflows`
-
-Registered Arazzo workflows.
-
-| Column | Type | Notes |
-|---|---|---|
-| `slug` | TEXT PK | URL-safe identifier (e.g. `summarise-latest-topics`) |
-| `name` | TEXT | Display name |
-| `description` | TEXT | What the workflow does |
-| `arazzo_path` | TEXT | Path to the `.arazzo.json` file on disk |
-| `input_schema` | TEXT | JSON Schema for workflow inputs |
-| `steps_count` | INTEGER | Number of steps |
-| `involved_apis` | TEXT | JSON array of API host strings |
-| `created_at` | TIMESTAMP | |
-
-### `executions`
-
-Top-level trace log for both operation and workflow executions.
-
-| Column | Type | Notes |
-|---|---|---|
-| `id` | TEXT PK | UUID — the trace ID |
-| `toolkit_id` | TEXT FK | Which toolkit ran this |
-| `operation_id` | TEXT | Set for single-operation calls |
-| `workflow_id` | TEXT | Set for workflow calls (slug) |
-| `status` | TEXT | `success`, `error`, `simulated` |
-| `request_method` | TEXT | |
-| `request_path` | TEXT | |
-| `response_status` | INTEGER | HTTP status code |
-| `duration_ms` | INTEGER | Wall-clock time |
-| `created_at` | TIMESTAMP | |
-
-### `execution_steps`
-
-Step-level trace data for workflow executions.
-
-| Column | Type | Notes |
-|---|---|---|
-| `id` | TEXT PK | UUID |
-| `execution_id` | TEXT FK | → `executions.id` |
-| `step_id` | TEXT | Arazzo step ID |
-| `operation_id` | TEXT | Capability ID of the operation called |
-| `status` | TEXT | `success` or `error` |
-| `request_body` | TEXT | JSON |
-| `response_status` | INTEGER | |
-| `response_body` | TEXT | JSON |
-| `duration_ms` | INTEGER | |
-| `created_at` | TIMESTAMP | |
-
-### `api_overlays`
-
-Client-contributed security scheme patches.
-
-| Column | Type | Notes |
-|---|---|---|
-| `id` | TEXT PK | UUID |
-| `api_id` | TEXT FK | → `apis.id` |
-| `overlay_json` | TEXT | The OpenAPI overlay document (JSON) |
-| `status` | TEXT | `pending` or `confirmed` |
-| `contributed_by` | TEXT | toolkit_id that submitted it |
-| `created_at` | TIMESTAMP | |
-| `confirmed_at` | TIMESTAMP | Set automatically on first successful broker 2xx |
-
-### `notes`
-
-Agent-contributed feedback on any resource.
-
-| Column | Type | Notes |
-|---|---|---|
-| `id` | TEXT PK | UUID |
-| `resource_type` | TEXT | e.g. `api`, `operation`, `workflow` |
-| `resource_id` | TEXT | ID of the resource being annotated |
-| `toolkit_id` | TEXT | Who left the note |
-| `body` | TEXT | Freeform text |
-| `created_at` | TIMESTAMP | |
-
-### `permission_requests`
-
-Agent escalation requests — agent asks for access it doesn't currently have.
-
-| Column | Type | Notes |
-|---|---|---|
-| `id` | TEXT PK | UUID |
-| `toolkit_id` | TEXT | Requesting toolkit |
-| `resource_type` | TEXT | What kind of resource (e.g. `capability`) |
-| `resource_id` | TEXT | Which resource |
-| `reason` | TEXT | Agent-provided justification |
-| `status` | TEXT | `pending`, `approved`, `denied` |
-| `created_at` | TIMESTAMP | |
-| `resolved_at` | TIMESTAMP | |
-
-### `api_keys`
-
-Reserved for future fine-grained scope assignment. Currently toolkit keys live in `toolkit_keys`.
+- The database is used for both **registry state** (catalog, credentials, toolkits) and **operational state** (traces, jobs, setup flags).
+- Schema evolution is expected; prose docs should not be treated as the schema source of truth.
+- If you need exact columns, defaults, or migration order, read `alembic/versions/0001_baseline.py` and later revisions directly.
 
 ---
 
@@ -382,8 +226,8 @@ The search index is in-memory, built at startup from all registered operations a
 
 **What gets indexed:**
 
-- **Operations**: `operationId` + `summary` + `description` + vendor name (extracted from `api_id`) + `api_id`
-- **Workflows**: `slug` + `name` + `description` + `involved_apis`
+- **Operations**: `summary` + `description` + `path` + `method` + vendor name (`_vendor` extracted at import time)
+- **Workflows**: `name` + `summary` + `description` + `involved_apis`
 
 **When it's rebuilt:**
 - On service startup
@@ -407,7 +251,7 @@ The search index is in-memory, built at startup from all registered operations a
 }
 ```
 
-Description is abbreviated to ≤3 sentences by `utils._abbreviate()` to keep search results token-efficient for LLM consumers.
+Description is abbreviated to ≤3 sentences by `utils.abbreviate()` to keep search results token-efficient for LLM consumers.
 
 ---
 
