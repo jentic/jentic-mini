@@ -70,8 +70,13 @@ The Vite dev server runs on `http://localhost:5173` and proxies API calls to the
 ### Backend
 
 ```bash
-pdm run python -m pytest tests/ -v
+pdm run test                                       # all tests
+pdm run test -- tests/test_auth_boundary.py -v     # specific file
+pdm run test -- -k "policy and not deny"           # -k name filter
+pdm run test -- --cov=src --cov-report=html        # with coverage
 ```
+
+Arguments after `--` are forwarded to pytest; if you pass a test target, it replaces the default `tests` directory.
 
 ### UI
 
@@ -99,3 +104,26 @@ cd ui
 npm run lint          # ESLint check (includes Prettier)
 npm run lint:fix      # Auto-fix
 ```
+
+## Rebuilding the BM25 index
+
+The index rebuilds automatically on import. To force a rebuild (e.g. after direct DB edits):
+
+```bash
+curl -X POST http://localhost:8900/admin/rebuild-index \
+  -H "X-Jentic-API-Key: $KEY"
+```
+
+## Debug endpoints
+
+These live in `src/routers/debug.py` and are hidden from the OpenAPI schema. Useful for poking at the running server:
+
+| Endpoint | Purpose |
+|---|---|
+| `GET /debug/whoami` | IP detection diagnostics — verify the client IP isn't masked by Docker / reverse proxy |
+| `GET /debug/auth-internals` | Dump `arazzo_runner`'s internal credential-model source — useful when the upstream package restructures |
+| `GET /debug/spec?path=...` | Summarise an OpenAPI spec file under `data/` (path count, security schemes, sample ops) |
+| `GET /debug/env-mappings?arazzo_path=...` | Show which credential env vars arazzo-runner would expect for a given Arazzo file |
+| `GET /debug/vault-status` | Vault key source + round-trip encrypt/decrypt smoke test |
+| `GET /debug/pycheck` | Python package availability check |
+| `GET /debug/broker-cred-test?host=...` | Test broker credential lookup for a given host |
