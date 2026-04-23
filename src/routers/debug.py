@@ -14,11 +14,11 @@ from cryptography.fernet import Fernet, InvalidToken
 from fastapi import APIRouter, Request
 
 import src.vault as vault
-from src.auth import _trusted_subnets, client_ip, default_allowed_ips, is_trusted_ip
+from src.auth import client_ip, default_allowed_ips, is_trusted_ip, trusted_subnets
 from src.config import DATA_DIR
 from src.db import DEFAULT_TOOLKIT_ID, get_db
-from src.routers.apis import _rebuild_index
-from src.routers.workflows import _execute_workflow_core, _parse_arazzo
+from src.routers.apis import rebuild_index
+from src.routers.workflows import execute_workflow_core, parse_arazzo
 
 
 log = logging.getLogger("jentic")
@@ -35,7 +35,7 @@ async def whoami(request: Request):
     return {
         "resolved_ip": resolved_ip,
         "is_trusted": is_trusted_ip(resolved_ip),
-        "trusted_subnets": _trusted_subnets(),
+        "trusted_subnets": trusted_subnets(),
         "default_allowed_ips": default_allowed_ips(),
         "raw": {
             "request.client.host": raw_client,
@@ -169,7 +169,7 @@ async def purge_old_api_ids():
         await db.commit()
 
     # Single rebuild after all deletes
-    await _rebuild_index()
+    await rebuild_index()
 
     remaining = []
     async with get_db() as db:
@@ -440,11 +440,11 @@ async def test_async_workflow():
                 return
 
             arazzo_path, name = row
-            doc = _parse_arazzo(arazzo_path)
+            doc = parse_arazzo(arazzo_path)
             wf_id = doc.get("workflows", [{}])[0].get("workflowId", "summarise-latest-topics")
             error_detail["step"] = "pre-execute"
 
-            result = await _execute_workflow_core(
+            result = await execute_workflow_core(
                 slug="summarise-latest-topics",
                 name=name,
                 doc=doc,

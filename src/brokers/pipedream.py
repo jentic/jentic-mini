@@ -34,7 +34,7 @@ from jentic.apitools.openapi.common.uri import is_http_https_url
 import src.vault as vault
 from src.db import get_db
 from src.routers.catalog import ensure_catalog_api_imported
-from src.vault import _parse_route
+from src.vault import parse_route
 
 
 log = logging.getLogger("jentic.brokers.pipedream")
@@ -56,7 +56,7 @@ def broker_credential_id(broker_id: str, account_id: str, api_host: str) -> str:
 # ── App slug ↔ api_id mapping ─────────────────────────────────────────────────
 # Single authoritative map: Jentic canonical api_id → Pipedream app slug.
 #
-# Keys must match what _derive_api_id() produces from the API's servers[0].url:
+# Keys must match what derive_api_id() produces from the API's servers[0].url:
 #   - www. is stripped (googleapis.com/gmail not gmail.googleapis.com)
 #   - version suffixes stripped (/v1, /v2, etc.)
 #   - subdomain-only APIs stay as-is (api.github.com, slack.com/api, etc.)
@@ -66,9 +66,9 @@ def broker_credential_id(broker_id: str, account_id: str, api_host: str) -> str:
 #   2. Startup seeding — seed_broker_apps() in startup.py imports this map
 #
 # When the catalog key and the spec-derived id differ for a Google API, the
-# catalog key (googleapis.com/<service>) wins — that's what _derive_api_id
+# catalog key (googleapis.com/<service>) wins — that's what derive_api_id
 # produces after stripping www.googleapis.com.
-_API_ID_TO_PD_SLUG: dict[str, str] = {
+API_ID_TO_PD_SLUG: dict[str, str] = {
     # Google — all served via www.googleapis.com; derive to googleapis.com/<svc>
     "googleapis.com/gmail": "gmail",
     "googleapis.com/calendar": "google_calendar",
@@ -158,16 +158,16 @@ _API_ID_TO_PD_SLUG: dict[str, str] = {
 
 # Reverse: slug → list of api_hosts
 _PD_SLUG_TO_HOSTS: dict[str, list[str]] = {}
-for _host, _slug in _API_ID_TO_PD_SLUG.items():
+for _host, _slug in API_ID_TO_PD_SLUG.items():
     _PD_SLUG_TO_HOSTS.setdefault(_slug, []).append(_host)
 
 
 def api_host_to_pd_slug(host: str) -> str | None:
     """Resolve an api host to a Pipedream app slug, or None."""
-    if host in _API_ID_TO_PD_SLUG:
-        return _API_ID_TO_PD_SLUG[host]
+    if host in API_ID_TO_PD_SLUG:
+        return API_ID_TO_PD_SLUG[host]
     # Partial match (e.g. subdomain)
-    for pattern, slug in _API_ID_TO_PD_SLUG.items():
+    for pattern, slug in API_ID_TO_PD_SLUG.items():
         if host.endswith(pattern) or pattern.endswith(host):
             return slug
     return None
@@ -662,7 +662,7 @@ class PipedreamOAuthBroker:
                     if user_api_id and user_api_id != api_host:
                         route_hosts.append(user_api_id)
                     for route_host in route_hosts:
-                        r_host, r_prefix = _parse_route(route_host)
+                        r_host, r_prefix = parse_route(route_host)
                         await db.execute(
                             "INSERT OR IGNORE INTO credential_routes (credential_id, host, path_prefix) "
                             "VALUES (?, ?, ?)",

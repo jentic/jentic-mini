@@ -108,7 +108,7 @@ async def load_api_desc(api_id: str, include_pending: bool = False) -> dict:
     return await _load_merged_spec(api_id, row[0], include_pending=include_pending)
 
 
-def _extract_vendor(api_id: str | None) -> str | None:
+def extract_vendor(api_id: str | None) -> str | None:
     """Extract registrable domain from a URL-derived API ID.
 
     Examples:
@@ -163,7 +163,7 @@ def _strip_version_suffix(path: str) -> str:
     return re.sub(r"(/v\d+(\.\d+)*|/\d{4}-\d{2}-\d{2}|/\d+\.\d+|/\d+)$", "", path)
 
 
-def _is_private_server_url(url: str) -> bool:
+def is_private_server_url(url: str) -> bool:
     """Return True if the URL's host is a private/localhost address.
 
     Detects: localhost, 127.x, 10.x, 192.168.x, 172.16-31.x, bare 'localhost'
@@ -204,7 +204,7 @@ def _title_to_local_api_id(title: str) -> str:
     return f"{slug}.local"
 
 
-def _derive_api_id(base_url: str, title: str | None = None) -> str:
+def derive_api_id(base_url: str, title: str | None = None) -> str:
     """
     Derive a canonical API ID from its base URL. This is the single function
     used for all api_id generation — direct imports and catalog lazy-imports alike.
@@ -241,7 +241,7 @@ def _derive_api_id(base_url: str, title: str | None = None) -> str:
       https://{your-domain}.atlassian.net    → atlassian.net
     """
     # Self-hosted: private/localhost/template-variable server URL → use title slug
-    if _is_private_server_url(base_url) and title:
+    if is_private_server_url(base_url) and title:
         return _title_to_local_api_id(title)
 
     parsed = urlparse(base_url)
@@ -290,7 +290,7 @@ def _compute_jentic_id(method: str, base_url: str | None, path: str) -> str:
     return f"{method.upper()}/{path}"
 
 
-def _parse_operations(api_id: str, spec_path: str, base_url: str | None = None) -> list[dict]:
+def parse_operations(api_id: str, spec_path: str, base_url: str | None = None) -> list[dict]:
     """
     Extract operations from an OpenAPI spec file.
 
@@ -343,7 +343,7 @@ def _load_base_url_from_spec(spec_path: str) -> str | None:
         return None
 
 
-async def _rebuild_index():
+async def rebuild_index():
     """Rebuild BM25 index from all operations + workflows in DB.
 
     BM25 is CPU-bound; runs in a thread pool so it doesn't block the event loop.
@@ -369,7 +369,7 @@ async def _rebuild_index():
             "id": r[3],
             "summary": r[6],
             "description": r[7],
-            "_vendor": _extract_vendor(r[8]),
+            "_vendor": extract_vendor(r[8]),
         }
         for r in op_rows
     ]
@@ -459,9 +459,9 @@ async def list_apis(
     Use `?source=local` or `?source=catalog` to filter. Default returns all.
     To use a catalog API: call `POST /credentials` with `api_id` set — the spec is imported automatically.
     """
-    from src.routers.catalog import (  # noqa: PLC0415  # circular: catalog imports _extract_vendor from here
+    from src.routers.catalog import (  # noqa: PLC0415  # circular: catalog imports extract_vendor from here
         GITHUB_REPO,
-        _load_manifest,
+        load_manifest,
     )
 
     # ── Load local APIs ────────────────────────────────────────────────────────
@@ -483,7 +483,7 @@ async def list_apis(
         {
             "id": r[0],
             "name": r[1],
-            "vendor": _extract_vendor(r[0]),
+            "vendor": extract_vendor(r[0]),
             "source": "local",
             "has_credentials": r[0] in cred_api_ids,
             "description": r[2],
@@ -521,7 +521,7 @@ async def list_apis(
     # ── Load catalog entries (deduped against local by precise coverage) ──────
     catalog_entries: list[dict] = []
     if source != "local":
-        manifest = _load_manifest()
+        manifest = load_manifest()
         for e in manifest:
             api_id = e["api_id"]
             if q and q.lower() not in api_id.lower():
@@ -531,7 +531,7 @@ async def list_apis(
                 if api_id in covered_sub_apis:
                     continue
             else:
-                vendor = _extract_vendor(api_id)
+                vendor = extract_vendor(api_id)
                 if vendor and vendor in covered_leaf_vendors:
                     continue
             if api_id in {r[0] for r in local_rows}:
@@ -540,7 +540,7 @@ async def list_apis(
                 {
                     "id": api_id,
                     "name": api_id,
-                    "vendor": _extract_vendor(api_id),
+                    "vendor": extract_vendor(api_id),
                     "source": "catalog",
                     "has_credentials": False,
                     "description": None,
@@ -898,7 +898,7 @@ async def get_api(
     response: dict = {
         "id": row[0],
         "name": row[1],
-        "vendor": _extract_vendor(row[0]),
+        "vendor": extract_vendor(row[0]),
         "description": spec_description,
         "base_url": row[4],
         "created_at": row[5],
@@ -962,9 +962,9 @@ async def delete_api(
         await db.execute("DELETE FROM apis WHERE id=?", (id,))
         await db.commit()
     if rebuild:
-        await _rebuild_index()
+        await rebuild_index()
 
-    await _rebuild_index()
+    await rebuild_index()
 
 
 @router.post("/admin/rebuild-index", status_code=200, include_in_schema=False)
@@ -973,7 +973,7 @@ async def rebuild_search_index():
 
     Call this after batch API/operation changes to refresh search results.
     """
-    await _rebuild_index()
+    await rebuild_index()
     async with get_db() as db:
         async with db.execute("SELECT COUNT(*) FROM operations") as cur:
             count = (await cur.fetchone())[0]
@@ -1004,7 +1004,7 @@ async def purge_old_api_ids():
             await db.execute("DELETE FROM apis WHERE id=?", (aid,))
         await db.commit()
 
-    await _rebuild_index()
+    await rebuild_index()
 
     async with get_db() as db:
         async with db.execute("SELECT COUNT(*) FROM apis") as cur:
@@ -1022,4 +1022,4 @@ async def purge_old_api_ids():
 
 
 # Alias used by main.py lifespan startup
-rebuild_index_on_startup = _rebuild_index
+rebuild_index_on_startup = rebuild_index

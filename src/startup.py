@@ -23,11 +23,11 @@ import httpx
 from fastapi.openapi.utils import get_openapi
 
 from src.auth import default_allowed_ips
-from src.brokers.pipedream import _API_ID_TO_PD_SLUG
+from src.brokers.pipedream import API_ID_TO_PD_SLUG
 from src.config import DATA_DIR, JENTIC_PUBLIC_HOSTNAME, SPECS_DIR
 from src.db import DEFAULT_TOOLKIT_ID, get_db
-from src.routers.import_ import _register_openapi
-from src.vault import _parse_route, create_credential
+from src.routers.import_ import register_openapi
+from src.vault import create_credential, parse_route
 
 
 _REGISTER_INSTALL_URL = "https://api.jentic.com/api/v1/register-install"
@@ -168,7 +168,7 @@ async def _ensure_spec_imported(app=None) -> None:
         saved_path = str(specs_dir / "jentic-mini.json")
         pathlib.Path(saved_path).write_text(json.dumps(spec))
 
-        result = await _register_openapi(spec, saved_path)
+        result = await register_openapi(spec, saved_path)
         # The api_id is derived from the server URL (JENTIC_PUBLIC_HOSTNAME),
         # which is already the canonical ID we want for broker routing.
         log.info(
@@ -268,7 +268,7 @@ async def seed_broker_apps(broker_id: str = "pipedream") -> None:
             local_api_ids = {r[0] for r in await cur.fetchall()}
 
         inserted = updated = 0
-        for api_id, broker_app_id in _API_ID_TO_PD_SLUG.items():
+        for api_id, broker_app_id in API_ID_TO_PD_SLUG.items():
             if api_id not in local_api_ids:
                 continue
             await db.execute(
@@ -295,7 +295,7 @@ async def seed_broker_apps(broker_id: str = "pipedream") -> None:
         log.debug("seed_broker_apps: all mappings already up-to-date for broker '%s'", broker_id)
 
 
-async def _backfill_credential_routes() -> None:
+async def backfill_credential_routes() -> None:
     """Ensure every credential has at least one entry in credential_routes.
 
     Credentials created before migration 0006 may not have rows in credential_routes.
@@ -314,18 +314,18 @@ async def _backfill_credential_routes() -> None:
             rows = await cur.fetchall()
 
     if not rows:
-        log.debug("_backfill_credential_routes: nothing to backfill")
+        log.debug("backfill_credential_routes: nothing to backfill")
         return
 
-    log.info("_backfill_credential_routes: backfilling routes for %d credential(s)", len(rows))
+    log.info("backfill_credential_routes: backfilling routes for %d credential(s)", len(rows))
     async with get_db() as db:
         for cred_id, api_id in rows:
             if not api_id:
                 continue
-            host, path_prefix = _parse_route(api_id)
+            host, path_prefix = parse_route(api_id)
             await db.execute(
                 "INSERT OR IGNORE INTO credential_routes (credential_id, host, path_prefix) VALUES (?,?,?)",
                 (cred_id, host, path_prefix),
             )
         await db.commit()
-    log.info("_backfill_credential_routes: done")
+    log.info("backfill_credential_routes: done")

@@ -33,7 +33,7 @@ _COMMON_WORDS = {
 }
 
 
-def _parse_route(route: str) -> tuple[str, str]:
+def parse_route(route: str) -> tuple[str, str]:
     """Split a route string into (host, path_prefix).
 
     Examples::
@@ -69,7 +69,7 @@ async def _resolve_server_url(
        like a real host).
 
     Returns the resolved URL string (e.g. 'https://10.0.0.2:9443/api',
-    'https://techpreneurs.ie/') suitable for passing directly to _parse_route.
+    'https://techpreneurs.ie/') suitable for passing directly to parse_route.
     Returns None if no base_url is available in the spec.
     """
     if not api_id:
@@ -335,7 +335,7 @@ async def create_credential(
         # Insert into credential_routes
         if routes:
             for route in routes:
-                host, path_prefix = _parse_route(route)
+                host, path_prefix = parse_route(route)
                 await db.execute(
                     "INSERT OR IGNORE INTO credential_routes (credential_id, host, path_prefix) VALUES (?,?,?)",
                     (cid, host, path_prefix),
@@ -449,7 +449,7 @@ async def patch_credential(
             # Explicit routes override — replace all existing routes
             await db.execute("DELETE FROM credential_routes WHERE credential_id=?", (cid,))
             for route in routes:
-                host, path_prefix = _parse_route(route)
+                host, path_prefix = parse_route(route)
                 await db.execute(
                     "INSERT OR IGNORE INTO credential_routes (credential_id, host, path_prefix) VALUES (?,?,?)",
                     (cid, host, path_prefix),
@@ -470,7 +470,7 @@ async def patch_credential(
                 new_route = computed_host or _current_api_id
                 if new_route:
                     await db.execute("DELETE FROM credential_routes WHERE credential_id=?", (cid,))
-                    host, path_prefix = _parse_route(new_route)
+                    host, path_prefix = parse_route(new_route)
                     await db.execute(
                         "INSERT OR IGNORE INTO credential_routes (credential_id, host, path_prefix) VALUES (?,?,?)",
                         (cid, host, path_prefix),

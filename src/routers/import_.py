@@ -15,7 +15,6 @@ Authentication: requires toolkit key OR human session (agent-accessible).
 import json
 import logging
 import re
-import urllib.error
 import urllib.request
 import uuid
 from pathlib import Path
@@ -32,10 +31,10 @@ from src.db import get_db
 from src.models import ImportOut
 from src.openapi_helpers import agent_hints
 from src.routers.apis import (
-    _derive_api_id,
-    _is_private_server_url,
-    _parse_operations,
-    _rebuild_index,
+    derive_api_id,
+    is_private_server_url,
+    parse_operations,
+    rebuild_index,
 )
 from src.routers.catalog import lazy_import_catalog_workflows
 from src.routers.workflows import workflow_capability_id
@@ -160,7 +159,7 @@ def _url_to_filename(url: str) -> str:
 # ── OpenAPI registration ──────────────────────────────────────────────────────
 
 
-async def _register_openapi(doc: dict, saved_path: str, force_api_id: str | None = None) -> dict:
+async def register_openapi(doc: dict, saved_path: str, force_api_id: str | None = None) -> dict:
     """Register an OpenAPI spec as an API + operations in Jentic."""
     base_url = None
     servers = doc.get("servers", [])
@@ -169,7 +168,7 @@ async def _register_openapi(doc: dict, saved_path: str, force_api_id: str | None
 
     title = doc.get("info", {}).get("title", "unknown")
 
-    api_id = force_api_id or (_derive_api_id(base_url, title=title) if base_url else None)
+    api_id = force_api_id or (derive_api_id(base_url, title=title) if base_url else None)
     if not api_id:
         api_id = re.sub(r"[^a-z0-9]", "-", title.lower()).strip("-")[:40]
 
@@ -181,7 +180,7 @@ async def _register_openapi(doc: dict, saved_path: str, force_api_id: str | None
     description = doc.get("info", {}).get("description")
 
     # Detect self-hosted API: private/localhost server URL → api_id ends in .local
-    is_self_hosted = not force_api_id and base_url is not None and _is_private_server_url(base_url)
+    is_self_hosted = not force_api_id and base_url is not None and is_private_server_url(base_url)
 
     async with get_db() as db:
         await db.execute(
@@ -190,7 +189,7 @@ async def _register_openapi(doc: dict, saved_path: str, force_api_id: str | None
         )
         await db.commit()
 
-    ops = _parse_operations(api_id, saved_path, base_url)
+    ops = parse_operations(api_id, saved_path, base_url)
     async with get_db() as db:
         for op in ops:
             await db.execute(
@@ -201,7 +200,7 @@ async def _register_openapi(doc: dict, saved_path: str, force_api_id: str | None
             )
         await db.commit()
 
-    await _rebuild_index()
+    await rebuild_index()
 
     # ── Auto-overlay for self-hosted APIs ─────────────────────────────────────
     # If the spec has a hardcoded private/localhost server URL, generate and
@@ -244,7 +243,7 @@ async def _register_openapi(doc: dict, saved_path: str, force_api_id: str | None
             )
             await db.commit()
         overlay_generated = True
-        # Update the stored base_url to the templated form so _derive_api_id
+        # Update the stored base_url to the templated form so derive_api_id
         # and _resolve_server_url both see the template, not the hardcoded default.
         async with get_db() as db:
             await db.execute(
@@ -281,7 +280,7 @@ async def _register_openapi(doc: dict, saved_path: str, force_api_id: str | None
 # ── Arazzo registration ───────────────────────────────────────────────────────
 
 
-async def _register_arazzo(doc: dict, saved_path: str, slug_hint: str | None = None) -> dict:
+async def register_arazzo(doc: dict, saved_path: str, slug_hint: str | None = None) -> dict:
     """Register an Arazzo workflow file in Jentic."""
     info = doc.get("info", {})
     workflows_list = doc.get("workflows", [])
@@ -390,9 +389,9 @@ async def import_sources(body: ImportRequest):
         try:
             doc, saved_path = _load_doc(source)
             if _is_arazzo(doc):
-                result = await _register_arazzo(doc, saved_path)
+                result = await register_arazzo(doc, saved_path)
             else:
-                result = await _register_openapi(doc, saved_path, force_api_id=source.force_api_id)
+                result = await register_openapi(doc, saved_path, force_api_id=source.force_api_id)
             results.append({"index": i, "status": "success", **result})
         except Exception:
             log.exception("Import failed for source %d", i)

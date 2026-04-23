@@ -55,4 +55,4 @@ jobs:
       - name: Run backend tests
         env:
           JENTIC_TELEMETRY: "off"
-        run: pdm run python -m pytest tests/ -v --tb=short
+        run: pdm run test

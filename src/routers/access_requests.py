@@ -33,7 +33,7 @@ from pydantic import Field
 from src.auth import require_human_session
 from src.db import get_db
 from src.models import AccessRequestOut, PermissionRule
-from src.routers.toolkits import _write_credential_permissions
+from src.routers.toolkits import write_credential_permissions
 from src.utils import build_absolute_url
 from src.validators import NormModel
 
@@ -599,7 +599,7 @@ async def _apply_approved_request(
                     r if isinstance(r, dict) else PermissionRule(**r).model_dump(exclude_none=True)
                     for r in rules
                 ]
-                await _write_credential_permissions(cred_id, clean_rules)
+                await write_credential_permissions(cred_id, clean_rules)
                 effects.append(f"{len(rules)} permission rule(s) applied to credential {cred_id}")
             except Exception as e:
                 effects.append(f"Failed to apply permissions: {e}")
@@ -613,7 +613,7 @@ async def _apply_approved_request(
         if not cred_id:
             return "modify_permissions requires credential_id in payload"
         try:
-            await _write_credential_permissions(cred_id, rules)
+            await write_credential_permissions(cred_id, rules)
             return f"Permissions updated for credential {cred_id}"
         except Exception as e:
             return f"Failed to update permissions: {e}"

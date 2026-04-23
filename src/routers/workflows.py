@@ -32,8 +32,8 @@ from jentic.apitools.openapi.common.uri import is_http_https_url
 from src.config import JENTIC_PUBLIC_HOSTNAME
 from src.db import get_db
 from src.openapi_helpers import agent_hints
-from src.routers.catalog import GITHUB_REPO, _load_workflow_manifest
-from src.routers.jobs import _running_tasks, create_job, get_job, update_job
+from src.routers.catalog import GITHUB_REPO, load_workflow_manifest
+from src.routers.jobs import create_job, discard_task, get_job, register_task, update_job
 from src.routers.traces import new_trace_id, write_trace
 from src.utils import parse_prefer_wait, workflow_has_async_steps
 
@@ -55,7 +55,7 @@ def workflow_url(slug: str) -> str:
     return f"https://{JENTIC_PUBLIC_HOSTNAME}/workflows/{slug}"
 
 
-def _parse_arazzo(arazzo_path: str) -> dict:
+def parse_arazzo(arazzo_path: str) -> dict:
     p = pathlib.Path(arazzo_path)
     if not p.exists():
         return {}
@@ -75,7 +75,7 @@ def _preprocess_arazzo_for_broker(arazzo_path: str, broker_base_url: str) -> tup
     Returns (temp_arazzo_path, [temp_spec_paths]) — caller must delete these
     after the subprocess completes.
     """
-    doc = _parse_arazzo(arazzo_path)
+    doc = parse_arazzo(arazzo_path)
     temp_files: list[str] = []
     new_sources = []
 
@@ -211,7 +211,7 @@ async def list_workflows(
 
     # ── Catalog workflow sources (unimported) ────────────────────────────────
     if source != "local":
-        wf_manifest = _load_workflow_manifest()
+        wf_manifest = load_workflow_manifest()
         if wf_manifest:
             async with get_db() as db:
                 async with db.execute("SELECT id FROM apis") as cur:
@@ -351,7 +351,7 @@ async def get_workflow(
         involved_apis_str,
         created_at,
     ) = row
-    doc = _parse_arazzo(arazzo_path)
+    doc = parse_arazzo(arazzo_path)
     meta = _extract_workflow_meta(doc)
     involved_apis = json.loads(involved_apis_str) if involved_apis_str else []
     capability_id = workflow_capability_id(slug)
@@ -466,7 +466,7 @@ async def dispatch_workflow(
         raise HTTPException(404, f"Workflow '{slug}' not found")
 
     arazzo_path, name = row
-    doc = _parse_arazzo(arazzo_path)
+    doc = parse_arazzo(arazzo_path)
     workflows_list = doc.get("workflows", [])
     if not workflows_list:
         raise HTTPException(500, f"Arazzo file for '{slug}' contains no workflows")
@@ -520,7 +520,7 @@ async def dispatch_workflow(
         async def _run_in_background():
             try:
                 await update_job(job_id, status="running")
-                result_response = await _execute_workflow_core(
+                result_response = await execute_workflow_core(
                     slug=slug,
                     name=name,
                     doc=doc,
@@ -572,12 +572,12 @@ async def dispatch_workflow(
             except Exception:
                 await update_job(job_id, status="failed", error=traceback.format_exc()[-800:])
             finally:
-                _running_tasks.pop(job_id, None)
+                discard_task(job_id)
 
         if should_async:
             # Fire and forget immediately — return 202 now
             task = asyncio.create_task(_run_in_background())
-            _running_tasks[job_id] = task
+            register_task(job_id, task)
             return JSONResponse(
                 status_code=202,
                 headers={"Location": f"/jobs/{job_id}", "X-Jentic-Job-Id": job_id},
@@ -593,7 +593,7 @@ async def dispatch_workflow(
             try:
                 coro = _run_in_background()
                 task = asyncio.create_task(coro)
-                _running_tasks[job_id] = task
+                register_task(job_id, task)
                 # Block for up to prefer_wait seconds
                 await asyncio.wait_for(asyncio.shield(task), timeout=prefer_wait)
                 # Completed within timeout — fetch result and return synchronously
@@ -623,7 +623,7 @@ async def dispatch_workflow(
             )
 
     # ── Synchronous execution path (no Prefer: wait header) ──────────────────
-    return await _execute_workflow_core(
+    return await execute_workflow_core(
         slug=slug,
         name=name,
         doc=doc,
@@ -637,7 +637,7 @@ async def dispatch_workflow(
     )
 
 
-async def _execute_workflow_core(
+async def execute_workflow_core(
     *,
     slug: str,
     name: str,

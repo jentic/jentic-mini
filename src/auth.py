@@ -160,7 +160,7 @@ _DEFAULT_TRUSTED_SUBNETS = [
 ]
 
 
-def _trusted_subnets() -> list[str]:
+def trusted_subnets() -> list[str]:
     """Return list of CIDR strings considered trusted.
 
     Always includes the RFC-1918 + loopback defaults.
@@ -183,10 +183,10 @@ def default_allowed_ips() -> list[str]:
     Always returns a non-empty list — keys are never created without IP
     restrictions (subnet is the perimeter).
 
-    Returns the same set as _trusted_subnets(): RFC-1918 + loopback + any
+    Returns the same set as trusted_subnets(): RFC-1918 + loopback + any
     extras from JENTIC_TRUSTED_SUBNETS.
     """
-    return _trusted_subnets()
+    return trusted_subnets()
 
 
 def is_trusted_ip(client_ip: str) -> bool:
@@ -195,7 +195,7 @@ def is_trusted_ip(client_ip: str) -> bool:
         client = ipaddress.ip_address(client_ip)
     except ValueError:
         return False
-    for cidr in _trusted_subnets():
+    for cidr in trusted_subnets():
         try:
             if client in ipaddress.ip_network(cidr, strict=False):
                 return True
@@ -207,7 +207,7 @@ def is_trusted_ip(client_ip: str) -> bool:
 # ── JWT helpers ───────────────────────────────────────────────────────────────
 
 
-def _make_jwt(secret: str) -> str:
+def make_jwt(secret: str) -> str:
     now = int(time.time())
     payload = {"sub": "human", "iat": now, "exp": now + JWT_TTL_SECONDS}
     return _jwt.encode(payload, secret, algorithm=JWT_ALGORITHM)
@@ -228,10 +228,10 @@ def _decode_jwt(token: str, secret: str) -> dict | None:
 def require_human_session(request: Request):
     """FastAPI dependency — raises 403 if caller is not a human session."""
     if not getattr(request.state, "is_human_session", False):
-        raise _build_human_only_error()
+        raise build_human_only_error()
 
 
-def _build_human_only_error():
+def build_human_only_error():
     return HTTPException(
         status_code=403,
         detail={
@@ -284,7 +284,7 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
                 response = await call_next(request)
                 issued_at = claims.get("iat", 0)
                 if time.time() - issued_at > JWT_REFRESH_AFTER:
-                    new_token = _make_jwt(state["jwt_secret"])
+                    new_token = make_jwt(state["jwt_secret"])
                     response.set_cookie(
                         "jentic_session",
                         new_token,

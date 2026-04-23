@@ -134,7 +134,7 @@ On broker registration (and on `POST /oauth-brokers/{id}/discover`):
 1. Fetch Pipedream access token via client credentials
 2. `GET /accounts?external_user_id={id}` — list connected apps for this user
 3. For each account, extract `app.name_slug` (e.g. `"slack"`)
-4. Reverse-map slug → api_host(s) using the internal `_API_ID_TO_PD_SLUG` mapping
+4. Reverse-map slug → api_host(s) using the internal `API_ID_TO_PD_SLUG` mapping
 5. Upsert into `oauth_broker_accounts`
 
 When a user connects a new app via Pipedream's hosted OAuth UI, call
