@@ -57,7 +57,7 @@ Variables provide the native mechanism for this.
 ## Phase 3 — TypeScript Arazzo Runner Migration
 
 **Goal:** Replace Python `arazzo-runner` with the TypeScript implementation from `jentic-arazzo-tools`.
-**Depends on:** Phase 2 (test coverage needed before a risky runtime swap)
+**Depends on:** Backend Unit Test Coverage (test coverage needed before a risky runtime swap)
 **Priority:** High (active development gap; Python runner is interim)
 
 - Add the TypeScript runner package to the Docker build (installed at build time, not in the final runtime PATH)
@@ -69,7 +69,7 @@ Variables provide the native mechanism for this.
 ## Phase 4 — API Surface Alignment with Jentic Standards
 
 **Goal:** Align key API surface areas with the Jentic standard to improve cross-edition compatibility.
-**Depends on:** none (can proceed in parallel with Phase 3)
+**Depends on:** none (can proceed in parallel with the TypeScript Arazzo Runner Migration)
 **Priority:** High (needed for cross-edition compatibility and migration ease)
 
 - Audit and align: authentication header names, pagination format, error response schema, capability ID format in responses
@@ -82,7 +82,7 @@ Variables provide the native mechanism for this.
 ## Phase 5 — Step-to-Step Data Transformation
 
 **Goal:** Allow workflow steps to filter or transform large upstream responses before passing them to the next step.
-**Depends on:** Phase 3 (TypeScript runner migration)
+**Depends on:** TypeScript Arazzo Runner Migration
 **Priority:** High (workflows currently fail when step 1 returns large payloads to token-limited APIs)
 
 - Implement a JPE pseudo-operation `POST /localhost/transform` accepting `{data, filter}` and returning filtered JSON (jq/JSONPath filter)
@@ -94,7 +94,7 @@ Variables provide the native mechanism for this.
 ## Phase 6 — Human-in-the-Loop Credential Provisioning
 
 **Goal:** Allow agents to initiate credential provisioning without ever seeing plaintext values.
-**Depends on:** Phase 4 (scheme naming alignment lands cleanly)
+**Depends on:** none (coordinate naming with API Surface Alignment if that ships first)
 **Priority:** Medium (current model requires agent to hold plaintext at creation time)
 
 - Add `POST /credentials/provision` accepting `{label, api_id}` (no value), returning a `user_url`
@@ -106,7 +106,7 @@ Variables provide the native mechanism for this.
 ## Phase 7 — UI Deep-Link Actions (Single-URL Human Interventions)
 
 **Goal:** Any human intervention (approve permission, enter credential, reconnect OAuth) should be completable from a single URL the agent can provide.
-**Depends on:** Phase 6 (credential provisioning URL is one such deep link)
+**Depends on:** Human-in-the-Loop Credential Provisioning (provisioning URL is one such deep link)
 **Priority:** Medium (pattern documented in `docs/credential-deeplink.md`)
 
 - Add direct deep-link routes for: approve/deny a permission request, enter/update a specific credential, initiate OAuth reconnect for a specific account
@@ -120,7 +120,7 @@ Variables provide the native mechanism for this.
 **Depends on:** none
 **Priority:** Medium (tech debt; makes refactoring risky and undermines type safety)
 
-- Baseline count: ~95 occurrences across `ui/src/**/*.{ts,tsx}` (down from ~166 at v0.6)
+- Baseline: ~95 occurrences across `ui/src/**/*.{ts,tsx}`
 - Enable stricter TypeScript compiler options incrementally (`noImplicitAny` as a starting point)
 - Fix type errors file by file; prefer introducing typed interfaces over casting
 - Add a CI check that fails on new `any` or `@ts-ignore` additions (`@typescript-eslint/no-explicit-any` as error)
@@ -140,7 +140,7 @@ Variables provide the native mechanism for this.
 ## Phase 10 — Accessibility Audit and Remediation
 
 **Goal:** Make the admin UI meet basic WCAG 2.1 AA accessibility requirements.
-**Depends on:** Phase 9 (stable error handling reduces noise in a11y testing)
+**Depends on:** UI Page-Level Error Boundaries (stable error handling reduces noise in a11y testing)
 **Priority:** Medium (no a11y audit has been done)
 
 - Add focus traps to all modal/overlay dialogs
@@ -180,12 +180,12 @@ Variables provide the native mechanism for this.
 - **OAuth2 first-party setup flow** — `POST /credentials/oauth2/init` → human-facing URL → token grant → auto-refresh; requires design decision on storage and token refresh scheduling
 - **Native `JenticOAuthBroker`** — replace Pipedream bridge with a first-party OAuth broker per `docs/oauth-broker.md`; zero API surface changes
 - **Agent-contributed catalog flywheel** — agents submit workflows via `POST /import` private to their toolkit; admin promotes to public; mirrors the auth overlay flywheel pattern (notes system is the reading half of this loop)
-- **Workflow utility tools bundle** — jq-like transform, HTTP utilities, template rendering bundled as pseudo-operations or a sidecar (extends Phase 5)
+- **Workflow utility tools bundle** — jq-like transform, HTTP utilities, template rendering bundled as pseudo-operations or a sidecar (extends the step-to-step transformation work)
 - **Schema samples endpoint** — `POST /samples` returning example request bodies and response shapes for a given capability, useful for simulate-mode grounding
 - **HMAC request signing** — for higher-assurance credential binding on APIs that support it
 - **Production workflow domain** — canonical hostname for workflow IDs in production deployments (currently `localhost`)
 - **Workflow step-level credential injection** — per-step credential overrides for workflows that need different credentials for the same API host in different steps
-- **Unauthenticated search (rate-limited)** — allow discovery without a toolkit key, gated behind rate limiting from Phase 11
+- **Unauthenticated search (rate-limited)** — allow discovery without a toolkit key; depends on baseline rate limiting being in place first
 - **API browser filtering** — filter the admin UI's API browser by credential status and toolkit access
 - **Trace log view improvements** — richer filtering and run-to-run comparison in the trace log view
 - **Pagination model review** — confirm whether cursor-based pagination is needed anywhere beyond the current integer page-number scheme
