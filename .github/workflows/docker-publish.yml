@@ -21,11 +21,14 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  ci-backend:
+    uses: ./.github/workflows/ci-backend.yml
+
   ci:
     uses: ./.github/workflows/ci-docker.yml
 
   publish:
-    needs: ci
+    needs: [ci-backend, ci]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
