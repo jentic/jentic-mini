@@ -4,7 +4,7 @@ section: tech-stack
 generated_by: spec-driven-agent
 generated_at: [ISO_TIMESTAMP]
 sources:
-  - .claude/templates/sdd/constitution/tech-stack.example.md
+  - @.claude/templates/sdd/constitution/tech-stack.example.md
 confidence: high
 notes: Template example for constitution tech stack
 ---
