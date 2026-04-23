@@ -212,7 +212,7 @@ files = [
 
 [[package]]
 name = "arazzo-runner"
-version = "0.9.5"
+version = "0.9.6"
 requires_python = "<4.0,>=3.11"
 summary = "Execution libraries and test tools for Arazzo workflows and Open API operations"
 groups = ["default"]
@@ -224,8 +224,8 @@ dependencies = [
     "requests>=2.28.0",
 ]
 files = [
-    {file = "arazzo_runner-0.9.5-py3-none-any.whl", hash = "sha256:2a114f5f45e05e51f677e586570da0372319046806e8010a649b63641d213ef6"},
-    {file = "arazzo_runner-0.9.5.tar.gz", hash = "sha256:fa1fb68aad6d05a33d9d7f6cdfec08eec72e58d0037f7ce9eedea973fe29f9cf"},
+    {file = "arazzo_runner-0.9.6-py3-none-any.whl", hash = "sha256:6db1a33da2290a41e2dc3990302a387421508e1884bc1db085428d06e5f8be28"},
+    {file = "arazzo_runner-0.9.6.tar.gz", hash = "sha256:5491c9facc1a552ad278657315d527889a63353185f6c93456d8af01180f9102"},
 ]
 
 [[package]]
@@ -488,7 +488,7 @@ files = [
 
 [[package]]
 name = "click"
-version = "8.3.2"
+version = "8.3.3"
 requires_python = ">=3.10"
 summary = "Composable command line interface toolkit"
 groups = ["default", "dev"]
@@ -496,8 +496,8 @@ dependencies = [
     "colorama; platform_system == \"Windows\"",
 ]
 files = [
-    {file = "click-8.3.2-py3-none-any.whl", hash = "sha256:1924d2c27c5653561cd2cae4548d1406039cb79b858b747cfea24924bbc1616d"},
-    {file = "click-8.3.2.tar.gz", hash = "sha256:14162b8b3b3550a7d479eafa77dfd3c38d9dc8951f6f69c78913a8f9a7540fd5"},
+    {file = "click-8.3.3-py3-none-any.whl", hash = "sha256:a2bf429bb3033c89fa4936ffb35d5cb471e3719e1f3c8a7c3fff0b8314305613"},
+    {file = "click-8.3.3.tar.gz", hash = "sha256:398329ad4837b2ff7cbe1dd166a4c0f8900c3ca3a218de04466f38f6497f18a2"},
 ]
 
 [[package]]
@@ -927,13 +927,13 @@ files = [
 
 [[package]]
 name = "idna"
-version = "3.12"
+version = "3.13"
 requires_python = ">=3.8"
 summary = "Internationalized Domain Names in Applications (IDNA)"
 groups = ["default", "dev"]
 files = [
-    {file = "idna-3.12-py3-none-any.whl", hash = "sha256:60ffaa1858fac94c9c124728c24fcde8160f3fb4a7f79aa8cdd33a9d1af60a67"},
-    {file = "idna-3.12.tar.gz", hash = "sha256:724e9952cc9e2bd7550ea784adb098d837ab5267ef67a1ab9cf7846bdbdd8254"},
+    {file = "idna-3.13-py3-none-any.whl", hash = "sha256:892ea0cde124a99ce773decba204c5552b69c3c67ffd5f232eb7696135bc8bb3"},
+    {file = "idna-3.13.tar.gz", hash = "sha256:585ea8fe5d69b9181ec1afba340451fba6ba764af97026f92a91d4eef164a242"},
 ]
 
 [[package]]
