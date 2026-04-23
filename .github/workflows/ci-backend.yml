@@ -1,16 +1,6 @@
-name: Backend Tests
+name: Backend CI
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'src/**'
-      - 'tests/**'
-      - 'alembic/**'
-      - 'pyproject.toml'
-      - 'pdm.lock'
-      # Self-reference: ensures edits to this workflow are validated on the PR that makes them.
-      - '.github/workflows/ci-backend.yml'
   pull_request:
     branches: [main]
     paths:
@@ -39,6 +29,7 @@ jobs:
         with:
           python-version: '3.11'
           version: '2.25.5'
+          cache: true
 
       - name: Install dependencies
         run: pdm install --dev --frozen-lockfile
@@ -56,6 +47,7 @@ jobs:
         with:
           python-version: '3.11'
           version: '2.25.5'
+          cache: true
 
       - name: Install dependencies
         run: pdm install --dev --frozen-lockfile
