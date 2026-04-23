@@ -58,7 +58,7 @@
 		"lint-staged": "^16.4.0",
 		"msw": "^2.13.4",
 		"prettier": "^3.8.3",
-		"prettier-plugin-tailwindcss": "^0.7.2",
+		"prettier-plugin-tailwindcss": "^0.7.3",
 		"redoc": "^2.5.2",
 		"swagger-ui-dist": "^5.32.4",
 		"tailwindcss": "^4.2.4",
