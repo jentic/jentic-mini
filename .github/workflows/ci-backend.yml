@@ -9,6 +9,7 @@ on:
       - 'alembic/**'
       - 'pyproject.toml'
       - 'pdm.lock'
+      # Self-reference: ensures edits to this workflow are validated on the PR that makes them.
       - '.github/workflows/ci-backend.yml'
   pull_request:
     branches: [main]
@@ -18,6 +19,7 @@ on:
       - 'alembic/**'
       - 'pyproject.toml'
       - 'pdm.lock'
+      # Self-reference: ensures edits to this workflow are validated on the PR that makes them.
       - '.github/workflows/ci-backend.yml'
   workflow_call:
   workflow_dispatch:
