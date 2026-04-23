@@ -22,7 +22,7 @@ from fastapi.responses import RedirectResponse
 from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import BaseModel, Field, field_validator
 
-from src.auth import JWT_TTL_SECONDS, _make_jwt, client_ip
+from src.auth import JWT_TTL_SECONDS, client_ip, make_jwt
 from src.db import get_db, set_setting, setup_state
 from src.models import UserOut
 
@@ -108,7 +108,7 @@ async def create_user(body: UserCreate, request: Request, response: Response):
 
     # Auto-login — issue session cookie immediately
     jwt_secret = state["jwt_secret"]
-    token = _make_jwt(jwt_secret)
+    token = make_jwt(jwt_secret)
     response.set_cookie(
         "jentic_session",
         token,
@@ -199,7 +199,7 @@ async def login(
 
     audit_log.info("LOGIN_SUCCESS user=%s ip=%s", username.strip(), ip)
     state = await setup_state()
-    token = _make_jwt(state["jwt_secret"])
+    token = make_jwt(state["jwt_secret"])
 
     if redirect_to:
         # Prevent open redirect — only allow relative paths
@@ -265,7 +265,7 @@ async def token(form_data: OAuth2PasswordRequestForm = Depends()):
         )
 
     state = await setup_state()
-    access_token = _make_jwt(state["jwt_secret"])
+    access_token = make_jwt(state["jwt_secret"])
 
     return {
         "access_token": access_token,

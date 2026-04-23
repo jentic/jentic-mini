@@ -45,6 +45,20 @@ router = APIRouter(prefix="/jobs", tags=["observe"])
 _running_tasks: dict[str, asyncio.Task] = {}
 
 
+def register_task(job_id: str, task: asyncio.Task) -> None:
+    _running_tasks[job_id] = task
+
+
+def discard_task(job_id: str) -> None:
+    _running_tasks.pop(job_id, None)
+
+
+def cancel_task(job_id: str) -> None:
+    task = _running_tasks.pop(job_id, None)
+    if task and not task.done():
+        task.cancel()
+
+
 # ── DB helpers ─────────────────────────────────────────────────────────────────
 
 
@@ -348,7 +362,5 @@ async def cancel_job(job_id: Annotated[str, Path(description="Job ID to cancel")
     if d["status"] in ("complete", "failed", "upstream_async"):
         return  # already done, 204 is fine
     # Cancel the asyncio task if running
-    task = _running_tasks.pop(job_id, None)
-    if task and not task.done():
-        task.cancel()
+    cancel_task(job_id)
     await update_job(job_id, status="failed", error="Cancelled by client")

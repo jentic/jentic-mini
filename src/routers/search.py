@@ -7,10 +7,10 @@ from src.models import SearchResult
 from src.openapi_helpers import agent_hints
 from src.routers.catalog import (
     GITHUB_REPO,
-    _get_registered_api_ids,
-    _load_manifest,
-    _load_workflow_manifest,
-    _search_manifest,
+    get_registered_api_ids,
+    load_manifest,
+    load_workflow_manifest,
+    search_manifest,
 )
 from src.utils import abbreviate
 
@@ -106,9 +106,9 @@ async def search(
             )
 
     # ── Catalog blending (always-on) ──────────────────────────────────────────
-    manifest = _load_manifest()
+    manifest = load_manifest()
     if manifest:
-        registered_ids = await _get_registered_api_ids()
+        registered_ids = await get_registered_api_ids()
 
         # Precise dedup: sub-apis by subdomain coverage, leaves by vendor
         _GENERIC_SUBS = {"api", "www", "app", "web", "portal", "v1", "v2", "v3"}
@@ -125,7 +125,7 @@ async def search(
                 covered_sub_apis.add(f"{vendor}/{sub}")
             covered_leaf_vendors.add(vendor)
 
-        catalog_matches = _search_manifest(manifest, q, n)
+        catalog_matches = search_manifest(manifest, q, n)
         for entry in catalog_matches:
             api_id = entry["api_id"]
             if api_id in registered_ids:
@@ -159,7 +159,7 @@ async def search(
             )
 
     # ── Catalog workflow blending ──────────────────────────────────────────────
-    wf_manifest = _load_workflow_manifest()
+    wf_manifest = load_workflow_manifest()
     if wf_manifest and q:
         # Match workflow sources by source_id/api_id
         wf_matches = [

@@ -27,7 +27,7 @@ from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, Field
 
 import src.vault as vault
-from src.auth import _build_human_only_error, require_human_session
+from src.auth import build_human_only_error, require_human_session
 from src.brokers.pipedream import PipedreamOAuthBroker, api_host_to_pd_slug, broker_credential_id
 from src.db import get_db
 from src.oauth_broker import registry as oauth_broker_registry
@@ -545,7 +545,7 @@ async def create_connect_link(broker_id: BrokerIdPath, body: ConnectLinkRequest,
     is_human = getattr(request.state, "is_human_session", False)
     has_toolkit = getattr(request.state, "toolkit_id", None) is not None
     if not (is_admin or is_human or has_toolkit):
-        raise _build_human_only_error()
+        raise build_human_only_error()
     live_broker = next(
         (b for b in oauth_broker_registry.brokers if getattr(b, "broker_id", None) == broker_id),
         None,
@@ -826,7 +826,7 @@ async def sync_broker_accounts(broker_id: BrokerIdPath, body: SyncRequest, reque
     is_human = getattr(request.state, "is_human_session", False)
     has_toolkit = getattr(request.state, "toolkit_id", None) is not None
     if not (is_admin or is_human or has_toolkit):
-        raise _build_human_only_error()
+        raise build_human_only_error()
 
     async with get_db() as db:
         async with db.execute("SELECT type FROM oauth_brokers WHERE id=?", (broker_id,)) as cur:

@@ -40,7 +40,7 @@ MANIFEST_MAX_AGE_SECONDS = 24 * 3600  # auto-refresh if older than 1 day
 # ── API Manifest helpers ──────────────────────────────────────────────────────
 
 
-def _load_manifest() -> list[dict]:
+def load_manifest() -> list[dict]:
     if not CATALOG_MANIFEST_PATH.exists():
         return []
     try:
@@ -63,7 +63,7 @@ def _manifest_age_seconds() -> float | None:
 # ── Workflow manifest helpers ─────────────────────────────────────────────────
 
 
-def _load_workflow_manifest() -> list[dict]:
+def load_workflow_manifest() -> list[dict]:
     if not WORKFLOW_MANIFEST_PATH.exists():
         return []
     try:
@@ -130,7 +130,7 @@ def _find_spec_recursive(path: str, depth: int = 0, max_depth: int = 3) -> dict 
     return None
 
 
-async def _get_registered_api_ids() -> set[str]:
+async def get_registered_api_ids() -> set[str]:
     async with get_db() as db:
         async with db.execute("SELECT id FROM apis") as cur:
             rows = await cur.fetchall()
@@ -143,11 +143,11 @@ def _catalog_vendor_set(api_ids: set[str]) -> set[str]:
     Used to deduplicate catalog entries against locally registered APIs.
     e.g.  api.stripe.com → stripe.com,  slack.com/api → slack.com
     """
-    from src.routers.apis import _extract_vendor  # noqa: PLC0415  # circular import
+    from src.routers.apis import extract_vendor  # noqa: PLC0415  # circular import
 
     vendors: set[str] = set()
     for aid in api_ids:
-        v = _extract_vendor(aid)
+        v = extract_vendor(aid)
         if v:
             vendors.add(v)
     return vendors
@@ -167,7 +167,7 @@ async def ensure_catalog_api_imported(api_id: str) -> str | None:
     Raises HTTPException on import failure.
     """
     # In the catalog?
-    entries = _load_manifest()
+    entries = load_manifest()
     entry = next((e for e in entries if e["api_id"] == api_id), None)
     if not entry:
         return None  # not a catalog API — caller proceeds as-is
@@ -235,19 +235,19 @@ async def lazy_import_catalog_workflows(api_id: str) -> list[str]:
     """
     from src.routers.import_ import (  # noqa: PLC0415  # circular import
         WORKFLOWS_DIR,
-        _register_arazzo,
+        register_arazzo,
     )
 
     # Find in workflow manifest — exact source_id match first, then vendor fallback
-    wf_manifest = _load_workflow_manifest()
+    wf_manifest = load_workflow_manifest()
     source_id = api_id.replace("/", "~", 1)
     entry = next((e for e in wf_manifest if e["source_id"] == source_id), None)
 
     if not entry:
         # Vendor fallback: api.stripe.com → look for stripe.com in workflow manifest
-        from src.routers.apis import _extract_vendor  # noqa: PLC0415  # circular import
+        from src.routers.apis import extract_vendor  # noqa: PLC0415  # circular import
 
-        vendor = _extract_vendor(api_id)
+        vendor = extract_vendor(api_id)
         if vendor:
             entry = next(
                 (
@@ -320,7 +320,7 @@ async def lazy_import_catalog_workflows(api_id: str) -> list[str]:
             json.dump(single_doc, f, indent=2)
 
         try:
-            result = await _register_arazzo(single_doc, arazzo_path, slug_hint=slug)
+            result = await register_arazzo(single_doc, arazzo_path, slug_hint=slug)
             imported_slugs.append(result["slug"])
         except Exception as e:
             log.warning("Failed to import workflow '%s' for '%s': %s", workflow_id, api_id, e)
@@ -437,8 +437,8 @@ async def refresh_catalog_if_stale() -> None:
         log.info(
             "Catalog manifest up to date (age %.0fs, %d API entries, %d workflow sources)",
             age,
-            len(_load_manifest()),
-            len(_load_workflow_manifest()),
+            len(load_manifest()),
+            len(load_workflow_manifest()),
         )
 
 
@@ -458,7 +458,7 @@ def _score_entry(api_id: str, q_tokens: list[str]) -> float:
     return matches / max(len(q_tokens), 1)
 
 
-def _search_manifest(entries: list[dict], q: str | None, limit: int) -> list[dict]:
+def search_manifest(entries: list[dict], q: str | None, limit: int) -> list[dict]:
     if not q or not q.strip():
         return entries[:limit]
     q_tokens = _tokenise(q)
@@ -527,8 +527,8 @@ async def list_catalog(
     """Returns entries from the cached public API catalog manifest.
     Use ``POST /catalog/refresh`` to sync from GitHub first if the list is empty.
     """
-    entries = _load_manifest()
-    registered_ids = await _get_registered_api_ids()
+    entries = load_manifest()
+    registered_ids = await get_registered_api_ids()
 
     if registered_only:
         entries = [e for e in entries if e["api_id"] in registered_ids]
@@ -536,12 +536,12 @@ async def list_catalog(
         entries = [e for e in entries if e["api_id"] not in registered_ids]
 
     if q:
-        entries = _search_manifest(entries, q, limit)
+        entries = search_manifest(entries, q, limit)
     else:
         entries = entries[:limit]
 
     results = [_build_catalog_result(e, registered_ids) for e in entries]
-    manifest = _load_manifest()
+    manifest = load_manifest()
     age = _manifest_age_seconds()
     return {
         "data": results,
@@ -581,7 +581,7 @@ async def get_catalog_entry(
         POST /import
         {"sources": [{"type": "url", "url": "<spec_url>", "force_api_id": "<api_id>"}]}
     """
-    entries = _load_manifest()
+    entries = load_manifest()
     entry = next((e for e in entries if e["api_id"] == api_id), None)
     if not entry:
         raise HTTPException(404, f"'{api_id}' not found in the public catalog.")

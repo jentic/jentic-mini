@@ -56,7 +56,7 @@ from src.db import DEFAULT_TOOLKIT_ID, get_db
 from src.oauth_broker import registry
 from src.openapi_helpers import agent_hints
 from src.routers.credentials import api_has_native_scheme
-from src.routers.jobs import _running_tasks, create_job, update_job
+from src.routers.jobs import create_job, discard_task, register_task, update_job
 from src.routers.overlays import confirm_overlay
 from src.routers.toolkits import check_credential_policy
 from src.routers.traces import new_trace_id, safe_write_trace
@@ -1103,10 +1103,10 @@ async def broker(request: Request, target: str):
                 await _write_trace("error", 500, f"Background task error: {str(exc)}")
                 await update_job(job_id, status="failed", error=str(exc))
             finally:
-                _running_tasks.pop(job_id, None)
+                discard_task(job_id)
 
         task = asyncio.create_task(_broker_bg())
-        _running_tasks[job_id] = task
+        register_task(job_id, task)
 
         # Write pending trace (will be updated by background task)
         await _write_trace("pending", 202)

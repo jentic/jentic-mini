@@ -169,7 +169,7 @@ def _generate_policy_summary(rules: list[dict]) -> str:
     return f"Agent rules: {', '.join(parts)}. System safety rules apply below."
 
 
-def _check_policy(
+def check_policy(
     agent_rules: list[dict],
     operation_id: str | None,
     method: str | None = None,
@@ -996,7 +996,7 @@ async def set_credential_permissions(
                 raise HTTPException(404, f"Credential '{cred_id}' not found")
 
     rules_list = [r.model_dump(exclude_none=True) for r in body]
-    result = await _write_credential_permissions(cred_id, rules_list)
+    result = await write_credential_permissions(cred_id, rules_list)
     audit_log.info(
         "PERMISSIONS_SET credential=%s rules=%d actor=human ip=%s",
         cred_id,
@@ -1054,7 +1054,7 @@ async def patch_credential_permissions(
                 current_rules.append(rule_dict)
                 existing.add(json.dumps(rule_dict, sort_keys=True))
 
-    result = await _write_credential_permissions(cred_id, current_rules)
+    result = await write_credential_permissions(cred_id, current_rules)
     added = len(body.add) if body.add else 0
     removed = len(body.remove) if body.remove else 0
     audit_log.info(
@@ -1067,7 +1067,7 @@ async def patch_credential_permissions(
     return result
 
 
-async def _write_credential_permissions(credential_id: str, rules_list: list[dict]) -> list:
+async def write_credential_permissions(credential_id: str, rules_list: list[dict]) -> list:
     """Persist agent rules for a credential and return the flat effective rule list."""
     summary = _generate_policy_summary(rules_list)
     rules_json = json.dumps(rules_list)
@@ -1108,16 +1108,4 @@ async def check_credential_policy(
             row = await cur.fetchone()
 
     agent_rules = json.loads(row[0]) if row else []
-    return _check_policy(agent_rules, operation_id, method, path)
-
-
-# keep old name as alias so access_requests.py imports don't break during transition
-async def check_toolkit_policy(
-    toolkit_id: str,
-    operation_id: str | None = None,
-    method: str | None = None,
-    api_host: str | None = None,
-    path: str | None = None,
-) -> tuple[bool, str]:
-    """Deprecated alias — use check_credential_policy. Falls back to empty rules."""
-    return _check_policy([], operation_id, method, path)
+    return check_policy(agent_rules, operation_id, method, path)
