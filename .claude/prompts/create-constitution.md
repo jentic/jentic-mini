@@ -154,16 +154,11 @@ Required fields:
 - section: mission | tech-stack | roadmap
 - generated_by: spec-driven-agent
 - generated_at: ISO timestamp
-- sources: list of @-prefixed paths
 - confidence: low | medium | high
 
 Rules:
-- use @-prefixed paths consistently (Claude Code style)
-- include relevant sources such as:
-  - @.claude/templates/...
-  - @src/
-  - @ui/
-  - @docs/
+- do NOT add a `sources:` list — nothing consumes it and it rots as files move
+- cross-reference load-bearing docs inline in the body instead (e.g. "see `docs/AUTH.md`")
 - keep metadata lightweight
 - do not duplicate content from body
 

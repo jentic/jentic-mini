@@ -88,4 +88,3 @@ Set in `/configs/jentic-personal-edition/docker-compose.yml`:
 - [CREDENTIALS.md](CREDENTIALS.md) — vault, credential lifecycle, auth flywheel
 - [WORKFLOWS.md](WORKFLOWS.md) — Arazzo workflows, execution model, examples
 - [DEVELOPMENT.md](DEVELOPMENT.md) — dev workflow, adding APIs, Docker layout, debugging
-- [ROADMAP.md](ROADMAP.md) — what's built, what's next
