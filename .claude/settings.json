@@ -8,6 +8,11 @@
             "type": "command",
             "command": ".claude/hooks/ruff-fix.sh",
             "statusMessage": "Running ruff on edited file"
+          },
+          {
+            "type": "command",
+            "command": ".claude/hooks/eslint-fix.sh",
+            "statusMessage": "Running eslint on edited file"
           }
         ]
       }
