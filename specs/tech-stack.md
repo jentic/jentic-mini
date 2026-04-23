@@ -10,7 +10,12 @@ sources:
   - @src/main.py
   - @src/db.py
   - @src/bm25.py
+  - @src/auth.py
+  - @alembic/versions/
+  - @src/routers/broker.py
+  - @src/routers/workflows.py
   - @docs/ARCHITECTURE.md
+  - @docs/AUTH.md
   - @docs/ROADMAP.md
   - @.claude/templates/sdd/constitution/tech-stack.example.md
 confidence: high
@@ -72,6 +77,7 @@ implementation evidence.
 - **Primary storage:** SQLite at `/app/data/jentic-mini.db` (inside container); persisted via Docker volume
 - **Access pattern:** Raw SQL via `aiosqlite` (no ORM); query building is manual in `src/db.py`
 - **Migrations:** Alembic (`alembic/versions/`); migrations run automatically at container startup via `run_migrations()` in `main.py` lifespan
+- **Schema documentation split:** `docs/ARCHITECTURE.md` is the conceptual data-model reference; Alembic migrations are the exact schema source of truth
 - **Caching / state:** BM25 index is in-memory; catalog manifest from GitHub is cached on disk for 24 hours; version check is in-memory with 6-hour TTL
 - **Credential vault:** Fernet-encrypted values stored in the `credentials` table; the vault key (`JENTIC_VAULT_KEY`) is auto-generated at first run and persisted to `/app/data/vault.key`
 - **Spec/workflow storage:** OpenAPI spec files and Arazzo workflow files stored on disk under `/app/data/specs/` and `/app/data/workflows/`
@@ -110,6 +116,8 @@ implementation evidence.
 - **Content negotiation:** SPA routes return `index.html` for browser requests (`Accept: text/html`), and JSON for API clients. This is implemented as an HTTP middleware in `main.py`.
 - **Python target version:** Python 3.11 minimum (ruff `target-version = "py311"`); the runtime image is also Python 3.11-slim.
 - **UI ESLint guardrails:** `no-restricted-syntax` rules in `src/pages/` enforce use of the owned UI component library (no raw `<button>`, `<input>`, etc. in page code).
+- **Authentication model:** Two distinct mechanisms for two actors — humans use bcrypt password → 30-day sliding httpOnly JWT cookie, agents use `X-Jentic-API-Key: tk_xxx` bound to a toolkit. There is no admin API key and no superuser env var; `docker exec` is the only superuser path (the CLI trust boundary is strictly stronger than any env-var credential). Root account creation is one-time (`POST /user/create` returns `410 Gone` after first use). New toolkit keys are always IP-restricted — the default allowlist is the trusted-subnets list (RFC-1918 + loopback + any `JENTIC_TRUSTED_SUBNETS` extras), and `JENTIC_TRUSTED_SUBNETS` appends to the built-ins rather than replacing them. Privilege-escalation routes (approve/deny access requests, mutate toolkits, edit credential policies, manage OAuth brokers) require a human JWT session, so a compromised agent key cannot self-escalate via prompt injection. Endpoint-level detail: `docs/AUTH.md`.
+- **Capability / Workflow ID format:** Every search / inspect / execute target is identified by a single ID string of the shape `METHOD/host/path` (e.g. `GET/api.stripe.com/v1/customers`). Workflows use the same format with `host = JENTIC_PUBLIC_HOSTNAME` (e.g. `POST/localhost/workflows/summarise-topics`), and the system discriminates operations from workflows by whether the host matches `JENTIC_PUBLIC_HOSTNAME`. Agents persist these IDs, so format stability is an API contract — cross-edition alignment is tracked in Phase 4 of `roadmap.md`.
 
 ## What We Are Not Using
 

@@ -7,7 +7,7 @@ Jentic Mini uses two distinct authentication mechanisms for two distinct actors:
 | Actor | Mechanism | Purpose |
 |---|---|---|
 | **Human** | bcrypt password → httpOnly JWT cookie | Admin operations, approving permission requests, managing keys |
-| **Agent** | `tk_xxx` bearer key header | Search, inspect, execute, toolkit-scoped operations |
+| **Agent** | `X-Jentic-API-Key: tk_xxx` | Search, inspect, execute, toolkit-scoped operations |
 
 There is **no admin API key** (no `JENTIC_API_KEY` env var). CLI access to the container is
 already a stronger trust boundary — anyone with `docker exec` can read the database directly.
@@ -27,15 +27,18 @@ Single root account — no multi-user, no roles. One human owns the instance.
 
 | Method | Path | Auth required | Notes |
 |---|---|---|---|
-| `POST` | `/user/create` | None (one-time) | Creates root account. 410 after first call. |
+| `POST` | `/user/create` | None (one-time) | Creates root account and issues session cookie (auto-login). 410 after first call. |
 | `POST` | `/user/login` | None | Returns httpOnly JWT cookie on success. |
+| `POST` | `/user/token` | None | OAuth2 password grant for Swagger UI; returns Bearer JWT. |
 | `POST` | `/user/logout` | Human session | Clears cookie. |
+| `GET` | `/user/me` | Optional | Returns current auth/session context; works with no auth. |
 
-**Password reset is CLI-only:**
-```bash
-docker exec jentic-mini python3 -m jentic reset-password
-```
-No "forgot password" link. No email. No security questions.
+**There is no password-reset API.** No "forgot password" link, no email reset,
+no security questions. If the password is lost, the rescue path is `docker exec`
+into the container and editing the SQLite database directly — either rewrite
+`users.password_hash` (bcrypt the new password first) or drop the `users` row
+and clear the `account_created` setting to re-enable one-time `POST /user/create`.
+`docker exec` is deliberately the only superuser path (see Overview).
 
 ### JWT
 
@@ -45,19 +48,22 @@ No "forgot password" link. No email. No security questions.
 - Storage: httpOnly, SameSite=Strict cookie — not accessible to JavaScript
 - Effect: the human stays logged in indefinitely as long as they use the UI within any 30-day window
 
-### What requires a human session
+### What currently requires a human session
 
-Any operation that cannot safely be delegated to an automated process:
+Human-session-only enforcement is applied per-route (via `Depends(require_human_session)`) on
+sensitive endpoints. Key examples:
 
-- Create, update, delete toolkits
-- Create, update, delete upstream API credentials
-- **Approve or deny permission requests** — never callable with an agent key, period
-- Regenerate the default API key (after first issue)
-- `/user/create`, `/user/logout`
+- `POST /toolkits/{toolkit_id}/access-requests/{req_id}/approve`
+- `POST /toolkits/{toolkit_id}/access-requests/{req_id}/deny`
+- `PATCH /toolkits/{toolkit_id}`
+- `DELETE /toolkits/{toolkit_id}`
+- `PUT|PATCH /toolkits/{toolkit_id}/credentials/{cred_id}/permissions`
+- `POST|PATCH|DELETE /oauth-brokers...` admin endpoints
 
-This is enforced in the auth middleware: endpoints in the "human session only" set check
-`request.state.is_human_session` and return `403` if called with an agent key, regardless of
-the key's scopes. An agent cannot self-approve its own permission escalation requests.
+`POST /default-api-key/generate` also requires a human session **after** first claim.
+
+Not all write operations are currently human-session-only: some routes allow agent keys when
+policy allows (for example credential writes with explicit credential policy rules).
 
 ---
 
@@ -65,11 +71,12 @@ the key's scopes. An agent cannot self-approve its own permission escalation req
 
 ### Key format
 
-All agent keys use the prefix `tk_` (toolkit key). Example: `tk_a1b2c3d4e5f6`.
+All agent keys use the prefix `tk_` (toolkit key) followed by 32 hex characters
+(`secrets.token_hex(16)`). Example: `tk_a1b2c3d4e5f67890abcdef1234567890abcd`.
 
 Keys are passed via header:
 ```
-X-Jentic-API-Key: tk_a1b2c3d4e5f6
+X-Jentic-API-Key: tk_a1b2c3d4e5f67890abcdef1234567890abcd
 ```
 
 ### Default API key
@@ -77,24 +84,23 @@ X-Jentic-API-Key: tk_a1b2c3d4e5f6
 Every instance has exactly one **default API key**, bound to the default toolkit. This is the
 key issued to an agent during self-enrollment (see below).
 
-The default key has a sensible default scope:
-- ✅ Execute (broker proxy)
-- ✅ Search, inspect catalog
-- ✅ Read toolkit metadata
-- ✅ Submit permission requests
-- ❌ Write credentials, toolkits, policies
-- ❌ Approve permission requests (human session only — always)
+The default key is bound to the `default` toolkit and can be used immediately for normal
+agent flows (search/inspect/execute and toolkit-scoped operations).
 
 ### Additional keys
 
-The human can issue additional `tk_xxx` keys via the UI (bound to any toolkit, with any scope
-the human chooses). Keys are individually revocable. Per-key IP restrictions (CIDR list) are
-supported.
+Additional `tk_xxx` keys can be issued per toolkit. Keys are individually revocable and support
+per-key IP restrictions (`allowed_ips` CIDR list).
+
+New keys are **never issued unrestricted**: if no explicit allowlist is supplied, `allowed_ips`
+defaults to the trusted-subnets list (RFC-1918 + loopback + any `JENTIC_TRUSTED_SUBNETS` extras).
+A key row with `NULL` or empty `allowed_ips` is still evaluated against the trusted-subnets list
+at request time — subnet is the perimeter, not the absence of restriction.
 
 ### Scopes (planned)
 
-Fine-grained scope assignment is planned (`api_keys` table in schema). Current implementation
-uses `is_admin` boolean; this will be replaced with a scope set stored on the key row.
+Fine-grained scope assignment is planned (`api_keys` table). Current implementation is primarily
+toolkit identity + route-level human-session guards + credential policy checks.
 
 ---
 
@@ -106,10 +112,12 @@ Some endpoints are intentionally open — no key required:
 |---|---|
 | `GET /health` | Discovery; explicit setup instructions for agents |
 | `POST /default-api-key/generate` | Self-enrollment (subnet-only on first call) |
+| `POST /user/create`, `POST /user/login`, `POST /user/token` | Initial/setup and human login flows |
+| `GET /user/me` | Session/auth context probe (works with or without auth) |
 | `GET /docs`, `/redoc`, `/openapi.json` | API documentation |
 | `GET /static/*` | Static assets |
 | `/{host}/{path}` (broker) | Transparent conduit — upstream auth is upstream's problem |
-| Workflow execution | Same as broker |
+| `POST /workflows/{slug}` | Open passthrough workflow execution |
 
 **Broker and workflow execution with no key:** `request.state.toolkit_id = None`. The broker
 skips credential injection and policy enforcement, then forwards the request clean. If the
@@ -141,14 +149,15 @@ GET /health
 
 ```
 POST /default-api-key/generate   (no auth, subnet IP only)
-→ 201 {"key": "tk_a1b2c3d4e5f6",
+→ 201 {"key": "tk_a1b2c3d4e5f67890abcdef1234567890abcd",
         "message": "This key will not be shown again. Store it securely.",
         "next_step": "Tell your user to visit setup_url to create their admin account.",
         "setup_url": "https://jentic-mini.example.com/user/create"}
 ```
 
-The key is **returned once only**. It is stored as a bcrypt hash — the plaintext is not
-recoverable. If lost, the human regenerates it via the UI.
+The key is **returned once only by this endpoint**, but it is stored in `toolkit_keys.api_key`
+for runtime lookup (i.e., anyone with direct database access can read it). If lost at the API/UI
+layer, regenerate it.
 
 After this call, `POST /default-api-key/generate` requires a human session on all subsequent
 calls.
@@ -179,7 +188,7 @@ GET /health
 
 The human may visit the UI before the agent has connected. The UI's first-run screen shows:
 
-> **Your default agent key is: `tk_a1b2c3d4e5f6`**
+> **Your default agent key is: `tk_a1b2c3d4e5f67890abcdef1234567890abcd`**
 > Copy this into your agent configuration. It will not be shown again.
 
 Under the hood this is the same `POST /default-api-key/generate` call — just surfaced in the
@@ -192,10 +201,13 @@ subnets. Default allowed ranges:
 - `10.0.0.0/8`
 - `172.16.0.0/12`
 - `192.168.0.0/16`
-- `127.0.0.1/32`
+- `127.0.0.0/8`
+- `::1/128`
 
-Configurable via `JENTIC_TRUSTED_SUBNETS` env var (comma-separated CIDR list). This prevents
-an internet-facing instance from being claimed by an attacker before the legitimate agent.
+Extended via `JENTIC_TRUSTED_SUBNETS` env var (comma-separated CIDR list). The env var
+**appends** to the built-in defaults — setting it never removes the RFC-1918/loopback entries.
+This prevents an internet-facing instance from being claimed by an attacker before the
+legitimate agent.
 
 ---
 
@@ -220,13 +232,15 @@ agent is mid-task and you don't want to interrupt it.
 Concrete attack chain (now mitigated):
 1. Attacker injects prompt into data the agent processes (e.g. an email)
 2. Agent is instructed to elevate its own Gmail credential access
-3. Agent calls `POST /permission-requests` requesting `add_scope` for Gmail
-4. Without mitigation: agent calls `POST /permission-requests/{id}/resolve` with `status: approved` — privileges elevated without human knowledge
+3. Agent calls `POST /toolkits/{toolkit_id}/access-requests` requesting a grant/permission change
+4. Without mitigation: agent could approve its own escalation request
 5. Agent forwards emails to attacker's address
 
-**Mitigation:** `resolve` is `human_session_only`. An agent key — regardless of scope — cannot
-call it. The human must physically approve at the `/approve/{id}` UI page, which requires a
-valid JWT cookie.
+**Mitigation:** `approve` / `deny` are human-session-only:
+- `POST /toolkits/{toolkit_id}/access-requests/{req_id}/approve`
+- `POST /toolkits/{toolkit_id}/access-requests/{req_id}/deny`
+
+An agent key cannot call these routes. The human approves via the `/approve/{toolkit_id}/{req_id}` UI flow with a valid JWT session.
 
 **Secondary concern: leaked agent key used by a third party.**
 
@@ -260,17 +274,19 @@ Key-value store for instance configuration.
 
 ### `toolkit_keys`
 
-One row per issued agent key. See main schema in ARCHITECTURE.md.
+One row per issued agent key. For conceptual model see `docs/ARCHITECTURE.md`; for exact schema
+and current columns see Alembic migrations in `alembic/versions/`.
 
-Key columns: `api_key` (the `tk_xxx` string), `toolkit_id`, `allowed_ips`, `revoked_at`, `scopes` (JSON array — planned).
+Key columns in current schema: `api_key` (the `tk_xxx` string), `toolkit_id`, `allowed_ips`, `revoked_at`, `created_at`.
+Planned scopes are tracked separately via `api_keys` (not yet active for toolkit key enforcement).
 
 ---
 
-## Dependencies
+## Runtime dependencies (current)
 
-New packages required (add to `requirements.txt` / Dockerfile):
+Auth currently uses:
 
-```
-passlib[bcrypt]>=1.7.4
-python-jose[cryptography]>=3.3.0
-```
+- `bcrypt`
+- `python-jose[cryptography]`
+
+These are declared in `pyproject.toml`.
