@@ -6,7 +6,7 @@ In this repo the constitution is one document split across three files in `specs
 - `specs/tech-stack.md` — the stack that exists (not what is ideal), plus system-wide constraints and conventions
 - `specs/roadmap.md` — the next shippable phases, ordered and scoped small
 
-Each file is YAML-frontmatter-tagged with `type: constitution` and its `section:`, plus a `sources:` list of `@`-prefixed paths the content was derived from.
+Each file is YAML-frontmatter-tagged with `type: constitution` and its `section:`. Do not add a `sources:` list — nothing consumes it and it rots as files move. Where a doc is load-bearing for a specific claim, cross-reference it inline in the body instead.
 
 The constitution captures **load-bearing invariants**, not operational detail. Endpoint catalogs, schemas, threat models, and similar reference material live in `docs/` — the constitution cross-references them from `tech-stack.md`. Mission / tech-stack / roadmap is the whole set; there is no fourth section.
 

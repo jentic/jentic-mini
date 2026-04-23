@@ -3,21 +3,6 @@ type: constitution
 section: tech-stack
 generated_by: spec-driven-agent
 generated_at: 2026-04-23T00:00:00Z
-sources:
-  - @pyproject.toml
-  - @ui/package.json
-  - @Dockerfile
-  - @src/main.py
-  - @src/db.py
-  - @src/bm25.py
-  - @src/auth.py
-  - @alembic/versions/
-  - @src/routers/broker.py
-  - @src/routers/workflows.py
-  - @docs/ARCHITECTURE.md
-  - @docs/AUTH.md
-  - @docs/ROADMAP.md
-  - @.claude/templates/sdd/constitution/tech-stack.example.md
 confidence: high
 ---
 
@@ -30,106 +15,120 @@ implementation evidence.
 
 - **Application style:** Client–server hybrid — FastAPI JSON API backend + React SPA admin UI served as static files from the same server
 - **Primary language(s):** Python 3.11+ (backend), TypeScript (frontend)
-- **Rendering model:** API-only for agents; SPA (React) for human admin; content-negotiated (browser → HTML/SPA, client → JSON)
+- **Rendering model:** API-only for agents; SPA (React) for human admin; content-negotiated (browser → HTML/SPA, client → JSON, also YAML/Markdown on request)
 - **Deployment/runtime shape:** Container (Docker multi-stage build); also runnable from source for development
 - **Current maturity:** Early-stage / Early Access (v0.9.0; not recommended for production)
 
 ## Core Stack
 
-| Layer | Choice | Evidence / Rationale |
-|---|---|---|
-| Backend language | Python 3.11+ | `pyproject.toml`: `requires-python = ">=3.11"`; Dockerfile: `python:3.11-slim` |
-| HTTP server | FastAPI 0.136 + uvicorn 0.44 (standard extras) | `pyproject.toml` dependencies; `src/main.py` imports |
-| Frontend language | TypeScript 5.9 | `ui/package.json` devDependencies; `ui/tsconfig.json` present |
-| Frontend framework | React 18 | `ui/package.json` dependencies |
-| Frontend build | Vite 7 | `ui/package.json`; `ui/vite.config.ts` present |
-| UI styling | TailwindCSS 4 (via `@tailwindcss/vite` plugin) | `ui/package.json` devDependencies; docs/ROADMAP.md confirms v0.3 upgrade |
-| Python packaging | PDM 2.25.5 | Dockerfile `RUN curl .../install-pdm.py`; `pdm.lock` present |
-| Container | Docker multi-stage (Node 24 UI build → Python 3.11-slim runtime) | `Dockerfile` |
+Load-bearing choices only. Exact versions are tracked in `pyproject.toml`, `ui/package.json`,
+and `Dockerfile`.
 
-## Key Libraries and Frameworks
+| Layer | Choice |
+|---|---|
+| Backend language | Python 3.11+ |
+| HTTP server | FastAPI + uvicorn |
+| Frontend language | TypeScript (strict) |
+| Frontend framework | React |
+| Frontend build | Vite |
+| UI styling | TailwindCSS 4 (via `@tailwindcss/vite` plugin — no PostCSS, no JS config) |
+| Python packaging | PDM |
+| Container | Docker multi-stage (Node UI build → Python slim runtime) |
+| Compose layout | `compose.yml` (base), `compose.dev.yml` (Vite dev server), `compose.ci.yml` (CI overrides) |
+
+## Architecturally Load-Bearing Libraries
+
+These shape the system — swapping any of them would force architectural change.
+Swappable implementation-detail libraries (HTTP clients, password-hash impls, JWT impls,
+icon libs, class-merge helpers, YAML parsers, etc.) are not listed here.
 
 **Backend:**
-- **fastapi** — async HTTP API framework; all routes, middleware, and OpenAPI schema defined here
-- **uvicorn[standard]** — ASGI server with hot reload in dev mode
-- **aiosqlite** — async SQLite driver for database access
-- **alembic** — schema migration management (`alembic/versions/`)
-- **rank-bm25** — in-memory BM25 full-text search index over registered operations and workflows (rebuilt at startup and after imports)
-- **arazzo-runner** — Python library for executing Arazzo multi-step workflow specs
-- **jentic-openapi-common** — shared OpenAPI utilities from the Jentic ecosystem
-- **cryptography (Fernet)** — symmetric encryption for credential vault (write-only semantics; values never returned after creation)
-- **python-jose[cryptography]** — JWT generation and validation for human admin sessions (30-day TTL, auto-refresh)
-- **bcrypt** — password hashing for human admin accounts
-- **httpx** — async HTTP client used for upstream version checks and self-registration
-- **aiohttp** — async HTTP client used within `arazzo-runner` workflow steps
-- **pyyaml** — YAML parsing for OpenAPI and Arazzo specs
+- **FastAPI + uvicorn** — the entire HTTP surface, middleware, and OpenAPI schema
+- **aiosqlite + Alembic** — storage and migration model (no ORM)
+- **rank-bm25** — in-memory BM25 index for operation and workflow search
+- **arazzo-runner** — Arazzo multi-step workflow execution (interim Python engine; TypeScript replacement planned — see roadmap)
+- **cryptography (Fernet)** — credential vault encryption contract
 
 **Frontend:**
-- **@tanstack/react-query 5** — server state management and data fetching
-- **react-router-dom 6** — client-side routing for the SPA
-- **@jentic/arazzo-ui** — workflow visualization component (diagram/docs/split views); from [jentic-arazzo-tools](https://github.com/jentic/jentic-arazzo-tools)
-- **lucide-react** — SVG icon library
-- **clsx + tailwind-merge** — conditional class composition (`cn()` utility)
-- **msw 2** — API mocking in tests (Service Worker-based)
+- **@tanstack/react-query** — server-state management shape (cache, retry, invalidation)
+- **react-router-dom** — client routing (routes hand-registered in `ui/src/App.tsx` via `createBrowserRouter`)
+- **msw** — fetch-layer mocking; tests mock at the network boundary, not at hooks
+
+**Testing:**
+- **pytest + pytest-asyncio** — backend
+- **Vitest (browser mode) + Playwright + axe-core** — frontend unit/integration, E2E, and a11y
+
+## Backend Layout
+
+Core modules live in `src/` and routers in `src/routers/`; see `CLAUDE.md` and
+`docs/ARCHITECTURE.md` for the current catalog. Load-bearing invariants:
+
+- **Router registration order:** all internal routers are registered first; the broker catch-all (`/{target:path}`) is registered last in `src/main.py`.
+- **Content-negotiation middleware** (`src/negotiate.py`) transforms JSON responses into YAML or Markdown based on `Accept`.
+- **OAuth brokers** live in `src/brokers/`. Pipedream is the only first-class implementation today and is documented as a temporary bridge; a native `JenticOAuthBroker` is planned as a drop-in replacement per `docs/oauth-broker.md`.
 
 ## Data and Storage
 
-- **Primary storage:** SQLite at `/app/data/jentic-mini.db` (inside container); persisted via Docker volume
+- **Primary storage:** SQLite at `/app/data/jentic-mini.db` inside the container; persisted via Docker volume
 - **Access pattern:** Raw SQL via `aiosqlite` (no ORM); query building is manual in `src/db.py`
-- **Migrations:** Alembic (`alembic/versions/`); migrations run automatically at container startup via `run_migrations()` in `main.py` lifespan
-- **Schema documentation split:** `docs/ARCHITECTURE.md` is the conceptual data-model reference; Alembic migrations are the exact schema source of truth
+- **Migrations:** Alembic is the schema source of truth; migration files live in `alembic/versions/` and run automatically at container startup via `run_migrations()` in `main.py` lifespan. `docs/ARCHITECTURE.md` is the conceptual data-model reference.
 - **Caching / state:** BM25 index is in-memory; catalog manifest from GitHub is cached on disk for 24 hours; version check is in-memory with 6-hour TTL
-- **Credential vault:** Fernet-encrypted values stored in the `credentials` table; the vault key (`JENTIC_VAULT_KEY`) is auto-generated at first run and persisted to `/app/data/vault.key`
+- **Credential vault:** Fernet-encrypted values in the `credentials` table; the vault key (`JENTIC_VAULT_KEY`) is auto-generated at first run and persisted to `/app/data/vault.key`
 - **Spec/workflow storage:** OpenAPI spec files and Arazzo workflow files stored on disk under `/app/data/specs/` and `/app/data/workflows/`
 
 ## Testing
 
-- **Backend test framework:** pytest + pytest-asyncio (`pyproject.toml` dev dependencies)
-- **Backend test types:** Integration tests against the FastAPI app (via `httpx.AsyncClient`); contract tests via schemathesis; credential, policy, auth, and broker tests
-- **Frontend test framework:** Vitest 4 (browser mode, Chromium via Playwright)
-- **Frontend test types:** Unit + integration tests (Vitest + `@testing-library/react` + MSW), E2E tests (Playwright), accessibility checks (axe-core)
-- **Current testing pattern:** Backend has integration/contract test suite but no unit tests for individual modules yet (noted as a gap in ROADMAP.md). Frontend has 143+ integration tests and 35 E2E specs as of v0.5.
+- **Backend framework:** pytest + pytest-asyncio (`pyproject.toml` dev deps); schemathesis for OpenAPI contract testing
+- **Backend style:** Integration-level against the FastAPI app with a real temp SQLite and real Alembic migrations — no mocking. Tests organized by trust boundary (auth, policy, vault, broker, toolkit, workflow). Module-level unit tests are a known gap.
+- **Backend test isolation:** `conftest.py` must set `DB_PATH` **before** any `src.*` import (documented via ruff per-file-ignores for E402/PLC0415). A `_test_lifespan()` fixture skips BM25 rebuild, self-registration, catalog refresh, and OAuth broker loading.
+- **Frontend framework:** Vitest 4 in browser mode (Playwright/Chromium), `@testing-library/react`, `msw` for fetch-layer mocking, `axe-core` for accessibility.
+- **Frontend style:** Fresh `QueryClient` per test (`retry: false`, `gcTime: 0`), reset MSW handlers between tests, mock at the fetch layer — never mock hooks. Details in `ui/TESTING.md`.
+- **E2E:** Playwright with two configs — `playwright.config.ts` (mocked-server + Vite) and `playwright.docker.config.ts` (real-server Docker E2E with `setup` + dependency workflow).
 
 ## Tooling and Developer Experience
 
-- **Local development:** `docker compose -f compose.yml -f compose.dev.yml up` starts backend with hot reload (Python source volume-mounted) and a Vite dev server on port 5173 with HMR. Alternatively, Vite can run directly on the host with `cd ui && npm run dev`.
-- **Build / release:** `cd ui && npm run build` produces the static bundle; `docker compose up -d --build` rebuilds the full image. Production releases use `semantic-release` for git tags + GitHub Releases + Docker publish CI.
-- **Formatting / linting (Python):** `ruff` (check + format); configured in `pyproject.toml`; PDM scripts `lint` and `lint:fix`
-- **Formatting / linting (TypeScript):** ESLint 9 + prettier 3; `lint-staged` runs on commit via husky
-- **Type checking:** TypeScript strict mode (frontend); Python has no static type checking configured (no mypy in dev deps)
-- **CI/CD:** GitHub Actions — `ci-ui.yml` (path-filtered, TypeScript check + Vitest + Playwright) and `ci-docker.yml` (always runs, Docker layer caching); Dependabot for dep updates
+- **Local development:** `docker compose -f compose.yml -f compose.dev.yml up` starts the backend with hot reload (Python source volume-mounted) and a Vite dev server on port 5173 with HMR. Alternatively, Vite can run on the host with `cd ui && npm run dev`.
+- **Build / release:** `cd ui && npm run build` produces the static bundle into `static/` at the project root (gitignored). `docker compose up -d --build` rebuilds the full image. Releases use `semantic-release` for git tags + GitHub Releases + Docker publish CI.
+- **Formatting / linting (Python):** `ruff` (check + format) configured in `pyproject.toml` with `target-version = "py311"`. PDM scripts: `lint`, `lint:fix`.
+- **Formatting / linting (TypeScript):** ESLint 9 (flat config) + Prettier 3; lint-staged via husky on pre-commit.
+- **Type checking:** TypeScript strict mode (frontend); Python has no static type checking configured (no mypy or pyright in dev deps).
+- **CI/CD:** GitHub Actions in `.github/workflows/` cover backend, UI, Docker image build, Docker security scanning, CodeQL, `semantic-release`, and Dependabot automation. CI per area is path-filtered.
 
 ## Deployment and Operations
 
-- **Deployment target:** Docker container; published to DockerHub (`jentic/jentic-mini`) and GHCR (`ghcr.io/jentic/jentic-mini`); compatible with `amd64` and `arm64`
+- **Deployment target:** Docker container; published to DockerHub (`jentic/jentic-mini`) and GHCR (`ghcr.io/jentic/jentic-mini`); multi-arch (`amd64`, `arm64`)
 - **Port:** 8900 (exposed in Dockerfile; configurable via compose)
-- **Environment management:** Optional `.env` file or Docker env vars; key vars: `JENTIC_VAULT_KEY`, `JENTIC_PUBLIC_HOSTNAME`, `LOG_LEVEL`, `JENTIC_TELEMETRY`, `JENTIC_UID`/`JENTIC_GID`
-- **Observability:** Python stdlib `logging` (configurable with `LOG_LEVEL`); execution traces stored in SQLite and queryable via `GET /traces`; `GET /version` version-check endpoint; anonymous install telemetry (opt-out via `JENTIC_TELEMETRY=off`)
+- **User:** Non-root `jentic` system user; UID/GID configurable via `JENTIC_UID` / `JENTIC_GID`
+- **Environment management:** Optional `.env` file or Docker env vars. Key vars: `JENTIC_VAULT_KEY`, `JENTIC_PUBLIC_HOSTNAME`, `JENTIC_TRUSTED_SUBNETS`, `LOG_LEVEL`, `JENTIC_TELEMETRY`, `JENTIC_UID`, `JENTIC_GID`, `DB_PATH`
+- **Observability:** Python stdlib `logging` (configurable with `LOG_LEVEL`); execution traces stored in SQLite and queryable via `GET /traces`; `GET /version` (6-hour cache; see `docs/versioning.md`); anonymous install telemetry (opt-out via `JENTIC_TELEMETRY=off`)
 - **Error handling:** FastAPI exception handlers; broker propagates upstream HTTP status and `failed_step` detail on workflow errors; no rate limiting or audit trail currently
 
 ## Constraints and Conventions
 
-- **Broker routing constraint:** The broker identifies upstream hosts by requiring the first path segment to contain a `.` (dot). This means `localhost`, bare hostnames, and raw IPs are not routable through the broker — only public domain-style hostnames work (e.g. `api.stripe.com`). This is a known gap.
-- **Route registration order:** The broker catch-all route (`/{target:path}`) must be registered last in `main.py`; all internal routers take priority by registration order. Violating this causes silent failures where internal endpoints become unreachable.
-- **Credential write-only semantics:** Credential values are encrypted on write and never returned via the API. The vault key must be persisted; losing it means losing access to all stored credentials.
-- **Non-root container:** The container runs as the `jentic` system user (UID configurable via `JENTIC_UID`/`JENTIC_GID`).
-- **Content negotiation:** SPA routes return `index.html` for browser requests (`Accept: text/html`), and JSON for API clients. This is implemented as an HTTP middleware in `main.py`.
-- **Python target version:** Python 3.11 minimum (ruff `target-version = "py311"`); the runtime image is also Python 3.11-slim.
-- **UI ESLint guardrails:** `no-restricted-syntax` rules in `src/pages/` enforce use of the owned UI component library (no raw `<button>`, `<input>`, etc. in page code).
-- **Authentication model:** Two distinct mechanisms for two actors — humans use bcrypt password → 30-day sliding httpOnly JWT cookie, agents use `X-Jentic-API-Key: tk_xxx` bound to a toolkit. There is no admin API key and no superuser env var; `docker exec` is the only superuser path (the CLI trust boundary is strictly stronger than any env-var credential). Root account creation is one-time (`POST /user/create` returns `410 Gone` after first use). New toolkit keys are always IP-restricted — the default allowlist is the trusted-subnets list (RFC-1918 + loopback + any `JENTIC_TRUSTED_SUBNETS` extras), and `JENTIC_TRUSTED_SUBNETS` appends to the built-ins rather than replacing them. Privilege-escalation routes (approve/deny access requests, mutate toolkits, edit credential policies, manage OAuth brokers) require a human JWT session, so a compromised agent key cannot self-escalate via prompt injection. Endpoint-level detail: `docs/AUTH.md`.
-- **Capability / Workflow ID format:** Every search / inspect / execute target is identified by a single ID string of the shape `METHOD/host/path` (e.g. `GET/api.stripe.com/v1/customers`). Workflows use the same format with `host = JENTIC_PUBLIC_HOSTNAME` (e.g. `POST/localhost/workflows/summarise-topics`), and the system discriminates operations from workflows by whether the host matches `JENTIC_PUBLIC_HOSTNAME`. Agents persist these IDs, so format stability is an API contract — cross-edition alignment is tracked in Phase 4 of `roadmap.md`.
+- **Broker routing constraint:** The broker identifies upstream hosts by requiring the first path segment to contain a `.` (dot). `localhost`, bare hostnames, and raw IPs are not routable through the broker today — only public domain-style hostnames (e.g. `api.stripe.com`). This is a known gap addressed in roadmap Phase 1.
+- **Route registration order:** The broker catch-all (`/{target:path}`) must be registered last in `main.py`. Violating this silently swallows internal routes (symptom: `No API found for host '…'` on an internal endpoint).
+- **Credential write-only semantics:** Credential values are encrypted on write and never returned via the API. The vault key must be persisted — losing it means losing access to every stored credential.
+- **Credential route schema (migration 0004):** Route bindings split across `credentials.server_variables`, `credentials.scheme`, and a dedicated `credential_routes` table (not a single JSON blob on `credentials`).
+- **Authentication model (two actors):** Humans authenticate with bcrypt password → 30-day sliding httpOnly JWT cookie. Agents authenticate with `X-Jentic-API-Key: tk_xxx` bound to a toolkit. There is no admin API key and no superuser env var — `docker exec` is the only superuser path. Root account creation is one-time (`POST /user/create` returns `410 Gone` after first use). New toolkit keys are always IP-restricted; the default allowlist is trusted subnets (RFC-1918 + loopback + `JENTIC_TRUSTED_SUBNETS` extras; the env var **appends**, never replaces). Privilege-escalation routes (approve/deny access requests, mutate toolkits, edit credential policies, manage OAuth brokers) require a human JWT session, so a compromised agent key cannot self-escalate via prompt injection. Endpoint-level detail in `docs/AUTH.md`.
+- **Capability / Workflow ID format:** `METHOD/host/path` (e.g. `GET/api.stripe.com/v1/customers`). Workflows use the same format with `host = JENTIC_PUBLIC_HOSTNAME` (e.g. `POST/localhost/workflows/summarise-topics`), and operations vs workflows are distinguished by whether `host` matches `JENTIC_PUBLIC_HOSTNAME`. Agents persist these IDs — format stability is an API contract (see roadmap Phase 4).
+- **Policy evaluation:** Toolkit policies evaluate allow/deny rules in order; first match wins; default-deny when no rule matches.
+- **Content negotiation:** SPA routes return `index.html` for browser requests (`Accept: text/html`) and JSON for API clients; an extended middleware also supports YAML and Markdown responses. Implemented in `src/negotiate.py` and the SPA fallback in `main.py`.
+- **UI ESLint guardrails:** Two rule sets — `src/components/ui/**` may define primitives (Button/Input/Select/Textarea); `src/pages/**` and `src/components/layout/**` must use those primitives instead of raw `<button>`/`<input>`/`<select>`/`<textarea>` and must use `AppLink` (not raw `<a>`). `@/` absolute imports are required (no parent relative paths). Enforced by `ui/eslint.config.js`.
+- **Python import rule:** Top-level imports only. Inline imports are forbidden except to break circular imports (must be commented as such).
+- **Agent collaboration rules:** Future SDD work must honor the rules in `.claude/rules/`.
 
 ## What We Are Not Using
 
 - No **ORM** (SQLAlchemy, Tortoise, etc.) — raw `aiosqlite` SQL throughout `src/db.py`
 - No **Redis or external cache** — all caching is in-memory or on-disk SQLite/file
-- No **TypeScript strict null checks enforced in all files** — ~166 `any`/`@ts-ignore` instances noted as a known debt in ROADMAP.md (v0.6 context)
-- No **mypy or pyright** for Python type checking — not present in `pyproject.toml` dev dependencies
-- No **CDN dependency** — Swagger UI, Redoc, and other assets are vendored locally in `static/`
+- No **mypy or pyright** for Python type checking — not present in `pyproject.toml` dev deps
+- No **CDN dependency** — Swagger UI, Redoc, and Tailwind runtime assets are vendored locally in `static/`
+- No **PostCSS / tailwind.config.js** — TailwindCSS 4 is configured entirely in `ui/src/index.css` via `@theme inline` + CSS custom properties
 
 ## Open Questions / Uncertain Areas
 
-- Python `arazzo-runner` (PyPI) is listed as a high-priority migration target to the TypeScript implementation from `jentic-arazzo-tools`; the current Python runner is an interim choice
-- No rate limiting is in place on any endpoint (including login and broker); this is explicitly noted as a pre-production requirement in ROADMAP.md
-- The `api_keys` table in the DB schema is described as "reserved for future fine-grained scope assignment" — its eventual design is not yet determined
-
+- Python `arazzo-runner` is the interim engine; migration to the TypeScript implementation from `jentic-arazzo-tools` is a high-priority item on the roadmap (Phase 3)
+- No rate limiting on any endpoint, including login and broker — pre-production requirement
+- `api_keys` table is reserved for future fine-grained scope assignment; design not yet determined
+- `auth_override_log` table exists in the baseline schema but its end-to-end usage and retention policy are not yet documented
+- The `scheme_name` / `scheme_type` naming decision (see `docs/DECISIONS.md`) will affect credential-provisioning changes landing in Phase 6
