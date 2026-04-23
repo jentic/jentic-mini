@@ -4,7 +4,7 @@ section: mission
 generated_by: spec-driven-agent
 generated_at: [ISO_TIMESTAMP]
 sources:
-  - .claude/templates/sdd/constitution/mission.example.md
+  - @.claude/templates/sdd/constitution/mission.example.md
 confidence: high
 notes: Template example for constitution mission
 ---
