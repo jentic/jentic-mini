@@ -16,6 +16,10 @@ testable slice of work**. Phases are ordered by priority and dependency. Each ph
 vertical slice: it touches whatever layers are needed (backend, frontend, tests) to deliver a
 complete, observable capability.
 
+**Starting a phase:** run `/sdd-new-spec <N>` in Claude Code to scaffold a feature-spec directory
+(`requirements.md`, `plan.md`, `validation.md`) and open it as a review PR. The skill touches only
+the spec files; implementation follows in a separate PR once the spec is approved.
+
 **Lifecycle:** when a phase ships, delete it from this file — do NOT renumber the remaining
 phases. Phase numbers are stable identifiers; gaps are fine and mark what has shipped. New work
 takes the next unused number.
