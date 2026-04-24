@@ -1,0 +1,123 @@
+---
+name: sdd-new-phase
+description: Append a new active phase to specs/roadmap.md. Parses existing phases to compute the next stable phase number (gaps preserved per the lifecycle rule), grounds the proposal against specs/mission.md and specs/tech-stack.md, groups structured questions (goal, dependencies, priority) via AskUserQuestion, then collects a freeform bullet list for the phase body. Edits specs/roadmap.md in place and stops — committing, pushing, and opening a PR are left to the user. Does not create a feature spec; that is /sdd-new-spec's job.
+argument-hint: "[short title or one-sentence intent] (optional)"
+---
+
+# /sdd-new-phase — add a new active phase to the roadmap
+
+You are operating within a Spec-Driven Development (SDD) workflow. See `.claude/rules/sdd-constitution.md`.
+
+The **constitution** (mission / tech-stack / roadmap) already exists in `specs/`. This skill adds a fresh active phase — a shippable, independently reviewable, testable vertical slice of work — to `specs/roadmap.md` as a new `## Phase N — Title` block. It stops after writing the edit. Reviewing the diff, branching, committing, and opening a PR are user actions. Once the roadmap change is merged, `/sdd-new-spec <N>` materializes the phase into a feature spec.
+
+## Inputs
+
+Argument in `$ARGUMENTS` (optional):
+
+- empty → prompt the user for a one-sentence description of the phase
+- short title or one-sentence intent → used as the starting point for title + goal derivation
+
+## Hard constraints
+
+- **Roadmap-only — zero code changes, zero git actions.** This skill never modifies anything outside `specs/roadmap.md`. It does not run `git`, `gh`, or any commit / branch / push / PR commands. The user handles git themselves after reviewing the edit.
+- **Do not renumber existing phases.** Phase numbers are stable identifiers; gaps mark shipped phases (per the lifecycle rule in `specs/roadmap.md`). The new phase number is always `max(existing active phase numbers) + 1` — never `len(active phases) + 1`.
+- **Do not create a feature spec.** That is `/sdd-new-spec`'s job.
+- **Do not touch the `## Later Phases (Not Yet Planned)` section** or the trailing `<!-- Only include items here if they are clearly out of current scope. -->` comment. Active phases and the parking lot are distinct.
+- **Do not write to disk before AskUserQuestion completes.** The structured questions lock in decisions that shape the entry; writing early wastes the call.
+- **Ground the phase against `specs/mission.md` and `specs/tech-stack.md`.** If the proposal obviously conflicts with the constitution (outside mission scope, violates a tech-stack invariant), stop and surface the conflict before asking the user to lock decisions.
+- **`Depends on:` must reference real active phases.** If the user names a dependency, it must match a current `## Phase N — Title` in `specs/roadmap.md` (case-insensitive contains match is fine). Typos get corrected; invented names get rejected.
+
+## Phase 0 — Load context
+
+Load in parallel:
+
+- @specs/mission.md
+- @specs/tech-stack.md
+- @specs/roadmap.md
+- @.claude/rules/sdd-constitution.md
+
+No git state checks — this skill doesn't touch git.
+
+## Phase 1 — Parse roadmap, propose phase identity
+
+Parse `specs/roadmap.md` to extract:
+
+- Every **active phase** block (`## Phase N — Title`): number, title, goal, `Depends on:`, `Priority:`. Ignore the `## Later Phases (Not Yet Planned)` section.
+- **Next phase number**: `max(active phase numbers) + 1`. Do NOT use `len(active phases) + 1` — gaps mark shipped phases.
+
+If `$ARGUMENTS` is empty, prompt the user for a one-sentence description of what the phase delivers.
+
+**Duplicate-overlap check:** if the proposal obviously overlaps with an existing active phase (strong keyword overlap with a phase title or goal), surface the overlap to the user and ask whether to proceed anyway, merge into the existing phase, or cancel. Do not silently proceed past an apparent duplicate.
+
+**Constitution-conflict check:** reason briefly about whether the proposal fits within the project's mission scope and tech-stack invariants. If there is an obvious conflict (proposes a capability outside the mission; proposes a runtime dependency the tech-stack forbids; violates a load-bearing constraint like the broker-last router rule), surface it and pause. If there is no obvious conflict, proceed silently — do not pad the response with "nothing conflicts" noise.
+
+Derive a candidate **title** in Title Case (e.g. "Local Service Routing", not "local service routing" or "LOCAL SERVICE ROUTING"). Show it to the user alongside the proposed phase number and confirm (or let them override) before Phase 2.
+
+## Phase 2 — AskUserQuestion (MANDATORY, before any disk write)
+
+Issue a single `AskUserQuestion` call containing three grouped questions. Each question offers 3–5 concrete options plus a freeform "other" write-in.
+
+**Question 1 — Goal** (shapes the `**Goal:**` line):
+  - Prompt: "One-sentence goal for this phase — what does shipping it mean?"
+  - Options: 3–4 goal phrasings derived from the user's initial description, grounded against mission/tech-stack, plus "other (write your own)". Each option is a single sentence starting with an action verb (e.g. "Allow…", "Replace…", "Add…", "Reduce…").
+
+**Question 2 — Dependencies** (shapes the `**Depends on:**` line):
+  - Prompt: "Which existing active phase must ship before this one?"
+  - Options: "none (self-contained)", each active phase title from `specs/roadmap.md` as a separate option, and "other (multiple — specify comma-separated)". If the user picks "other", validate the comma-separated names against active phase titles (case-insensitive contains match). Reject inventions with a one-line correction prompt.
+
+**Question 3 — Priority** (shapes the `**Priority:**` line):
+  - Prompt: "What priority level does this phase carry?"
+  - Options: `High`, `Medium–High`, `Medium`, plus "other (write your own)". Use the en-dash (`–`, U+2013) in `Medium–High`, not a hyphen — match existing roadmap formatting exactly.
+
+Only after the user answers all three do you proceed.
+
+## Phase 3 — Collect freeform phase body
+
+Ask the user a single freeform question:
+
+> Now describe the phase body — the concrete bullets that define "shippable". Each bullet should be one change (file, module, route, migration, test, doc, etc.). Freeform; I'll format them.
+
+Parse their response into bullets (one per line, `- ` prefix). Do not invent bullets; keep only what the user wrote. Light formatting is fine (normalize leading dashes, capitalization, trailing punctuation); content changes are not.
+
+If the response is fewer than three bullets, ask once: "A phase usually lists at least three concrete tasks — anything to add, or is this intentionally small?" Accept a short phase if the user confirms.
+
+If the user clearly typed a paragraph of prose rather than bullets, split it into a short **context paragraph** (kept as-is before the bullet list) and ask them for the concrete bullets. A phase may have both a context paragraph and a bullet list — see any active phase in `specs/roadmap.md` with prose between the `**Priority:**` line and the bullets for the shape.
+
+## Phase 4 — Edit the roadmap
+
+Edit `specs/roadmap.md` to insert the new phase. **Insertion rules:**
+
+- Active phase blocks are separated from the `## Later Phases (Not Yet Planned)` section by a `---` horizontal rule.
+- Insert the new block **immediately before the `---` that precedes `## Later Phases`** — after the last existing active phase.
+- Separate the new block from the previous active phase with a single blank line; match the existing file's spacing.
+- Do not renumber any existing phase.
+- Do not edit the `## Later Phases (Not Yet Planned)` section or the trailing HTML comment.
+
+**Block format** — match existing phases exactly:
+
+```
+## Phase <N> — <Title>
+
+**Goal:** <goal sentence ending with a period>.
+**Depends on:** <none (self-contained) | comma-separated phase titles, optional parenthetical rationale>
+**Priority:** <priority, optional parenthetical rationale>
+
+<optional 1–3 sentence context paragraph — include only if the user provided prose alongside bullets>
+
+- <bullet 1>
+- <bullet 2>
+- <bullet 3>
+```
+
+If `Depends on:` is `none`, follow an existing example like `none (self-contained broker change)` when the user provided a one-line reason; bare `none` is also fine. Do not invent a rationale.
+
+## Phase 5 — Report back
+
+Return to the user in a few lines:
+
+- Phase number and title that were added
+- File edited: `specs/roadmap.md`
+- Next steps (user-driven — this skill does not do them):
+  1. Review the diff (`git diff specs/roadmap.md`).
+  2. Branch + commit + PR per `.claude/rules/git-workflow.md` and `.claude/rules/conventional-commits.md` (suggested header: `docs(roadmap): add phase <N> — <short-slug>`).
+  3. Once merged, run `/sdd-new-spec <N>` to materialize the phase into a feature spec.

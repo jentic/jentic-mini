@@ -17,4 +17,5 @@ Supporting infrastructure:
 - `.claude/templates/sdd/constitution/*.example.md` — structural templates for each constitution section
 - `.claude/prompts/create-constitution.md` — constitution generator prompt
 - `.claude/templates/sdd/feature-spec/*.example.md` — structural templates for each feature-spec file
+- `.claude/skills/sdd-new-phase/SKILL.md` — `/sdd-new-phase` skill that appends a new active phase to `specs/roadmap.md`
 - `.claude/skills/sdd-new-spec/SKILL.md` — `/sdd-new-spec` skill that scaffolds a feature spec from a roadmap phase 
