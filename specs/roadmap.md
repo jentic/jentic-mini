@@ -16,6 +16,10 @@ testable slice of work**. Phases are ordered by priority and dependency. Each ph
 vertical slice: it touches whatever layers are needed (backend, frontend, tests) to deliver a
 complete, observable capability.
 
+**Adding a phase:** run `/sdd-new-phase` in Claude Code to append a new active phase to this file
+via a review PR. The skill edits only `specs/roadmap.md`; once the PR is merged, materialize the
+phase with `/sdd-new-spec <N>`.
+
 **Starting a phase:** run `/sdd-new-spec <N>` in Claude Code to scaffold a feature-spec directory
 (`requirements.md`, `plan.md`, `validation.md`) and open it as a review PR. The skill touches only
 the spec files; implementation follows in a separate PR once the spec is approved.
@@ -176,6 +180,50 @@ Variables provide the native mechanism for this.
 - Add `GET /toolkits/{id}/summary` returning: which APIs are credentialed, what policy allows, which workflows are accessible, toolkit simulate mode status
 - Response must be LLM-consumable (compact, structured prose, no paginated sub-queries required)
 - Add unit tests verifying summary content against known toolkit/credential/policy fixtures
+
+## Phase 13 — Docs Accuracy Pass
+
+**Goal:** Align the twelve in-scope top-level `docs/` files with current codebase reality by removing stale content and verifying every factual claim against the code.
+**Depends on:** none (self-contained docs sweep)
+**Priority:** High (docs drift actively misleads users and agents; release-quality requirement)
+
+Scope covers these twelve top-level files only (subdirs `archive/`, `deploy/`, `tutorials/` are out of scope): `BROKER-CLI.md`, `CATALOG.md`, `credential-deeplink.md`, `CREDENTIALS.md`, `DECISIONS.md`, `oauth-broker.md`, `PIPEDREAM.md`, `README.md`, `SELF-REGISTRATION.md`, `server-variables.md`, `versioning.md`, `WORKFLOWS.md`. `ARCHITECTURE.md` and `AUTH.md` are explicitly excluded — already verified against current code.
+
+- Audit each of the twelve files against `src/` and correct stale endpoint paths, env var names, file paths, flag names, and flow descriptions
+- Remove references to retired features, deprecated schema shapes, and superseded flows; move wholly-superseded files to `docs/archive/` rather than editing them in place
+- Reconcile overlapping sections (credential injection, capability ID format, broker routing, two-actor auth) so the same claim reads identically wherever it appears
+- Refresh code snippets, curl examples, and sample payloads so they run against the current API surface
+- Verify internal cross-links between docs and to `CLAUDE.md` / `AGENTS.md` resolve to current targets; fix broken anchors
+- Update `docs/README.md` index to match the remaining file set (post-archive moves) with one-line summaries
+
+## Phase 14 — Resolve Open Security Advisories (Code Scanning)
+
+**Goal:** Resolve every open CodeQL / code-scanning advisory in the repo by fixing the root cause in code or image.
+**Depends on:** none (self-contained)
+**Priority:** High (security findings are release-quality concerns)
+
+Baseline (as of this phase entry): four open High-severity advisories at <https://github.com/jentic/jentic-mini/security/code-scanning> — one real code finding and three transitive dependency CVEs in the Docker image's Python install.
+
+- Investigate `py/path-injection` at `src/routers/catalog.py:319` — an existing `arazzo_file.relative_to(workflows_root)` guard (line 314) already enforces containment; determine whether the finding is a real escape or a pattern CodeQL can't prove effective, and either strengthen the guard (e.g. validate the untrusted input earlier, or use `os.path.commonpath`) or suppress it with a code comment + CodeQL annotation explaining why
+- Resolve `wheel` `CVE-2026-24049` (both top-level and the copy vendored inside `setuptools`) in the Docker image by bumping the Python base image or pinning a patched `wheel` version
+- Resolve `jaraco.context` `CVE-2026-23949` in the vendored `setuptools` copy by bumping `setuptools` to a version that vendors a patched release
+- Add regression tests for the path-injection fix (attempt to traverse outside the allowed root; expect rejection)
+- Re-run CodeQL and the Docker image scan after fixes; confirm the Security tab shows zero open High/Critical advisories
+
+## Phase 15 — Python Type Checking with Pyright
+
+**Goal:** Introduce proper Python type annotations across the backend and guard them with pyright.
+**Depends on:** none (self-contained)
+**Priority:** High
+
+Python code in `src/` has no static type checking today — type regressions only surface at runtime. Pyright will act as an additional quality guardrail for the agent alongside ruff and pytest, enforcing type annotations across the backend.
+
+- Add `pyright` to `[tool.pdm.dev-dependencies]` in `pyproject.toml` and create `pyrightconfig.json` at the repo root with `include: ["src"]`, `pythonVersion: "3.11"`, and `typeCheckingMode: "basic"` as the starting bar (ratchet to `standard`/`strict` later if helpful)
+- Add `typecheck = "pyright"` to `[tool.pdm.scripts]` so `pdm run typecheck` is the single invocation used locally, in the Claude hook, and in CI
+- Annotate all modules under `src/` until `pdm run typecheck` exits clean — cover function signatures, class attributes, and Pydantic model fields where inferred types are insufficient; handle dependencies without stubs (e.g. `arazzo-runner`, `rank-bm25`) via targeted `ignore` config rather than blanket `# type: ignore`
+- Add a `PostToolUse` hook in `.claude/settings.json` that runs `pdm run typecheck` on `Edit`/`Write`/`MultiEdit` matches under `src/**/*.py`, so agent-introduced type errors surface at edit time instead of PR time
+- Add a typecheck step to `.github/workflows/ci-backend.yml` alongside the existing lint/test steps so any pyright error fails the backend job
+- Update `specs/tech-stack.md`: rewrite the Python type-checking entry under the formatting/linting section (currently says Python has no static type checking) to reflect pyright adoption, and remove the "No mypy or pyright" bullet under "What We Are Not Using"
 
 ---
 
