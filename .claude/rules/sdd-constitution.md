@@ -10,7 +10,11 @@ Each file is YAML-frontmatter-tagged with `type: constitution` and its `section:
 
 The constitution captures **load-bearing invariants**, not operational detail. Endpoint catalogs, schemas, threat models, and similar reference material live in `docs/` — the constitution cross-references them from `tech-stack.md`. Mission / tech-stack / roadmap is the whole set; there is no fourth section.
 
+Once the constitution exists, individual roadmap phases are materialized into **feature specs** — dated directories under `specs/` (`specs/YYYY-MM-DD-<slug>/`) containing `requirements.md` (what + why), `plan.md` (how), and `validation.md` (done). Unlike constitution files, feature-spec files are plain markdown with **no YAML frontmatter** — the H1 (`# Phase N <Requirements|Plan|Validation> — <Title>`) carries identity. When a phase ships, delete it from `specs/roadmap.md` (do not renumber); the feature-spec directory stays as history.
+
 Supporting infrastructure:
 
-- `.claude/templates/sdd/constitution/*.example.md` — structural templates for each section
-- `.claude/prompts/create-constitution.md` — generator prompt 
+- `.claude/templates/sdd/constitution/*.example.md` — structural templates for each constitution section
+- `.claude/prompts/create-constitution.md` — constitution generator prompt
+- `.claude/templates/sdd/feature-spec/*.example.md` — structural templates for each feature-spec file
+- `.claude/skills/sdd-new-spec/SKILL.md` — `/sdd-new-spec` skill that scaffolds a feature spec from a roadmap phase 
