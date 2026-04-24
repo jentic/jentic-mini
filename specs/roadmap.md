@@ -225,6 +225,22 @@ Python code in `src/` has no static type checking today — type regressions onl
 - Add a typecheck step to `.github/workflows/ci-backend.yml` alongside the existing lint/test steps so any pyright error fails the backend job
 - Update `specs/tech-stack.md`: rewrite the Python type-checking entry under the formatting/linting section (currently says Python has no static type checking) to reflect pyright adoption, and remove the "No mypy or pyright" bullet under "What We Are Not Using"
 
+## Phase 16 — Integrate Jentic API Standards Skill
+
+**Goal:** Integrate the `jentic-api-standards` skill into this repo and wire it into agent workflows so every API change is designed and reviewed against Jentic platform standards.
+**Depends on:** none (self-contained)
+**Priority:** Medium–High
+
+The `jentic-api-standards` skill (<https://github.com/jentic/jentic-skills-internal/tree/main/skills/jentic-api-standards>) enforces Jentic platform API conventions — naming (snake_case operationIds, PascalCase schemas, kebab-case paths), RFC 9457 errors via `jentic/api-problem-details`, `x-agent-hints`, and pagination envelope — and runs Spectral to catch violations. It also invokes a sister `jentic-apis` skill for AI-readiness (JAIRF) scoring. Jentic Mini's FastAPI surface at `/openapi.json` is agent-extended regularly; without this skill, standards drift between edits is silent.
+
+- Vendor the `jentic-api-standards` skill into `.claude/skills/jentic-api-standards/` (SKILL.md, `references/`, `examples/`, `scripts/`)
+- Vendor the sister `jentic-apis` skill into `.claude/skills/jentic-apis/` — it is a hard dependency for JAIRF scoring in the Design / Review / Governance workflows
+- Document Spectral CLI installation (`npm install -g @stoplight/spectral-cli`) and the `gh auth login` requirement (for the private `jentic/api-standards` and `jentic/adrs` repos the skill clones to `~/.jentic/`) in `DEVELOPMENT.md`
+- Reference the skill from `CLAUDE.md` and `AGENTS.md` so agents invoke it when adding, changing, or removing endpoints in `src/routers/` or when touching the FastAPI OpenAPI schema
+- Add `.claude/rules/api-standards.md` codifying the merge gate (0 Spectral errors/warnings, 90%+ JAIRF Level 4) and pointing agents at the Design / Review / Governance / Q&A workflows
+- Resolve the OpenAPI version gap — the skill targets OpenAPI 3.2.0 while FastAPI currently emits 3.1 — by choosing and implementing a bridge (export + transform, pin a FastAPI version, or wait for FastAPI 3.2.0 support to land) so the skill's Spectral rules actually apply to this repo's `/openapi.json`
+- Regenerate `ui/openapi.json` from the running server (`curl localhost:8900/openapi.json | python3 -m json.tool > ui/openapi.json` per `CLAUDE.md`), then run the Review workflow against the fresh baseline, save the report, and file any standards remediation work as new roadmap phases rather than fixing inside this phase
+
 ---
 
 ## Later Phases (Not Yet Planned)
