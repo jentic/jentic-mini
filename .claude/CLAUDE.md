@@ -101,11 +101,11 @@ The `ui/` directory contains a React 18 + Vite 7 admin frontend.
   - `@theme inline` maps CSS custom properties to Tailwind utility classes (e.g. `--color-primary: var(--primary)` → `bg-primary`, `text-primary`)
   - `:root` defines the full HSL color palette and semantic mappings
   - `@layer base` sets body, heading, and button cursor styles
-- **Icons**: Lucide React (SVG components, no emoji)
+- **Icons**: Lucide React
 - **Fonts**: Sora (body), Nunito Sans (headings), Geist Mono (code) — loaded via Google Fonts in `index.html`
 
 ### UI Component Library
-Shadcn-style owned components in `ui/src/components/ui/`. All components use `cn()` for class merging, semantic design tokens, and `forwardRef` where appropriate.
+Shadcn-style owned components in `ui/src/components/ui/`.
 
 - **Primitives**: `Button`, `Input`, `Label`, `Textarea`, `Select` — extend native HTML props, support error states and accessibility
 - **Layout**: `Dialog` (native `<dialog>`, zero deps), `EmptyState`, `PageHeader`, `ErrorAlert`, `LoadingState`, `BackButton`, `CopyButton`
@@ -113,8 +113,6 @@ Shadcn-style owned components in `ui/src/components/ui/`. All components use `cn
 - **Shared hooks**: `useCopyToClipboard` in `ui/src/hooks/`
 - **Shared utilities**: `timeAgo`, `formatTimestamp`, `statusVariant`, `statusColor` in `ui/src/lib/`
 - **Barrel export**: `ui/src/components/ui/index.ts`
-- **ESLint guardrails**: `no-restricted-syntax` errors prevent raw `<button>`, `<input>`, `<select>`, `<textarea>` in `src/pages/`
-- **Convention**: New page code must use UI library components, not raw HTML elements
 
 ### Generated API client
 - **Source**: `ui/openapi.json` (static copy of `/openapi.json` from the running server)
@@ -145,13 +143,9 @@ All theming is in `ui/src/index.css`. To add a new semantic color:
 
 See @DEVELOPMENT.md for commands.
 
-## Python Code Style
-
-- **Top-level imports only** — never use local/inline imports inside functions. All imports must be at the top of the file. The only exception is avoiding circular imports (must be commented as such).
-
 ## Formatting & Linting
 
-- **UI**: ESLint 9 (flat config) with Prettier as plugin. `@/` imports enforced via `no-restricted-imports`. Config: `ui/eslint.config.js`, `ui/prettier.config.js`, `ui/.editorconfig`
+- **UI**: ESLint 9 (flat config) with Prettier as plugin. Config: `ui/eslint.config.js`, `ui/prettier.config.js`, `ui/.editorconfig`
 - **Husky + lint-staged**: pre-commit hook lints staged files automatically
 
 ## Data directory (all gitignored)
