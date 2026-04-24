@@ -485,7 +485,7 @@ async def get_capability(
 
     broker_url = f"/{api_id}{path}" if api_id and path else None
     links: dict = {
-        "self": f"/inspect/{jid}",
+        "self": f"/inspect/{quote(jid, safe='')}",
         "execute": broker_url or jid,
     }
     if server_url and path:
