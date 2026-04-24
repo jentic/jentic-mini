@@ -132,7 +132,8 @@ class OAuthBrokerCreate(NormModel):
             "For `pipedream`: `client_id`, `client_secret`, `project_id` "
             "(all from Pipedream workspace → API settings → OAuth clients). "
             "Optional: `environment` (`production` or `development`, default `production`), "
-            "`support_email`."
+            "`support_email`, "
+            "`default_external_user_id` (user identity for initial account sync, default `\"default\"`)."
         ),
         examples=[_PIPEDREAM_CONFIG_EXAMPLE],
     )
@@ -201,10 +202,10 @@ def _make_broker_id(broker_type: str, existing_ids: list[str]) -> str:
     return f"{base}-{n}"
 
 
-def _extract_pipedream_config(config: dict) -> tuple[str, str, str, str | None, str]:
+def _extract_pipedream_config(config: dict) -> tuple[str, str, str, str | None, str, str]:
     """Extract and validate Pipedream config fields.
 
-    Returns (client_id, client_secret, project_id, support_email, environment).
+    Returns (client_id, client_secret, project_id, support_email, environment, default_external_user_id).
     app_name and logo_url are set by the backend — not exposed in the API.
     """
     missing = [f for f in ("client_id", "client_secret", "project_id") if not config.get(f)]
@@ -301,7 +302,7 @@ async def create_oauth_broker(body: OAuthBrokerCreate):
 
     accounts_discovered = 0
     try:
-        accounts_discovered = await broker.discover_accounts("default")
+        accounts_discovered = await broker.discover_accounts(default_external_user_id)
     except Exception as exc:
         log.warning("Account sync failed for broker %s: %s", broker_id, exc)
 
