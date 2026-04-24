@@ -1,6 +1,6 @@
 ---
 name: sdd-new-phase
-description: Append a new active phase to specs/roadmap.md. Parses existing phases to compute the next stable phase number (gaps preserved per the lifecycle rule), grounds the proposal against specs/mission.md and specs/tech-stack.md, groups structured questions (goal, dependencies, priority) via AskUserQuestion, then collects a freeform bullet list for the phase body. Edits specs/roadmap.md in place and stops — committing, pushing, and opening a PR are left to the user. Does not create a feature spec; that is /sdd-new-spec's job.
+description: Append a new active phase to specs/roadmap.md. Parses existing phases to compute the next stable phase number (gaps preserved per the lifecycle rule), grounds the proposal against specs/mission.md and specs/tech-stack.md, groups structured questions (goal, dependencies, priority) via AskUserQuestion, then collects a freeform bullet list for the phase body. Edits specs/roadmap.md in place, then invokes the built-in /review skill against the pending change before stopping — committing, pushing, and opening a PR are left to the user. Does not create a feature spec; that is /sdd-new-spec's job.
 argument-hint: "[short title or one-sentence intent] (optional)"
 ---
 
@@ -8,7 +8,7 @@ argument-hint: "[short title or one-sentence intent] (optional)"
 
 You are operating within a Spec-Driven Development (SDD) workflow. See `.claude/rules/sdd-constitution.md`.
 
-The **constitution** (mission / tech-stack / roadmap) already exists in `specs/`. This skill adds a fresh active phase — a shippable, independently reviewable, testable vertical slice of work — to `specs/roadmap.md` as a new `## Phase N — Title` block. It stops after writing the edit. Reviewing the diff, branching, committing, and opening a PR are user actions. Once the roadmap change is merged, `/sdd-new-spec <N>` materializes the phase into a feature spec.
+The **constitution** (mission / tech-stack / roadmap) already exists in `specs/`. This skill adds a fresh active phase — a shippable, independently reviewable, testable vertical slice of work — to `specs/roadmap.md` as a new `## Phase N — Title` block. After writing the edit it invokes the built-in `/review` skill against the pending change, then stops. Branching, committing, and opening a PR are user actions. Once the roadmap change is merged, `/sdd-new-spec <N>` materializes the phase into a feature spec.
 
 ## Inputs
 
@@ -111,12 +111,25 @@ Edit `specs/roadmap.md` to insert the new phase. **Insertion rules:**
 
 If `Depends on:` is `none`, follow an existing example like `none (self-contained broker change)` when the user provided a one-line reason; bare `none` is also fine. Do not invent a rationale.
 
-## Phase 5 — Report back
+## Phase 5 — Review the edit
+
+Immediately after the `specs/roadmap.md` edit lands, invoke the built-in `review` skill via the `Skill` tool with argument `local changes`. The `review` skill handles a working-tree diff when given that argument — treat it as a normal capability of the skill.
+
+- Invoke the `Skill` tool with `skill: "review"` and `args: "local changes"`.
+- Do not skip or defer this step; it is part of the skill's contract.
+- Do **not** narrate the invocation mechanism, describe the skill as PR-oriented, explain arguments, or frame the call as a workaround. Just run it and report its findings.
+- Surface the reviewer's findings verbatim in your response; do not summarize them away.
+- If the reviewer flags issues that are clearly in-scope for this skill (e.g. a malformed phase block, a broken `Depends on:` reference, wrong phase number), offer to apply a fix and ask the user to confirm before re-editing. Do not auto-apply fixes.
+- If the `Skill` invocation itself fails (tool error, unrecognized arg, unreachable), surface the error to the user and proceed to Phase 6; do not silently drop the step, and do not retry more than once.
+
+## Phase 6 — Report back
 
 Return to the user in a few lines:
 
 - Phase number and title that were added
 - File edited: `specs/roadmap.md`
+- **Review outcome:** a one-line verdict from Phase 5 — `clean` (no blockers, no suggestions), `suggestions available` (reviewer offered optional improvements), or `blocker` (reviewer flagged an in-scope issue that should be fixed before commit). If Phase 5's invocation failed, say so here instead (`review skipped — <one-line error>`).
+- **Actionable suggestions from the review** (only if the outcome was `suggestions available` or `blocker`): a short bulleted list of the concrete fix offers Phase 5 surfaced, each a single line the user can accept or decline. Do not repeat the full review body — it was already printed verbatim in Phase 5.
 - Next steps (user-driven — this skill does not do them):
   1. Review the diff (`git diff specs/roadmap.md`).
   2. Branch + commit + PR per `.claude/rules/git-workflow.md` and `.claude/rules/conventional-commits.md` (suggested header: `docs(roadmap): add phase <N> — <short-slug>`).
