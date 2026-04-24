@@ -228,7 +228,7 @@ Python code in `src/` has no static type checking today — type regressions onl
 ## Phase 16 — Integrate Jentic API Standards Skill
 
 **Goal:** Integrate the `jentic-api-standards` skill into this repo and wire it into agent workflows so every API change is designed and reviewed against Jentic platform standards.
-**Depends on:** none (self-contained)
+**Depends on:** API Surface Alignment with Jentic Standards (soft: vendoring can land first, but the baseline Review run should wait until Phase 4 aligns naming and error schemas, otherwise it produces noise Phase 4 is already scheduled to fix)
 **Priority:** Medium–High
 
 The `jentic-api-standards` skill (<https://github.com/jentic/jentic-skills-internal/tree/main/skills/jentic-api-standards>) enforces Jentic platform API conventions — naming (snake_case operationIds, PascalCase schemas, kebab-case paths), RFC 9457 errors via `jentic/api-problem-details`, `x-agent-hints`, and pagination envelope — and runs Spectral to catch violations. It also invokes a sister `jentic-apis` skill for AI-readiness (JAIRF) scoring. Jentic Mini's FastAPI surface at `/openapi.json` is agent-extended regularly; without this skill, standards drift between edits is silent.
