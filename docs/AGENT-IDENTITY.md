@@ -1,8 +1,8 @@
-# Agent Passports
+# Agent Identity
 
 ## Overview
 
-Agent passports introduce **Agent** as a first-class entity in Jentic Mini. Today, agent identity is implicit — a `tk_xxx` key maps directly to a toolkit, and there is no durable concept of "which agent is calling." Passports change this: an **agent** is a named, registered identity with its own keypair, lifecycle, and audit trail. Toolkits become resources that agents are **granted access to**, rather than the identity boundary itself.
+Agent identity introduces **Agent** as a first-class entity in Jentic Mini. Today, agent identity is implicit — a `tk_xxx` key maps directly to a toolkit, and there is no durable concept of "which agent is calling." This changes that: an **agent** is a named, registered identity with its own credentials (keypair), lifecycle, and audit trail. Toolkits become resources that agents are **granted access to**, rather than the identity boundary itself.
 
 Registration is **agent-initiated**: the agent introduces itself to Jentic Mini and submits its public key. A human admin then approves (or denies) the registration before the agent can obtain tokens. The keypair is generated **client-side** — Jentic Mini never sees or stores the private key.
 
@@ -14,9 +14,9 @@ The recommended deployment keeps the private key **outside** the agent's runtime
 
 | Term | Description |
 |------|-------------|
-| **Agent** | A first-class entity representing a distinct AI agent or agent instance. Has a name, a single passport (public key), and grants to one or more toolkits. Registration is agent-initiated and human-approved. |
-| **Passport** | A single asymmetric keypair (Ed25519) bound to an agent. The public key is registered with Jentic Mini as a JWKS during DCR; the private key is generated and held client-side. One passport per agent. |
-| **Passport assertion** | A short-lived JWT signed by the private key, sent to the token endpoint per RFC 7523. |
+| **Agent** | A first-class entity representing a distinct AI agent or agent instance. Has a name, credentials (a signing key), and grants to one or more toolkits. Registration is agent-initiated and human-approved. |
+| **Signing key** | A single asymmetric keypair (Ed25519) bound to an agent. The public key is registered with Jentic Mini as a JWKS during DCR; the private key is generated and held client-side. One signing key per agent. |
+| **Client assertion** | A short-lived JWT signed by the private key, sent to the token endpoint per RFC 7523. |
 | **Access token** | A short-lived token issued by Jentic Mini per RFC 7523 / 6749. Used in `Authorization: Bearer <token>` on all subsequent requests. |
 | **Refresh token** | A longer-lived, single-use token per RFC 6749 §6. Rotation: each use issues a new pair. |
 | **Toolkit grant** | An explicit binding between an agent and a toolkit. An agent can only use credentials from toolkits it has been granted. |
@@ -25,13 +25,13 @@ The recommended deployment keeps the private key **outside** the agent's runtime
 
 ## OAuth standards conformance
 
-The entire agent passport flow is built from standard OAuth 2.0 RFCs. The only addition is a server-side admin approval policy between registration and token issuance — permitted by the RFCs but not defined by them.
+The entire agent identity flow is built from standard OAuth 2.0 RFCs. The only addition is a server-side admin approval policy between registration and token issuance — permitted by the RFCs but not defined by them.
 
 | Step | Standard | Notes |
 |------|----------|-------|
 | Endpoint discovery | RFC 8414 (Authorization Server Metadata) | `GET /.well-known/oauth-authorization-server` returns `registration_endpoint`, `token_endpoint`, and server capabilities. Agents discover all endpoints from this document. |
 | Agent registration | RFC 7591 (Dynamic Client Registration) | Agent `POST`s to the `registration_endpoint` with `client_name` + `jwks`. Server overrides `grant_types` and `token_endpoint_auth_method` defaults (permitted by §2). |
-| Registration management + key rotation | RFC 7592 (DCR Management) | `GET` to read, `PUT` to update (including JWKS replacement for key rotation), on the `registration_client_uri` returned during registration. Authenticated by a short-lived `registration_access_token` (15 min default) or, after bootstrap, by a regular access token bearing the `passport:rotate` scope. Multiple credential types on the configuration endpoint is permitted server-side policy. |
+| Registration management + key rotation | RFC 7592 (DCR Management) | `GET` to read, `PUT` to update (including JWKS replacement for key rotation), on the `registration_client_uri` returned during registration. Authenticated by a short-lived `registration_access_token` (15 min default) or, after bootstrap, by a regular access token bearing the `identity:rotate` scope. Multiple credential types on the configuration endpoint is permitted server-side policy. |
 | Human approval | No RFC equivalent | Server-side policy. The token endpoint rejects grants for unapproved agents with `invalid_grant` (RFC 6749 §5.2). This does not make the flow non-OAuth-compliant — the RFCs permit the server to reject grants for any policy reason; admin approval is one such reason. |
 | Token minting | RFC 7523 (JWT Bearer Grant) built on RFC 7521 (Assertion Framework) | Assertion signed with Ed25519 private key, validated against registered JWKS. |
 | Bearer token usage | RFC 6750 | Standard `Authorization: Bearer` header. |
@@ -40,7 +40,7 @@ The entire agent passport flow is built from standard OAuth 2.0 RFCs. The only a
 
 ### Server-side DCR defaults
 
-RFC 7591 §2 defines default values for optional registration fields: `grant_types` defaults to `["authorization_code"]` and `token_endpoint_auth_method` defaults to `"client_secret_basic"`. Neither applies to the agent passport flow. The RFC permits the server to override client-supplied or default metadata, so Jentic Mini forces:
+RFC 7591 §2 defines default values for optional registration fields: `grant_types` defaults to `["authorization_code"]` and `token_endpoint_auth_method` defaults to `"client_secret_basic"`. Neither applies to the agent identity flow. The RFC permits the server to override client-supplied or default metadata, so Jentic Mini forces:
 
 - `grant_types`: `["urn:ietf:params:oauth:grant-type:jwt-bearer"]`
 - `token_endpoint_auth_method`: `"private_key_jwt"`
@@ -115,7 +115,7 @@ Agent (client_id, client_name, status, jwks, registration_client_uri, created_at
 
 - An **agent** registers itself via DCR and starts in `pending` status.
 - A **human** approves or denies the registration. Only approved agents can obtain tokens.
-- Each agent has exactly **one passport** (its JWKS with a single public key).
+- Each agent has exactly **one signing key** (its JWKS with a single public key).
 - **Disabling** an agent invalidates all its tokens and prevents new token minting. The agent record and its grants are preserved for audit. Re-enabling restores access.
 - **Toolkit grants** control which toolkits (and therefore which credentials) an agent can use.
 - An agent with zero toolkit grants can authenticate but cannot access any credentials or broker any requests.
@@ -398,7 +398,7 @@ Jentic Mini mitigates this with two measures, both permitted by the standards:
 
 1. **The initial `registration_access_token` is short-lived (15 minutes by default).** RFC 7592 places no constraint on token lifetime — the server controls it entirely. The 15-minute window covers the bootstrap case: the agent registers, polls status, and once approved, mints its first access token. After that, the registration token expires and can no longer be used.
 
-2. **Subsequent key rotation uses the agent's regular access token.** RFC 7591 §3 and RFC 7592 §3 permit the client configuration endpoint to accept any appropriate authentication method the server defines. Jentic Mini accepts a regular access token (`at_...`) containing a dedicated scope claim (e.g. `passport:rotate`) for `PUT`/`DELETE` on the registration endpoint. Normal API tokens without this scope cannot update the JWKS.
+2. **Subsequent key rotation uses the agent's regular access token.** RFC 7591 §3 and RFC 7592 §3 permit the client configuration endpoint to accept any appropriate authentication method the server defines. Jentic Mini accepts a regular access token (`at_...`) containing a dedicated scope claim (e.g. `identity:rotate`) for `PUT`/`DELETE` on the registration endpoint. Normal API tokens without this scope cannot update the JWKS.
 
 This eliminates the single-point-of-failure that a perpetual `registration_access_token` would represent. The agent only needs to present a fresh, assertion-minted access token to rotate its key — and losing a short-lived access token is far less severe than losing a static registration credential.
 
@@ -407,7 +407,7 @@ This eliminates the single-point-of-failure that a perpetual `registration_acces
 Key rotation uses the standard RFC 7592 client update mechanism:
 
 1. The agent generates a new keypair client-side.
-2. The agent sends a `PUT` to its `registration_client_uri` with the full updated metadata including the new JWKS, authenticated by its current access token (with `passport:rotate` scope) or, during the initial 15-minute window, the `registration_access_token`:
+2. The agent sends a `PUT` to its `registration_client_uri` with the full updated metadata including the new JWKS, authenticated by its current access token (with `identity:rotate` scope) or, during the initial 15-minute window, the `registration_access_token`:
 
 ```
 PUT /register/ag_...
@@ -442,16 +442,16 @@ Content-Type: application/json
 
 Alembic migration(s) add these tables. Existing `toolkit_keys` table is unchanged — `tk_xxx` keys continue to work.
 
-The passport (JWKS) lives directly on the `agents` row since there is exactly one per agent.
+The signing key (JWKS) lives directly on the `agents` row since there is exactly one per agent.
 
 ---
 
 ## Coexistence with `tk_xxx` keys
 
-Static API keys remain supported — passports are opt-in. The auth middleware checks:
+Static API keys remain supported — agent identity is opt-in. The auth middleware checks:
 
 1. `X-Jentic-API-Key: tk_xxx` → existing key-based lookup (toolkit-scoped, no agent identity).
-2. `Authorization: Bearer at_...` → passport token lookup (agent-scoped, toolkit(s) via grants).
+2. `Authorization: Bearer at_...` → agent token lookup (agent-scoped, toolkit(s) via grants).
 
 No migration required. Toolkits that only use static keys are unaffected.
 
@@ -461,13 +461,13 @@ No migration required. Toolkits that only use static keys are unaffected.
 
 | Env var | Default | Purpose |
 |---------|---------|---------|
-| `PASSPORT_ACCESS_TTL` | `3600` | Access token lifetime (seconds) |
-| `PASSPORT_REFRESH_TTL` | `604800` | Refresh token lifetime (seconds) |
-| `PASSPORT_REGISTRATION_TOKEN_TTL` | `900` | Registration access token lifetime (seconds) — bootstrap window only |
-| `PASSPORT_ASSERTION_MAX_AGE` | `300` | Max age of assertion JWT (seconds) |
-| `PASSPORT_NONCE_WINDOW` | `600` | JTI replay detection window (seconds) |
+| `AGENT_ACCESS_TTL` | `3600` | Access token lifetime (seconds) |
+| `AGENT_REFRESH_TTL` | `604800` | Refresh token lifetime (seconds) |
+| `AGENT_REGISTRATION_TOKEN_TTL` | `900` | Registration access token lifetime (seconds) — bootstrap window only |
+| `AGENT_ASSERTION_MAX_AGE` | `300` | Max age of assertion JWT (seconds) |
+| `AGENT_NONCE_WINDOW` | `600` | JTI replay detection window (seconds) |
 
-**Note:** `PASSPORT_NONCE_WINDOW` must be greater than `PASSPORT_ASSERTION_MAX_AGE` to ensure there is no gap where a replayed assertion could slip through after its `jti` has been pruned but before the assertion itself has expired.
+**Note:** `AGENT_NONCE_WINDOW` must be greater than `AGENT_ASSERTION_MAX_AGE` to ensure there is no gap where a replayed assertion could slip through after its `jti` has been pruned but before the assertion itself has expired.
 
 ---
 
@@ -508,7 +508,7 @@ On approval the request is applied idempotently (creating the toolkit, adding th
 
 ## Traces and audit
 
-Every request authenticated by a passport access token records the resolved `agent_id` on the trace in addition to the `toolkit_id` selected for credential injection. This gives admins a full "which agent did what through which toolkit" view. Requests authenticated by legacy `tk_xxx` keys continue to record only `toolkit_id` (no agent identity).
+Every request authenticated by an agent access token records the resolved `agent_id` on the trace in addition to the `toolkit_id` selected for credential injection. This gives admins a full "which agent did what through which toolkit" view. Requests authenticated by legacy `tk_xxx` keys continue to record only `toolkit_id` (no agent identity).
 
 Human-initiated actions on agent-owned resources (approving a registration, approving a self-service request, disabling an agent, granting a toolkit) are also recorded on the trace with the human user's identity as `approved_by` or `acted_by`, so policy changes are auditable end-to-end.
 
