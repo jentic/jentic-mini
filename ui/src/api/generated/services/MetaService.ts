@@ -11,9 +11,8 @@ export class MetaService {
      * Returns current setup state with explicit instructions for agents and UI.
      *
      * Response varies based on setup progress:
-     * - status='setup_required': No default API key claimed yet → agent should call POST /default-api-key/generate
-     * - status='account_required': Agent key active, admin account not created → user should visit setup_url
-     * - status='ok': Fully set up → includes version and apis_registered count
+     * - status='setup_required': No admin account yet → OAuth metadata URLs for agent DCR; human setup_url
+     * - status='ok': Admin account exists → includes version and apis_registered count
      *
      * This endpoint is always public (no auth required) so agents can check setup state before
      * attempting authenticated calls. UI uses this to determine whether to show setup wizard.

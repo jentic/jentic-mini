@@ -49,6 +49,9 @@ PUBLIC_ENDPOINTS = {
     ("POST", "/user/login"),
     ("POST", "/user/token"),
     ("POST", "/default-api-key/generate"),
+    ("GET", "/.well-known/oauth-authorization-server"),
+    ("POST", "/register"),
+    ("POST", "/oauth/token"),
     # Discovery endpoints — NOTE: These are marked public in OpenAPI spec but require auth at runtime
     # ("GET", "/search"),  # Spec says public, runtime says 401
     # ("GET", "/apis"),  # Spec says public, runtime says 401
@@ -150,10 +153,32 @@ HUMAN_ONLY_ENDPOINTS = {
     # User management
     ("POST", "/user/logout"),
     ("GET", "/user/me"),
+    ("GET", "/agents"),
+    ("GET", "/agents/{agent_id}"),
+    ("POST", "/agents/{agent_id}/approve"),
+    ("POST", "/agents/{agent_id}/deny"),
+    ("POST", "/agents/{agent_id}/disable"),
+    ("POST", "/agents/{agent_id}/enable"),
+    ("PUT", "/agents/{agent_id}/jwks"),
+    ("DELETE", "/agents/{agent_id}"),
+    ("POST", "/agents/{agent_id}/grants"),
+    ("GET", "/agents/{agent_id}/grants"),
+    ("DELETE", "/agents/{agent_id}/grants/{toolkit_id}"),
 }
 
 
 # ── Tests ─────────────────────────────────────────────────────────────────────
+
+
+def test_register_get_and_oauth_revoke_require_auth(app):
+    """GET /register/{id} and POST /oauth/revoke are not anonymous (middleware).
+
+    Uses a fresh TestClient so the session-scoped shared client (which may hold
+    admin cookies from agent_key/admin_session) does not mask unauthenticated behavior.
+    """
+    with TestClient(app, raise_server_exceptions=False) as anonymous:
+        assert anonymous.get("/register/ag_nonexistent").status_code == 401
+        assert anonymous.post("/oauth/revoke", data={"token": "rt_notreal"}).status_code == 401
 
 
 def test_public_endpoints_accessible_without_auth(client):
@@ -253,7 +278,7 @@ def test_openapi_spec_endpoint_count_unchanged(client):
 
     # This is the baseline from v0.7.1 + Phase 1 changes
     # If this fails, audit the diff to ensure new endpoints have correct auth
-    EXPECTED_OPERATION_COUNT = 69  # Updated to include GET /apis/{api_id}/openapi.yaml
+    EXPECTED_OPERATION_COUNT = 85  # + agent identity (OAuth) + agents admin
 
     assert total_operations == EXPECTED_OPERATION_COUNT, (
         f"Expected {EXPECTED_OPERATION_COUNT} operations, found {total_operations}. "

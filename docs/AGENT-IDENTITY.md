@@ -177,14 +177,14 @@ GET    /register/{client_id}                    — read own registration (statu
 ### Agent management (human session required)
 
 ```
-GET    /agents                                  — list agents (filterable by status: pending, approved, disabled)
+GET    /agents                                  — list agents (`view=active|declined|removed`; optional `status` when active)
 GET    /agents/{agent_id}                       — agent detail
 POST   /agents/{agent_id}/approve               — approve a pending registration
-POST   /agents/{agent_id}/deny                  — deny a pending registration
+POST   /agents/{agent_id}/deny                  — decline pending registration (strips JWKS, grants, tokens, registration token)
 POST   /agents/{agent_id}/disable               — disable agent (invalidates tokens, blocks new minting)
 POST   /agents/{agent_id}/enable                — re-enable a disabled agent
 PUT    /agents/{agent_id}/jwks                  — rotate agent's signing key (replace JWKS)
-DELETE /agents/{agent_id}                       — delete agent (cascades: invalidates tokens + removes grants)
+DELETE /agents/{agent_id}                       — deregister (soft archive: clears JWKS, grants, tokens, registration secrets; row kept read-only)
 ```
 
 ### Toolkit grants (human session required)
@@ -508,7 +508,7 @@ On approval the request is applied idempotently (creating the toolkit, adding th
 
 ## Traces and audit
 
-Every request authenticated by an agent access token records the resolved `agent_id` on the trace in addition to the `toolkit_id` selected for credential injection. This gives admins a full "which agent did what through which toolkit" view. Requests authenticated by legacy `tk_xxx` keys continue to record only `toolkit_id` (no agent identity).
+Every request authenticated by an agent access token records the resolved `agent_id` on the trace in addition to the `toolkit_id` selected for credential injection. This gives admins a full "which agent did what through which toolkit" view. Requests authenticated by toolkit `tk_xxx` keys (without an agent access token) continue to record only `toolkit_id` (no agent identity).
 
 Human-initiated actions on agent-owned resources (approving a registration, approving a self-service request, disabling an agent, granting a toolkit) are also recorded on the trace with the human user's identity as `approved_by` or `acted_by`, so policy changes are auditable end-to-end.
 

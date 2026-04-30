@@ -1,27 +1,24 @@
-"""Default API key generation — self-enrollment for agents.
+"""Default toolkit API key rotation (human only).
 
 POST /default-api-key/generate
 
-First call (unauthenticated, subnet-restricted):
-  - Issues the default tk_xxx key bound to the default toolkit
-  - Returns key in plaintext — shown ONCE ONLY, not recoverable
-  - Marks instance as claimed; endpoint requires human session on all future calls
+New instances no longer receive an automatic default `tk_xxx` key; giving that key to an agent
+as the primary onboarding path is deprecated in favor of OAuth DCR (`POST /register`, etc.).
 
-Subsequent calls (human session required):
-  - Revokes the existing default key
-  - Issues a new default key
-  - Returns it once
+**When a default key was issued in the past** (`default_key_claimed`):
+  - Human session required to rotate
+  - Revokes the existing default key and issues a new one
 
-Used by agents during self-enrollment and by humans for key rotation/rescue.
+Humans can still create additional toolkit keys from the UI or API for automation and integrations.
 """
 
 import json
 import secrets
 import time
 
-from fastapi import APIRouter, HTTPException, Request, Response
+from fastapi import APIRouter, HTTPException, Request
 
-from src.auth import client_ip, default_allowed_ips, is_trusted_ip
+from src.auth import default_allowed_ips
 from src.db import DEFAULT_TOOLKIT_ID, get_db, set_setting, setup_state
 from src.utils import build_absolute_url
 
@@ -35,53 +32,41 @@ _DEFAULT_KEY_DB_ID = "default_key"
 @router.post(
     "/default-api-key/generate",
     status_code=201,
-    summary="Generate (or regenerate) the default agent API key",
+    summary="Generate (or regenerate) the default toolkit API key",
 )
-async def generate_default_key(request: Request, response: Response):
-    """Issue the default `tk_xxx` agent key bound to the default toolkit.
+async def generate_default_key(request: Request):
+    """Rotate the default `tk_xxx` key for the default toolkit (human session only).
 
-    **First call** — unauthenticated, subnet-restricted:
-    - Available only before the key has been claimed
-    - Only accessible from trusted subnets (RFC 1918 + loopback by default;
-      configure via `JENTIC_TRUSTED_SUBNETS` env var)
-    - Returns the key **once only** — it is not recoverable after this response
-    - After this call, the endpoint requires a human session
-
-    **Subsequent calls** — human session required:
-    - Revokes the current default key
-    - Issues and returns a fresh key
-
-    The key works immediately — you do not need to wait for the admin account
-    to be created before using it.
+    Only available when a default key was created in the past. New instances use agent identity
+    (OAuth DCR) for agent onboarding; toolkit keys remain valid for other uses.
     """
     state = await setup_state()
     is_human = getattr(request.state, "is_human_session", False)
     already_claimed = state["default_key_claimed"]
 
-    if already_claimed and not is_human:
+    if not already_claimed:
+        raise HTTPException(
+            410,
+            detail={
+                "error": "default_toolkit_key_disabled",
+                "message": "Default toolkit API keys are not issued for new instances.",
+                "hint": (
+                    "Use GET /.well-known/oauth-authorization-server and POST /register "
+                    "for agent identity. Humans may create additional toolkit keys from the UI."
+                ),
+            },
+        )
+
+    if not is_human:
         raise HTTPException(
             401,
             detail={
                 "error": "human_session_required",
-                "message": "The default key has already been issued. Log in at /user/login to regenerate it.",
+                "message": "Regenerating the default key requires a human session.",
                 "hint": "POST /user/login with your admin credentials, then retry.",
             },
         )
 
-    if not already_claimed:
-        # Subnet restriction on first (unauthenticated) claim
-        req_ip = client_ip(request)
-        if not is_trusted_ip(req_ip):
-            raise HTTPException(
-                403,
-                detail={
-                    "error": "ip_not_trusted",
-                    "message": f"First-time key generation is restricted to trusted subnets. Your IP: {req_ip}",
-                    "hint": "Configure JENTIC_TRUSTED_SUBNETS or access from a local network address.",
-                },
-            )
-
-    # Revoke any existing default key
     async with get_db() as db:
         await db.execute(
             "UPDATE toolkit_keys SET revoked_at = ? WHERE id = ? AND revoked_at IS NULL",
@@ -89,7 +74,6 @@ async def generate_default_key(request: Request, response: Response):
         )
         await db.commit()
 
-    # Generate new key
     raw_key = "tk_" + secrets.token_hex(16)
 
     async with get_db() as db:

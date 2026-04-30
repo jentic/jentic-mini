@@ -23,3 +23,10 @@ JENTIC_PUBLIC_HOSTNAME = os.getenv("JENTIC_PUBLIC_HOSTNAME") or "localhost"
 
 # ── Toolkit defaults ──────────────────────────────────────────────────────────
 DEFAULT_TOOLKIT_ID = "default"
+
+# ── Agent identity (OAuth) ────────────────────────────────────────────────────
+AGENT_ACCESS_TTL = int(os.getenv("AGENT_ACCESS_TTL", "3600"))
+AGENT_REFRESH_TTL = int(os.getenv("AGENT_REFRESH_TTL", str(7 * 24 * 3600)))
+AGENT_REGISTRATION_TOKEN_TTL = int(os.getenv("AGENT_REGISTRATION_TOKEN_TTL", "900"))
+AGENT_ASSERTION_MAX_AGE = int(os.getenv("AGENT_ASSERTION_MAX_AGE", "300"))
+AGENT_NONCE_WINDOW = int(os.getenv("AGENT_NONCE_WINDOW", "600"))

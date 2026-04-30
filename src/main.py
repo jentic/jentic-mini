@@ -23,6 +23,7 @@ from src.db import run_migrations, setup_state
 from src.negotiate import negotiate_middleware
 from src.oauth_broker import registry as oauth_broker_registry
 from src.routers import access_requests as access_requests_router
+from src.routers import agents_admin as agents_admin_router
 from src.routers import apis as apis_router
 from src.routers import broker as broker_router
 from src.routers import capability as capability_router
@@ -33,6 +34,7 @@ from src.routers import default_key as default_key_router
 from src.routers import import_ as import_router
 from src.routers import jobs as jobs_router
 from src.routers import notes as notes_router
+from src.routers import oauth_agent as oauth_agent_router
 from src.routers import oauth_brokers as oauth_brokers_router
 from src.routers import overlays as overlays_router
 from src.routers import search as search_router
@@ -214,6 +216,8 @@ app.include_router(notes_router.router, tags=["catalog"])
 app.include_router(debug_router.router, include_in_schema=False)
 app.include_router(user_router.router)
 app.include_router(default_key_router.router)
+app.include_router(oauth_agent_router.router)
+app.include_router(agents_admin_router.router)
 app.include_router(oauth_brokers_router.router, tags=["credentials"])
 
 
@@ -223,9 +227,8 @@ async def health(request: Request):
     """Returns current setup state with explicit instructions for agents and UI.
 
     Response varies based on setup progress:
-    - status='setup_required': No default API key claimed yet → agent should call POST /default-api-key/generate
-    - status='account_required': Agent key active, admin account not created → user should visit setup_url
-    - status='ok': Fully set up → includes version and apis_registered count
+    - status='setup_required': No admin account yet → OAuth metadata URLs for agent DCR; human setup_url
+    - status='ok': Admin account exists → includes version and apis_registered count
 
     This endpoint is always public (no auth required) so agents can check setup state before
     attempting authenticated calls. UI uses this to determine whether to show setup wizard.
@@ -234,24 +237,21 @@ async def health(request: Request):
         Setup status, version, and context-specific next steps or operational metrics.
     """
     state = await setup_state()
-
-    if not state["default_key_claimed"]:
-        return {
-            "status": "setup_required",
-            "account_created": state["account_created"],
-            "message": "No default API key has been issued yet.",
-            "next_step": "Call POST /default-api-key/generate from a trusted subnet to obtain your agent key.",
-            "generate_url": "/default-api-key/generate",
-            "version": APP_VERSION,
-        }
+    issuer = build_absolute_url(request, "").rstrip("/")
 
     if not state["account_created"]:
         return {
-            "status": "account_required",
-            "message": "Agent key is active. No admin account has been created yet.",
-            "next_step": "Tell your user to visit setup_url to create their admin account. "
-            "Your agent key works immediately — you do not need to wait.",
+            "status": "setup_required",
+            "account_created": False,
+            "message": "Create an admin account to finish setup. Agents use OAuth registration in parallel.",
+            "next_step": (
+                "Agents: GET /.well-known/oauth-authorization-server, then POST /register with client_name and jwks. "
+                "Humans: open setup_url to create the admin account, then approve agents and grant toolkits."
+            ),
             "setup_url": build_absolute_url(request, "/user/create"),
+            "oauth_authorization_server_metadata": f"{issuer}/.well-known/oauth-authorization-server",
+            "registration_endpoint": f"{issuer}/register",
+            "token_endpoint": f"{issuer}/oauth/token",
             "version": APP_VERSION,
         }
 
@@ -361,7 +361,7 @@ async def swagger_ui():
   🔑 <strong>Authentication.</strong>
   <strong>Agents:</strong> Click <strong>Authorize 🔓</strong> and enter your <code>tk_xxx</code> key in the <em>JenticApiKey</em> field.
   <strong>Humans:</strong> Click <strong>Authorize 🔓</strong> and use the <em>HumanLogin</em> username + password form — or <a href="/login" style="color:#a5b4fc">log in here</a> for a persistent browser session.
-  First time? Call <code>POST /default-api-key/generate</code> from a local subnet.
+  Agents: discover <code>GET /.well-known/oauth-authorization-server</code> then <code>POST /register</code>. Legacy <code>tk_xxx</code> keys are human-issued from the UI.
 </div>
 <div id="swagger-ui"></div>
 <script src="/static/swagger-ui-bundle.js"> </script>
@@ -418,6 +418,7 @@ _SPA_PATHS = {
     "/oauth-brokers",
     "/setup",
     "/login",
+    "/agents",
 }
 
 
@@ -460,6 +461,9 @@ _OPEN_OPERATIONS: set[tuple[str, str]] = {
     ("/user/login", "post"),
     ("/user/token", "post"),
     ("/default-api-key/generate", "post"),
+    ("/.well-known/oauth-authorization-server", "get"),
+    ("/register", "post"),
+    ("/oauth/token", "post"),
     # Search + inspect: public read-only discovery
     ("/search", "get"),
     ("/apis", "get"),
@@ -505,6 +509,17 @@ _HUMAN_ONLY_OPERATIONS: set[tuple[str, str]] = {
     ("/oauth-brokers/{broker_id}/accounts/{account_id}", "patch"),
     # User management
     ("/user/logout", "post"),
+    ("/agents", "get"),
+    ("/agents/{agent_id}", "get"),
+    ("/agents/{agent_id}/approve", "post"),
+    ("/agents/{agent_id}/deny", "post"),
+    ("/agents/{agent_id}/disable", "post"),
+    ("/agents/{agent_id}/enable", "post"),
+    ("/agents/{agent_id}/jwks", "put"),
+    ("/agents/{agent_id}", "delete"),
+    ("/agents/{agent_id}/grants", "post"),
+    ("/agents/{agent_id}/grants", "get"),
+    ("/agents/{agent_id}/grants/{toolkit_id}", "delete"),
 }
 
 
@@ -533,7 +548,11 @@ def custom_openapi():
             "type": "apiKey",
             "in": "header",
             "name": "X-Jentic-API-Key",
-            "description": "Agent toolkit key (`tk_xxx`). Issue via `POST /default-api-key/generate`.",
+            "description": (
+                "Toolkit API key (`tk_xxx`) in this header, or use `Authorization: Bearer` with "
+                "an agent access token (`at_…`) from `POST /oauth/token`, or a registration token "
+                "(`rat_…`) where applicable (e.g. `GET /register/{client_id}`)."
+            ),
         },
         "HumanLogin": {
             "type": "oauth2",

@@ -41,6 +41,7 @@ async def write_trace(
     duration_ms: int | None,
     error: str | None,
     step_outputs: dict | None = None,
+    agent_id: str | None = None,
 ) -> str:
     """Write an execution trace (+ optional step records) to the DB.
 
@@ -49,9 +50,9 @@ async def write_trace(
     async with get_db() as db:
         await db.execute(
             """INSERT INTO executions
-               (id, toolkit_id, operation_id, workflow_id, spec_path,
+               (id, toolkit_id, agent_id, operation_id, workflow_id, spec_path,
                 status, http_status, duration_ms, error, created_at, completed_at)
-               VALUES (?,?,?,?,?,?,?,?,?,unixepoch(),unixepoch())
+               VALUES (?,?,?,?,?,?,?,?,?,?,unixepoch(),unixepoch())
                ON CONFLICT(id) DO UPDATE SET
                  status=excluded.status,
                  http_status=excluded.http_status,
@@ -61,6 +62,7 @@ async def write_trace(
             (
                 trace_id,
                 toolkit_id,
+                agent_id,
                 operation_id,
                 workflow_id,
                 spec_path,
@@ -134,7 +136,7 @@ async def list_traces(
     """Returns recent execution traces with status, capability id, toolkit, timestamp, and HTTP status. Use GET /traces/{trace_id} for step-level detail."""
     async with get_db() as db:
         async with db.execute(
-            """SELECT id, toolkit_id, operation_id, workflow_id,
+            """SELECT id, toolkit_id, agent_id, operation_id, workflow_id,
                       status, http_status, duration_ms, error, created_at, completed_at
                FROM executions
                ORDER BY created_at DESC LIMIT ? OFFSET ?""",
@@ -152,14 +154,15 @@ async def list_traces(
             {
                 "id": r[0],
                 "toolkit_id": r[1],
-                "operation_id": r[2],
-                "workflow_id": r[3],
-                "status": r[4],
-                "http_status": r[5],
-                "duration_ms": r[6],
-                "error": r[7],
-                "created_at": r[8],
-                "completed_at": r[9],
+                "agent_id": r[2],
+                "operation_id": r[3],
+                "workflow_id": r[4],
+                "status": r[5],
+                "http_status": r[6],
+                "duration_ms": r[7],
+                "error": r[8],
+                "created_at": r[9],
+                "completed_at": r[10],
                 "_links": {"self": f"/traces/{r[0]}"},
             }
             for r in rows
@@ -191,7 +194,7 @@ async def get_trace(
     """Returns the full execution trace with all steps: capability called, inputs, outputs, HTTP status, and timing. Useful for debugging failed workflow steps."""
     async with get_db() as db:
         async with db.execute(
-            """SELECT id, toolkit_id, operation_id, workflow_id, spec_path,
+            """SELECT id, toolkit_id, agent_id, operation_id, workflow_id, spec_path,
                       status, http_status, duration_ms, error, created_at, completed_at
                FROM executions WHERE id=?""",
             (trace_id,),
@@ -228,15 +231,16 @@ async def get_trace(
     return {
         "id": row[0],
         "toolkit_id": row[1],
-        "operation_id": row[2],
-        "workflow_id": row[3],
-        "spec_path": row[4],
-        "status": row[5],
-        "http_status": row[6],
-        "duration_ms": row[7],
-        "error": row[8],
-        "created_at": row[9],
-        "completed_at": row[10],
+        "agent_id": row[2],
+        "operation_id": row[3],
+        "workflow_id": row[4],
+        "spec_path": row[5],
+        "status": row[6],
+        "http_status": row[7],
+        "duration_ms": row[8],
+        "error": row[9],
+        "created_at": row[10],
+        "completed_at": row[11],
         "steps": steps,
         "_links": {"self": f"/traces/{row[0]}"},
     }

@@ -1,15 +1,21 @@
 """Auth perimeter tests — verifies the authentication boundary."""
 
+from starlette.testclient import TestClient
 
-def test_protected_endpoint_returns_401_without_key(client):
+
+def test_protected_endpoint_returns_401_without_key(app):
     """Protected endpoints must reject unauthenticated requests."""
-    resp = client.get("/toolkits")
+    # Fresh client: the session-scoped ``client`` may already hold admin cookies
+    # from fixtures used by other modules collected earlier (e.g. test_agents_admin).
+    with TestClient(app, raise_server_exceptions=False) as anonymous:
+        resp = anonymous.get("/toolkits")
     assert resp.status_code == 401
 
 
-def test_invalid_key_returns_401(client):
+def test_invalid_key_returns_401(app):
     """A bogus API key must be rejected."""
-    resp = client.get("/toolkits", headers={"X-Jentic-API-Key": "tk_bogus_not_real"})
+    with TestClient(app, raise_server_exceptions=False) as anonymous:
+        resp = anonymous.get("/toolkits", headers={"X-Jentic-API-Key": "tk_bogus_not_real"})
     assert resp.status_code == 401
 
 
