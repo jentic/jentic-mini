@@ -31,7 +31,7 @@ The entire agent identity flow is built from standard OAuth 2.0 RFCs. The only a
 |------|----------|-------|
 | Endpoint discovery | RFC 8414 (Authorization Server Metadata) | `GET /.well-known/oauth-authorization-server` returns `registration_endpoint`, `token_endpoint`, and server capabilities. Agents discover all endpoints from this document. |
 | Agent registration | RFC 7591 (Dynamic Client Registration) | Agent `POST`s to the `registration_endpoint` with `client_name` + `jwks`. Server overrides `grant_types` and `token_endpoint_auth_method` defaults (permitted by §2). |
-| Registration management + key rotation | RFC 7592 (DCR Management) | `GET` to read, `PUT` to update (including JWKS replacement for key rotation), on the `registration_client_uri` returned during registration. Authenticated by a short-lived `registration_access_token` (15 min default) or, after bootstrap, by a regular access token bearing the `identity:rotate` scope. Multiple credential types on the configuration endpoint is permitted server-side policy. |
+| Registration management + key rotation | RFC 7592 (DCR Management) | `GET` to read registration status on the `registration_client_uri` returned during registration. Authenticated by a short-lived `registration_access_token` (15 min default). Key rotation (JWKS update) requires human authentication via the admin API, not agent tokens. |
 | Human approval | No RFC equivalent | Server-side policy. The token endpoint rejects grants for unapproved agents with `invalid_grant` (RFC 6749 §5.2). This does not make the flow non-OAuth-compliant — the RFCs permit the server to reject grants for any policy reason; admin approval is one such reason. |
 | Token minting | RFC 7523 (JWT Bearer Grant) built on RFC 7521 (Assertion Framework) | Assertion signed with Ed25519 private key, validated against registered JWKS. |
 | Bearer token usage | RFC 6750 | Standard `Authorization: Bearer` header. |
@@ -168,15 +168,13 @@ GET    /.well-known/oauth-authorization-server  — returns server metadata incl
 POST   /register                                — DCR: agent submits client_name + jwks → pending
 ```
 
-### Registration management + key rotation (registration_access_token, RFC 7592)
+### Registration status (registration_access_token, RFC 7592)
 
 ```
-GET    /register/{client_id}                    — read own registration (status, metadata, JWKS)
-PUT    /register/{client_id}                    — update registration (replace JWKS for key rotation, update client_name)
-DELETE /register/{client_id}                    — agent self-deletes its registration
+GET    /register/{client_id}                    — read own registration (status, metadata)
 ```
 
-### Agent approval (human session required)
+### Agent management (human session required)
 
 ```
 GET    /agents                                  — list agents (filterable by status: pending, approved, disabled)
@@ -185,6 +183,7 @@ POST   /agents/{agent_id}/approve               — approve a pending registrati
 POST   /agents/{agent_id}/deny                  — deny a pending registration
 POST   /agents/{agent_id}/disable               — disable agent (invalidates tokens, blocks new minting)
 POST   /agents/{agent_id}/enable                — re-enable a disabled agent
+PUT    /agents/{agent_id}/jwks                  — rotate agent's signing key (replace JWKS)
 DELETE /agents/{agent_id}                       — delete agent (cascades: invalidates tokens + removes grants)
 ```
 
@@ -390,33 +389,19 @@ Disabling or deleting the agent also cascades to all tokens.
 
 ## Key rotation (RFC 7592)
 
-### Security note: the registration_access_token is a sensitive credential
+Key rotation — replacing the agent's registered public key — is a high-privilege operation. A compromised key rotation mechanism allows full identity takeover. For this reason, **key rotation requires human authentication** (admin session), not agent-held tokens.
 
-The `registration_access_token` authorises updates to the agent's registration, including replacing the JWKS. This means the holder of this token can effectively take over the agent's identity by swapping in their own public key and then minting tokens as the agent. A long-lived, static `registration_access_token` has the same exposure profile as a static API key (e.g. `tk_xxx`) — if leaked, it grants full takeover.
+### Flow
 
-Jentic Mini mitigates this with two measures, both permitted by the standards:
-
-1. **The initial `registration_access_token` is short-lived (15 minutes by default).** RFC 7592 places no constraint on token lifetime — the server controls it entirely. The 15-minute window covers the bootstrap case: the agent registers, polls status, and once approved, mints its first access token. After that, the registration token expires and can no longer be used.
-
-2. **Subsequent key rotation uses the agent's regular access token.** RFC 7591 §3 and RFC 7592 §3 permit the client configuration endpoint to accept any appropriate authentication method the server defines. Jentic Mini accepts a regular access token (`at_...`) containing a dedicated scope claim (e.g. `identity:rotate`) for `PUT`/`DELETE` on the registration endpoint. Normal API tokens without this scope cannot update the JWKS.
-
-This eliminates the single-point-of-failure that a perpetual `registration_access_token` would represent. The agent only needs to present a fresh, assertion-minted access token to rotate its key — and losing a short-lived access token is far less severe than losing a static registration credential.
-
-### Key rotation flow
-
-Key rotation uses the standard RFC 7592 client update mechanism:
-
-1. The agent generates a new keypair client-side.
-2. The agent sends a `PUT` to its `registration_client_uri` with the full updated metadata including the new JWKS, authenticated by its current access token (with `identity:rotate` scope) or, during the initial 15-minute window, the `registration_access_token`:
+1. The operator (or automated tooling with human credentials) generates a new Ed25519 keypair.
+2. The operator submits the new JWKS via the admin API:
 
 ```
-PUT /register/ag_...
-Authorization: Bearer at_...
+PUT /agents/{agent_id}/jwks
+Authorization: <human session cookie>
 Content-Type: application/json
 
 {
-  "client_id": "ag_...",
-  "client_name": "research-agent",
   "jwks": {
     "keys": [{
       "kty": "OKP",
@@ -427,7 +412,22 @@ Content-Type: application/json
 }
 ```
 
-3. All tokens minted under the old key continue to be valid until they expire or the agent is disabled.
+3. The new public key takes effect immediately. Existing access/refresh tokens remain valid until they expire or the agent is disabled.
+4. The new private key is deployed to the agent's environment (sidecar, container, etc.).
+
+### Why not agent-initiated rotation?
+
+RFC 7592 permits agents to update their own registration via `PUT /register/{client_id}`. However, allowing agents to rotate their own keys creates risk:
+
+- A compromised agent token (even short-lived) could be used to swap in an attacker's public key.
+- The `identity:rotate` scope approach adds complexity and still relies on token security.
+- Key rotation is infrequent enough that requiring human involvement is not burdensome.
+
+This may be revisited if automated key rotation becomes a common operational requirement, but for now the conservative approach is preferred.
+
+### The registration_access_token
+
+The `registration_access_token` returned during DCR is short-lived (15 minutes by default) and scoped only to reading registration status — it cannot update the JWKS. This covers the bootstrap window where the agent polls for approval. After the window expires, the token is no longer usable.
 
 ---
 
@@ -532,9 +532,26 @@ The DB round-trip cost is acceptable: Jentic Mini is not a high-scale edge proxy
 
 ---
 
+## Design notes
+
+### Agent–environment relationship
+
+There is currently an implicit 1:1 relationship between an agent identity and the environment (container, VM, sidecar) that holds its private key. A single signing key is registered per agent, so only one environment can authenticate as that agent at any given time.
+
+This means:
+
+- **No parallel multi-environment for one agent** — you cannot have three agent containers all authenticating as "research-agent" simultaneously, because they would need to share the same private key (a security anti-pattern) or each hold a different key (but only one key is registered per agent).
+
+This is the correct pattern for the vast majority of use cases — each running instance should have its own identity for auditability. If it becomes common for users to need the same logical agent authenticated from multiple environments in parallel, the model could be extended: an abstract "agent" entity at a higher level, with multiple "clients" (each with its own keypair) associated with it. For now, agent = client = single environment.
+
+### Scopes
+
+Scopes are not yet implemented for agent tokens. When scopes are added to the authentication system at large, agent identity tokens will support them — allowing fine-grained permission control (e.g. read-only access, execute access etc.). For now, an agent's capabilities are determined entirely by its toolkit grants.
+
+---
+
 ## Open questions
 
 1. **Sidecar reference implementation** — should Jentic Mini ship a minimal sidecar container image, or just document the protocol for third-party proxies?
 2. **Multi-toolkit resolution** — when an agent has grants to multiple toolkits that have credentials for the same upstream host, which takes precedence? Options: first-match, explicit `X-Jentic-Toolkit` header, or error with `X-Jentic-Credential-Ambiguous`.
-3. **Key rotation approval** — when an agent rotates its JWKS via `PUT /register/{client_id}`, should the new key require human re-approval, or take effect immediately for already-approved agents?
-4. **MTLS alternative** — for environments that support it, mutual TLS with client certificates could replace the assertion flow. Worth supporting as a second auth method?
+3. **MTLS alternative** — for environments that support it, mutual TLS with client certificates could replace the assertion flow. Worth supporting as a second auth method?
