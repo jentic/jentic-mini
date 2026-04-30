@@ -15,6 +15,539 @@
 		}
 	},
 	"paths": {
+		"/.well-known/oauth-authorization-server": {
+			"get": {
+				"tags": ["oauth"],
+				"summary": "OAuth 2.0 Authorization Server Metadata (RFC 8414)",
+				"operationId": "oauth_authorization_server_metadata__well_known_oauth_authorization_server_get",
+				"responses": {
+					"200": {
+						"description": "Successful Response",
+						"content": {
+							"application/json": {
+								"schema": {}
+							}
+						}
+					}
+				},
+				"security": []
+			}
+		},
+		"/agents": {
+			"get": {
+				"tags": ["agents"],
+				"summary": "List Agents",
+				"operationId": "list_agents_agents_get",
+				"parameters": [
+					{
+						"name": "view",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"enum": ["active", "declined", "removed"],
+							"type": "string",
+							"description": "active: not denied and not deregistered; declined: denied only; removed: soft-deleted (deregistered)",
+							"default": "active",
+							"title": "View"
+						},
+						"description": "active: not denied and not deregistered; declined: denied only; removed: soft-deleted (deregistered)"
+					},
+					{
+						"name": "status",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"anyOf": [
+								{
+									"type": "string"
+								},
+								{
+									"type": "null"
+								}
+							],
+							"description": "When view=active only: pending, approved, disabled",
+							"title": "Status"
+						},
+						"description": "When view=active only: pending, approved, disabled"
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "Successful Response",
+						"content": {
+							"application/json": {
+								"schema": {}
+							}
+						}
+					},
+					"422": {
+						"description": "Validation Error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/HTTPValidationError"
+								}
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"HumanLogin": []
+					}
+				]
+			}
+		},
+		"/agents/{agent_id}": {
+			"get": {
+				"tags": ["agents"],
+				"summary": "Get Agent",
+				"operationId": "get_agent_agents__agent_id__get",
+				"parameters": [
+					{
+						"name": "agent_id",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string",
+							"title": "Agent Id"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "Successful Response",
+						"content": {
+							"application/json": {
+								"schema": {}
+							}
+						}
+					},
+					"422": {
+						"description": "Validation Error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/HTTPValidationError"
+								}
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"HumanLogin": []
+					}
+				]
+			},
+			"delete": {
+				"tags": ["agents"],
+				"summary": "Deregister agent (soft delete)",
+				"description": "Soft-delete for audit: revoke tokens, strip JWKS and registration secrets, drop grants.",
+				"operationId": "delete_agent_agents__agent_id__delete",
+				"parameters": [
+					{
+						"name": "agent_id",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string",
+							"title": "Agent Id"
+						}
+					}
+				],
+				"responses": {
+					"204": {
+						"description": "Successful Response"
+					},
+					"422": {
+						"description": "Validation Error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/HTTPValidationError"
+								}
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"HumanLogin": []
+					}
+				]
+			}
+		},
+		"/agents/{agent_id}/approve": {
+			"post": {
+				"tags": ["agents"],
+				"summary": "Approve Agent",
+				"operationId": "approve_agent_agents__agent_id__approve_post",
+				"parameters": [
+					{
+						"name": "agent_id",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string",
+							"title": "Agent Id"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "Successful Response",
+						"content": {
+							"application/json": {
+								"schema": {}
+							}
+						}
+					},
+					"422": {
+						"description": "Validation Error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/HTTPValidationError"
+								}
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"HumanLogin": []
+					}
+				]
+			}
+		},
+		"/agents/{agent_id}/deny": {
+			"post": {
+				"tags": ["agents"],
+				"summary": "Decline registration",
+				"operationId": "deny_agent_agents__agent_id__deny_post",
+				"parameters": [
+					{
+						"name": "agent_id",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string",
+							"title": "Agent Id"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "Successful Response",
+						"content": {
+							"application/json": {
+								"schema": {}
+							}
+						}
+					},
+					"422": {
+						"description": "Validation Error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/HTTPValidationError"
+								}
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"HumanLogin": []
+					}
+				]
+			}
+		},
+		"/agents/{agent_id}/disable": {
+			"post": {
+				"tags": ["agents"],
+				"summary": "Disable Agent",
+				"operationId": "disable_agent_agents__agent_id__disable_post",
+				"parameters": [
+					{
+						"name": "agent_id",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string",
+							"title": "Agent Id"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "Successful Response",
+						"content": {
+							"application/json": {
+								"schema": {}
+							}
+						}
+					},
+					"422": {
+						"description": "Validation Error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/HTTPValidationError"
+								}
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"HumanLogin": []
+					}
+				]
+			}
+		},
+		"/agents/{agent_id}/enable": {
+			"post": {
+				"tags": ["agents"],
+				"summary": "Enable Agent",
+				"operationId": "enable_agent_agents__agent_id__enable_post",
+				"parameters": [
+					{
+						"name": "agent_id",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string",
+							"title": "Agent Id"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "Successful Response",
+						"content": {
+							"application/json": {
+								"schema": {}
+							}
+						}
+					},
+					"422": {
+						"description": "Validation Error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/HTTPValidationError"
+								}
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"HumanLogin": []
+					}
+				]
+			}
+		},
+		"/agents/{agent_id}/grants": {
+			"post": {
+				"tags": ["agents"],
+				"summary": "Add Grant",
+				"operationId": "add_grant_agents__agent_id__grants_post",
+				"parameters": [
+					{
+						"name": "agent_id",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string",
+							"title": "Agent Id"
+						}
+					}
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/GrantBody"
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "Successful Response",
+						"content": {
+							"application/json": {
+								"schema": {}
+							}
+						}
+					},
+					"422": {
+						"description": "Validation Error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/HTTPValidationError"
+								}
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"HumanLogin": []
+					}
+				]
+			},
+			"get": {
+				"tags": ["agents"],
+				"summary": "List Grants",
+				"operationId": "list_grants_agents__agent_id__grants_get",
+				"parameters": [
+					{
+						"name": "agent_id",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string",
+							"title": "Agent Id"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "Successful Response",
+						"content": {
+							"application/json": {
+								"schema": {}
+							}
+						}
+					},
+					"422": {
+						"description": "Validation Error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/HTTPValidationError"
+								}
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"HumanLogin": []
+					}
+				]
+			}
+		},
+		"/agents/{agent_id}/jwks": {
+			"put": {
+				"tags": ["agents"],
+				"summary": "Rotate Agent Jwks",
+				"operationId": "rotate_agent_jwks_agents__agent_id__jwks_put",
+				"parameters": [
+					{
+						"name": "agent_id",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string",
+							"title": "Agent Id"
+						}
+					}
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"type": "object",
+								"additionalProperties": true,
+								"title": "Body"
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "Successful Response",
+						"content": {
+							"application/json": {
+								"schema": {}
+							}
+						}
+					},
+					"422": {
+						"description": "Validation Error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/HTTPValidationError"
+								}
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"HumanLogin": []
+					}
+				]
+			}
+		},
+		"/agents/{agent_id}/grants/{toolkit_id}": {
+			"delete": {
+				"tags": ["agents"],
+				"summary": "Delete Grant",
+				"operationId": "delete_grant_agents__agent_id__grants__toolkit_id__delete",
+				"parameters": [
+					{
+						"name": "agent_id",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string",
+							"title": "Agent Id"
+						}
+					},
+					{
+						"name": "toolkit_id",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string",
+							"description": "Toolkit id to revoke",
+							"title": "Toolkit Id"
+						},
+						"description": "Toolkit id to revoke"
+					}
+				],
+				"responses": {
+					"204": {
+						"description": "Successful Response"
+					},
+					"422": {
+						"description": "Validation Error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/HTTPValidationError"
+								}
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"HumanLogin": []
+					}
+				]
+			}
+		},
 		"/apis": {
 			"get": {
 				"tags": ["catalog"],
@@ -1099,8 +1632,8 @@
 		"/default-api-key/generate": {
 			"post": {
 				"tags": ["user"],
-				"summary": "Generate (or regenerate) the default agent API key",
-				"description": "Issue the default `tk_xxx` agent key bound to the default toolkit.\n\n**First call** — unauthenticated, subnet-restricted:\n- Available only before the key has been claimed\n- Only accessible from trusted subnets (RFC 1918 + loopback by default;\n  configure via `JENTIC_TRUSTED_SUBNETS` env var)\n- Returns the key **once only** — it is not recoverable after this response\n- After this call, the endpoint requires a human session\n\n**Subsequent calls** — human session required:\n- Revokes the current default key\n- Issues and returns a fresh key\n\nThe key works immediately — you do not need to wait for the admin account\nto be created before using it.",
+				"summary": "Generate (or regenerate) the default toolkit API key",
+				"description": "Rotate the default `tk_xxx` key for the default toolkit (human session only).\n\nOnly available when a default key was created in the past. New instances use agent identity\n(OAuth DCR) for agent onboarding; toolkit keys remain valid for other uses.",
 				"operationId": "generate_default_key_default_api_key_generate_post",
 				"responses": {
 					"201": {
@@ -1119,7 +1652,7 @@
 			"get": {
 				"tags": ["meta"],
 				"summary": "Health",
-				"description": "Returns current setup state with explicit instructions for agents and UI.\n\nResponse varies based on setup progress:\n- status='setup_required': No default API key claimed yet → agent should call POST /default-api-key/generate\n- status='account_required': Agent key active, admin account not created → user should visit setup_url\n- status='ok': Fully set up → includes version and apis_registered count\n\nThis endpoint is always public (no auth required) so agents can check setup state before\nattempting authenticated calls. UI uses this to determine whether to show setup wizard.\n\nReturns:\n    Setup status, version, and context-specific next steps or operational metrics.",
+				"description": "Returns current setup state with explicit instructions for agents and UI.\n\nResponse varies based on setup progress:\n- status='setup_required': No admin account yet → OAuth metadata URLs for agent DCR; human setup_url\n- status='ok': Admin account exists → includes version and apis_registered count\n\nThis endpoint is always public (no auth required) so agents can check setup state before\nattempting authenticated calls. UI uses this to determine whether to show setup wizard.\n\nReturns:\n    Setup status, version, and context-specific next steps or operational metrics.",
 				"operationId": "health_health_get",
 				"responses": {
 					"200": {
@@ -1699,6 +2232,87 @@
 						"HumanLogin": []
 					}
 				]
+			}
+		},
+		"/oauth/revoke": {
+			"post": {
+				"tags": ["oauth"],
+				"summary": "OAuth 2.0 token revocation (RFC 7009)",
+				"operationId": "oauth_revoke_oauth_revoke_post",
+				"requestBody": {
+					"content": {
+						"application/x-www-form-urlencoded": {
+							"schema": {
+								"$ref": "#/components/schemas/Body_oauth_revoke_oauth_revoke_post"
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "Successful Response",
+						"content": {
+							"application/json": {
+								"schema": {}
+							}
+						}
+					},
+					"422": {
+						"description": "Validation Error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/HTTPValidationError"
+								}
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"JenticApiKey": []
+					},
+					{
+						"HumanLogin": []
+					}
+				]
+			}
+		},
+		"/oauth/token": {
+			"post": {
+				"tags": ["oauth"],
+				"summary": "OAuth 2.0 token endpoint",
+				"operationId": "oauth_token_oauth_token_post",
+				"requestBody": {
+					"content": {
+						"application/x-www-form-urlencoded": {
+							"schema": {
+								"$ref": "#/components/schemas/Body_oauth_token_oauth_token_post"
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "Successful Response",
+						"content": {
+							"application/json": {
+								"schema": {}
+							}
+						}
+					},
+					"422": {
+						"description": "Validation Error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/HTTPValidationError"
+								}
+							}
+						}
+					}
+				},
+				"security": []
 			}
 		},
 		"/oauth-brokers": {
@@ -2306,6 +2920,93 @@
 					}
 				},
 				"security": [
+					{
+						"HumanLogin": []
+					}
+				]
+			}
+		},
+		"/register": {
+			"post": {
+				"tags": ["oauth"],
+				"summary": "Dynamic Client Registration (RFC 7591)",
+				"description": "Register an agent identity (client_name + jwks). Returns pending status until a human approves.",
+				"operationId": "dynamic_client_registration_register_post",
+				"requestBody": {
+					"content": {
+						"application/json": {
+							"schema": {
+								"additionalProperties": true,
+								"type": "object",
+								"title": "Body"
+							}
+						}
+					},
+					"required": true
+				},
+				"responses": {
+					"201": {
+						"description": "Successful Response",
+						"content": {
+							"application/json": {
+								"schema": {}
+							}
+						}
+					},
+					"422": {
+						"description": "Validation Error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/HTTPValidationError"
+								}
+							}
+						}
+					}
+				},
+				"security": []
+			}
+		},
+		"/register/{client_id}": {
+			"get": {
+				"tags": ["oauth"],
+				"summary": "Read client registration (RFC 7592)",
+				"operationId": "get_registration_register__client_id__get",
+				"parameters": [
+					{
+						"name": "client_id",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string",
+							"title": "Client Id"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "Successful Response",
+						"content": {
+							"application/json": {
+								"schema": {}
+							}
+						}
+					},
+					"422": {
+						"description": "Validation Error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/HTTPValidationError"
+								}
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"JenticApiKey": []
+					},
 					{
 						"HumanLogin": []
 					}
@@ -4512,6 +5213,73 @@
 				"title": "ApiOut",
 				"description": "API provider metadata including ID, name, vendor, and base URL."
 			},
+			"Body_oauth_revoke_oauth_revoke_post": {
+				"properties": {
+					"token": {
+						"anyOf": [
+							{
+								"type": "string"
+							},
+							{
+								"type": "null"
+							}
+						],
+						"title": "Token"
+					},
+					"token_type_hint": {
+						"anyOf": [
+							{
+								"type": "string"
+							},
+							{
+								"type": "null"
+							}
+						],
+						"title": "Token Type Hint"
+					}
+				},
+				"type": "object",
+				"title": "Body_oauth_revoke_oauth_revoke_post"
+			},
+			"Body_oauth_token_oauth_token_post": {
+				"properties": {
+					"grant_type": {
+						"anyOf": [
+							{
+								"type": "string"
+							},
+							{
+								"type": "null"
+							}
+						],
+						"title": "Grant Type"
+					},
+					"assertion": {
+						"anyOf": [
+							{
+								"type": "string"
+							},
+							{
+								"type": "null"
+							}
+						],
+						"title": "Assertion"
+					},
+					"refresh_token": {
+						"anyOf": [
+							{
+								"type": "string"
+							},
+							{
+								"type": "null"
+							}
+						],
+						"title": "Refresh Token"
+					}
+				},
+				"type": "object",
+				"title": "Body_oauth_token_oauth_token_post"
+			},
 			"Body_token_user_token_post": {
 				"properties": {
 					"grant_type": {
@@ -4998,6 +5766,18 @@
 				},
 				"type": "object",
 				"title": "CredentialPatch"
+			},
+			"GrantBody": {
+				"properties": {
+					"toolkit_id": {
+						"type": "string",
+						"title": "Toolkit Id",
+						"description": "Toolkit to grant this agent"
+					}
+				},
+				"type": "object",
+				"required": ["toolkit_id"],
+				"title": "GrantBody"
 			},
 			"HTTPValidationError": {
 				"properties": {
@@ -6434,6 +7214,19 @@
 						"description": "Toolkit that executed this capability",
 						"examples": ["default"]
 					},
+					"agent_id": {
+						"anyOf": [
+							{
+								"type": "string"
+							},
+							{
+								"type": "null"
+							}
+						],
+						"title": "Agent Id",
+						"description": "Agent client_id when the call used an agent access token (at_…)",
+						"examples": ["ag_abc123"]
+					},
 					"operation_id": {
 						"anyOf": [
 							{
@@ -6802,7 +7595,7 @@
 				"type": "apiKey",
 				"in": "header",
 				"name": "X-Jentic-API-Key",
-				"description": "Agent toolkit key (`tk_xxx`). Issue via `POST /default-api-key/generate`."
+				"description": "Toolkit API key (`tk_xxx`) in this header, or use `Authorization: Bearer` with an agent access token (`at_…`) from `POST /oauth/token`, or a registration token (`rat_…`) where applicable (e.g. `GET /register/{client_id}`)."
 			},
 			"HumanLogin": {
 				"type": "oauth2",
