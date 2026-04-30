@@ -11,16 +11,10 @@ import { ErrorAlert } from '@/components/ui/ErrorAlert';
 type HealthPayload = {
 	status: string;
 	account_created?: boolean;
-	oauth_authorization_server_metadata?: string;
-	registration_endpoint?: string;
-	token_endpoint?: string;
-	setup_url?: string;
-	next_step?: string;
 };
 
 /**
- * First-time setup: create the admin account. Agents onboard separately via OAuth DCR
- * (URLs are returned on GET /health while setup_required).
+ * First-time setup: create the admin account. Agent onboarding is handled after login.
  */
 export default function SetupPage() {
 	const queryClient = useQueryClient();
@@ -83,21 +77,13 @@ export default function SetupPage() {
 					Welcome to Jentic Mini
 				</h1>
 
-				{health?.oauth_authorization_server_metadata && (
-					<div className="border-border bg-background/50 mb-6 rounded-lg border p-4 text-sm">
-						<p className="text-muted-foreground mb-2 font-semibold">
-							For agents (OAuth)
-						</p>
-						<ul className="text-muted-foreground space-y-1 font-mono text-xs break-all">
-							<li>Metadata: {health.oauth_authorization_server_metadata}</li>
-							{health.registration_endpoint && (
-								<li>Register: {health.registration_endpoint}</li>
-							)}
-							{health.token_endpoint && <li>Token: {health.token_endpoint}</li>}
-						</ul>
-						<p className="text-muted-foreground mt-2 text-xs">{health.next_step}</p>
-					</div>
-				)}
+				<div className="border-border bg-background/50 mb-6 rounded-lg border p-4 text-sm">
+					<p className="text-muted-foreground leading-relaxed">
+						Create your administrator account below. Agents register themselves
+						afterward; you&apos;ll approve them from the dashboard once you&apos;re
+						signed in.
+					</p>
+				</div>
 
 				<form
 					onSubmit={(e) => {

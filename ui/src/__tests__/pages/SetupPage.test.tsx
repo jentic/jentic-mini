@@ -16,25 +16,16 @@ describe('SetupPage — Account creation', () => {
 		expect(screen.getByRole('button', { name: /create account/i })).toBeInTheDocument();
 	});
 
-	it('shows OAuth hints when health includes metadata', async () => {
-		worker.use(
-			http.get('/health', () =>
-				HttpResponse.json({
-					status: 'setup_required',
-					oauth_authorization_server_metadata:
-						'https://example.com/.well-known/oauth-authorization-server',
-					registration_endpoint: 'https://example.com/register',
-					token_endpoint: 'https://example.com/oauth/token',
-					next_step: 'Register your agent',
-				}),
-			),
-		);
+	it('shows admin-focused setup copy (not agent OAuth URLs)', async () => {
+		worker.use(http.get('/health', () => HttpResponse.json({ status: 'setup_required' })));
 
 		renderWithProviders(<SetupPage />);
 
-		expect(await screen.findByText(/for agents \(oauth\)/i)).toBeInTheDocument();
-		expect(screen.getByText(/metadata:/i)).toBeInTheDocument();
-		expect(screen.getByText(/register your agent/i)).toBeInTheDocument();
+		expect(
+			await screen.findByText(/create your administrator account below/i),
+		).toBeInTheDocument();
+		expect(screen.getByText(/agents register themselves afterward/i)).toBeInTheDocument();
+		expect(screen.queryByText(/metadata:/i)).not.toBeInTheDocument();
 	});
 
 	it('shows "Setup complete" when health is ok', async () => {
