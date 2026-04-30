@@ -1,4 +1,4 @@
-"""Agent identity: OAuth DCR, opaque tokens, toolkit grants.
+"""Agent identity: OAuth DCR, opaque tokens, toolkit grants, soft deregister.
 
 Revision ID: 0005
 Revises: 0004
@@ -28,10 +28,12 @@ def upgrade() -> None:
             approved_at                REAL,
             approved_by                TEXT,
             denied_at                  REAL,
-            disabled_at                REAL
+            disabled_at                REAL,
+            deleted_at                 REAL
         )
     """)
     op.execute("CREATE INDEX IF NOT EXISTS idx_agents_status ON agents(status)")
+    op.execute("CREATE INDEX IF NOT EXISTS idx_agents_deleted_at ON agents(deleted_at)")
 
     op.execute("""
         CREATE TABLE IF NOT EXISTS agent_toolkit_grants (
