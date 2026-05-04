@@ -12,11 +12,10 @@ BROKER_ID = "test-oauth-broker"
 
 
 @pytest.fixture(scope="module")
-def broker(client, admin_session):
+def broker(admin_client):
     """Create a test broker for the module. Cleaned up at the end."""
-    resp = client.post(
+    resp = admin_client.post(
         "/oauth-brokers",
-        cookies=admin_session,
         json={
             "id": BROKER_ID,
             "type": "pipedream",
@@ -29,7 +28,7 @@ def broker(client, admin_session):
     )
     assert resp.status_code in (200, 201), f"Create failed: {resp.text}"
     yield BROKER_ID
-    client.delete(f"/oauth-brokers/{BROKER_ID}", cookies=admin_session)
+    admin_client.delete(f"/oauth-brokers/{BROKER_ID}")
 
 
 # ── PATCH /oauth-brokers/{id} ────────────────────────────────────────────────
@@ -46,11 +45,10 @@ def test_update_broker_requires_human_session(agent_only_client, broker):
     assert resp.status_code == 403
 
 
-def test_update_broker_404_nonexistent(client, admin_session):
+def test_update_broker_404_nonexistent(admin_client):
     """Updating a nonexistent broker returns 404."""
-    resp = client.patch(
+    resp = admin_client.patch(
         "/oauth-brokers/nonexistent",
-        cookies=admin_session,
         json={
             "config": {"client_id": "new-id"},
         },
@@ -58,11 +56,10 @@ def test_update_broker_404_nonexistent(client, admin_session):
     assert resp.status_code == 404
 
 
-def test_update_broker_success(client, admin_session, broker):
+def test_update_broker_success(admin_client, broker):
     """PATCH updates broker config fields."""
-    resp = client.patch(
+    resp = admin_client.patch(
         f"/oauth-brokers/{broker}",
-        cookies=admin_session,
         json={
             "config": {"client_id": "updated-client-id"},
         },
@@ -84,21 +81,19 @@ def test_rename_account_requires_human_session(agent_only_client, broker):
     assert resp.status_code == 403
 
 
-def test_rename_account_404_nonexistent(client, admin_session, broker):
+def test_rename_account_404_nonexistent(admin_client, broker):
     """Renaming a nonexistent account returns 404."""
-    resp = client.patch(
+    resp = admin_client.patch(
         f"/oauth-brokers/{broker}/accounts/apn_nonexistent",
-        cookies=admin_session,
         json={"label": "new name"},
     )
     assert resp.status_code == 404
 
 
-def test_rename_account_rejects_empty_label(client, admin_session, broker):
+def test_rename_account_rejects_empty_label(admin_client, broker):
     """Empty label is rejected with 422 (Pydantic validation)."""
-    resp = client.patch(
+    resp = admin_client.patch(
         f"/oauth-brokers/{broker}/accounts/apn_test",
-        cookies=admin_session,
         json={"label": ""},
     )
     assert resp.status_code == 422
@@ -107,11 +102,10 @@ def test_rename_account_rejects_empty_label(client, admin_session, broker):
 # ── POST /oauth-brokers/{id}/connect-link ─────────────────────────────────────
 
 
-def test_connect_link_rejects_empty_label(client, admin_session, broker):
+def test_connect_link_rejects_empty_label(admin_client, broker):
     """Empty label is rejected with 422 (min_length=1 validation)."""
-    resp = client.post(
+    resp = admin_client.post(
         f"/oauth-brokers/{broker}/connect-link",
-        cookies=admin_session,
         json={"app": "google_calendar", "label": ""},
     )
     assert resp.status_code == 422
@@ -128,11 +122,10 @@ def test_reconnect_link_requires_human_session(agent_only_client, broker):
     assert resp.status_code == 403
 
 
-def test_reconnect_link_404_nonexistent_account(client, admin_session, broker):
+def test_reconnect_link_404_nonexistent_account(admin_client, broker):
     """Reconnect for a nonexistent account returns 404."""
-    resp = client.post(
+    resp = admin_client.post(
         f"/oauth-brokers/{broker}/accounts/apn_nonexistent/reconnect-link",
-        cookies=admin_session,
     )
     assert resp.status_code == 404
 
@@ -155,19 +148,19 @@ def test_delete_broker_requires_human_session(agent_only_client, broker):
     assert resp.status_code == 403
 
 
-def test_delete_broker_404_nonexistent(client, admin_session):
+def test_delete_broker_404_nonexistent(admin_client):
     """Deleting a nonexistent broker returns 404."""
-    resp = client.delete("/oauth-brokers/nonexistent", cookies=admin_session)
+    resp = admin_client.delete("/oauth-brokers/nonexistent")
     assert resp.status_code == 404
 
 
-def test_delete_broker_success(client, admin_session, broker):
+def test_delete_broker_success(admin_client, broker):
     """Deleting a broker removes it and returns success."""
-    resp = client.delete(f"/oauth-brokers/{broker}", cookies=admin_session)
+    resp = admin_client.delete(f"/oauth-brokers/{broker}")
     assert resp.status_code == 200
     data = resp.json()
     assert data["deleted"] is True
 
     # Verify it's gone
-    resp = client.get(f"/oauth-brokers/{broker}", cookies=admin_session)
+    resp = admin_client.get(f"/oauth-brokers/{broker}")
     assert resp.status_code == 404

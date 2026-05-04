@@ -16,7 +16,7 @@ from src.routers.overlays import confirm_overlay
 
 
 @pytest.fixture(scope="module")
-def test_api(client, admin_session):
+def test_api(admin_client):
     """Register a test API and return its api_id."""
     api_id = "overlay-test.example.com"
 
@@ -33,7 +33,7 @@ def test_api(client, admin_session):
     return api_id
 
 
-def test_confirm_overlay_transitions_pending_to_confirmed(client, admin_session, test_api):
+def test_confirm_overlay_transitions_pending_to_confirmed(test_api):
     """A pending overlay should transition to confirmed when confirm_overlay is called."""
 
     async def run():
@@ -83,7 +83,7 @@ def test_confirm_overlay_transitions_pending_to_confirmed(client, admin_session,
     asyncio.run(run())
 
 
-def test_confirm_overlay_skips_when_no_pending(client, admin_session, test_api):
+def test_confirm_overlay_skips_when_no_pending(test_api):
     """confirm_overlay should be a no-op when no pending overlays exist."""
 
     async def run():
@@ -117,7 +117,7 @@ def test_confirm_overlay_skips_when_no_pending(client, admin_session, test_api):
     asyncio.run(run())
 
 
-def test_confirm_overlay_only_confirms_first_pending(client, admin_session, test_api):
+def test_confirm_overlay_only_confirms_first_pending(test_api):
     """When multiple pending overlays exist, only the oldest should be confirmed."""
 
     async def run():

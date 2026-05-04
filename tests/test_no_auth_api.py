@@ -22,7 +22,7 @@ AUTH_HOST = "127.0.0.4"
 
 
 @pytest.fixture(scope="module")
-def registered_apis(client, agent_key_header, admin_session):
+def registered_apis(agent_key_header, admin_client):
     """Register a no-auth credential for NO_AUTH_HOST; leave AUTH_HOST unconfigured."""
 
     async def setup():

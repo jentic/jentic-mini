@@ -32,7 +32,7 @@ CRED_ID_B = f"{BROKER_ID}-{ACCOUNT_ID_B}-{HOST_SLUG}"
 
 
 @pytest.fixture(scope="module")
-def ambiguous_credentials(client, admin_session):
+def ambiguous_credentials(client, admin_client):
     """Set up two credentials for the same api_id with different app_slugs."""
 
     async def setup():

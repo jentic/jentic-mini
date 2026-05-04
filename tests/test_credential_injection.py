@@ -21,7 +21,7 @@ COMPOUND_HOST = "127.0.10.4"
 
 
 @pytest.fixture(scope="module")
-def injection_credentials(client, admin_session, agent_key_header):
+def injection_credentials(admin_client, agent_key_header):
     """Set up credentials with different auth types, scheme blobs, and routes."""
 
     async def setup():

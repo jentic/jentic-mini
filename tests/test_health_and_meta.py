@@ -21,8 +21,8 @@ def test_health_includes_version_string(client):
     assert data["version"] == "0.0.0-test"
 
 
-def test_version_returns_shape(client, admin_session):
-    resp = client.get("/version", cookies=admin_session)
+def test_version_returns_shape(admin_client):
+    resp = admin_client.get("/version")
     assert resp.status_code == 200
     data = resp.json()
     assert "current" in data
@@ -31,8 +31,8 @@ def test_version_returns_shape(client, admin_session):
     assert data["current"] == "0.0.0-test"
 
 
-def test_version_telemetry_off_returns_null_latest(client, admin_session):
+def test_version_telemetry_off_returns_null_latest(admin_client):
     """With JENTIC_TELEMETRY=off, latest should be null (no GitHub check)."""
-    data = client.get("/version", cookies=admin_session).json()
+    data = admin_client.get("/version").json()
     assert data["latest"] is None
     assert data["release_url"] is None

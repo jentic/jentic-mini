@@ -55,8 +55,17 @@ def client(app):
 
 
 @pytest.fixture(scope="session")
-def admin_session(client):
-    """Create an admin account and return session cookies for use with `cookies=` in requests."""
+def admin_client(client):
+    """Return the shared `client` with an authenticated admin session.
+
+    Logs in once on the session-scoped `client`; TestClient persists the
+    Set-Cookie on the instance, so subsequent `client.*` calls also carry
+    the admin session. This matches the previous behaviour where any test
+    reusing `client` got admin-session JWT auth implicitly.
+
+    Tests that need a clean (no-admin-session) client should use the
+    `agent_only_client` fixture instead.
+    """
     # Create account (first-time setup)
     resp = client.post(
         "/user/create",
@@ -67,7 +76,7 @@ def admin_session(client):
     )
     assert resp.status_code in (200, 201, 410), f"Failed to create user: {resp.text}"
 
-    # Login
+    # Login — TestClient persists Set-Cookie on the instance automatically
     resp = client.post(
         "/user/login",
         json={
@@ -77,13 +86,11 @@ def admin_session(client):
     )
     assert resp.status_code == 200, f"Failed to login: {resp.text}"
 
-    # Extract session cookie
-    cookies = dict(resp.cookies)
-    return cookies
+    return client
 
 
 @pytest.fixture(scope="session")
-def agent_key(client, admin_session):
+def agent_key(client, admin_client):
     """Get an agent API key — either from first-time generation or by creating a toolkit key."""
     # Try the first-time generation path (trusted subnet check requires forwarded IP)
     resp = client.post("/default-api-key/generate", headers={"X-Forwarded-For": "127.0.0.1"})
@@ -91,9 +98,7 @@ def agent_key(client, admin_session):
         return resp.json()["key"]
     default_key_status, default_key_body = resp.status_code, resp.text
     # Already claimed — create a new key on the default toolkit
-    resp = client.post(
-        "/toolkits/default/keys", cookies=admin_session, json={"label": "test-agent"}
-    )
+    resp = admin_client.post("/toolkits/default/keys", json={"label": "test-agent"})
     if resp.status_code in (200, 201):
         return resp.json()["key"]
     pytest.fail(
