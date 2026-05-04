@@ -158,7 +158,7 @@ Required fields:
 
 Rules:
 - do NOT add a `sources:` list — nothing consumes it and it rots as files move
-- cross-reference load-bearing docs inline in the body instead (e.g. "see `docs/AUTH.md`")
+- cross-reference load-bearing docs inline in the body instead (e.g. "see `docs/auth.md`")
 - keep metadata lightweight
 - do not duplicate content from body
 

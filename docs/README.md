@@ -84,7 +84,7 @@ Set in `/configs/jentic-personal-edition/docker-compose.yml`:
 
 ## Further Reading
 
-- [ARCHITECTURE.md](ARCHITECTURE.md) — system design, component map, database schema
-- [CREDENTIALS.md](CREDENTIALS.md) — vault, credential lifecycle, auth flywheel
-- [WORKFLOWS.md](WORKFLOWS.md) — Arazzo workflows, execution model, examples
+- [architecture.md](architecture.md) — system design, component map, database schema
+- [credentials.md](credentials.md) — vault, credential lifecycle, auth flywheel
+- [workflows.md](workflows.md) — Arazzo workflows, execution model, examples
 - [../DEVELOPMENT.md](../DEVELOPMENT.md) — prerequisites, install, running tests, adding APIs, debug endpoints

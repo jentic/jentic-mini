@@ -1,4 +1,4 @@
-# SELF-REGISTRATION.md — Jentic Mini in Jentic Mini
+# self-registration.md — Jentic Mini in Jentic Mini
 
 ## Overview
 

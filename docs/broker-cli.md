@@ -107,7 +107,7 @@ curl -s -X PATCH http://localhost:8900/credentials/github-com-my-pat \
 
 For most users this is unnecessary — the default `token` username works fine with GitHub.
 
-See [CREDENTIALS.md](CREDENTIALS.md) for how to add the PAT credential.
+See [credentials.md](credentials.md) for how to add the PAT credential.
 
 ---
 

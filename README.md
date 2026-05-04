@@ -144,7 +144,7 @@ POST /credentials
 GET /workflows?source=local&q=slack
 ```
 
-See [docs/CATALOG.md](https://github.com/jentic/jentic-mini/blob/main/docs/CATALOG.md) for full details.
+See [docs/catalog.md](https://github.com/jentic/jentic-mini/blob/main/docs/catalog.md) for full details.
 
 ## Updating
 

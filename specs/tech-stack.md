@@ -61,7 +61,7 @@ icon libs, class-merge helpers, YAML parsers, etc.) are not listed here.
 ## Backend Layout
 
 Core modules live in `src/` and routers in `src/routers/`; see `CLAUDE.md` and
-`docs/ARCHITECTURE.md` for the current catalog. Load-bearing invariants:
+`docs/architecture.md` for the current catalog. Load-bearing invariants:
 
 - **Router registration order:** all internal routers are registered first; the broker catch-all (`/{target:path}`) is registered last in `src/main.py`.
 - **Content-negotiation middleware** (`src/negotiate.py`) transforms JSON responses into YAML or Markdown based on `Accept`.
@@ -71,7 +71,7 @@ Core modules live in `src/` and routers in `src/routers/`; see `CLAUDE.md` and
 
 - **Primary storage:** SQLite at `/app/data/jentic-mini.db` inside the container; persisted via Docker volume
 - **Access pattern:** Raw SQL via `aiosqlite` (no ORM); query building is manual in `src/db.py`
-- **Migrations:** Alembic is the schema source of truth; migration files live in `alembic/versions/` and run automatically at container startup via `run_migrations()` in `main.py` lifespan. `docs/ARCHITECTURE.md` is the conceptual data-model reference.
+- **Migrations:** Alembic is the schema source of truth; migration files live in `alembic/versions/` and run automatically at container startup via `run_migrations()` in `main.py` lifespan. `docs/architecture.md` is the conceptual data-model reference.
 - **Caching / state:** BM25 index is in-memory; catalog manifest from GitHub is cached on disk for 24 hours; version check is in-memory with 6-hour TTL
 - **Credential vault:** Fernet-encrypted values in the `credentials` table; the vault key (`JENTIC_VAULT_KEY`) is auto-generated at first run and persisted to `/app/data/vault.key`
 - **Spec/workflow storage:** OpenAPI spec files and Arazzo workflow files stored on disk under `/app/data/specs/` and `/app/data/workflows/`
@@ -109,7 +109,7 @@ Core modules live in `src/` and routers in `src/routers/`; see `CLAUDE.md` and
 - **Route registration order:** The broker catch-all (`/{target:path}`) must be registered last in `main.py`. Violating this silently swallows internal routes (symptom: `No API found for host '…'` on an internal endpoint).
 - **Credential write-only semantics:** Credential values are encrypted on write and never returned via the API. The vault key must be persisted — losing it means losing access to every stored credential.
 - **Credential route schema:** Route bindings are split across `credentials.server_variables`, `credentials.scheme`, and a dedicated `credential_routes` table (not a single JSON blob on `credentials`).
-- **Authentication model (two actors):** Humans authenticate with bcrypt password → 30-day sliding httpOnly JWT cookie. Agents authenticate with `X-Jentic-API-Key: tk_xxx` bound to a toolkit. There is no admin API key and no superuser env var — `docker exec` is the only superuser path. Root account creation is one-time (`POST /user/create` returns `410 Gone` after first use). New toolkit keys are always IP-restricted; the default allowlist is trusted subnets (RFC-1918 + loopback + `JENTIC_TRUSTED_SUBNETS` extras; the env var **appends**, never replaces). Privilege-escalation routes (approve/deny access requests, mutate toolkits, edit credential policies, manage OAuth brokers) require a human JWT session, so a compromised agent key cannot self-escalate via prompt injection. Endpoint-level detail in `docs/AUTH.md`.
+- **Authentication model (two actors):** Humans authenticate with bcrypt password → 30-day sliding httpOnly JWT cookie. Agents authenticate with `X-Jentic-API-Key: tk_xxx` bound to a toolkit. There is no admin API key and no superuser env var — `docker exec` is the only superuser path. Root account creation is one-time (`POST /user/create` returns `410 Gone` after first use). New toolkit keys are always IP-restricted; the default allowlist is trusted subnets (RFC-1918 + loopback + `JENTIC_TRUSTED_SUBNETS` extras; the env var **appends**, never replaces). Privilege-escalation routes (approve/deny access requests, mutate toolkits, edit credential policies, manage OAuth brokers) require a human JWT session, so a compromised agent key cannot self-escalate via prompt injection. Endpoint-level detail in `docs/auth.md`.
 - **Capability / Workflow ID format:** `METHOD/host/path` (e.g. `GET/api.stripe.com/v1/customers`). Workflows use the same format with `host = JENTIC_PUBLIC_HOSTNAME` (e.g. `POST/localhost/workflows/summarise-topics`), and operations vs workflows are distinguished by whether `host` matches `JENTIC_PUBLIC_HOSTNAME`. Agents persist these IDs — format stability is an API contract.
 - **Policy evaluation:** Toolkit policies evaluate allow/deny rules in order; first match wins; default-deny when no rule matches.
 - **Content negotiation:** SPA routes return `index.html` for browser requests (`Accept: text/html`) and JSON for API clients; an extended middleware also supports YAML and Markdown responses. Implemented in `src/negotiate.py` and the SPA fallback in `main.py`.
@@ -131,4 +131,4 @@ Core modules live in `src/` and routers in `src/routers/`; see `CLAUDE.md` and
 - No rate limiting on any endpoint, including login and broker — pre-production requirement
 - `api_keys` table is reserved for future fine-grained scope assignment; design not yet determined
 - `auth_override_log` table exists in the baseline schema but its end-to-end usage and retention policy are not yet documented
-- The `scheme_name` / `scheme_type` naming decision (see `docs/DECISIONS.md`) needs coordination with the Human-in-the-Loop Credential Provisioning phase
+- The `scheme_name` / `scheme_type` naming decision (see `docs/decisions.md`) needs coordination with the Human-in-the-Loop Credential Provisioning phase
