@@ -31,6 +31,13 @@ RUN /root/.local/bin/pdm install --prod --no-editable --no-self --frozen-lockfil
 # Stage 3: Runtime
 FROM python:3.11-slim
 
+# Upgrade the base image's system-wide pip / setuptools / wheel to clear
+# transitive CVEs Trivy reports against /usr/local/lib/python3.11/site-packages
+# (wheel CVE-2026-24049, setuptools-vendored jaraco.context CVE-2026-23949).
+# These are bootstrap-only, not imported by the app; unpinned --upgrade is
+# self-healing against future CVEs.
+RUN python -m pip install --upgrade --no-cache-dir pip setuptools wheel
+
 ARG APP_VERSION=0.9.0
 ENV APP_VERSION=${APP_VERSION}
 
