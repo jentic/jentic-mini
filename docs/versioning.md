@@ -60,18 +60,13 @@ docker run -d --name jentic-mini -p 8900:8900 \
 
 ---
 
-## What's Still To Do
+## Release Automation
 
-### 1. GitHub release process (priority: low, pre-release)
+Releases are cut automatically by `semantic-release` from Conventional Commits on `main`. The workflow at `.github/workflows/release.yml` creates the git tag and GitHub Release; the workflow at `.github/workflows/docker-publish.yml` builds and pushes multi-arch images to Docker Hub (`jentic/jentic-mini`) and GHCR (`ghcr.io/jentic/jentic-mini`) on tag events.
 
-Currently releases are published manually via the GitHub UI. For a proper release cadence:
+### Pinning a version (Docker Compose)
 
-- Use [Release Please](https://github.com/googleapis/release-please) or similar to automate changelog + tag creation from conventional commits
-- Or keep it manual but document the checklist
-
-### 2. Version pinning for Docker Compose users (priority: low)
-
-Self-hosters using `docker compose` should be able to pin to a specific version. Once images are published to a registry (GHCR or Docker Hub), the compose file should reference a versioned tag rather than `latest`:
+Self-hosters can pin to a released tag rather than `latest`:
 
 ```yaml
 image: ghcr.io/jentic/jentic-mini:0.1.0  # pin to a release
@@ -79,9 +74,11 @@ image: ghcr.io/jentic/jentic-mini:0.1.0  # pin to a release
 image: ghcr.io/jentic/jentic-mini:latest  # always latest
 ```
 
-This isn't relevant until images are published to a registry.
+---
 
-### 3. Backend-initiated update notifications (future)
+## What's Still To Do
+
+### Backend-initiated update notifications (future)
 
 Currently the update check is purely client-side. A future option is for the backend to log a warning on startup if it detects it's running an outdated version — useful for headless/API-only deployments where no one opens the UI.
 
