@@ -28,7 +28,7 @@ def test_broker_unauthenticated_passes_through(client):
     """Broker calls without a key attempt to proxy (upstream auth is upstream's problem).
     With a non-routable target the proxy fails with a connection error.
 
-    Note: The `client` fixture accumulates session cookies from admin_session.
+    Note: The `client` fixture may accumulate session cookies from admin_client.
     To make a truly unauthenticated (no toolkit_id) request we must use a
     separate client instance with no cookies.
     """

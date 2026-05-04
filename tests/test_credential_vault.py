@@ -7,7 +7,7 @@ accepted on write but NEVER returned on read.
 import json
 
 
-def _register_api_with_scheme(client, cookies, api_id, scheme_type="bearer"):
+def _register_api_with_scheme(client, api_id, scheme_type="bearer"):
     """Helper: register a minimal API with a security scheme so credentials can be stored."""
 
     if scheme_type == "bearer":
@@ -27,7 +27,6 @@ def _register_api_with_scheme(client, cookies, api_id, scheme_type="bearer"):
 
     resp = client.post(
         "/import",
-        cookies=cookies,
         json={
             "sources": [
                 {
@@ -41,13 +40,12 @@ def _register_api_with_scheme(client, cookies, api_id, scheme_type="bearer"):
     assert resp.status_code in (200, 201), f"Import failed: {resp.text}"
 
 
-def test_create_credential_returns_id_not_value(client, admin_session):
+def test_create_credential_returns_id_not_value(admin_client):
     """POST /credentials returns metadata but never the plaintext value."""
     api_id = "vault-create.example.com"
-    _register_api_with_scheme(client, admin_session, api_id)
-    resp = client.post(
+    _register_api_with_scheme(admin_client, api_id)
+    resp = admin_client.post(
         "/credentials",
-        cookies=admin_session,
         json={
             "label": "Test Bearer Token",
             "value": "sk-secret-test-value-12345",
@@ -64,13 +62,12 @@ def test_create_credential_returns_id_not_value(client, admin_session):
     assert "env_var" not in data
 
 
-def test_get_credential_never_returns_value(client, admin_session):
+def test_get_credential_never_returns_value(admin_client):
     """GET /credentials/{id} must not include the plaintext value."""
     api_id = "vault-read.example.com"
-    _register_api_with_scheme(client, admin_session, api_id, "apiKey")
-    create_resp = client.post(
+    _register_api_with_scheme(admin_client, api_id, "apiKey")
+    create_resp = admin_client.post(
         "/credentials",
-        cookies=admin_session,
         json={
             "label": "Vault Read Test",
             "value": "my-secret-api-key",
@@ -81,7 +78,7 @@ def test_get_credential_never_returns_value(client, admin_session):
     assert create_resp.status_code in (200, 201), f"Create failed: {create_resp.text}"
     cred_id = create_resp.json()["id"]
 
-    resp = client.get(f"/credentials/{cred_id}", cookies=admin_session)
+    resp = admin_client.get(f"/credentials/{cred_id}")
     assert resp.status_code == 200
     data = resp.json()
     assert data["id"] == cred_id
@@ -91,9 +88,9 @@ def test_get_credential_never_returns_value(client, admin_session):
     assert "encrypted_value" not in data
 
 
-def test_list_credentials_never_returns_values(client, admin_session):
+def test_list_credentials_never_returns_values(admin_client):
     """GET /credentials must not include values on any item."""
-    resp = client.get("/credentials", cookies=admin_session)
+    resp = admin_client.get("/credentials")
     assert resp.status_code == 200
     items = resp.json()
     assert isinstance(items, list)
@@ -102,13 +99,12 @@ def test_list_credentials_never_returns_values(client, admin_session):
         assert "encrypted_value" not in item
 
 
-def test_credential_bound_to_api(client, admin_session):
+def test_credential_bound_to_api(admin_client):
     """Created credential has the correct api_id."""
     api_id = "vault-bound.example.com"
-    _register_api_with_scheme(client, admin_session, api_id)
-    resp = client.post(
+    _register_api_with_scheme(admin_client, api_id)
+    resp = admin_client.post(
         "/credentials",
-        cookies=admin_session,
         json={
             "label": "Bound Test",
             "value": "secret",
@@ -118,11 +114,11 @@ def test_credential_bound_to_api(client, admin_session):
     )
     assert resp.status_code in (200, 201), f"Create failed: {resp.text}"
     cred_id = resp.json()["id"]
-    data = client.get(f"/credentials/{cred_id}", cookies=admin_session).json()
+    data = admin_client.get(f"/credentials/{cred_id}").json()
     assert data["api_id"] == api_id
 
 
-def test_create_no_auth_credential_skips_scheme_check(client, admin_session):
+def test_create_no_auth_credential_skips_scheme_check(admin_client):
     """auth_type=none credentials should not require a security scheme or overlay."""
     api_id = "noauth-local.example.com"
 
@@ -137,9 +133,8 @@ def test_create_no_auth_credential_skips_scheme_check(client, admin_session):
             }
         },
     }
-    resp = client.post(
+    resp = admin_client.post(
         "/import",
-        cookies=admin_session,
         json={
             "sources": [
                 {"type": "inline", "content": json.dumps(spec), "filename": f"{api_id}.json"}
@@ -149,9 +144,8 @@ def test_create_no_auth_credential_skips_scheme_check(client, admin_session):
     assert resp.status_code in (200, 201), f"Import failed: {resp.text}"
 
     # Creating a credential with auth_type=none should succeed (not 409)
-    resp = client.post(
+    resp = admin_client.post(
         "/credentials",
-        cookies=admin_session,
         json={
             "label": "No-Auth Local Service",
             "value": "",
@@ -166,7 +160,7 @@ def test_create_no_auth_credential_skips_scheme_check(client, admin_session):
     assert data["auth_type"] == "none"
 
 
-def test_create_credential_without_scheme_still_blocked(client, admin_session):
+def test_create_credential_without_scheme_still_blocked(admin_client):
     """Regular auth_type credentials for APIs without schemes should still get 409."""
     api_id = "noscheme-blocked.example.com"
 
@@ -181,9 +175,8 @@ def test_create_credential_without_scheme_still_blocked(client, admin_session):
             }
         },
     }
-    resp = client.post(
+    resp = admin_client.post(
         "/import",
-        cookies=admin_session,
         json={
             "sources": [
                 {"type": "inline", "content": json.dumps(spec), "filename": f"{api_id}.json"}
@@ -193,9 +186,8 @@ def test_create_credential_without_scheme_still_blocked(client, admin_session):
     assert resp.status_code in (200, 201), f"Import failed: {resp.text}"
 
     # Creating a bearer credential should fail with 409 (no security scheme)
-    resp = client.post(
+    resp = admin_client.post(
         "/credentials",
-        cookies=admin_session,
         json={
             "label": "Should Fail",
             "value": "some-token",

@@ -12,15 +12,14 @@ from src.config import JENTIC_PUBLIC_HOSTNAME
 
 
 @pytest.fixture(scope="module")
-def imported_workflow(client, admin_session):
+def imported_workflow(admin_client):
     """Import the test workflow fixture once for the module."""
     workflow_path = Path(__file__).parent / "fixtures" / "test-workflow.arazzo.json"
     assert workflow_path.exists(), f"Test workflow fixture not found: {workflow_path}"
 
-    resp = client.post(
+    resp = admin_client.post(
         "/import",
         json={"sources": [{"type": "path", "path": str(workflow_path)}]},
-        cookies=admin_session,
     )
     assert resp.status_code == 200, f"Import failed: {resp.text}"
     result = resp.json()
@@ -28,11 +27,11 @@ def imported_workflow(client, admin_session):
     return result
 
 
-def test_import_local_workflow_via_path(client, admin_session, imported_workflow):
+def test_import_local_workflow_via_path(admin_client, imported_workflow):
     """Import a local workflow file and verify it appears in the list."""
     assert imported_workflow["status"] == "ok"
 
-    resp = client.get("/workflows", cookies=admin_session)
+    resp = admin_client.get("/workflows")
     assert resp.status_code == 200, f"List workflows failed: {resp.text}"
     workflows = resp.json()
     assert isinstance(workflows, list)
@@ -45,9 +44,9 @@ def test_import_local_workflow_via_path(client, admin_session, imported_workflow
     assert test_workflow["steps_count"] == 2
 
 
-def test_load_workflow_detail(client, admin_session, imported_workflow):
+def test_load_workflow_detail(admin_client, imported_workflow):
     """Load workflow detail endpoint — should not error with pathlib.Path shadowing."""
-    resp = client.get("/workflows/test-workflow", cookies=admin_session)
+    resp = admin_client.get("/workflows/test-workflow")
     assert resp.status_code == 200, f"Load workflow detail failed: {resp.text}"
 
     workflow = resp.json()
@@ -57,11 +56,11 @@ def test_load_workflow_detail(client, admin_session, imported_workflow):
     assert len(workflow["steps"]) == 2
 
 
-def test_inspect_workflow_capability(client, admin_session, imported_workflow):
+def test_inspect_workflow_capability(admin_client, imported_workflow):
     """Load workflow via inspect endpoint — tests capability.py pathlib usage."""
     capability_id = f"POST/{JENTIC_PUBLIC_HOSTNAME}/workflows/test-workflow"
 
-    resp = client.get(f"/inspect/{capability_id}", cookies=admin_session)
+    resp = admin_client.get(f"/inspect/{capability_id}")
     assert resp.status_code == 200, f"Inspect workflow failed: {resp.text}"
 
     capability = resp.json()
@@ -70,7 +69,7 @@ def test_inspect_workflow_capability(client, admin_session, imported_workflow):
     assert "test workflow" in capability["name"].lower()
 
 
-def test_import_inline_workflow(client, admin_session):
+def test_import_inline_workflow(admin_client):
     """Import a workflow via inline content (tests inline import path)."""
     workflow_content = {
         "arazzo": "1.0.0",
@@ -86,7 +85,7 @@ def test_import_inline_workflow(client, admin_session):
         ],
     }
 
-    resp = client.post(
+    resp = admin_client.post(
         "/import",
         json={
             "sources": [
@@ -97,13 +96,12 @@ def test_import_inline_workflow(client, admin_session):
                 }
             ]
         },
-        cookies=admin_session,
     )
     assert resp.status_code == 200, f"Import inline workflow failed: {resp.text}"
     result = resp.json()
     assert result["succeeded"] > 0
 
-    resp = client.get("/workflows/inline-test", cookies=admin_session)
+    resp = admin_client.get("/workflows/inline-test")
     assert resp.status_code == 200, f"Load inline workflow failed: {resp.text}"
     workflow = resp.json()
     assert workflow["slug"] == "inline-test"

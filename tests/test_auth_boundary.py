@@ -36,9 +36,9 @@ def test_agent_cannot_create_credentials(client, agent_key_header):
     assert resp.status_code in (403, 409)
 
 
-def test_human_session_can_access_toolkits(client, admin_session):
+def test_human_session_can_access_toolkits(admin_client):
     """Human sessions can access protected endpoints."""
-    resp = client.get("/toolkits", cookies=admin_session)
+    resp = admin_client.get("/toolkits")
     assert resp.status_code == 200
 
 

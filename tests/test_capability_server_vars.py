@@ -21,7 +21,7 @@ SV_B = {"host": "forum.acme.com"}
 
 
 @pytest.fixture(scope="module")
-def two_local_apis(client, admin_session, agent_key_header):
+def two_local_apis(client):
     """Register two .local APIs with different server_variables on their credentials."""
 
     async def setup():
