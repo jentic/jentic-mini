@@ -30,7 +30,7 @@ Field meanings:
 |---|---|
 | `label` | Human-readable name (for display only) |
 | `value` | The primary secret — API key, token, or password. Encrypted on write, never returned |
-| `identity` | Optional identity — username, client ID, account SID. Required for `basic` auth and compound apiKey schemes using the canonical `Identity` scheme |
+| `identity` | Optional identity — username, client ID, account SID. Needed for `basic` auth (defaults to `token` if omitted — fine for GitHub PATs) and for compound apiKey schemes using the canonical `Identity` scheme |
 | `api_id` | Which API this credential is for (must match `apis.id`) |
 | `auth_type` | How this credential authenticates: `bearer`, `basic`, `apiKey`, or `none` |
 | `server_variables` | Optional JSON object of values for OpenAPI `servers[].variables` — see [server-variables.md](server-variables.md) |

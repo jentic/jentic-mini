@@ -1,4 +1,4 @@
-# self-registration.md — Jentic Mini in Jentic Mini
+# Self-Registration — Jentic Mini in Jentic Mini
 
 ## Overview
 
@@ -18,7 +18,7 @@ The self-registration lifecycle hook lives in `src/startup.py`.
    - `id`: `jentic-mini` (literal; not the hostname)
    - `api_id`: the resolved API ID (usually `{JENTIC_PUBLIC_HOSTNAME}`)
    - `label`: `Jentic Mini Admin Key`
-   - `auth_type` persisted via the `scheme_name="JenticApiKey"` legacy parameter (see [decisions.md](decisions.md))
+   - `auth_type`: `JenticApiKey` (written via the legacy `scheme_name` parameter in `src/vault.py`; see [decisions.md](decisions.md))
    - Value: a freshly-generated `tk_xxx` admin key
 
    If this credential already exists (subsequent boots), it is **not** regenerated — the existing key remains valid.
