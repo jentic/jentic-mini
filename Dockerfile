@@ -22,7 +22,7 @@ COPY pyproject.toml pdm.lock ./
 # transitive CVEs in wheel and the setuptools-vendored copies of
 # wheel / jaraco.context reported by Trivy against the final image.
 RUN /root/.local/bin/pdm install --prod --no-editable --no-self --frozen-lockfile \
- && /app/.venv/bin/pip install --upgrade --no-cache-dir pip setuptools wheel
+ && /app/.venv/bin/python -m pip install --upgrade --no-cache-dir pip setuptools wheel
 
 # Stage 3: Runtime
 FROM python:3.11-slim
