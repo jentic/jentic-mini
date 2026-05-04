@@ -310,20 +310,13 @@ async def lazy_import_catalog_workflows(api_id: str) -> list[str]:
         # Save as a single-workflow arazzo file so execution always picks the right one
         single_doc = {**doc, "workflows": [wf]}
         arazzo_file = (WORKFLOWS_DIR / f"catalog_{safe_id}_{slug}.json").resolve()
-        # Path traversal is prevented by three layers:
-        #   1. safe_id is whitelist-sanitized to [a-z0-9_-] above.
-        #   2. slug is whitelist-sanitized to [a-z0-9-] above.
-        #   3. The resolve() + relative_to() guard below blocks any residual escape
-        #      (both sides are resolved, so `..` and symlinks are normalised first).
-        # CodeQL does not model Path.relative_to() as a sanitiser, so the
-        # py/path-injection alert on the open() below is a false positive.
         try:
             arazzo_file.relative_to(workflows_root)
         except ValueError:
             log.warning("Path traversal blocked for workflow '%s'", workflow_id)
             continue
         arazzo_path = str(arazzo_file)
-        with open(arazzo_path, "w") as f:  # codeql[py/path-injection]
+        with open(arazzo_path, "w") as f:
             json.dump(single_doc, f, indent=2)
 
         try:
