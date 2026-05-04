@@ -18,10 +18,12 @@ RUN curl -sSL https://pdm-project.org/install-pdm.py | python3 - --version 2.25.
 COPY pyproject.toml pdm.lock ./
 # Install locked project deps, then upgrade bootstrap tooling inside the venv.
 # PDM-managed venvs don't bundle pip, so bootstrap it with ensurepip first.
-# pip / setuptools / wheel are not in pdm.lock (bootstrap-only), so upgrading
-# them post-install does not conflict with the frozen lockfile. This clears
-# transitive CVEs in wheel and the setuptools-vendored copies of
-# wheel / jaraco.context reported by Trivy against the final image.
+# pip / setuptools / wheel are not in pdm.lock (bootstrap-only) and are not
+# imported at runtime — they only exist so the venv can install things. We
+# intentionally don't pin versions here: unpinned --upgrade is self-healing
+# against future CVEs and avoids manual-bump toil; Trivy gates regressions.
+# This clears transitive CVEs in wheel and the setuptools-vendored copies
+# of wheel / jaraco.context reported by Trivy against the final image.
 RUN /root/.local/bin/pdm install --prod --no-editable --no-self --frozen-lockfile \
  && /app/.venv/bin/python -m ensurepip --upgrade \
  && /app/.venv/bin/python -m pip install --upgrade --no-cache-dir pip setuptools wheel
