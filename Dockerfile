@@ -16,7 +16,13 @@ WORKDIR /app
 RUN curl -sSL https://pdm-project.org/install-pdm.py | python3 - --version 2.25.5
 
 COPY pyproject.toml pdm.lock ./
-RUN /root/.local/bin/pdm install --prod --no-editable --no-self --frozen-lockfile
+# Install locked project deps, then upgrade bootstrap tooling inside the venv.
+# pip / setuptools / wheel are not in pdm.lock (bootstrap-only), so upgrading
+# them post-install does not conflict with the frozen lockfile. This clears
+# transitive CVEs in wheel and the setuptools-vendored copies of
+# wheel / jaraco.context reported by Trivy against the final image.
+RUN /root/.local/bin/pdm install --prod --no-editable --no-self --frozen-lockfile \
+ && /app/.venv/bin/pip install --upgrade --no-cache-dir pip setuptools wheel
 
 # Stage 3: Runtime
 FROM python:3.11-slim
