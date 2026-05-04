@@ -1,21 +1,34 @@
+# Decisions
 
----
+Architectural decisions that deserve a written record. Each entry names the
+context, the choice made, and the implications for future work.
 
-## scheme_name → future scheme_type (raised 2026-03-21)
+## `auth_type` is the live credential scheme column (raised 2026-03-21, revised 2026-05-04)
 
-**Context:** All credentials in the default toolkit have `scheme_name: null`. The Pipedream broker path is the only active user of `scheme_name` (hardcoded to `'pipedream_oauth'`). No regular credentials use the field.
+**Context:** Credentials are written with `auth_type` (one of `bearer`, `basic`,
+`apiKey`, `none`). The Pipedream broker path additionally writes the reserved
+internal value `pipedream_oauth` to the same column (see
+`src/brokers/pipedream.py`); agents cannot set `pipedream_oauth` via
+`POST /credentials` — it is enforced as reserved by `src/routers/credentials.py`.
 
-**Decision:** Leave `scheme_name` in place for now (no active users, so no breakage from leaving it). Do NOT rely on it for new credential matching.
+An earlier version of this note referred to a `scheme_name` column. That column
+was retired by migration `0004_credential_routes`: `scheme_name` now survives
+only as a legacy parameter name in `src/vault.py` (`create_credential(...,
+scheme_name=...)`), which is immediately stored as `auth_type`. The Python
+parameter is a misnomer — the persisted column is `auth_type`.
 
-**Future plan:** When multi-scheme API disambiguation is needed, rename the field to **`scheme_type`** — not `scheme_name` — because the valid values are a finite, spec-defined set:
+**Decision:** Treat `auth_type` as the canonical credential scheme column. Do
+not add new code that reads or writes a `scheme_name` column.
 
-- `bearer`
-- `basic`  
-- `apiKey`
-- `oauth2_client_credentials`
-- `openIdConnect`
+**Future plan — multi-scheme disambiguation:** If a single API exposes multiple
+security schemes of the same `auth_type` (e.g. two distinct apiKey header names),
+matching on `auth_type` alone is not enough. The planned resolution is to match
+on the security-scheme `type` as defined by OpenAPI (`bearer`, `basic`,
+`apiKey`, `oauth2`, `openIdConnect`) combined with scheme-specific disambiguators
+already carried on the credential (e.g. `identity`, `scheme.name`). A new column
+is not currently needed; the `auth_type` enum in `src/models.py` already mirrors
+the OpenAPI type space minus the variants that have no in-scope use case.
 
-These map to the `type` field on `SchemeInput`. The key distinction: `scheme_name` was meant to match the *key name* in `securitySchemes` (e.g. `"BasicAuth"`, `"bearerAuth"` — arbitrary strings set by the spec author). `scheme_type` would instead match the *type* (standardised values from the OpenAPI spec). This is more robust and less brittle to naming convention differences between API specs.
-
-**Also needed:** Document the valid values in the API OpenAPI spec when the field is promoted to `scheme_type`.
-
+**Not planned:** Renaming `auth_type` → `scheme_type`, or adding `scheme_name`
+back as a second column. Both would be migration churn without a concrete
+use case.

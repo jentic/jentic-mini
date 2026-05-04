@@ -69,7 +69,7 @@ Currently releases are published manually via the GitHub UI. For a proper releas
 - Use [Release Please](https://github.com/googleapis/release-please) or similar to automate changelog + tag creation from conventional commits
 - Or keep it manual but document the checklist
 
-### 4. Version pinning for Docker Compose users (priority: low)
+### 2. Version pinning for Docker Compose users (priority: low)
 
 Self-hosters using `docker compose` should be able to pin to a specific version. Once images are published to a registry (GHCR or Docker Hub), the compose file should reference a versioned tag rather than `latest`:
 
@@ -81,7 +81,7 @@ image: ghcr.io/jentic/jentic-mini:latest  # always latest
 
 This isn't relevant until images are published to a registry.
 
-### 5. Backend-initiated update notifications (future)
+### 3. Backend-initiated update notifications (future)
 
 Currently the update check is purely client-side. A future option is for the backend to log a warning on startup if it detects it's running an outdated version — useful for headless/API-only deployments where no one opens the UI.
 

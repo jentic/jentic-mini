@@ -6,7 +6,7 @@ All credential values are encrypted at rest using [Fernet](https://cryptography.
 
 **Encryption key:** `JENTIC_VAULT_KEY` environment variable. If absent or invalid at startup, a new key is auto-generated and written to `data/vault.key`. Keep this file safe — losing it means all stored credentials are unrecoverable.
 
-**Write-only semantics:** Credential values are accepted by POST/PATCH endpoints but **never returned**. GET and list endpoints return only `id`, `label`, `api_id`, and `auth_type`. There is no way to retrieve a plaintext credential value through the API once stored.
+**Write-only semantics:** Credential values are accepted by POST/PATCH endpoints but **never returned**. GET and list endpoints return credential metadata (id, label, api_id, auth_type, identity, server_variables, routes, scheme, timestamps) but never the encrypted `value` or `identity` secrets. There is no way to retrieve a plaintext credential value through the API once stored.
 
 ---
 
@@ -30,11 +30,14 @@ Field meanings:
 |---|---|
 | `label` | Human-readable name (for display only) |
 | `value` | The primary secret — API key, token, or password. Encrypted on write, never returned |
-| `identity` | Optional identity — username, client ID, account SID. Required for `basic`/`digest` auth and compound apiKey schemes using the canonical `Identity` scheme name |
+| `identity` | Optional identity — username, client ID, account SID. Required for `basic` auth and compound apiKey schemes using the canonical `Identity` scheme |
 | `api_id` | Which API this credential is for (must match `apis.id`) |
-| `auth_type` | How this credential authenticates: `bearer`, `basic`, `apiKey`, or `pipedream_oauth` |
+| `auth_type` | How this credential authenticates: `bearer`, `basic`, `apiKey`, or `none` |
+| `server_variables` | Optional JSON object of values for OpenAPI `servers[].variables` — see [server-variables.md](server-variables.md) |
 
-The `api_id` + `auth_type` pair is what the broker uses to match credentials to requests.
+`pipedream_oauth` is a reserved internal `auth_type` written by the Pipedream sync flow; it cannot be set via `POST /credentials`.
+
+The `api_id` and any declared `credential_routes` are what the broker uses to match credentials to requests.
 
 ---
 
@@ -55,9 +58,9 @@ When the broker receives a request with a toolkit key, it only considers credent
 
 ---
 
-## Registering Auth for an API (The Scheme Flywheel)
+## Registering Auth for an API (The Overlay Flywheel)
 
-Many real-world OpenAPI specs have missing or incorrect security scheme definitions. Jentic Mini handles this gracefully via a flywheel pattern that progressively improves auth coverage.
+Many real-world OpenAPI specs have missing or incorrect security scheme definitions. Jentic Mini handles this via overlays — OpenAPI Overlay 1.0 documents that patch the stored spec. Overlays start as **pending** and auto-confirm the first time a broker call using them returns a 2xx.
 
 ### Step-by-step
 
@@ -68,33 +71,51 @@ curl http://localhost:8900/api.discourse.example.com/latest.json \
   -H "X-Jentic-API-Key: $KEY"
 ```
 
-If no credential/scheme is found, the broker returns:
+If the API has no security scheme declared, the broker returns a 409 pointing to the overlay endpoint:
+
 ```json
 {
-  "error": "no_credentials_found",
-  "message": "No credentials configured for api.discourse.example.com",
-  "hint": "Register a security scheme: POST /apis/api.discourse.example.com/scheme"
+  "error": "no_security_scheme",
+  "message": "API 'api.discourse.example.com' has no security scheme declared. Submit an OpenAPI overlay to add one.",
+  "submit_to": "POST /apis/api.discourse.example.com/overlays"
 }
 ```
 
-**2. Register a security scheme**
+If credentials are missing for an API that does have a scheme, the broker returns 403 `policy_denied` instead.
+
+**2. Submit an OpenAPI overlay adding the security scheme**
 
 ```http
-POST /apis/{api_id}/scheme
+POST /apis/{api_id}/overlays
 Content-Type: application/json
 
 {
-  "type": "apiKey",
-  "config": {
-    "location": "header",
-    "name": "Api-Key"
+  "overlay": {
+    "overlay": "1.0.0",
+    "info": {"title": "Add apiKey scheme", "version": "1.0.0"},
+    "actions": [
+      {
+        "target": "$",
+        "update": {
+          "components": {
+            "securitySchemes": {
+              "ApiKeyAuth": {"type": "apiKey", "in": "header", "name": "Api-Key"}
+            }
+          }
+        }
+      },
+      {
+        "target": "$.paths[*][*]",
+        "update": {"security": [{"ApiKeyAuth": []}]}
+      }
+    ]
   }
 }
 ```
 
-This creates a **pending overlay** — an OpenAPI overlay document that adds the security scheme to the API's spec.
+The overlay starts as `pending`. See the full overlay shape and targets (including compound apiKey schemes like Discourse's `Api-Key` + `Api-Username`) in the `POST /apis/{api_id}/overlays` endpoint docs at `/docs`.
 
-**3. Create a credential bound to that scheme**
+**3. Create a credential bound to that API**
 
 ```http
 POST /credentials
@@ -115,47 +136,37 @@ POST /toolkits/{toolkit_id}/credentials
 
 **5. Retry the broker call**
 
-On the first HTTP 2xx response, the overlay status automatically flips from `pending` to `confirmed`. The scheme is now part of the permanent API catalog for all toolkits.
+On the first HTTP 2xx response, the first pending overlay for this API auto-flips to `confirmed`. The scheme is now part of the merged spec for all toolkits.
 
-### Supported Scheme Types
+### Scheme Types and Injection Shape
 
-| Type | Config fields | Injects |
+The broker selects one of the merged security schemes at request time and builds the auth header from the matching credential's fields:
+
+| OpenAPI scheme | Credential `auth_type` | Injects |
 |---|---|---|
-| `apiKey` (header) | `location: "header"`, `name: "X-Api-Key"` | Request header |
-| `apiKey` (query) | `location: "query"`, `name: "api_key"` | Query parameter |
-| `apiKey` (cookie) | `location: "cookie"`, `name: "session"` | Cookie header |
-| `bearer` | (none) | `Authorization: Bearer {value}` |
-| `basic` | (none) | `Authorization: Basic base64("{identity ?? 'token'}:{value}")` — set `identity` on the credential for user/password APIs |
+| `{type: "http", scheme: "bearer"}` | `bearer` | `Authorization: Bearer {value}` |
+| `{type: "http", scheme: "basic"}` | `basic` | `Authorization: Basic base64("{identity ?? 'token'}:{value}")` |
+| `{type: "apiKey", in: "header", name: "..."}` | `apiKey` | Request header with the declared name |
 
-### Raw Overlay Registration
-
-For full control, you can POST an OpenAPI overlay document directly:
-
-```http
-POST /apis/{api_id}/overlays
-Content-Type: application/json
-
-{
-  "overlay": { ... OpenAPI overlay document ... }
-}
-```
+apiKey schemes declared with `in: "query"` or `in: "cookie"` are parsed but not currently injected — the broker logs a warning and skips them. Add them as header schemes via overlay if you can.
 
 ---
 
 ## Broker Injection Mechanics
 
-When the broker receives a request for `/{host}/{path}`, it resolves credentials in this order:
+When the broker receives a request for `/{host}/{path}`, it resolves credentials roughly as follows:
 
-1. **Identify the upstream host** from the URL path (e.g. `api.elevenlabs.io`)
-2. **Find the API registration** whose `id` matches or is a parent domain of the host
-3. **Get all credentials** in this toolkit bound to that `api_id`
-4. **Get merged security schemes** — OpenAPI spec schemes + any confirmed overlays for this API
-5. **For each credential**, match `auth_type` to a scheme entry and build the appropriate auth header
-6. **Inject headers** into the forwarded request
+1. **Identify the upstream host** from the URL path (e.g. `api.elevenlabs.io`).
+2. **Find matching credentials** via the `credential_routes` table (host + optional path prefix), scoped to the caller's toolkit.
+3. **Load merged security schemes** for the API — OpenAPI spec schemes plus any confirmed/pending overlays.
+4. **Match a credential to a scheme** by `auth_type` (and scheme-specific disambiguators), then build and inject the auth header.
+5. **Forward the request** to the upstream and return the response verbatim.
 
-If no matching credential is found → 400 with `no_credentials_found` hint.
+If the caller supplies `X-Jentic-Credential: <id>` or `X-Jentic-Service: <service>`, the broker uses that as a hard override / preferred-match hint. When two credentials match ambiguously and the caller gave no hint, the broker returns `409 CREDENTIAL_AMBIGUOUS` with an `X-Jentic-Credential-Ambiguous: true` response header.
 
-If the API has no security schemes (spec has none and no confirmed overlays) → 400 with hint to call `POST /apis/{api_id}/scheme`.
+If **no credential matches** and the request is authenticated, the broker returns `403 policy_denied`. If the **API has no security scheme at all**, the broker returns `409 no_security_scheme` pointing at `POST /apis/{api_id}/overlays`.
+
+See [broker-cli.md](broker-cli.md) for credential selection headers and simulate mode.
 
 ---
 
@@ -178,7 +189,7 @@ POST /toolkits/{toolkit_id}/keys
 }
 ```
 
-Returns the key once. Store it — it cannot be retrieved again.
+Returns the key once. Store it — it cannot be retrieved again. If `allowed_ips` is omitted, the key inherits the trusted-subnet allowlist (RFC-1918 + loopback + `JENTIC_TRUSTED_SUBNETS` extras). See [auth.md](auth.md).
 
 ### Revoke a key
 
@@ -200,6 +211,6 @@ GET /toolkits/{toolkit_id}/keys
 
 - The vault key (`JENTIC_VAULT_KEY` / `data/vault.key`) must be backed up separately. It is not stored in git.
 - Credential values are never logged, never returned, and never passed to subprocess environments.
-- The `env_var` field (e.g. `ELEVENLABS_APIKEYAUTH`) is used as a vault lookup key — it does not correspond to any actual environment variable name in the host OS.
+- The `env_var` column on a credential row is a legacy UNIQUE identifier derived from the credential ID. It is not a lookup key and does not correspond to any environment variable on the host.
 - Per-key IP restrictions (`allowed_ips`) are evaluated against the `X-Forwarded-For` header when behind a proxy, or the direct client IP.
 - Human admin sessions (via login) bypass toolkit scoping for credential management.

@@ -138,7 +138,7 @@ The catalog manifest is fetched lazily at startup (two GitHub API calls) and cac
 ```http
 # Just add credentials — Jentic Mini handles the rest
 POST /credentials
-{ "api_id": "slack.com", "scheme_name": "BearerAuth", "values": { "token": "xoxb-..." } }
+{ "api_id": "slack.com", "auth_type": "bearer", "value": "xoxb-..." }
 
 # Slack's 17 workflows and its full API spec are now in your local registry
 GET /workflows?source=local&q=slack

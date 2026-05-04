@@ -71,43 +71,42 @@ X-PD-Environment: production
 
 ## DB Schema
 
-```sql
--- Platform-level OAuth broker config (one row per registered broker)
-CREATE TABLE oauth_brokers (
-    id                       TEXT PRIMARY KEY,   -- e.g. "pipedream"
-    type                     TEXT NOT NULL,       -- "pipedream"
-    client_id                TEXT NOT NULL,
-    client_secret_enc        TEXT NOT NULL,       -- Fernet-encrypted
-    project_id               TEXT,
-    environment              TEXT DEFAULT 'production',
-    default_external_user_id TEXT DEFAULT 'default',
-    created_at               REAL
-);
+The authoritative schema lives in `alembic/versions/` — see `0001_baseline.py` and
+subsequent revisions (`0002`, `0003` amend the OAuth-broker tables). The tables
+in play:
 
--- Per-user, per-host connected account mappings
-CREATE TABLE oauth_broker_accounts (
-    id               TEXT PRIMARY KEY,
-    broker_id        TEXT NOT NULL REFERENCES oauth_brokers(id) ON DELETE CASCADE,
-    external_user_id TEXT NOT NULL,
-    api_host         TEXT NOT NULL,   -- e.g. "api.slack.com"
-    app_slug         TEXT NOT NULL,   -- e.g. "slack"
-    account_id       TEXT NOT NULL,   -- e.g. "apn_abc123"
-    healthy          INTEGER DEFAULT 1,
-    synced_at        REAL,
-    UNIQUE(broker_id, external_user_id, api_host)
-);
-```
+- **`oauth_brokers`** — one row per registered broker: `id`, `type`, `client_id`,
+  `client_secret_enc` (Fernet-encrypted), `project_id`, `environment`,
+  `default_external_user_id`, `created_at`.
+- **`oauth_broker_accounts`** — per-user, per-host connected account mappings:
+  `id`, `broker_id`, `external_user_id`, `api_host`, `app_slug`, `account_id`
+  (e.g. `apn_xxx`), `label`, `api_id`, `healthy`, `synced_at`. The effective
+  uniqueness is `(broker_id, external_user_id, api_host, account_id)` after
+  migration `0002` — multiple accounts per host per user are allowed.
+- **`oauth_broker_connect_labels`** — labels pinned to outstanding connect-link
+  flows so that the sync step can name the resulting credential correctly.
+- **`api_broker_apps`** — mapping of `api_id` → `broker_app_id` seeded at startup
+  from `API_ID_TO_PD_SLUG` (see `src/brokers/pipedream.py`) for each registered
+  broker.
 
 ## API Surface
 
-| Method | Path | Description |
-|--------|------|-------------|
-| `POST` | `/oauth-brokers` | Register a broker (triggers discovery) |
-| `GET` | `/oauth-brokers` | List all brokers |
-| `GET` | `/oauth-brokers/{id}` | Get broker details |
-| `GET` | `/oauth-brokers/{id}/accounts` | List discovered account mappings |
-| `POST` | `/oauth-brokers/{id}/discover` | Re-run account discovery |
-| `DELETE` | `/oauth-brokers/{id}` | Remove broker + all account mappings |
+All routes are mounted under `/oauth-brokers`. `{broker_id}` is the registered
+broker's ID (`pipedream` by default when you register a single Pipedream broker).
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| `POST` | `/oauth-brokers` | Human session | Register a broker |
+| `GET` | `/oauth-brokers` | Any key | List registered brokers |
+| `GET` | `/oauth-brokers/{broker_id}` | Any key | Get broker details |
+| `PATCH` | `/oauth-brokers/{broker_id}` | Human session | Update broker config |
+| `DELETE` | `/oauth-brokers/{broker_id}` | Human session | Remove broker + all account mappings |
+| `POST` | `/oauth-brokers/{broker_id}/connect-link` | Agent or human | Generate a one-time OAuth connect URL |
+| `POST` | `/oauth-brokers/{broker_id}/sync` | Agent or human | Sync connected accounts into the vault, triggering discovery |
+| `GET` | `/oauth-brokers/{broker_id}/accounts` | Any key | List discovered account mappings |
+| `PATCH` | `/oauth-brokers/{broker_id}/accounts/{account_id}` | Human session | Update account metadata (label) |
+| `DELETE` | `/oauth-brokers/{broker_id}/accounts/{account_id}` | Human session | Disconnect an account (revoke + local cleanup) |
+| `POST` | `/oauth-brokers/{broker_id}/accounts/{account_id}/reconnect-link` | Human session | Get a reconnect link for an existing account |
 
 ### Register a Pipedream broker
 
@@ -115,30 +114,32 @@ CREATE TABLE oauth_broker_accounts (
 POST /oauth-brokers
 {
   "type": "pipedream",
-  "client_id": "oa_abc123",
-  "client_secret": "pd_secret_xxxx",
-  "project_id": "proj_abc123",
-  "environment": "production",
-  "default_external_user_id": "default"
+  "config": {
+    "client_id": "oa_abc123",
+    "client_secret": "pd_secret_xxxx",
+    "project_id": "proj_abc123",
+    "environment": "production",
+    "support_email": "admin@example.com"
+  }
 }
 ```
 
-Response includes `accounts_discovered` — the count of API host mappings found for this project.
+Response (`OAuthBrokerOut`) echoes the broker's `id`, `type`, non-sensitive `config`, `created_at`, and an `accounts_discovered` count (populated by an initial `discover_accounts("default")` call made on registration).
 
-`client_secret` is write-only. Never returned.
+`client_secret` is write-only — never returned via the API.
 
 ## Account Discovery
 
-On broker registration (and on `POST /oauth-brokers/{id}/discover`):
+Discovery runs inside `POST /oauth-brokers/{broker_id}/sync`:
 
 1. Fetch Pipedream access token via client credentials
 2. `GET /accounts?external_user_id={id}` — list connected apps for this user
-3. For each account, extract `app.name_slug` (e.g. `"slack"`)
-4. Reverse-map slug → api_host(s) using the internal `API_ID_TO_PD_SLUG` mapping
+3. For each account, extract `app.name_slug` (or fall back to `app.slug` when missing) — e.g. `"slack"`
+4. Reverse-map slug → api_host(s) using the internal `API_ID_TO_PD_SLUG` mapping (see `src/brokers/pipedream.py`)
 5. Upsert into `oauth_broker_accounts`
+6. Create `credentials` rows with `auth_type='pipedream_oauth'` and corresponding `credential_routes` so the broker can route to them
 
-When a user connects a new app via Pipedream's hosted OAuth UI, call
-`POST /oauth-brokers/{id}/discover` to pull it in without re-registering.
+When a user connects a new app via Pipedream's hosted OAuth UI, call `POST /oauth-brokers/{broker_id}/sync` to pull it in without re-registering.
 
 ## Migration Path: Pipedream → Jentic OAuth
 
@@ -155,7 +156,7 @@ The `OAuthBroker` protocol is the only interface the broker layer touches.
 | File | Purpose |
 |------|---------|
 | `src/oauth_broker.py` | Protocol definition + `OAuthBrokerRegistry` singleton |
-| `src/brokers/pipedream.py` | `PipedreamOAuthBroker` implementation |
-| `src/routers/oauth_brokers.py` | CRUD API for managing broker configs |
-| `src/routers/broker.py` | Vault-first fallback chain (modified) |
-| `src/db.py` | `oauth_brokers` + `oauth_broker_accounts` tables |
+| `src/brokers/pipedream.py` | `PipedreamOAuthBroker` implementation, slug mapping |
+| `src/routers/oauth_brokers.py` | CRUD API for managing broker configs and accounts |
+| `src/routers/broker.py` | Vault-first fallback chain that consults the registry |
+| `alembic/versions/0001_baseline.py` (+ `0002`, `0003`) | Authoritative schema for the OAuth-broker tables |
