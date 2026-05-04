@@ -16,7 +16,7 @@ from src.routers.overlays import confirm_overlay
 
 
 @pytest.fixture(scope="module")
-def test_api(admin_client):
+def test_api():
     """Register a test API and return its api_id."""
     api_id = "overlay-test.example.com"
 

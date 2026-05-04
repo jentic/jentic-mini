@@ -24,7 +24,7 @@ WORKFLOW_AUTH_HOST = "127.0.10.50"
 
 
 @pytest.fixture(scope="module")
-def workflow_auth_credential(admin_client, agent_key_header):
+def workflow_auth_credential():
     """Set up a credential to test auth vs anonymous broker paths."""
 
     async def setup():

@@ -21,7 +21,7 @@ HTTP_API_ID = "http-local.local"
 
 
 @pytest.fixture(scope="module")
-def local_apis_with_credentials(client, admin_client, agent_key_header):
+def local_apis_with_credentials(client):
     """Register two .local APIs (https + http templates) with credentials and routes."""
 
     async def setup():
