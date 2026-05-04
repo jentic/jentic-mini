@@ -122,7 +122,7 @@ First-time setup is guided through the UI at `http://localhost:8900`. Alternativ
 | Tag             | Who uses it   | Purpose                                                                                   |
 | --------------- | ------------- | ----------------------------------------------------------------------------------------- |
 | **search**      | Agents        | Full-text search — the main entrypoint                                                    |
-| **discover**    | Agents        | Inspect capabilities, list APIs and operations                                            |
+| **inspect**     | Agents        | Inspect a capability before calling it — parameters, response schema, auth requirements   |
 | **execute**     | Agents        | Transparent request broker — runs API operations and Arazzo workflows                     |
 | **toolkits**    | Agents/Humans | Toolkits, access keys, policies, permission requests                                      |
 | **observe**     | Agents        | Read execution traces                                                                     |
@@ -138,13 +138,13 @@ The catalog manifest is fetched lazily at startup (two GitHub API calls) and cac
 ```http
 # Just add credentials — Jentic Mini handles the rest
 POST /credentials
-{ "api_id": "slack.com", "scheme_name": "BearerAuth", "values": { "token": "xoxb-..." } }
+{ "api_id": "slack.com", "auth_type": "bearer", "value": "xoxb-..." }
 
 # Slack's 17 workflows and its full API spec are now in your local registry
 GET /workflows?source=local&q=slack
 ```
 
-See [docs/CATALOG.md](https://github.com/jentic/jentic-mini/blob/main/docs/CATALOG.md) for full details.
+See [docs/catalog.md](https://github.com/jentic/jentic-mini/blob/main/docs/catalog.md) for full details.
 
 ## Updating
 
@@ -175,7 +175,7 @@ The admin UI targets modern browsers: **Chrome 107+**, **Firefox 104+**, **Safar
 Prerequisites for local development without Docker:
 
 - [Python 3.11+](https://www.python.org/downloads/)
-- [Node.js 22+](https://nodejs.org/) (24 recommended — matches Docker and `.nvmrc`)
+- [Node.js 24](https://nodejs.org/) (matches Docker and `.nvmrc`)
 
 Python source (`src/`) is volume-mounted into the container — edit any `.py` file and the server hot-reloads automatically.
 
@@ -187,7 +187,7 @@ docker compose -f compose.yml -f compose.dev.yml up
 
 This starts a Vite dev server on `http://localhost:5173` with hot module replacement, proxying API calls to the backend on port 8900. Edit files in `ui/` and changes appear instantly.
 
-Alternatively, run Vite directly on the host (requires Node.js 20+):
+Alternatively, run Vite directly on the host (requires Node.js 24):
 
 ```bash
 cd ui && npm install && npm run dev

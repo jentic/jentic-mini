@@ -92,7 +92,7 @@ The agent will attempt to call the Notion API with a DELETE or an archive PATCH.
 
 ## Next: Gmail with OAuth and fine-grained permissions
 
-The Notion example uses a simple API key. For APIs that require OAuth (Gmail, Slack, Google Drive, etc.), Jentic Mini integrates with [Pipedream Connect](../PIPEDREAM.md) to handle the OAuth flow — your agent generates a link, you click it, and the token is stored in the vault automatically.
+The Notion example uses a simple API key. For APIs that require OAuth (Gmail, Slack, Google Drive, etc.), Jentic Mini integrates with [Pipedream Connect](../pipedream.md) to handle the OAuth flow — your agent generates a link, you click it, and the token is stored in the vault automatically.
 
 The [Gmail tutorial](02-gmail-oauth-permissions.md) walks through connecting Gmail and setting permissions so your agent can draft emails but not send them — a boundary that Gmail's own OAuth scopes don't offer.
 
@@ -101,7 +101,7 @@ The [Gmail tutorial](02-gmail-oauth-permissions.md) walks through connecting Gma
 ## More next steps
 
 - **Add more APIs** — ask your agent to search the Jentic catalog for any API you use, or browse at `http://localhost:8900/catalog`
-- **Connect OAuth apps** — Slack, Google Drive, Salesforce, and 3,000+ more via [Pipedream Connect](../PIPEDREAM.md)
+- **Connect OAuth apps** — Slack, Google Drive, Salesforce, and 3,000+ more via [Pipedream Connect](../pipedream.md)
 - **Create additional toolkits** — scope different agents to different APIs and permissions
-- **Explore workflows** — multi-step Arazzo workflows chain operations across APIs — see [WORKFLOWS.md](../WORKFLOWS.md)
+- **Explore workflows** — multi-step Arazzo workflows chain operations across APIs — see [workflows.md](../workflows.md)
 - **Read the full API docs** — Swagger UI at `http://localhost:8900/docs`

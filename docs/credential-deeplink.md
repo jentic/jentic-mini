@@ -18,7 +18,7 @@ complete only the secret — keeping sensitive values out of the conversation.
 | `api_id` | **Required for deeplink.** The registered API ID (e.g. `discourse.org`, `api.openai.com`). Skips the API picker and goes straight to the fill form. |
 | `label` | Pre-fills the credential label shown in the UI. |
 | `identity` | Pre-fills the identity/username field (used for compound auth like Discourse `Api-Username`, or HTTP Basic username). |
-| `server_vars[<name>]` | Pre-fills a server variable. Repeat for multiple variables. Example: `server_vars[defaultHost]=techpreneurs.ie` |
+| `server_vars[<name>]` | Pre-fills a server variable. Repeat for multiple variables. Example: `server_vars[host]=techpreneurs.ie` |
 | `value` | Pre-fills the secret/token field. **Avoid passing real secrets** — send the URL without `value` and let the user paste the secret in the browser. |
 
 ## Example — OpenAI (simple API key)
@@ -38,7 +38,7 @@ https://jentic-mini.home.seanblanchfield.com/credentials/new
   ?api_id=discourse.org
   &label=Techpreneurs+Discourse
   &identity=seanblanchfield
-  &server_vars[defaultHost]=techpreneurs.ie
+  &server_vars[host]=techpreneurs.ie
 ```
 
 The user opens it, sees the form pre-filled with everything except the API key,

@@ -14,65 +14,75 @@ Arazzo is to API workflows what OpenAPI is to individual operations.
 
 ---
 
-## How JPE Executes Workflows
+## How Jentic Mini Executes Workflows
 
 ### Invocation
 
-The canonical way to execute a workflow is via the broker, using the workflow's Capability ID:
+A workflow can be dispatched two equivalent ways:
 
 ```bash
-curl -X POST http://localhost:8900/localhost/workflows/summarise-latest-topics \
+# Direct — short path
+curl -X POST http://localhost:8900/workflows/summarise-latest-topics \
   -H "X-Jentic-API-Key: $KEY" \
   -H "Content-Type: application/json" \
-  -d '{"inputs": {"topic_count": 5}}'
+  -d '{"topic_count": 5}'
 ```
 
-The workflow Capability ID format: `POST/{jpe_hostname}/workflows/{slug}`
+```bash
+# Via the broker using the capability ID
+curl -X POST "http://localhost:8900/$JENTIC_PUBLIC_HOSTNAME/workflows/summarise-latest-topics" \
+  -H "X-Jentic-API-Key: $KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"topic_count": 5}'
+```
+
+The broker detects self-hostname (`JENTIC_PUBLIC_HOSTNAME`, `localhost`, or the request's own Host header) and dispatches internally rather than forwarding upstream.
+
+Workflow capability ID format: `POST/{JENTIC_PUBLIC_HOSTNAME}/workflows/{slug}`.
 
 ### Execution Flow
 
 ```
-1. Client calls POST /{jpe_hostname}/workflows/{slug}
-   (routed through the broker)
+1. Client calls POST /workflows/{slug}
+   (or POST /{JENTIC_PUBLIC_HOSTNAME}/workflows/{slug} via the broker)
 
-2. Broker detects the JPE hostname → internal dispatch
-   (does NOT proxy to an external server)
+2. workflows.py: dispatch_workflow(slug, body_bytes, caller_api_key, toolkit_id, ...)
 
-3. dispatch_workflow(slug, inputs, collection_id) in workflows.py:
+3. Read Arazzo spec from disk (workflows.arazzo_path)
 
-4. Read Arazzo spec from disk (workflows.arazzo_path)
+4. Apply input schema defaults
+   (fields with defaults are optional in the request body)
 
-5. Apply input schema defaults
-   (fields with defaults are optional in the call body)
-
-6. Preprocess Arazzo doc:
+5. Preprocess Arazzo doc:
    For each sourceDescriptions entry:
      - Read the referenced OpenAPI spec
      - Rewrite servers[0].url → http://localhost:8900/{host}
      - Write to a temp file
    Update Arazzo sourceDescriptions to point to temp files
 
-7. Spawn arazzo-runner subprocess with preprocessed spec
+6. Spawn arazzo-runner in a subprocess, handing it a pre-configured
+   requests.Session whose X-Jentic-API-Key header forwards the caller's key
+   on every step call.
 
-8. arazzo-runner executes each step:
-   Step N:
+7. arazzo-runner executes each step:
      - Resolves operation from its source spec
      - Builds URL: http://localhost:8900/{host}/{path}
-     - Calls local broker
+     - Calls the local broker
      - Broker injects credentials, logs trace, forwards to upstream
      - Returns response to runner
      - Runner evaluates output expressions for next step
 
-9. Runner returns: {status, outputs, step_outputs}
+8. Runner returns: {status, outputs, step_outputs}
 
-10. Write trace: executions row + execution_steps rows
+9. Write trace: executions row + execution_steps rows
 
-11. Return to client:
+10. Return to client:
     {
-      "status": "success",
+      "workflow": "Summarise Latest Topics",
       "slug": "summarise-latest-topics",
+      "status": "success",
       "outputs": { ... },
-      "step_outputs": { "step1": {...}, "step2": {...} },
+      "simulate": false,
       "trace_id": "uuid",
       "_links": { "trace": "/traces/uuid" }
     }
@@ -80,54 +90,35 @@ The workflow Capability ID format: `POST/{jpe_hostname}/workflows/{slug}`
 
 ### Error Response
 
-On failure, JPE returns the upstream HTTP status and a structured error:
+On failure, the broker propagates the upstream HTTP status and returns a structured error:
 
 ```json
 {
-  "status": "error",
+  "error": "workflow_execution_failed",
+  "workflow": "My Workflow",
   "slug": "my-workflow",
+  "workflow_status": "failed",
+  "message": "Step 'callOpenAI' failed on api.openai.com (HTTP 400: max_tokens exceeds model limit)",
+  "trace_id": "uuid",
+  "_links": {"trace": "/traces/uuid"},
   "failed_step": {
     "step_id": "callOpenAI",
     "operation": "POST/api.openai.com/v1/chat/completions",
-    "api_host": "api.openai.com",
+    "api": "api.openai.com",
     "http_status": 400,
-    "detail": "max_tokens exceeds model limit"
+    "detail": { "status": 400, "body": { "error": "..." } }
   },
-  "remediation": "Check the inputs for step callOpenAI. The upstream API returned a 400."
+  "remediation": {
+    "message": "This failure may be caused by a workflow logic error or API drift. Read the workflow definition, execute it step-by-step manually, then POST a repaired workflow as a note to help improve the catalog.",
+    "_links": {
+      "workflow_definition": "/workflows/my-workflow",
+      "post_note": "/workflows/my-workflow/notes"
+    }
+  }
 }
 ```
 
-Auth failures (401/403) get a separate remediation hint pointing to the credentials flow.
-
----
-
-## Working Example: Techpreneurs + OpenAI
-
-**Location:** `/mnt/jentic-pe/src/specs/techpreneurs-openai.arazzo.json`
-
-**Capability ID:** `POST/localhost/workflows/summarise-latest-topics`
-
-**What it does:** Fetches the latest topics from the Techpreneurs Discourse forum, then asks OpenAI to summarise them.
-
-**Steps:**
-
-1. `GET techpreneurs.ie/latest.json` — Discourse list-topics endpoint (public, no auth required)
-2. `POST api.openai.com/v1/chat/completions` — sends topics from step 1 to GPT-4 for summarisation
-
-**Required credentials:**
-- `api.openai.com` with scheme `BearerAuth` → bound to your collection
-
-**Invocation:**
-```bash
-curl -X POST http://localhost:8900/localhost/workflows/summarise-latest-topics \
-  -H "X-Jentic-API-Key: $KEY" \
-  -H "Content-Type: application/json" \
-  -d '{}'
-```
-
-(All inputs have defaults, so empty body works.)
-
-**Known issue:** Discourse returns a large JSON payload. If the topics list is too large, the OpenAI step may fail with a 400 (token limit). See the transformation limitation below.
+`remediation` is omitted for auth-related failures (401, 403, 429) since the client already has enough signal to resolve those.
 
 ---
 
@@ -144,11 +135,13 @@ Arazzo runtime expressions (`$steps.X.outputs.Y`) pass data **verbatim** between
 2. Use query parameters to limit response size (e.g. `?per_page=5` on list endpoints)
 3. Pre-process data in workflow inputs before invocation
 
-**Proper solution (not yet built):** A custom Arazzo extension for transformation steps, or a JPE-provided `transform` pseudo-operation at `/localhost/transform` that accepts data + a jq/JSONPath filter and returns the result.
+A `POST /localhost/transform` pseudo-operation accepting `{data, filter}` is a planned resolution — see Phase 5 in `specs/roadmap.md`.
 
 ---
 
 ## Registering a Workflow
+
+`POST /import` accepts a batch of sources. The endpoint auto-detects OpenAPI vs Arazzo by inspecting the document — there is no top-level `type: "workflow"` field on the request.
 
 ### From a URL
 
@@ -158,9 +151,12 @@ X-Jentic-API-Key: {admin_key}
 Content-Type: application/json
 
 {
-  "type": "workflow",
-  "source": "url",
-  "url": "https://raw.githubusercontent.com/org/repo/main/my-workflow.arazzo.json"
+  "sources": [
+    {
+      "type": "url",
+      "url": "https://raw.githubusercontent.com/org/repo/main/my-workflow.arazzo.json"
+    }
+  ]
 }
 ```
 
@@ -168,37 +164,52 @@ Content-Type: application/json
 
 ```http
 POST /import
+
 {
-  "type": "workflow",
-  "source": "inline",
-  "content": { ... arazzo document as JSON ... }
+  "sources": [
+    {
+      "type": "inline",
+      "content": "{ ... arazzo document as JSON string ... }"
+    }
+  ]
 }
 ```
 
 ### From a local file
 
-Place the file in `/mnt/jentic-pe/src/specs/` and use `"source": "file"` with a path.
+Place the file in `data/workflows/` (or anywhere readable by the container) and reference it by path:
+
+```http
+POST /import
+
+{
+  "sources": [
+    {"type": "path", "path": "data/workflows/my-workflow.arazzo.json"}
+  ]
+}
+```
 
 After import, the workflow appears in:
 - `GET /workflows` — list
 - `GET /search?q=...` — BM25 search
-- `GET /inspect/POST/localhost/workflows/{slug}` — inspect
+- `GET /inspect/POST/{JENTIC_PUBLIC_HOSTNAME}/workflows/{slug}` — inspect
 
 ---
 
 ## Inspecting a Workflow
 
 ```http
-GET /inspect/POST/localhost/workflows/summarise-latest-topics
+GET /inspect/POST/{JENTIC_PUBLIC_HOSTNAME}/workflows/summarise-latest-topics
 X-Jentic-API-Key: {key}
 ```
 
 Returns:
+
 ```json
 {
-  "id": "POST/localhost/workflows/summarise-latest-topics",
+  "id": "POST/jentic-mini.example.com/workflows/summarise-latest-topics",
   "type": "workflow",
-  "name": "Summarise Latest Techpreneurs Topics",
+  "name": "Summarise Latest Topics",
   "description": "Fetches latest forum topics and returns an AI-generated summary.",
   "inputs": {
     "type": "object",
@@ -207,11 +218,11 @@ Returns:
     }
   },
   "steps": [
-    {"step_id": "getTopics", "operation": "GET/techpreneurs.ie/latest.json"},
+    {"step_id": "getTopics", "operation": "GET/forum.example.com/latest.json"},
     {"step_id": "summarise", "operation": "POST/api.openai.com/v1/chat/completions"}
   ],
   "_links": {
-    "execute": "/localhost/workflows/summarise-latest-topics"
+    "execute": "/workflows/summarise-latest-topics"
   }
 }
 ```
@@ -285,8 +296,10 @@ Minimal Arazzo document structure:
 }
 ```
 
-Key points for JPE compatibility:
-- `sourceDescriptions[].url` should point to a publicly accessible OpenAPI spec (JPE rewrites this to localhost at execution time)
+Key points for Jentic Mini compatibility:
+
+- `sourceDescriptions[].url` should point to a publicly accessible OpenAPI spec (Jentic Mini rewrites this to route through the local broker at execution time)
 - `operationId` must match an `operationId` in the referenced source spec
 - Output expressions use JSONPath syntax after `#/`
-- The workflow `workflowId` becomes the slug in JPE (kebab-cased if needed)
+- The workflow `workflowId` becomes the slug (kebab-cased if needed)
+- Each step executes through the broker, so credentials for every involved API must be bound to the calling toolkit

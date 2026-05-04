@@ -1,90 +1,34 @@
-# Jentic Personal Edition (JPE)
+# Jentic Mini Docs
 
-Jentic Personal Edition is a locally-running proof-of-concept implementation of the Jentic API — built by Sean Blanchfield (CEO of Jentic) as an internal pressure artifact to validate the v2 API design and show the engineering team what a competitor could build quickly.
+Design and reference documentation for Jentic Mini — the self-hosted,
+open-source implementation of the Jentic API. For the project overview, quick
+start, and deployment instructions, see the repo root [README.md](../README.md).
+For agent-facing usage (search / inspect / execute), see [AGENTS.md](../AGENTS.md).
 
-**This is NOT production Jentic.** It is a FastAPI + SQLite + uvicorn local service.
+## Index
 
-## Goals
+- [architecture.md](architecture.md) — system design, request flow, router registration, data model
+- [auth.md](auth.md) — two-actor auth model, human sessions, agent keys, self-enrollment, trusted subnets
+- [broker-cli.md](broker-cli.md) — routing HTTP clients (git, curl, etc.) through the broker for credential injection
+- [catalog.md](catalog.md) — public catalog manifest, lazy refresh, dedup, auto-import on credential add
+- [credential-deeplink.md](credential-deeplink.md) — `/credentials/new` deep-link query params for agent-assisted credential entry
+- [credentials.md](credentials.md) — vault, credential lifecycle, overlay flywheel, toolkit binding
+- [decisions.md](decisions.md) — architectural decision log
+- [oauth-broker.md](oauth-broker.md) — `OAuthBroker` protocol, token vs proxy modes, registry, DB schema
+- [pipedream.md](pipedream.md) — Pipedream Connect integration: setup, connect-link, sync, supported apps
+- [self-registration.md](self-registration.md) — how the server registers its own OpenAPI spec at startup
+- [server-variables.md](server-variables.md) — OpenAPI server variables for self-hosted / multi-tenant APIs
+- [versioning.md](versioning.md) — `APP_VERSION` source of truth, `/version` endpoint, update-check behaviour
+- [workflows.md](workflows.md) — Arazzo workflow execution, dispatch, import, examples
 
-1. Prove the API design works end-to-end
-2. Test real agent workflows against real APIs
-3. Demonstrate execution speed
-4. Act as a living specification for the real Jentic platform
+Subdirectories:
+- [tutorials/](tutorials/) — step-by-step walkthroughs (Notion API key, Gmail OAuth)
+- [deploy/](deploy/) — deployment recipes
+- [archive/](archive/) — historical / superseded documents
 
-## Quick Start
+## See also
 
-```bash
-# From the host config directory
-cd /configs/jentic-personal-edition
-docker compose up -d
-```
-
-- Service: http://localhost:8900
-- Swagger UI: http://localhost:8900/docs
-- Redoc: http://localhost:8900/redoc
-- Public URL (home network): https://localhost
-
-Authenticate all requests with the `X-Jentic-API-Key` header.
-
-## Environment Variables
-
-Set in `/configs/jentic-personal-edition/docker-compose.yml`:
-
-| Variable | Purpose | Default |
-|---|---|---|
-| `JENTIC_VAULT_KEY` | Fernet key for credential encryption | Auto-generated to `data/vault.key` if absent/invalid |
-| `DB_PATH` | SQLite database path | `/app/data/jpe.db` |
-| `JENTIC_PUBLIC_HOSTNAME` | Public hostname for workflow capability IDs | `localhost` |
-
-## File Layout
-
-```
-/mnt/jentic-pe/              ← host mount point (= /app/ inside container)
-  src/                       ← Python source (uvicorn hot-reloads this)
-    main.py                  ← FastAPI app, router registration, OpenAPI schema
-    auth.py                  ← API key middleware
-    db.py                    ← SQLite schema + migrations
-    vault.py                 ← Fernet-encrypted credential store
-    bm25.py                  ← In-memory BM25 search index
-    models.py                ← Pydantic request/response models
-    utils.py                 ← Shared helpers (_abbreviate, vendor extraction, etc.)
-    routers/
-      capability.py          ← GET /inspect/{id}
-      search.py              ← GET /search
-      apis.py                ← GET /apis/... (+ hidden POST /apis)
-      workflows.py           ← GET /workflows/..., workflow dispatch
-      broker.py              ← catch-all /{host}/{path} proxy
-      import_.py             ← POST /import
-      overlays.py            ← POST /apis/{id}/scheme, /overlays
-      credentials.py         ← /credentials
-      collections.py         ← /collections/...
-      permissions.py         ← /permission-requests
-      notes.py               ← /notes
-      traces.py              ← /traces/...
-      debug.py               ← /debug/... (hidden from OpenAPI schema)
-    static/                  ← Swagger UI + Redoc assets (no CDN, works offline)
-    specs/                   ← Downloaded OpenAPI spec files + Arazzo workflows
-  data/                      ← SQLite DB + vault.key (Docker volume, NOT in git)
-  docs/                      ← This documentation
-```
-
-## Current API Corpus
-
-26 APIs, ~5,200 operations registered:
-
-`api.github.com` · `slack.com/api` · `api.stripe.com` · `api.twilio.com` · `api.openai.com` · `api.hubapi.com` · `api.sendgrid.com` · `api.elevenlabs.io` · `app.asana.com/api` · `atlassian.net` · `discord.com/api` · `travelpartner.googleapis.com` · `api.mailchimp.com` · `api.spotify.com` · `api.telegram.org` · `trello.com` · `api.twitter.com` · `api.zoom.us` · `api.anthropic.com` · `huggingface.co` · `api.mistral.ai` · `api.intercom.io` · `broker-api.alpaca.markets` · `api.apollo.io/api` · `gitlab.com/api` · `techpreneurs.ie`
-
-## Key Concepts
-
-- **Capability ID**: `METHOD/host/path` — e.g. `GET/api.elevenlabs.io/v1/voices`
-- **Workflow ID**: `POST/localhost/workflows/slug`
-- **Collection**: a named bundle of credentials with its own API key(s), policies, and IP restrictions
-- **Broker**: the catch-all proxy at `/{host}/{path}` that injects credentials and enforces policy
-- **Overlay**: a client-contributed security scheme patch for APIs with broken/missing auth specs
-
-## Further Reading
-
-- [ARCHITECTURE.md](ARCHITECTURE.md) — system design, component map, database schema
-- [CREDENTIALS.md](CREDENTIALS.md) — vault, credential lifecycle, auth flywheel
-- [WORKFLOWS.md](WORKFLOWS.md) — Arazzo workflows, execution model, examples
-- [../DEVELOPMENT.md](../DEVELOPMENT.md) — prerequisites, install, running tests, adding APIs, debug endpoints
+- [../README.md](../README.md) — project overview, quick start, configuration
+- [../AGENTS.md](../AGENTS.md) — agent onboarding and runtime reference
+- [../DEVELOPMENT.md](../DEVELOPMENT.md) — prerequisites, installation, running tests
+- [../.claude/CLAUDE.md](../.claude/CLAUDE.md) — working agreement for AI coding agents in this repo

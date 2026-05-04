@@ -77,7 +77,7 @@ Launch **three `Explore` subagents in parallel** — a single message with multi
 
 **Subagent A — Requirements research** (grounds `requirements.md`):
 - Read `specs/mission.md` and `specs/tech-stack.md` for invariants / constraints this phase must preserve.
-- Scan `docs/` for documents the phase directly relates to (e.g. `ARCHITECTURE.md`, `AUTH.md`, `WORKFLOWS.md`, `DECISIONS.md`).
+- Scan `docs/` for documents the phase directly relates to (e.g. `architecture.md`, `auth.md`, `workflows.md`, `decisions.md`).
 - Scan recent git log for prior attempts at similar functionality or adjacent work.
 - Return: constraints that MUST be preserved (one-line rationale each), relevant `docs/*.md` links, stakeholder-context signals, and any prior-context that reframes the phase.
 

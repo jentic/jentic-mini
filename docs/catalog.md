@@ -12,7 +12,7 @@ The catalog contains ~1,044 individual API specs and ~380 workflow sources. Jent
 
 Jentic Mini does **not** clone the entire public catalog repo. Instead it:
 
-1. Fetches the full recursive git tree from the GitHub API in 2 HTTP calls (~1–2 MB JSON)
+1. Fetches the curated `apis.json` index and a directory listing of `workflows/` from GitHub — two HTTP calls (~1 MB total)
 2. Builds a local manifest (`data/catalog_manifest.json` and `data/workflow_manifest.json`)
 3. Caches the manifests for 24 hours
 
@@ -55,12 +55,9 @@ Response:
   "status": "ok",
   "api_entries": 1044,
   "workflow_sources": 380,
-  "method": "tree",
   "fetched_at": 1742234155.29
 }
 ```
-
-`method` will be `"tree"` (full expansion via GitHub tree API) or `"shallow_fallback"` (flat domain listing, used if the tree API response is truncated).
 
 ---
 
@@ -184,8 +181,8 @@ Content-Type: application/json
 
 {
   "api_id": "slack.com",
-  "scheme_name": "BearerAuth",
-  "values": { "token": "xoxb-..." }
+  "auth_type": "bearer",
+  "value": "xoxb-..."
 }
 ```
 
@@ -195,7 +192,7 @@ After this single call:
 
 ### What gets imported per API
 
-- **API spec**: saved to `/app/src/specs/<api_id>.json`, registered in the `apis` table
+- **API spec**: saved to `${DATA_DIR}/specs/<api_id>.json` (e.g. `/app/data/specs/<api_id>.json` in Docker), registered in the `apis` table
 - **Workflows**: each workflow from the source's `workflows.arazzo.json` saved as a separate file (`catalog_<source_id>_<workflow_id>.json`), registered in the `workflows` table. The `sourceDescriptions` are rewritten to use your local spec path.
 
 The import is **idempotent** — adding credentials again will not create duplicates.
@@ -276,6 +273,6 @@ The Jentic hosted and VPC editions offer a richer catalog experience:
 |---------|------------|---------------------|
 | Catalog size | ~1,044 APIs, ~380 workflow sources | Central catalog — aggregates collective agent knowledge |
 | Search | BM25 substring | Semantic search (~64% accuracy improvement) |
-| Manifest refresh | GitHub tree API (2 calls) | Managed, versioned, real-time |
+| Manifest refresh | GitHub `apis.json` + workflows listing (2 calls) | Managed, versioned, real-time |
 | Import | On credential add (lazy) | Pre-warmed, instant |
 | Catalog contributions | Manual PR to jentic-public-apis | Built-in `POST /catalog/{api_id}/contribute` |

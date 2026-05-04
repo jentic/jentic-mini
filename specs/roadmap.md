@@ -81,7 +81,7 @@ Variables provide the native mechanism for this.
 **Priority:** High (needed for cross-edition compatibility and migration ease)
 
 - Audit and align: authentication header names, pagination format, error response schema, capability ID format in responses
-- Resolve the `scheme_name` → `scheme_type` naming decision per `docs/DECISIONS.md`
+- Resolve the `scheme_name` → `scheme_type` naming decision per `docs/decisions.md`
 - Document any breaking changes clearly in a migration note
 - Update the OpenAPI schema (`/openapi.json`) to reflect aligned structures
 - Verify the `schemathesis` contract tests still pass after changes
@@ -97,7 +97,7 @@ Variables provide the native mechanism for this.
 - Register `localhost` as a known broker alias (internal routing, no upstream call)
 - Allow Arazzo workflow steps to reference the transform operation
 - Add integration tests: a two-step workflow where step 1 returns a large response and step 2 receives a filtered subset
-- Document the transform pseudo-operation in `docs/WORKFLOWS.md`
+- Document the transform pseudo-operation in `docs/workflows.md`
 
 ## Phase 6 — Human-in-the-Loop Credential Provisioning
 
@@ -180,21 +180,6 @@ Variables provide the native mechanism for this.
 - Add `GET /toolkits/{id}/summary` returning: which APIs are credentialed, what policy allows, which workflows are accessible, toolkit simulate mode status
 - Response must be LLM-consumable (compact, structured prose, no paginated sub-queries required)
 - Add unit tests verifying summary content against known toolkit/credential/policy fixtures
-
-## Phase 13 — Docs Accuracy Pass
-
-**Goal:** Align the twelve in-scope top-level `docs/` files with current codebase reality by removing stale content and verifying every factual claim against the code.
-**Depends on:** none (self-contained docs sweep)
-**Priority:** High (docs drift actively misleads users and agents; release-quality requirement)
-
-Scope covers these twelve top-level files only (subdirs `archive/`, `deploy/`, `tutorials/` are out of scope): `BROKER-CLI.md`, `CATALOG.md`, `credential-deeplink.md`, `CREDENTIALS.md`, `DECISIONS.md`, `oauth-broker.md`, `PIPEDREAM.md`, `README.md`, `SELF-REGISTRATION.md`, `server-variables.md`, `versioning.md`, `WORKFLOWS.md`. `ARCHITECTURE.md` and `AUTH.md` are explicitly excluded — already verified against current code.
-
-- Audit each of the twelve files against `src/` and correct stale endpoint paths, env var names, file paths, flag names, and flow descriptions
-- Remove references to retired features, deprecated schema shapes, and superseded flows; move wholly-superseded files to `docs/archive/` rather than editing them in place
-- Reconcile overlapping sections (credential injection, capability ID format, broker routing, two-actor auth) so the same claim reads identically wherever it appears
-- Refresh code snippets, curl examples, and sample payloads so they run against the current API surface
-- Verify internal cross-links between docs and to `CLAUDE.md` / `AGENTS.md` resolve to current targets; fix broken anchors
-- Update `docs/README.md` index to match the remaining file set (post-archive moves) with one-line summaries
 
 ## Phase 14 — Resolve Open Security Advisories (Code Scanning)
 

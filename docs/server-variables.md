@@ -37,27 +37,31 @@ routing time — no modified spec copy required.
 ### Step 1 — Discover what variables the spec requires
 
 ```bash
-GET /apis/{api_id}
+GET /inspect/{operation_id}
 ```
 
-Look for the `server_variables` field in the response. Variables with `required: true`
-(no default) must be supplied in your credential.
+The response includes a `server_variables` field when the operation's spec
+declares them:
 
 ```json
 {
   "server_variables": {
     "host": {
       "default": null,
-      "description": "Hostname of your Discourse instance",
-      "required": true
+      "description": "Hostname of your Discourse instance"
     }
   }
 }
 ```
 
-You can also call `GET /inspect/{operation_id}` — the `server_variables` field will
-show the spec's variable definitions and, if a credential is already configured, the
-values currently stored.
+A variable with no `default` must be supplied in your credential. If a
+credential for this API is already configured, the `credentials` block of the
+inspect response also shows `server_variables_configured` — the values
+currently stored.
+
+`GET /apis/{api_id}` does not surface a top-level `server_variables` field
+today — variable definitions live inside the standard OpenAPI `servers[].variables`
+block in the spec.
 
 ### Step 2 — Create the credential with `server_variables`
 
@@ -78,9 +82,12 @@ POST /credentials
 }
 ```
 
-If you forget `server_variables` on an API that requires them, the `201` response will
-include a `warning: server_variables_required` field listing what's missing, with a
-`remediation` pointer to the PATCH endpoint.
+If you forget `server_variables` on an API whose spec declares them, the
+credential will still be created, but broker calls will fail to resolve the
+base URL. Patch it afterwards with `PATCH /credentials/{id}` (below). The
+`POST /import` endpoint does surface a `server_variables_required` warning
+when importing a spec whose server template is unresolved — see the import
+response body.
 
 ### Step 3 — Execute via the broker
 

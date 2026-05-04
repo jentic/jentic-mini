@@ -25,7 +25,7 @@ Your agent will:
 
 The OAuth token is stored encrypted and never returned via the API. Your agent knows the credential exists but can never retrieve the token value.
 
-> **First time using OAuth?** If you haven't set up a Pipedream broker yet, your agent will guide you through it — or see the [Pipedream Connect setup guide](../PIPEDREAM.md#setup-required-before-first-use). It's a one-time setup that takes about 5 minutes.
+> **First time using OAuth?** If you haven't set up a Pipedream broker yet, your agent will guide you through it — or see the [Pipedream Connect setup guide](../pipedream.md#setup-required-before-first-use). It's a one-time setup that takes about 5 minutes.
 
 ## Step 2 — Try to create a draft
 
@@ -96,7 +96,7 @@ The agent will attempt to call the Gmail send endpoint. Jentic Mini blocks it �
 ## Next steps
 
 - **Add more APIs** — ask your agent to search the Jentic catalog for any API you use, or browse at `http://localhost:8900/catalog`
-- **Connect more OAuth apps** — Slack, Google Drive, Salesforce, and 3,000+ more via [Pipedream Connect](../PIPEDREAM.md)
+- **Connect more OAuth apps** — Slack, Google Drive, Salesforce, and 3,000+ more via [Pipedream Connect](../pipedream.md)
 - **Create additional toolkits** — scope different agents to different APIs and permissions
-- **Explore workflows** — multi-step Arazzo workflows chain operations across APIs — see [WORKFLOWS.md](../WORKFLOWS.md)
+- **Explore workflows** — multi-step Arazzo workflows chain operations across APIs — see [workflows.md](../workflows.md)
 - **Read the full API docs** — Swagger UI at `http://localhost:8900/docs`
