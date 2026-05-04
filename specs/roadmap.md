@@ -181,20 +181,6 @@ Variables provide the native mechanism for this.
 - Response must be LLM-consumable (compact, structured prose, no paginated sub-queries required)
 - Add unit tests verifying summary content against known toolkit/credential/policy fixtures
 
-## Phase 14 — Resolve Open Security Advisories (Code Scanning)
-
-**Goal:** Resolve every open CodeQL / code-scanning advisory in the repo by fixing the root cause in code or image.
-**Depends on:** none (self-contained)
-**Priority:** High (security findings are release-quality concerns)
-
-Baseline (as of this phase entry): four open High-severity advisories at <https://github.com/jentic/jentic-mini/security/code-scanning> — one real code finding and three transitive dependency CVEs in the Docker image's Python install.
-
-- Investigate `py/path-injection` at `src/routers/catalog.py:319` — an existing `arazzo_file.relative_to(workflows_root)` guard (line 314) already enforces containment; determine whether the finding is a real escape or a pattern CodeQL can't prove effective, and either strengthen the guard (e.g. validate the untrusted input earlier, or use `os.path.commonpath`) or suppress it with a code comment + CodeQL annotation explaining why
-- Resolve `wheel` `CVE-2026-24049` (both top-level and the copy vendored inside `setuptools`) in the Docker image by bumping the Python base image or pinning a patched `wheel` version
-- Resolve `jaraco.context` `CVE-2026-23949` in the vendored `setuptools` copy by bumping `setuptools` to a version that vendors a patched release
-- Add regression tests for the path-injection fix (attempt to traverse outside the allowed root; expect rejection)
-- Re-run CodeQL and the Docker image scan after fixes; confirm the Security tab shows zero open High/Critical advisories
-
 ## Phase 15 — Python Type Checking with Pyright
 
 **Goal:** Introduce proper Python type annotations across the backend and guard them with pyright.
