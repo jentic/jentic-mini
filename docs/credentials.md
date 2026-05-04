@@ -6,7 +6,7 @@ All credential values are encrypted at rest using [Fernet](https://cryptography.
 
 **Encryption key:** `JENTIC_VAULT_KEY` environment variable. If absent or invalid at startup, a new key is auto-generated and written to `data/vault.key`. Keep this file safe — losing it means all stored credentials are unrecoverable.
 
-**Write-only semantics:** Credential values are accepted by POST/PATCH endpoints but **never returned**. GET and list endpoints return credential metadata (id, label, api_id, auth_type, identity, server_variables, routes, scheme, timestamps) but never the encrypted `value` or `identity` secrets. There is no way to retrieve a plaintext credential value through the API once stored.
+**Write-only semantics:** Credential values are accepted by POST/PATCH endpoints but **never returned**. GET and list endpoints return credential metadata (id, label, api_id, auth_type, identity, server_variables, routes, scheme, timestamps) — the encrypted `value` is never exposed after write. There is no way to retrieve a plaintext credential value through the API once stored. (`identity` is non-secret — it typically holds a username or account ID, and is included in responses.)
 
 ---
 
