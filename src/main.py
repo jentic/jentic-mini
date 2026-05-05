@@ -465,7 +465,6 @@ _OPEN_OPERATIONS: set[tuple[str, str]] = {
     ("/user/create", "post"),
     ("/user/login", "post"),
     ("/user/token", "post"),
-    ("/default-api-key/generate", "post"),
     ("/.well-known/oauth-authorization-server", "get"),
     ("/register", "post"),
     ("/oauth/token", "post"),
@@ -483,6 +482,8 @@ _OPEN_OPERATIONS: set[tuple[str, str]] = {
 
 # Human-only operations - require human session, reject agent keys
 _HUMAN_ONLY_OPERATIONS: set[tuple[str, str]] = {
+    # Default toolkit key (legacy, human-only rotation)
+    ("/default-api-key/generate", "post"),
     # Credentials write
     ("/credentials", "post"),
     ("/credentials/{cid}", "patch"),

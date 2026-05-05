@@ -75,7 +75,6 @@ SKIP = {
     "/user/login",  # API login endpoint — must be public (bug fix: was missing)
     "/user/token",  # OAuth2 password grant for Swagger UI
     "/user/create",  # One-time root account creation — must be public before account exists
-    "/default-api-key/generate",  # Handles its own subnet + session auth internally
 }
 SKIP_PREFIXES = ("/static", "/assets", "/proxy", "/approve", "/docs", "/redoc", "/debug")
 
