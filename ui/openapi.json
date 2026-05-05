@@ -7340,7 +7340,7 @@
 						],
 						"title": "Agent Id",
 						"description": "Agent client_id when the call used an agent access token (at_\u2026)",
-						"examples": ["ag_abc123"]
+						"examples": ["agnt_abc123"]
 					},
 					"operation_id": {
 						"anyOf": [

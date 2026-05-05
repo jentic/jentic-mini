@@ -246,10 +246,10 @@ Content-Type: application/json
 
 → 201 Created
 {
-  "client_id": "ag_...",
+  "client_id": "agnt_...",
   "client_name": "research-agent",
   "registration_access_token": "rat_...",
-  "registration_client_uri": "https://mini.example.com/register/ag_...",
+  "registration_client_uri": "https://mini.example.com/register/agnt_...",
   "grant_types": ["urn:ietf:params:oauth:grant-type:jwt-bearer"],
   "token_endpoint_auth_method": "private_key_jwt",
   "jwks": { ... },
@@ -266,18 +266,18 @@ Content-Type: application/json
 ### 2. Agent polls status (RFC 7592)
 
 ```
-GET /register/ag_...
+GET /register/agnt_...
 Authorization: Bearer rat_...
 
 → 200 OK
 {
-  "client_id": "ag_...",
+  "client_id": "agnt_...",
   "client_name": "research-agent",
   "jwks": { ... },
   "grant_types": ["urn:ietf:params:oauth:grant-type:jwt-bearer"],
   "token_endpoint_auth_method": "private_key_jwt",
   "registration_access_token": "rat_...",
-  "registration_client_uri": "https://mini.example.com/register/ag_...",
+  "registration_client_uri": "https://mini.example.com/register/agnt_...",
   "status": "pending"
 }
 ```
@@ -285,10 +285,10 @@ Authorization: Bearer rat_...
 ### 3. Human approves and grants toolkits
 
 ```
-POST /agents/ag_.../approve
+POST /agents/agnt_.../approve
 Authorization: <human session cookie>
 
-POST /agents/ag_.../grants
+POST /agents/agnt_.../grants
 Authorization: <human session cookie>
 Content-Type: application/json
 
@@ -309,7 +309,7 @@ grant_type=urn:ietf:params:oauth:grant-type:jwt-bearer
 
 | Claim | Value |
 |-------|-------|
-| `iss` | `client_id` (`ag_...`) |
+| `iss` | `client_id` (`agnt_...`) |
 | `aud` | Jentic Mini token endpoint URL |
 | `iat` | Current timestamp |
 | `exp` | Short-lived (≤ 5 minutes) |
@@ -364,7 +364,7 @@ grant_type=refresh_token
 ### 7. Disabling an agent
 
 ```
-POST /agents/ag_.../disable
+POST /agents/agnt_.../disable
 Authorization: <human session cookie>
 ```
 

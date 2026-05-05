@@ -20,7 +20,7 @@ def hash_token(raw: str) -> str:
 
 
 def new_client_id() -> str:
-    return "ag_" + secrets.token_urlsafe(18).replace("-", "")[:26]
+    return "agnt_" + secrets.token_urlsafe(18).replace("-", "")[:26]
 
 
 def new_access_token() -> str:

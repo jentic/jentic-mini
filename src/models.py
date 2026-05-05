@@ -712,7 +712,7 @@ class TraceOut(BaseModel):
     )
     agent_id: str | None = Field(
         default=None,
-        examples=["ag_abc123"],
+        examples=["agnt_abc123"],
         description="Agent client_id when the call used an agent access token (at_…)",
     )
     operation_id: str | None = Field(
