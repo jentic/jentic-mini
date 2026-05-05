@@ -68,7 +68,7 @@ Issue a single `AskUserQuestion` call containing three grouped questions. Each q
 **Question 3 — Priority** (shapes the `**Priority:**` line):
   - Prompt: "What priority level does this phase carry?"
   - Options: `High`, `High (blocker)`, `Medium–High`, `Medium`, plus "other (write your own)". Use the en-dash (`–`, U+2013) in `Medium–High`, not a hyphen — match existing roadmap formatting exactly.
-  - The priority legend at the top of `specs/roadmap.md` is the source of truth for what each value means; consult it when the user asks what to pick. In short: `(blocker)` means the phase must ship before Mini is safe to recommend for real agent usage (trust/security gap); other levels express relative queue position, not a release gate.
+  - The priority legend at the top of `specs/roadmap.md` is the source of truth for what each value means; consult it when the user asks what to pick. In short: `(blocker)` fixes a trust/security gap that makes Mini unsafe for real agent usage **today** (early-access safety bar). Items required for a future production-readiness bar do not need `(blocker)` — Mini is not recommended for production regardless, so state the production rationale in the phase body and pick a normal priority. Other levels express relative queue position.
 
 Only after the user answers all three do you proceed.
 

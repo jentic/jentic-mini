@@ -17,9 +17,12 @@ vertical slice: it touches whatever layers are needed (backend, frontend, tests)
 complete, observable capability.
 
 **Priority values:** `High`, `Medium–High` (en-dash, U+2013), `Medium`. Append `(blocker)` to a
-`High` priority when the phase must ship before Mini can be recommended as safe for real agent
-usage (e.g. a known trust/security gap). Only `(blocker)` implies a release gate; other levels
-express relative queue position.
+`High` priority when the phase fixes a trust/security gap that makes Mini unsafe for real agent
+usage today (early-access safety bar — e.g. credential exposure, cross-toolkit data leakage).
+Items required for **production** readiness beyond the early-access bar do not need `(blocker)`:
+Mini is not recommended for production regardless (see `specs/mission.md`), so such phases use
+their normal priority with the production rationale stated in the phase body. Only `(blocker)`
+implies an early-access release gate; other levels express relative queue position.
 
 **Adding a phase:** run `/sdd-new-phase` in Claude Code to append a new active phase to this file
 via a review PR. The skill edits only `specs/roadmap.md`; once the PR is merged, materialize the
@@ -174,7 +177,7 @@ Variables provide the native mechanism for this.
 
 **Goal:** Add baseline protection before any production exposure.
 **Depends on:** none (can proceed independently)
-**Priority:** Medium–High (required before production; currently absent on all endpoints including login)
+**Priority:** Medium–High (no inbound rate limiting on any endpoint, including login; audit trail for sensitive operations is absent)
 
 - Add per-IP rate limiting on: `POST /user/login`, `POST /user/token`, `POST /default-api-key/generate`
 - Add per-toolkit rate limiting on broker proxy requests

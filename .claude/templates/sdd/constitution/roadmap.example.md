@@ -20,9 +20,11 @@ Guidelines:
 - If a phase feels too large, split it.
 
 **Priority values:** `High`, `Medium–High` (en-dash, U+2013), `Medium`. Append `(blocker)` to a
-`High` priority when the phase must ship before the system can be recommended as safe for its
-intended use (e.g. a known trust/security gap). Only `(blocker)` implies a release gate; other
-levels express relative queue position.
+`High` priority when the phase fixes a gap that makes the system unsafe for its current intended
+use (e.g. a known trust/security issue). Items required for a later readiness bar beyond today's
+intended use do not need `(blocker)` — state the forward-looking rationale in the phase body and
+use the appropriate normal priority. Only `(blocker)` implies a release gate for today's bar;
+other levels express relative queue position.
 
 ## Phase 1 — [FOUNDATION_PHASE_NAME]
 
