@@ -15,12 +15,12 @@ def _sample_jwks() -> dict:
     }
 
 
-def test_deregister_agent_delete_returns_404_when_missing(client, admin_session):
-    r = client.delete("/agents/ag_does_not_exist_zzzz", cookies=admin_session)
+def test_deregister_agent_delete_returns_404_when_missing(admin_client):
+    r = admin_client.delete("/agents/agnt_does_not_exist_zzzz")
     assert r.status_code == 404
 
 
-def test_deregister_agent_soft_deletes_strips_jwks_and_grants(client, admin_session):
+def test_deregister_agent_soft_deletes_strips_jwks_and_grants(client, admin_client):
     reg = client.post(
         "/register",
         json={"client_name": "dereg-test", "jwks": _sample_jwks()},
@@ -28,25 +28,25 @@ def test_deregister_agent_soft_deletes_strips_jwks_and_grants(client, admin_sess
     assert reg.status_code == 201, reg.text
     cid = reg.json()["client_id"]
 
-    d = client.delete(f"/agents/{cid}", cookies=admin_session)
+    d = admin_client.delete(f"/agents/{cid}")
     assert d.status_code == 204, d.text
 
-    g = client.get(f"/agents/{cid}", cookies=admin_session)
+    g = admin_client.get(f"/agents/{cid}")
     assert g.status_code == 200
     body = g.json()
     assert body["deleted_at"] is not None
     assert body["jwks"].get("keys") == []
 
-    grants = client.get(f"/agents/{cid}/grants", cookies=admin_session).json()["grants"]
+    grants = admin_client.get(f"/agents/{cid}/grants").json()["grants"]
     assert grants == []
 
-    active = client.get("/agents?view=active", cookies=admin_session).json()["agents"]
+    active = admin_client.get("/agents?view=active").json()["agents"]
     assert all(a["client_id"] != cid for a in active)
-    removed = client.get("/agents?view=removed", cookies=admin_session).json()["agents"]
+    removed = admin_client.get("/agents?view=removed").json()["agents"]
     assert any(a["client_id"] == cid for a in removed)
 
 
-def test_decline_pending_agent_clears_jwks_and_soft_delete_archive(client, admin_session):
+def test_decline_pending_agent_clears_jwks_and_soft_delete_archive(client, admin_client):
     reg = client.post(
         "/register",
         json={"client_name": "decline-test", "jwks": _sample_jwks()},
@@ -54,20 +54,20 @@ def test_decline_pending_agent_clears_jwks_and_soft_delete_archive(client, admin
     assert reg.status_code == 201
     cid = reg.json()["client_id"]
 
-    deny = client.post(f"/agents/{cid}/deny", cookies=admin_session)
+    deny = admin_client.post(f"/agents/{cid}/deny")
     assert deny.status_code == 200
     assert deny.json()["status"] == "denied"
 
-    detail = client.get(f"/agents/{cid}", cookies=admin_session)
+    detail = admin_client.get(f"/agents/{cid}")
     assert detail.status_code == 200
     dj = detail.json()
     assert dj["status"] == "denied"
     assert dj["jwks"].get("keys") == []
 
-    assert client.get(f"/agents/{cid}/grants", cookies=admin_session).json()["grants"] == []
+    assert admin_client.get(f"/agents/{cid}/grants").json()["grants"] == []
 
-    assert client.delete(f"/agents/{cid}", cookies=admin_session).status_code == 204
-    denied_removed = client.get(f"/agents/{cid}", cookies=admin_session).json()
+    assert admin_client.delete(f"/agents/{cid}").status_code == 204
+    denied_removed = admin_client.get(f"/agents/{cid}").json()
     assert denied_removed["status"] == "denied"
     assert denied_removed["deleted_at"] is not None
     assert denied_removed["jwks"].get("keys") == []
