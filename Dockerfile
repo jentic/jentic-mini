@@ -16,12 +16,29 @@ WORKDIR /app
 RUN curl -sSL https://pdm-project.org/install-pdm.py | python3 - --version 2.25.5
 
 COPY pyproject.toml pdm.lock ./
-RUN /root/.local/bin/pdm install --prod --no-editable --no-self --frozen-lockfile
+# Install locked project deps, then upgrade bootstrap tooling inside the venv.
+# PDM-managed venvs don't bundle pip, so bootstrap it with ensurepip first.
+# pip / setuptools / wheel are not in pdm.lock (bootstrap-only) and are not
+# imported at runtime — they only exist so the venv can install things. We
+# intentionally don't pin versions here: unpinned --upgrade is self-healing
+# against future CVEs and avoids manual-bump toil; Trivy gates regressions.
+# This clears transitive CVEs in wheel and the setuptools-vendored copies
+# of wheel / jaraco.context reported by Trivy against the final image.
+RUN /root/.local/bin/pdm install --prod --no-editable --no-self --frozen-lockfile \
+ && /app/.venv/bin/python -m ensurepip --upgrade \
+ && /app/.venv/bin/python -m pip install --upgrade --no-cache-dir pip setuptools wheel
 
 # Stage 3: Runtime
 FROM python:3.11-slim
 
-ARG APP_VERSION=0.9.0
+# Upgrade the base image's system-wide pip / setuptools / wheel to clear
+# transitive CVEs Trivy reports against /usr/local/lib/python3.11/site-packages
+# (wheel CVE-2026-24049, setuptools-vendored jaraco.context CVE-2026-23949).
+# These are bootstrap-only, not imported by the app; unpinned --upgrade is
+# self-healing against future CVEs.
+RUN python -m pip install --upgrade --no-cache-dir pip setuptools wheel
+
+ARG APP_VERSION=0.9.1
 ENV APP_VERSION=${APP_VERSION}
 
 LABEL maintainer="vladimir@jentic.com" \

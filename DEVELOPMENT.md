@@ -59,6 +59,16 @@ npm run dev
 
 The Vite dev server runs on `http://localhost:5173` and proxies API calls to the backend on port 8900.
 
+### 6. Claude Code plugins (optional)
+
+If you use Claude Code, this repo expects the `skill-creator` plugin (listed under `enabledPlugins` in `.claude/settings.json`). The marketplace is built-in, so one command installs it:
+
+```
+/plugin install skill-creator@claude-plugins-official
+```
+
+`enabledPlugins` only activates an already-installed plugin — it does not install it. Skip this step if you don't use Claude Code.
+
 ## Day-to-day Development
 
 - **Python changes**: `src/` is volume-mounted into the container. Uvicorn auto-reloads on any `.py` file change — no container restart needed.

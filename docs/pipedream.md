@@ -2,6 +2,12 @@
 
 Jentic Mini integrates with [Pipedream Connect](https://pipedream.com/connect) to provide OAuth authentication for 3,000+ SaaS apps — without implementing OAuth flows yourself or going through app certification with each platform.
 
+> **Broker ID note:** All endpoints below use the path segment `{broker_id}` — the
+> ID of a registered OAuth broker. On a fresh install with a single Pipedream
+> broker registered, `{broker_id}` is `pipedream`. In multi-broker deployments it
+> may be `pipedream-2`, a custom ID you passed at registration time, or something
+> else entirely. Use `GET /oauth-brokers` to list the IDs.
+
 ## Why Pipedream Connect
 
 OAuth is the auth standard used by every major SaaS platform (Gmail, Slack, Salesforce, GitHub, etc.). Implementing it properly requires:
@@ -43,16 +49,33 @@ In your Pipedream project, open **Settings** and copy the `project_id` (format: 
 
 Broker registration requires a human session — agent keys cannot register or modify brokers. This is intentional: the `client_secret` must never flow through an agent-accessible path. The `client_secret` is Fernet-encrypted at rest in the local vault and is never returned via the API.
 
+**Via the UI:**
+
 1. Open **[http://localhost:8900/oauth-brokers](http://localhost:8900/oauth-brokers)** in your browser
 2. Log in with your Jentic Mini admin account if prompted
 3. Click **Add Broker**
-4. Fill in the form:
-   - **Type:** `pipedream`
-   - **Client ID:** your `client_id` from Step 2
-   - **Client Secret:** your `client_secret` from Step 2
-   - **Project ID:** your `project_id` from Step 3 (format: `proj_xxxxxxx`)
-   - **Environment:** `development` (change to `production` when ready to go live)
+4. Fill in: Type `pipedream`, your `client_id`, `client_secret`, `project_id`, `environment` (`development` or `production`), optional `support_email`
 5. Click **Save**
+
+**Via the API** (requires an authenticated human session):
+
+```http
+POST /oauth-brokers
+Content-Type: application/json
+
+{
+  "type": "pipedream",
+  "config": {
+    "client_id": "oa_abc123",
+    "client_secret": "pd_secret_xxxx",
+    "project_id": "proj_abc123",
+    "environment": "development",
+    "support_email": "admin@example.com"
+  }
+}
+```
+
+The `config` object is nested — do **not** flatten these fields onto the top-level request body. The response includes the assigned `broker_id` (typically `pipedream` for the first broker).
 
 > **Development environment note:** Pipedream's `development` environment is free and supports all Connect features, but limits you to 10 external users and requires you to be signed in to pipedream.com in the same browser when completing OAuth flows.
 
@@ -63,7 +86,7 @@ Broker registration requires a human session — agent keys cannot register or m
 Once the broker is registered, the connect and sync operations are **open to agents** — any valid toolkit key can call them. No human login step is required. The recommended approach is to let your agent drive the flow: it generates the connect URL and surfaces it to the human for a single click approval. The human never needs to interact with Jentic Mini directly.
 
 ```
-1. Agent calls POST /oauth-brokers/pipedream/connect-link
+1. Agent calls POST /oauth-brokers/{broker_id}/connect-link
    → Jentic Mini authenticates with Pipedream using your registered broker credentials
    → Pipedream mints a one-time connect token
    → Jentic Mini returns a connect URL (expires ~1 hour)
@@ -75,14 +98,14 @@ Once the broker is registered, the connect and sync operations are **open to age
    → Completes OAuth (e.g. Google, Slack, GitHub)
    → Pipedream stores the access + refresh tokens under your project
 
-3. Agent calls POST /oauth-brokers/pipedream/sync
+3. Agent calls POST /oauth-brokers/{broker_id}/sync
    → Jentic Mini fetches the token from Pipedream and stores it in its local encrypted vault
-   → Jentic Mini stores the Pipedream `account_id` reference locally
+   → Jentic Mini stores the Pipedream account_id reference locally
    → All subsequent API calls are proxied through Pipedream's Connect proxy
 
 4. (Automatic) Token refresh _(planned)_
-   → Token refresh on 401 is not yet wired into the broker
-   → For now, re-run `POST /oauth-brokers/pipedream/sync` to manually refresh tokens
+   → Token refresh on 401 is not yet wired into the broker's pipedream_oauth handler
+   → For now, re-run POST /oauth-brokers/{broker_id}/sync to manually refresh tokens
 ```
 
 You can also initiate connect-link manually via the Jentic Mini UI at `http://localhost:8900/oauth-brokers`, but letting the agent handle it is the recommended approach — it keeps the human interaction to a single OAuth approval click.
@@ -93,8 +116,9 @@ You can also initiate connect-link manually via the Jentic Mini UI at `http://lo
 |-----------|-------------|-----|
 | Register broker (`POST /oauth-brokers`) | Human only | Injects `client_secret` into vault — must not be agent-accessible |
 | List/inspect brokers (`GET /oauth-brokers`) | **Agent ✅** | `client_secret` is never included in the response |
-| Generate connect link (`POST /oauth-brokers/{id}/connect-link`) | **Agent ✅** | Generates a URL — no secret material involved |
-| Sync connected accounts (`POST /oauth-brokers/{id}/sync`) | **Agent ✅** | Pulls in tokens the human already approved — additive only |
+| Generate connect link (`POST /oauth-brokers/{broker_id}/connect-link`) | **Agent ✅** | Generates a URL — no secret material involved |
+| Sync connected accounts (`POST /oauth-brokers/{broker_id}/sync`) | **Agent ✅** | Pulls in tokens the human already approved — additive only |
+| Delete / PATCH / reconnect | Human only | Destructive or credential-bearing |
 
 ### Where to see connected accounts in Pipedream
 
@@ -110,7 +134,7 @@ You'll see your `external_user_id` (e.g. `frank`) with the connected app listed 
 
 ## API Reference
 
-### `POST /oauth-brokers/pipedream/connect-link`
+### `POST /oauth-brokers/{broker_id}/connect-link`
 
 Generate a one-time OAuth connect URL. Callable by agents (toolkit key) and human sessions.
 
@@ -127,10 +151,7 @@ Generate a one-time OAuth connect URL. Callable by agents (toolkit key) and huma
 - `external_user_id`: Your identifier for the user. Use `"default"` for single-user setups.
 - `label`: Required — used to distinguish multiple accounts for the same app, since Pipedream only returns the app name (not the account email) at connect time.
 
-You may also pass `api_id` (e.g. `"googleapis.com/drive"`) as optional metadata alongside `app`. It does **not** replace `app` — the broker does not perform automatic `api_id` → Pipedream slug resolution. It is used to override the credential's API ID registration during sync.
-
-- `connect_link_url`: One-time URL — open in a browser to complete OAuth
-- `expires_at`: Unix timestamp (seconds) when the link expires (~1 hour from generation)
+You may also pass `api_id` (e.g. `"googleapis.com/drive"`) as optional metadata alongside `app`. If `api_id` is supplied and the slug map has an entry for it, the looked-up slug overrides the `app` you provided; otherwise your `app` value is used as-is.
 
 **Response:**
 ```json
@@ -140,15 +161,16 @@ You may also pass `api_id` (e.g. `"googleapis.com/drive"`) as optional metadata 
   "app": "google_drive",
   "connect_link_url": "https://pipedream.com/_static/connect.html?token=ctok_...&app=google_drive",
   "expires_at": 1234567890,
-  "next_step": "Visit connect_link_url in your browser, authorise google_drive, then call POST /oauth-brokers/pipedream/sync"
+  "next_step": "Visit connect_link_url in your browser, authorise google_drive, then call POST /oauth-brokers/{broker_id}/sync"
 }
 ```
 
-Open `connect_link_url` in a browser to complete the OAuth flow.
+- `connect_link_url`: One-time URL — open in a browser to complete OAuth
+- `expires_at`: Unix timestamp (seconds) when the link expires (~1 hour from generation)
 
 ---
 
-### `POST /oauth-brokers/pipedream/sync`
+### `POST /oauth-brokers/{broker_id}/sync`
 
 After the user completes OAuth, pull the token into the local vault. Callable by agents (toolkit key) and human sessions.
 
@@ -185,52 +207,34 @@ POST /toolkits/{toolkit_id}/credentials
 
 ---
 
-### `GET /oauth-brokers/pipedream/accounts`
+### `GET /oauth-brokers/{broker_id}/accounts`
 
-List all Pipedream-sourced accounts synced into this instance.
+List all accounts synced into this instance for the given broker.
 
 ```
-GET /oauth-brokers/pipedream/accounts
-GET /oauth-brokers/pipedream/accounts?external_user_id=frank
+GET /oauth-brokers/{broker_id}/accounts
+GET /oauth-brokers/{broker_id}/accounts?external_user_id=frank
 ```
 
 ---
 
-### `DELETE /oauth-brokers/pipedream/accounts/{api_host}`
+### `DELETE /oauth-brokers/{broker_id}/accounts/{account_id}`
 
-Disconnect an account by its API host (removes from local tracking, revokes on Pipedream's side, and removes credential from vault).
+Disconnect an account by its Pipedream account ID (`apn_xxx`). Removes the mapping from the local `oauth_broker_accounts` table, revokes the account on Pipedream's side, and removes the credential from the vault.
 
 ```
-DELETE /oauth-brokers/pipedream/accounts/googleapis.com/drive
-DELETE /oauth-brokers/pipedream/accounts/googleapis.com/drive?external_user_id=frank
+DELETE /oauth-brokers/pipedream/accounts/apn_abc123
 ```
 
-Note: Requires human session. If the Pipedream revoke fails, local cleanup still proceeds with a warning.
+Requires a human session. If the Pipedream revoke call fails, local cleanup still proceeds with a warning logged.
+
+The `account_id` must be the Pipedream account ID (`apn_xxx`), not the API host — list `GET /oauth-brokers/{broker_id}/accounts` to find it.
 
 ---
 
 ## Supported Apps (70+)
 
-The current mapping covers:
-
-| Category | Apps |
-|----------|------|
-| **Google** | Gmail, Calendar, Drive, Sheets, Docs, Analytics, YouTube, Forms, Meet, Chat, BigQuery, Cloud Storage |
-| **Atlassian** | Jira, Confluence |
-| **Communication** | Slack, Discord, Telegram, SendGrid, Mailchimp, Twilio |
-| **Dev tools** | GitHub, GitLab, Bitbucket, Linear |
-| **CRM / Sales** | HubSpot, Salesforce, Pipedrive, Close, Copper |
-| **Project mgmt** | Asana, Trello, Monday, Notion, ClickUp, Airtable |
-| **Storage** | Dropbox, Box, OneDrive |
-| **Finance** | Stripe, Xero, QuickBooks, Braintree |
-| **Social** | Twitter, Facebook, Instagram, LinkedIn |
-| **Analytics** | Mixpanel, Segment, Amplitude |
-| **Productivity** | Zoom, Calendly, Figma, Miro |
-| **Support** | Intercom, Zendesk, Freshdesk |
-| **AI** | OpenAI, Anthropic, Groq, Mistral, ElevenLabs |
-| **Music** | Spotify |
-
-To see the full list of supported apps and their Jentic `api_id` mappings, consult the slug map in [`src/brokers/pipedream.py`](../src/brokers/pipedream.py) or browse the Pipedream app directory at [pipedream.com/apps](https://pipedream.com/apps).
+The current `API_ID_TO_PD_SLUG` mapping in [`src/brokers/pipedream.py`](../src/brokers/pipedream.py) contains 70 entries across categories including Google (Gmail, Calendar, Drive, Sheets, Docs, Analytics, YouTube, Forms, Meet, Chat, BigQuery, Cloud Storage), Atlassian (Jira, Confluence), communication (Slack, Discord, Telegram, SendGrid, Mailchimp, Twilio), dev tools, CRM/sales, project management, storage, finance, analytics, productivity, support, AI, and music. See the map directly for the exact list and `api_id` keys — the doc here drifts fast.
 
 Pipedream itself supports 3,000+ apps — if an app isn't in the slug map but exists in Pipedream, pass `app` directly (the Pipedream slug) and it will work. File a PR to add it to the mapping.
 
@@ -243,9 +247,10 @@ The agent uses its toolkit key throughout — no human login required after init
 ```bash
 BASE="http://localhost:8900"
 AGENT_KEY="tk_your-toolkit-key"
+BROKER_ID="pipedream"
 
 # 1. Agent generates a connect URL and surfaces it to the human
-curl -s -X POST "$BASE/oauth-brokers/pipedream/connect-link" \
+curl -s -X POST "$BASE/oauth-brokers/$BROKER_ID/connect-link" \
   -H "X-Jentic-API-Key: $AGENT_KEY" \
   -H "Content-Type: application/json" \
   -d '{
@@ -258,7 +263,7 @@ curl -s -X POST "$BASE/oauth-brokers/pipedream/connect-link" \
 # → human must be signed in to pipedream.com in the same browser (development mode)
 
 # 2. Agent syncs the approved token into the vault
-CRED_ID=$(curl -s -X POST "$BASE/oauth-brokers/pipedream/sync" \
+CRED_ID=$(curl -s -X POST "$BASE/oauth-brokers/$BROKER_ID/sync" \
   -H "X-Jentic-API-Key: $AGENT_KEY" \
   -H "Content-Type: application/json" \
   -d '{"external_user_id": "frank"}' \
@@ -268,19 +273,19 @@ echo "Credential stored: $CRED_ID"
 
 # 3. Agent calls Google Drive via the broker — token injected automatically
 curl -H "X-Jentic-API-Key: $AGENT_KEY" \
-  "$BASE/www.googleapis.com/drive/v3/files?pageSize=10&orderBy=modifiedTime+desc"
+  "$BASE/googleapis.com/drive/v3/files?pageSize=10&orderBy=modifiedTime+desc"
 ```
 
 ---
 
 ## Token Refresh
 
-Automatic token refresh on 401 is **not yet implemented** in the broker. `refresh_pipedream_credential()` exists in `src/routers/pipedream.py` but is not yet wired into the broker handler — this is Phase 2 work (see roadmap).
+Automatic token refresh on 401 is **not yet implemented** in the broker's `pipedream_oauth` handler (see `src/routers/broker.py`). The Pipedream platform access token that Jentic Mini uses to talk *to* Pipedream itself does auto-refresh — only the end-user OAuth tokens need manual re-sync on 401.
 
-In the meantime, if you receive 401 errors on broker calls, re-run sync to manually refresh the token:
+If you receive 401 errors on brokered calls, re-run sync to refresh:
 
 ```bash
-POST /oauth-brokers/pipedream/sync
+POST /oauth-brokers/{broker_id}/sync
 { "external_user_id": "frank" }
 ```
 
@@ -289,4 +294,5 @@ POST /oauth-brokers/pipedream/sync
 ## Pricing
 
 - **Free in Pipedream's development environment** — unlimited usage
+
 **Note on Pipedream pricing:** API calls are routed through Pipedream's Connect proxy — Pipedream injects the OAuth token server-side and forwards the request. This means calls count against Pipedream's proxy usage credits, not just the end-user count. See [Pipedream Connect pricing](https://pipedream.com/pricing?plan=Connect) for current credit costs.

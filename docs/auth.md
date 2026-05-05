@@ -274,7 +274,7 @@ Key-value store for instance configuration.
 
 ### `toolkit_keys`
 
-One row per issued agent key. For conceptual model see `docs/ARCHITECTURE.md`; for exact schema
+One row per issued agent key. For conceptual model see `docs/architecture.md`; for exact schema
 and current columns see Alembic migrations in `alembic/versions/`.
 
 Key columns in current schema: `api_key` (the `tk_xxx` string), `toolkit_id`, `allowed_ips`, `revoked_at`, `created_at`.

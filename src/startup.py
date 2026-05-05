@@ -7,7 +7,7 @@ On first boot (or when the registration is missing), Jentic Mini:
 
 Both operations are idempotent — safe to call on every startup.
 
-See docs/SELF-REGISTRATION.md for design rationale.
+See docs/self-registration.md for design rationale.
 """
 
 import asyncio

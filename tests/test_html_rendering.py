@@ -47,15 +47,14 @@ def workflows_only_client(client):
 
 
 @pytest.fixture(scope="module")
-def imported_html_workflow(client, admin_session):
+def imported_html_workflow(admin_client):
     """Import a workflow once for the module via the real app."""
     workflow_path = Path(__file__).parent / "fixtures" / "test-workflow.arazzo.json"
     assert workflow_path.exists(), f"Test workflow fixture not found: {workflow_path}"
 
-    resp = client.post(
+    resp = admin_client.post(
         "/import",
         json={"sources": [{"type": "path", "path": str(workflow_path)}]},
-        cookies=admin_session,
     )
     assert resp.status_code == 200, f"Import failed: {resp.text}"
     result = resp.json()
@@ -103,12 +102,11 @@ def access_request(client, agent_key_header):
     return toolkit_id, resp.json()["id"]
 
 
-def test_approval_ui_legacy_pending_renders(client, admin_session, access_request):
+def test_approval_ui_legacy_pending_renders(admin_client, access_request):
     """Legacy HTML approval UI renders for a pending request."""
     toolkit_id, req_id = access_request
-    resp = client.get(
+    resp = admin_client.get(
         f"/toolkits/{toolkit_id}/access-requests/approve/{req_id}/legacy",
-        cookies=admin_session,
     )
     assert resp.status_code == 200, f"Legacy UI failed: {resp.text}"
     body = resp.text
@@ -124,19 +122,17 @@ def test_approval_ui_legacy_pending_renders(client, admin_session, access_reques
     assert "text/html" in resp.headers["content-type"]
 
 
-def test_approval_ui_legacy_resolved_renders(client, admin_session, access_request):
+def test_approval_ui_legacy_resolved_renders(admin_client, access_request):
     """Legacy HTML approval UI renders the resolved branch after denial."""
     toolkit_id, req_id = access_request
     # Deny to leave the request in a non-pending state without side effects
-    resp = client.post(
+    resp = admin_client.post(
         f"/toolkits/{toolkit_id}/access-requests/{req_id}/deny",
-        cookies=admin_session,
     )
     assert resp.status_code in (200, 201), f"Deny failed: {resp.text}"
 
-    resp = client.get(
+    resp = admin_client.get(
         f"/toolkits/{toolkit_id}/access-requests/approve/{req_id}/legacy",
-        cookies=admin_session,
     )
     assert resp.status_code == 200, f"Legacy UI (resolved) failed: {resp.text}"
     body = resp.text
@@ -145,11 +141,10 @@ def test_approval_ui_legacy_resolved_renders(client, admin_session, access_reque
     assert "denied" in body
 
 
-def test_approval_ui_legacy_not_found(client, admin_session):
+def test_approval_ui_legacy_not_found(admin_client):
     """Legacy HTML approval UI returns 404 HTML for unknown req_id."""
-    resp = client.get(
+    resp = admin_client.get(
         "/toolkits/default/access-requests/approve/areq_missing/legacy",
-        cookies=admin_session,
     )
     assert resp.status_code == 404
     assert "Not found" in resp.text
