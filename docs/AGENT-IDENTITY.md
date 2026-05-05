@@ -377,11 +377,14 @@ Authorization: <human session cookie>
 
 ```
 POST /oauth/revoke
+Authorization: Bearer at_...
 Content-Type: application/x-www-form-urlencoded
 
 token=at_...
 &token_type_hint=access_token
 ```
+
+Revocation requires authentication — either an agent access token (`at_…`) or a human session.
 
 Disabling or deleting the agent also cascades to all tokens.
 
@@ -472,6 +475,8 @@ No migration required. Toolkits that only use static keys are unaffected.
 ---
 
 ## Agent self-service requests
+
+> **Note:** This section describes a **provisional design** that is **not yet implemented**. The API surface and request types are subject to change. Implementation is planned for future feature work.
 
 Authenticated agents can request additional capabilities at runtime, following the same access-request-plus-approval pattern used today for toolkit-level credential access. All such requests require **human approval** before they take effect.
 

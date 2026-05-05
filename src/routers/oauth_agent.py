@@ -58,7 +58,6 @@ async def oauth_authorization_server_metadata(request: Request):
     issuer = build_absolute_url(request, "").rstrip("/")
     return {
         "issuer": issuer,
-        "authorization_endpoint": f"{issuer}/oauth/authorize",
         "registration_endpoint": f"{issuer}/register",
         "token_endpoint": f"{issuer}/oauth/token",
         "revocation_endpoint": f"{issuer}/oauth/revoke",
