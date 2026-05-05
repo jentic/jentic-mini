@@ -143,9 +143,13 @@ app = FastAPI(
         "| **Simulation** | Basic simulate mode | Full sandbox for simulating API calls and toolkit behaviour (enterprise-only) |\n"
         "| **Catalog** | Local registry only | Central catalog — aggregates the collective know-how of agents across API definitions and Arazzo workflows |\n\n"
         "## Authentication\n"
-        "**Agents** — provide `X-Jentic-API-Key: tk_xxx` header.\n"
-        "**Humans** — [log in here](/login) for a session cookie (required for admin operations).\n"
-        "First time? Call `POST /default-api-key/generate` from a trusted subnet to get your agent key.\n\n"
+        "**Agents (OAuth identity)** — `Authorization: Bearer` with `at_…` access tokens "
+        "(from `POST /oauth/token`) or `rat_…` registration tokens (received from `POST /register`, "
+        "only usable for polling registration status). "
+        "New agents should use the registration flow; see `GET /.well-known/oauth-authorization-server` for OAuth metadata.\n"
+        "**Agents (toolkit key)** — `X-Jentic-API-Key: tk_xxx`. Legacy path; still supported but new agents "
+        "should use OAuth registration via `POST /register`.\n"
+        "**Humans** — [log in here](/login) for a session cookie (required for admin operations).\n\n"
         "## Tag groups\n"
         "| Tag | Who uses it | Purpose |\n"
         "|-----|-------------|----------|\n"
@@ -359,9 +363,10 @@ async def swagger_ui():
 <body>
 <div class="auth-banner">
   🔑 <strong>Authentication.</strong>
-  <strong>Agents:</strong> Click <strong>Authorize 🔓</strong> and enter your <code>tk_xxx</code> key in the <em>JenticApiKey</em> field.
-  <strong>Humans:</strong> Click <strong>Authorize 🔓</strong> and use the <em>HumanLogin</em> username + password form — or <a href="/login" style="color:#a5b4fc">log in here</a> for a persistent browser session.
-  Agents: discover <code>GET /.well-known/oauth-authorization-server</code> then <code>POST /register</code>. Legacy <code>tk_xxx</code> keys are human-issued from the UI.
+  <strong>Agents (toolkit):</strong> <em>JenticApiKey</em> — your <code>tk_xxx</code> in <code>X-Jentic-API-Key</code>.
+  <strong>Agents (OAuth):</strong> <em>AgentOauthToken</em> — <code>Authorization: Bearer</code> with <code>at_…</code> or <code>rat_…</code> where applicable.
+  <strong>Humans:</strong> <em>HumanLogin</em> (username + password) — or <a href="/login" style="color:#a5b4fc">log in here</a> for a browser session.
+  OAuth agents: <code>GET /.well-known/oauth-authorization-server</code> then <code>POST /register</code>. Toolkit keys are issued from the UI.
 </div>
 <div id="swagger-ui"></div>
 <script src="/static/swagger-ui-bundle.js"> </script>
@@ -543,15 +548,32 @@ def custom_openapi():
 
     schema.setdefault("components", {})
 
+    # Agent OAuth tokens (at_… and rat_…) use RFC 7523 JWT Bearer assertion and RFC 7591
+    # Dynamic Client Registration flows. OpenAPI doesn't natively support these OAuth grant
+    # types, so we document them as generic HTTP bearer schemes with descriptive text.
     schema["components"]["securitySchemes"] = {
         "JenticApiKey": {
             "type": "apiKey",
             "in": "header",
             "name": "X-Jentic-API-Key",
+            "description": "Toolkit API key (`tk_xxx`) issued for a toolkit (legacy agent path).",
+        },
+        "AgentOauthAccessToken": {
+            "type": "http",
+            "scheme": "bearer",
+            "bearerFormat": "opaque",
             "description": (
-                "Toolkit API key (`tk_xxx`) in this header, or use `Authorization: Bearer` with "
-                "an agent access token (`at_…`) from `POST /oauth/token`, or a registration token "
-                "(`rat_…`) where applicable (e.g. `GET /register/{client_id}`)."
+                "Agent access token (`at_…`) from `POST /oauth/token`. "
+                "Used for all agent-authenticated operations."
+            ),
+        },
+        "AgentOauthRegistrationToken": {
+            "type": "http",
+            "scheme": "bearer",
+            "bearerFormat": "opaque",
+            "description": (
+                "Short-lived registration token (`rat_…`) from `POST /register`. "
+                "Only valid for `GET /register/{client_id}` to poll approval status."
             ),
         },
         "HumanLogin": {
@@ -565,14 +587,19 @@ def custom_openapi():
             },
         },
     }
-    # Global default: endpoints require JenticApiKey OR HumanLogin
-    schema["security"] = [{"JenticApiKey": []}, {"HumanLogin": []}]
+    # Global default: toolkit key OR agent access token OR human session
+    schema["security"] = [
+        {"JenticApiKey": []},
+        {"AgentOauthAccessToken": []},
+        {"HumanLogin": []},
+    ]
 
     # Set explicit security on all operations (required for SEC dimension scoring)
-    # Three-tier model:
+    # Tiers:
     # 1. Public (no auth): security: []
     # 2. Human-only: security: [{"HumanLogin": []}]
-    # 3. Agent-accessible (agents OR humans): security: [{"JenticApiKey": []}, {"HumanLogin": []}]
+    # 3. Agent-accessible: toolkit key, agent access token, or human session
+    # 4. Registration read: also accepts AgentOauthRegistrationToken
     for path, path_item in schema.get("paths", {}).items():
         for method, operation in path_item.items():
             if not isinstance(operation, dict):
@@ -583,9 +610,20 @@ def custom_openapi():
             elif (path, method.lower()) in _HUMAN_ONLY_OPERATIONS:
                 # Human-only operations: require human session, reject agent keys
                 operation["security"] = [{"HumanLogin": []}]
+            elif path == "/register/{client_id}" and method.lower() == "get":
+                # Registration read: rat_, at_, or human session
+                operation["security"] = [
+                    {"AgentOauthRegistrationToken": []},
+                    {"AgentOauthAccessToken": []},
+                    {"HumanLogin": []},
+                ]
             else:
-                # Agent-accessible operations: agents OR humans can use
-                operation["security"] = [{"JenticApiKey": []}, {"HumanLogin": []}]
+                # Agent-accessible: toolkit key, agent access token, or human session
+                operation["security"] = [
+                    {"JenticApiKey": []},
+                    {"AgentOauthAccessToken": []},
+                    {"HumanLogin": []},
+                ]
 
     # Reorder paths: group by root resource prefix, then depth (least → most specific),
     # then alphabetically within the same depth. This produces the natural logical order:
