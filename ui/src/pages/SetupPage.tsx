@@ -48,7 +48,7 @@ export default function SetupPage() {
 	const createUserError = createUserMutation.error as { status?: number } | null;
 	const accountAlreadyExists = createUserError?.status === 409 || createUserError?.status === 410;
 
-	const alreadySetUp = health?.status === 'ok';
+	const alreadySetUp = health?.status === 'ok' || createUserMutation.isSuccess;
 
 	if (alreadySetUp) {
 		return (
