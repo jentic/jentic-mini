@@ -63,9 +63,12 @@ Variables provide the native mechanism for this.
 - Tests for vault encryption/decryption (`src/vault.py`)
 - Tests for auth middleware: key validation, revoked keys, IP allowlisting, trusted-subnet append semantics (`src/auth.py`)
 - Tests for broker credential injection: bearer, apiKey, basic, multi-header (`src/brokers/`)
+- Tests for broker URL rewriting: path-segment host detection, configured aliases, `server_variables` resolution, catalog-ID routes
 - Tests for policy engine: allow/deny rule evaluation, first-match-wins, default action
 - Tests for BM25 search ranking over a fixture catalog
+- Tests for complex multi-API workflow execution: two APIs with different auth schemes, credential selection per step, trace propagation across steps
 - All tests must pass in CI without external network access
+- Close or cross-reference issue #177
 
 ## Phase 3 — TypeScript Arazzo Runner Migration
 
@@ -78,6 +81,7 @@ Variables provide the native mechanism for this.
 - Validate broker URL rewriting works identically for multi-step workflows spanning multiple APIs with different auth schemes
 - Remove the PyPI `arazzo-runner` dependency once the shim is fully validated
 - Add integration tests with a multi-step workflow fixture (two APIs, two credentials)
+- Close or cross-reference issues #131, #251
 
 ## Phase 4 — API Surface Alignment with Jentic Standards
 
@@ -103,6 +107,7 @@ Variables provide the native mechanism for this.
 - Allow Arazzo workflow steps to reference the transform operation
 - Add integration tests: a two-step workflow where step 1 returns a large response and step 2 receives a filtered subset
 - Document the transform pseudo-operation in `docs/workflows.md`
+- Close or cross-reference issue #132
 
 ## Phase 6 — Human-in-the-Loop Credential Provisioning
 
@@ -115,6 +120,7 @@ Variables provide the native mechanism for this.
 - Add a UI page at the `user_url` where a human can enter the credential value directly
 - Store the value through the vault on human submission
 - Poll endpoint and UI page must both work correctly; add integration test for the full flow
+- Close or cross-reference issue #104
 
 ## Phase 7 — UI Deep-Link Actions (Single-URL Human Interventions)
 
@@ -324,7 +330,7 @@ Large upstream responses are fully buffered today, which spikes memory and block
 - **API browser filtering** — filter the admin UI's API browser by credential status and toolkit access
 - **Trace log view improvements** — richer filtering and run-to-run comparison in the trace log view
 - **Pagination model review** — confirm whether cursor-based pagination is needed anywhere beyond the current integer page-number scheme
-- **Agent identity + grants + subagent delegation** — give agents a first-class identity with scoped grants, revocation, and delegation (parents mint short-lived child credentials limited to operation subsets, TTLs, and kill callbacks); foundation for execution-envelope, activity-monitor, and Agent-Centre work below. Needs schema design and a legacy `tk_` rollout path before it becomes a shippable slice.
+- **Agent identity + grants + subagent delegation** — give agents a first-class identity with scoped grants, revocation, and delegation (parents mint short-lived child credentials limited to operation subsets, TTLs, delegation depth, and kill callbacks); foundation for execution-envelope, activity-monitor, and Agent-Centre work below. Needs schema design and a legacy `tk_` rollout path before it becomes a shippable slice.
 - **Execution envelope injection** — attach a consistent safe per-call envelope (agent identity, grant, credential handle, operation subset, delegation/session ID, trace ID, policy decision, handoff links) to every broker/workflow call without exposing secrets; depends on agent identity
 - **Agent activity monitor + context API** — compact data/API layer for recent actions, failures, pending human actions, and toolkit health that humans and agents can both consume; depends on identity and trace scoping (Phase 17); see #99
 - **Persistent Agent Centre UX** — dedicated UI shell bringing together identity, activity, approvals, notifications, audit history, and emergency controls; depends on the activity monitor and audit log
