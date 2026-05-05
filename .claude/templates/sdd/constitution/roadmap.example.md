@@ -21,13 +21,14 @@ Guidelines:
 
 **Priority values:** `High`, `Medium–High` (en-dash, U+2013), `Medium`. Append `(blocker)` to a
 `High` priority when the phase must ship before the system can be recommended as safe for its
-intended use (e.g. a known trust/security gap). Everything else is relative, not a release gate.
+intended use (e.g. a known trust/security gap). Only `(blocker)` implies a release gate; other
+levels express relative queue position.
 
 ## Phase 1 — [FOUNDATION_PHASE_NAME]
 
 **Goal:** [establish a minimal runnable system]  
 **Depends on:** none  
-**Priority:** High
+**Priority:** [High | Medium–High | Medium]
 
 - [set up core runtime / framework / entrypoint]
 - [confirm local development workflow works]
@@ -37,7 +38,7 @@ intended use (e.g. a known trust/security gap). Everything else is relative, not
 
 **Goal:** [introduce shared structure and conventions]  
 **Depends on:** Phase 1  
-**Priority:** High
+**Priority:** [High | Medium–High | Medium]
 
 - [add shared layout / structure / core modules]
 - [establish styling / organization / conventions]
@@ -47,7 +48,7 @@ intended use (e.g. a known trust/security gap). Everything else is relative, not
 
 **Goal:** [deliver first meaningful user-facing capability]  
 **Depends on:** Phase 2  
-**Priority:** High
+**Priority:** [High | Medium–High | Medium]
 
 - [introduce first core model / module]
 - [seed or create minimal usable data if needed]
@@ -57,7 +58,7 @@ intended use (e.g. a known trust/security gap). Everything else is relative, not
 
 **Goal:** [enable interaction with individual items]  
 **Depends on:** Phase 3  
-**Priority:** Medium–High
+**Priority:** [High | Medium–High | Medium]
 
 - [support viewing or interacting with a single entity]
 - [display key attributes and state]
@@ -67,7 +68,7 @@ intended use (e.g. a known trust/security gap). Everything else is relative, not
 
 **Goal:** [expand system capabilities with a second feature]  
 **Depends on:** Phase 4  
-**Priority:** Medium–High
+**Priority:** [High | Medium–High | Medium]
 
 - [introduce another important model / module]
 - [connect it to existing functionality]
@@ -77,7 +78,7 @@ intended use (e.g. a known trust/security gap). Everything else is relative, not
 
 **Goal:** [extend system with supporting capability]  
 **Depends on:** Phase 5  
-**Priority:** Medium
+**Priority:** [High | Medium–High | Medium]
 
 - [add supporting subsystem or feature]
 - [integrate with previous data and flows]
@@ -87,7 +88,7 @@ intended use (e.g. a known trust/security gap). Everything else is relative, not
 
 **Goal:** [enable a key user action]  
 **Depends on:** Phase 6  
-**Priority:** Medium
+**Priority:** [High | Medium–High | Medium]
 
 - [implement a primary user workflow]
 - [add validation and error handling]
@@ -97,7 +98,7 @@ intended use (e.g. a known trust/security gap). Everything else is relative, not
 
 **Goal:** [support monitoring or management]  
 **Depends on:** Phase 7  
-**Priority:** Medium
+**Priority:** [High | Medium–High | Medium]
 
 - [add dashboard / admin / summary view]
 - [surface aggregate or operational data]
@@ -107,7 +108,7 @@ intended use (e.g. a known trust/security gap). Everything else is relative, not
 
 **Goal:** [improve usability and accessibility]  
 **Depends on:** Phase 8  
-**Priority:** Medium
+**Priority:** [High | Medium–High | Medium]
 
 - [improve responsiveness and UX]
 - [audit accessibility and semantics]
@@ -117,7 +118,7 @@ intended use (e.g. a known trust/security gap). Everything else is relative, not
 
 **Goal:** [increase reliability and robustness]  
 **Depends on:** Phase 9  
-**Priority:** Medium
+**Priority:** [High | Medium–High | Medium]
 
 - [add error handling and fallback states]
 - [improve validation and resilience]

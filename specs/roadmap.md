@@ -18,7 +18,8 @@ complete, observable capability.
 
 **Priority values:** `High`, `Medium–High` (en-dash, U+2013), `Medium`. Append `(blocker)` to a
 `High` priority when the phase must ship before Mini can be recommended as safe for real agent
-usage (e.g. a known trust/security gap). Everything else is relative, not a release gate.
+usage (e.g. a known trust/security gap). Only `(blocker)` implies a release gate; other levels
+express relative queue position.
 
 **Adding a phase:** run `/sdd-new-phase` in Claude Code to append a new active phase to this file
 via a review PR. The skill edits only `specs/roadmap.md`; once the PR is merged, materialize the
@@ -203,13 +204,13 @@ Python code in `src/` has no static type checking today — type regressions onl
 ## Phase 16 — Hash Toolkit Keys at Rest
 
 **Goal:** Store toolkit bearer tokens as one-way hashes so a database leak does not hand an attacker usable `tk_` keys.
-**Depends on:** none (self-contained auth change)
+**Depends on:** none
 **Priority:** High (blocker)
 
 Today `toolkit_keys.api_key` holds the raw `tk_` string and `src/auth.py` looks it up with `WHERE ck.api_key = ?`. The vault protects credential *values*, but the toolkit keys themselves — which grant access to every credential bound to their toolkit — are plaintext. A SQLite snapshot, backup, or `docker exec` read gives instant access.
 
-- Switch `toolkit_keys.api_key` column to a hash (SHA-256 or bcrypt) and add a deterministic lookup column or key-id prefix so auth stays O(1) without scanning
-- Return the plaintext `tk_` once at issuance (existing flow) and never store it
+- Switch `toolkit_keys.api_key` column to a SHA-256 hash and add a deterministic lookup column or key-id prefix so auth stays O(1) without scanning (bcrypt is not recommended — `tk_` keys already carry 256 bits of entropy from `secrets.token_hex(32)`, so bcrypt's cost factor is wasted per-request CPU)
+- Return the plaintext `tk_` to the caller at issuance time and never persist it
 - Add an Alembic migration that rehashes existing rows on upgrade, with rollback notes in the migration docstring
 - Update `src/auth.py` to hash the incoming header before the DB lookup
 - Add unit tests covering: valid key accepted, tampered key rejected, revoked key rejected, migration of legacy plaintext rows
@@ -235,7 +236,7 @@ Today `toolkit_keys.api_key` holds the raw `tk_` string and `src/auth.py` looks 
 
 Some admin routes already check `request.state.is_admin` (e.g. `src/routers/toolkits.py:830,877`) but coverage is uneven. A full route-level audit is required so the OpenAPI contract and runtime enforcement agree.
 
-- Enumerate every mutating route under `/toolkits`, `/credentials`, `/apis`, `/overlays`, `/oauth-brokers`, `/user` and classify each as human-only, toolkit-self, or agent-callable
+- Enumerate every mutating route under `/toolkits`, `/credentials`, `/apis`, `/overlays`, `/oauth-brokers`, and `/user` and classify each as human-only, toolkit-self, or agent-callable (`/user` is expected to be human-only by design; include it for confirmatory coverage)
 - Add an explicit `require_admin` dependency (or equivalent guard) to every human-only route; remove any reliance on OpenAPI description alone
 - Add integration tests using an agent key for each human-only route, asserting 403
 - Update `AGENTS.md` with the definitive list of agent-callable routes; remove ambiguity from endpoint docs
@@ -248,6 +249,7 @@ Some admin routes already check `request.state.is_admin` (e.g. `src/routers/tool
 
 `HTMLResponse` / `text/html` strings remain in `src/routers/access_requests.py`, `src/routers/broker.py`, `src/routers/workflows.py`, and `src/main.py`. The SPA pages are canonical; the inline HTML is shadowed for browser requests but still reachable and carries XSS risk where user-controlled values were interpolated.
 
+- Audit each inline HTML branch for unsafe interpolation of user-controlled values and patch any live XSS vector in the same PR — removal must not mask a latent bug worth fixing in parallel
 - Remove the inline HTML branches from workflow and access-request routers; redirect browser `Accept: text/html` requests to the corresponding SPA route
 - Keep JSON responses unchanged for agent callers
 - Add integration tests asserting the deleted branches return JSON only and that browser requests 302 to the SPA
@@ -339,13 +341,13 @@ Large upstream responses are fully buffered today, which spikes memory and block
 - **Credential routing + readable IDs cleanup** — route-first credential selection with stable slugs, deterministic matching, and cleaned-up legacy routing semantics (#208, #84, #192, #230, #229, #61, #35); settle migration/backcompat scope first
 - **Credential management UX** — grouping/filtering, safe metadata edits for OAuth credentials (#78, #159, #158, #179)
 - **Access request editing** — patch/cancel pending access requests during human-agent negotiation (#82)
-- **Toolkit audit log (persisted)** — persistent queryable event log for keys, credentials, permissions, imports (extends Phase 11's audit-log work beyond the initial tables)
+- **Toolkit audit log — extended events and UX** — extends Phase 11's audit table with event types beyond the initial set (imports, permissions, key lifecycle) and adds admin UX for browsing/filtering audit history; Phase 11 delivers the base table and `GET /audit`
 - **Agent setup suggestions** — richer setup state machine returning one recommended next action for agents and humans
 - **Setup-mode catalog discovery** — instance-local catalog discovery before a toolkit key exists, summaries only, no execute links; needs explicit admin-controlled exposure policy
 - **Self-repair API** — coherent recovery path for failed calls using raw OpenAPI/Arazzo specs, stable operation/workflow IDs, and trace context; needs trust/safety model for exposing raw specs to agents (#253)
 - **Anti-looping guardrails** — detect repeated bad calls and stop agent loops before they consume quota or damage upstreams
 - **Telemetry feedback loop** — use failures, searches, docs gaps, and agent errors to improve catalog/docs/product quality; needs privacy decision and event schema
-- **LLM API gateway mode** — first-class streaming, rate-limit, and cost-attribution semantics for LLM HTTP calls routed through the broker (#99); depends on rate limits, traces, identity, and a streaming broker
+- **LLM API gateway mode** — first-class streaming, rate-limit, and cost-attribution semantics for LLM HTTP calls routed through the broker (#99); depends on rate limits, traces, identity, and Phase 23 (broker streaming)
 - **Cron jobs** — scheduled workflow/API runs with clear owner, identity, and runtime isolation; depends on identity model
 - **Workflow viewer follow-up** — verify no remaining Mini viewer gaps after the SPA canonicalization (#255)
 - **Workflow collector** — save successful local runs as reusable workflow templates inside the Mini instance
