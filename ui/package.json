@@ -63,7 +63,7 @@
 		"swagger-ui-dist": "^5.32.5",
 		"tailwindcss": "^4.2.4",
 		"typescript": "^5.9.3",
-		"typescript-eslint": "^8.59.1",
+		"typescript-eslint": "^8.59.2",
 		"vite": "^7.3.2",
 		"vitest": "^4.1.4"
 	},
