@@ -551,7 +551,8 @@ async def oauth_revoke(
             # RFC 7009: revocation of an unknown token is treated as success.
             if row is None:
                 return Response(status_code=200)
-            if row["client_id"] != caller_cid:
+            # row is a tuple — get_db() does not install Row factory.
+            if row[0] != caller_cid:
                 return _oauth_error(
                     403, "unauthorized_client", "Cannot revoke another client's token"
                 )
