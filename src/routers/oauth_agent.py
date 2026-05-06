@@ -342,13 +342,28 @@ async def oauth_token(
 
 @router.post("/oauth/revoke", summary="OAuth 2.0 token revocation (RFC 7009)")
 async def oauth_revoke(
+    request: Request,
     token: Annotated[str | None, Form()] = None,
     token_type_hint: Annotated[str | None, Form()] = None,
 ):
     if not token:
         return _oauth_error(400, "invalid_request", "token is required")
     th = hash_token(token)
+    is_human = getattr(request.state, "is_human_session", False)
+    caller_cid = getattr(request.state, "agent_client_id", None)
     async with get_db() as db:
+        if not is_human:
+            async with db.execute(
+                "SELECT client_id FROM agent_tokens WHERE token_hash=?", (th,)
+            ) as cur:
+                row = await cur.fetchone()
+            # RFC 7009: revocation of an unknown token is treated as success.
+            if row is None:
+                return Response(status_code=200)
+            if caller_cid is None or row["client_id"] != caller_cid:
+                return _oauth_error(
+                    403, "unauthorized_client", "Cannot revoke another client's token"
+                )
         await db.execute("DELETE FROM agent_tokens WHERE token_hash=?", (th,))
         await db.commit()
     return Response(status_code=200)
