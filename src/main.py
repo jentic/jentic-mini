@@ -46,7 +46,7 @@ from src.routers.apis import rebuild_index_on_startup
 from src.routers.catalog import refresh_catalog_if_stale
 from src.routers.toolkits import policy_router as toolkits_policy_router
 from src.startup import backfill_credential_routes, seed_broker_apps, self_register
-from src.utils import build_absolute_url
+from src.utils import build_absolute_url, build_canonical_url
 
 
 logging.basicConfig(level=(os.getenv("LOG_LEVEL") or "info").upper())
@@ -241,7 +241,11 @@ async def health(request: Request):
         Setup status, version, and context-specific next steps or operational metrics.
     """
     state = await setup_state()
-    issuer = build_absolute_url(request, "").rstrip("/")
+    # Pin the agent-identity discovery URLs to the canonical base so a spoofed
+    # Host:/X-Forwarded-Host: cannot point clients at a non-canonical token
+    # endpoint. The setup_url remains request-derived because it is a UX hint
+    # for the same caller, not a security claim.
+    issuer = build_canonical_url(request, "").rstrip("/")
 
     if not state["account_created"]:
         return {

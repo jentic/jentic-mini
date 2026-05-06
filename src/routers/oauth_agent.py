@@ -30,7 +30,7 @@ from src.config import (
     AGENT_REGISTRATION_TOKEN_TTL,
 )
 from src.db import DB_PATH, get_db
-from src.utils import build_absolute_url
+from src.utils import build_canonical_url
 
 
 router = APIRouter(tags=["oauth"])
@@ -92,7 +92,7 @@ def _jwt_payload_unverified(token: str) -> dict[str, Any]:
     summary="OAuth 2.0 Authorization Server Metadata (RFC 8414)",
 )
 async def oauth_authorization_server_metadata(request: Request):
-    issuer = build_absolute_url(request, "").rstrip("/")
+    issuer = build_canonical_url(request, "").rstrip("/")
     return {
         "issuer": issuer,
         "registration_endpoint": f"{issuer}/register",
@@ -128,7 +128,7 @@ async def dynamic_client_registration(request: Request, body: dict[str, Any] = B
     rat = new_registration_access_token()
     rat_hash = hash_token(rat)
     rat_exp = now + AGENT_REGISTRATION_TOKEN_TTL
-    registration_client_uri = build_absolute_url(request, f"/register/{client_id}")
+    registration_client_uri = build_canonical_url(request, f"/register/{client_id}")
     jwks_json = json.dumps(cleaned_jwks)
 
     async with get_db() as db:
@@ -250,7 +250,7 @@ async def oauth_token(
     assertion: Annotated[str | None, Form()] = None,
     refresh_token: Annotated[str | None, Form()] = None,
 ):
-    token_endpoint_aud = build_absolute_url(request, "/oauth/token")
+    token_endpoint_aud = build_canonical_url(request, "/oauth/token")
 
     if grant_type == "urn:ietf:params:oauth:grant-type:jwt-bearer":
         if not assertion:

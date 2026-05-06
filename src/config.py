@@ -21,6 +21,20 @@ WORKFLOWS_DIR = DATA_DIR / "workflows"
 # ── Public hostname ───────────────────────────────────────────────────────────
 JENTIC_PUBLIC_HOSTNAME = os.getenv("JENTIC_PUBLIC_HOSTNAME") or "localhost"
 
+# ── Public base URL ───────────────────────────────────────────────────────────
+# Operator-pinned canonical base URL (no trailing slash) — e.g.
+# "https://jentic.example.com". When set, the issuer / token aud /
+# registration_client_uri values used by the agent-identity (OAuth) routes are
+# derived from this *only*, ignoring inbound Host: and X-Forwarded-Host:
+# headers. Closes the host-header-injection vector where a captured assertion
+# minted with a different aud could be replayed against the canonical token
+# endpoint by setting Host:.
+#
+# When unset, those routes fall back to header-derived URLs (existing
+# behaviour). Operators on internet-facing deployments are strongly
+# encouraged to set this to a fully-qualified URL.
+JENTIC_PUBLIC_BASE_URL = (os.getenv("JENTIC_PUBLIC_BASE_URL") or "").rstrip("/")
+
 # ── Toolkit defaults ──────────────────────────────────────────────────────────
 DEFAULT_TOOLKIT_ID = "default"
 

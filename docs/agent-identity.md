@@ -477,8 +477,17 @@ No migration required. Toolkits that only use static keys are unaffected.
 | `AGENT_REGISTRATION_TOKEN_TTL` | `900` | Registration access token lifetime (seconds) — bootstrap window only |
 | `AGENT_ASSERTION_MAX_AGE` | `300` | Max age of assertion JWT (seconds) |
 | `AGENT_NONCE_WINDOW` | `600` | JTI replay detection window (seconds) |
+| `JENTIC_PUBLIC_BASE_URL` | _(unset)_ | Operator-pinned canonical base URL (e.g. `https://jentic.example.com`). Recommended for internet-facing deployments. See [Pinning the canonical base URL](#pinning-the-canonical-base-url) below. |
 
 **Note:** `AGENT_NONCE_WINDOW` must be greater than `AGENT_ASSERTION_MAX_AGE` to ensure there is no gap where a replayed assertion could slip through after its `jti` has been pruned but before the assertion itself has expired.
+
+### Pinning the canonical base URL
+
+The agent-identity routes derive several security-sensitive URLs from the inbound request: the discovery `issuer`, the JWT-bearer `aud` value the server expects on token requests, and the `registration_client_uri` it persists for each agent. By default these are computed from the `Host:` / `X-Forwarded-Host:` header on the request.
+
+For internet-facing deployments — or any deployment behind a reverse proxy whose host header validation you do not control — set `JENTIC_PUBLIC_BASE_URL` to the canonical public base URL of the instance (e.g. `https://jentic.example.com`, no trailing slash). When set, all agent-identity routes derive issuer / aud / registration_client_uri from that value only and ignore inbound `Host:` and `X-Forwarded-Host:` headers.
+
+This closes a host-header-injection vector where an attacker who has captured a legitimate assertion minted with a different `aud` could replay it against the canonical token endpoint by spoofing `Host:` (the server would otherwise recompute the expected `aud` from the spoofed header and the signature would verify).
 
 ---
 
