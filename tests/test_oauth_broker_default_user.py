@@ -7,7 +7,6 @@ with the hardcoded string "default".
 """
 
 import pytest
-
 from src.brokers.pipedream import PipedreamOAuthBroker
 
 
@@ -62,7 +61,9 @@ def test_custom_default_external_user_id_is_persisted(admin_client, broker_with_
     )
 
 
-def test_omitted_default_external_user_id_falls_back_to_default(admin_client, broker_with_default_user):
+def test_omitted_default_external_user_id_falls_back_to_default(
+    admin_client, broker_with_default_user
+):
     """When default_external_user_id is omitted from config, it should fall back to 'default'."""
     resp = admin_client.get(f"/oauth-brokers/{broker_with_default_user}")
     assert resp.status_code == 200, f"GET failed: {resp.text}"

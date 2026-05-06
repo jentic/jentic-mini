@@ -133,7 +133,7 @@ class OAuthBrokerCreate(NormModel):
             "(all from Pipedream workspace → API settings → OAuth clients). "
             "Optional: `environment` (`production` or `development`, default `production`), "
             "`support_email`, "
-            "`default_external_user_id` (user identity for initial account sync, default `\"default\"`)."
+            '`default_external_user_id` (user identity for initial account sync, default `"default"`).'
         ),
         examples=[_PIPEDREAM_CONFIG_EXAMPLE],
     )
