@@ -56,6 +56,7 @@ Variables provide the native mechanism for this.
 - Modify the broker to resolve the target URL from `apis.base_url` at request time rather than trusting the path segment literally
 - Update the dot-based host detection to allow configured aliases to bypass it
 - Add integration tests: import a spec with `base_url`, broker a request, verify it routes to the overridden URL
+- Close or cross-reference issues #229, #230
 
 ## Phase 2 — Backend Unit Test Coverage (Vault, Auth, Policy, Broker)
 
@@ -321,16 +322,24 @@ Large upstream responses are fully buffered today, which spikes memory and block
 
 ## Later Phases (Not Yet Planned)
 
-- **OAuth2 first-party setup flow** — `POST /credentials/oauth2/init` → human-facing URL → token grant → auto-refresh; requires design decision on storage and token refresh scheduling
-- **Native `JenticOAuthBroker`** — replace Pipedream bridge with a first-party OAuth broker per `docs/oauth-broker.md`; zero API surface changes
+A handful of items below are **foundational dependencies** for several others in this list — most
+notably **Agent identity + grants + subagent delegation** (gates the execution envelope, activity
+monitor, Agent Centre, delegated session observability, agent context packaging, cron jobs, and
+LLM gateway), the **Docs harness + drift CI** (gates agent context packaging and the self-repair
+API), and **UI alignment with Hosted edition** (shapes the Persistent Agent Centre UX and most
+new admin surfaces). They are still parked here rather than as active phases because none has a
+settled enough design to qualify as a shippable slice; promoting any of them to active status
+should happen via `/sdd-new-phase` once the design is concrete.
+
+- **OAuth2 first-party setup flow** — `POST /credentials/oauth2/init` → human-facing URL → token grant → auto-refresh; requires design decision on storage and token refresh scheduling (#104)
+- **Native `JenticOAuthBroker`** — replace Pipedream bridge with a first-party OAuth broker per `docs/oauth-broker.md`; zero API surface changes (#104)
 - **Agent-contributed catalog flywheel** — agents submit workflows via `POST /import` private to their toolkit; admin promotes to public; mirrors the auth overlay flywheel pattern (notes system is the reading half of this loop)
 - **Workflow utility tools bundle** — jq-like transform, HTTP utilities, template rendering bundled as pseudo-operations or a sidecar (extends the step-to-step transformation work)
 - **Schema samples endpoint** — `POST /samples` returning example request bodies and response shapes for a given capability, useful for simulate-mode grounding
 - **HMAC request signing** — for higher-assurance credential binding on APIs that support it
 - **Production workflow domain** — canonical hostname for workflow IDs in production deployments (currently `localhost`)
 - **Workflow step-level credential injection** — per-step credential overrides for workflows that need different credentials for the same API host in different steps
-- **Unauthenticated search (rate-limited)** — allow discovery without a toolkit key; depends on baseline rate limiting being in place first
-- **API browser filtering** — filter the admin UI's API browser by credential status and toolkit access
+- **API browser filtering** — filter the admin UI's API browser by credential status and toolkit access (#161)
 - **Trace log view improvements** — richer filtering and run-to-run comparison in the trace log view
 - **Pagination model review** — confirm whether cursor-based pagination is needed anywhere beyond the current integer page-number scheme
 - **Agent identity + grants + subagent delegation** — give agents a first-class identity with scoped grants, revocation, and delegation (parents mint short-lived child credentials limited to operation subsets, TTLs, delegation depth, and kill callbacks); foundation for execution-envelope, activity-monitor, and Agent-Centre work below. Needs schema design and a legacy `tk_` rollout path before it becomes a shippable slice.
@@ -341,7 +350,7 @@ Large upstream responses are fully buffered today, which spikes memory and block
 - **Agent context packaging** — compact task-specific execution-context bundles (allowed operations, scoped docs/spec snippets, credential handles, recent traces, human handoff links) for agents and subagents; depends on identity, grants, and docs harness
 - **Notification center** — persistent event inbox for human-visible alerts, approvals, blocks, failures, and webhook deliveries; depends on audit/events
 - **Webhook retry + signing** — signed outbound webhooks with retry/backoff for job callbacks and block events
-- **Webhook on block / auto-block** — automatic suspension thresholds for misbehaving agents/toolkits with signed event notifications; depends on webhooks and audit/events
+- **Webhook on block / auto-block** — automatic suspension thresholds for misbehaving agents/toolkits with signed event notifications; depends on webhooks and audit/events; coordinate with Phase 21's emergency-stop scope (#98)
 - **Docs harness + drift CI** — generated docs sections plus CI drift checks across `llms.txt`, `AGENTS.md`, OpenAPI client, DockerHub, and import docs; source-of-truth and generated/manual boundaries need to be defined first (#186, #97, #139)
 - **UI alignment with Hosted edition** — define and implement shared visual/product patterns for the highest-traffic Mini/Hosted surfaces; needs design-system strategy agreement
 - **Production install practices** — registry-based compose, healthcheck, install docs for production-style self-hosting (#139)
