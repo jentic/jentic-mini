@@ -38,12 +38,27 @@ JENTIC_PUBLIC_BASE_URL = (os.getenv("JENTIC_PUBLIC_BASE_URL") or "").rstrip("/")
 # ── Toolkit defaults ──────────────────────────────────────────────────────────
 DEFAULT_TOOLKIT_ID = "default"
 
+
 # ── Agent identity (OAuth) ────────────────────────────────────────────────────
-AGENT_ACCESS_TTL = int(os.getenv("AGENT_ACCESS_TTL", "3600"))
-AGENT_REFRESH_TTL = int(os.getenv("AGENT_REFRESH_TTL", str(7 * 24 * 3600)))
-AGENT_REGISTRATION_TOKEN_TTL = int(os.getenv("AGENT_REGISTRATION_TOKEN_TTL", "900"))
-AGENT_ASSERTION_MAX_AGE = int(os.getenv("AGENT_ASSERTION_MAX_AGE", "300"))
-AGENT_NONCE_WINDOW = int(os.getenv("AGENT_NONCE_WINDOW", "600"))
+def _int_env(name: str, default: int) -> int:
+    """Read an int env var, treating unset/empty as the default.
+
+    compose.yml forwards env vars through ``${VAR:-}``, which means an unset
+    operator value still arrives as the empty string. ``int("")`` raises, so
+    we treat empty-or-unset uniformly here — the operator override is
+    unambiguous and a stray blank line in ``.env`` doesn't crash startup.
+    """
+    raw = os.getenv(name, "").strip()
+    if not raw:
+        return default
+    return int(raw)
+
+
+AGENT_ACCESS_TTL = _int_env("AGENT_ACCESS_TTL", 3600)
+AGENT_REFRESH_TTL = _int_env("AGENT_REFRESH_TTL", 7 * 24 * 3600)
+AGENT_REGISTRATION_TOKEN_TTL = _int_env("AGENT_REGISTRATION_TOKEN_TTL", 900)
+AGENT_ASSERTION_MAX_AGE = _int_env("AGENT_ASSERTION_MAX_AGE", 300)
+AGENT_NONCE_WINDOW = _int_env("AGENT_NONCE_WINDOW", 600)
 
 # Replay protection invariant: the nonce-cache window must outlive the assertion's
 # acceptance window, otherwise a replayed JWT could land after its jti has been
