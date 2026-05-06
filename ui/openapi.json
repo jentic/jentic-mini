@@ -6391,7 +6391,7 @@
 						"additionalProperties": true,
 						"type": "object",
 						"title": "Config",
-						"description": "Provider-specific configuration. For `pipedream`: `client_id`, `client_secret`, `project_id` (all from Pipedream workspace \u2192 API settings \u2192 OAuth clients). Optional: `environment` (`production` or `development`, default `production`), `support_email`.",
+						"description": "Provider-specific configuration. For `pipedream`: `client_id`, `client_secret`, `project_id` (all from Pipedream workspace → API settings → OAuth clients). Optional: `environment` (`production` or `development`, default `production`), `support_email`, `default_external_user_id` (user identity for initial account sync, default `\"default\"`).",
 						"examples": [
 							{
 								"client_id": "oa_abc123",
