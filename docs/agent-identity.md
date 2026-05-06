@@ -8,8 +8,6 @@ Registration is **agent-initiated**: the agent introduces itself to Jentic Mini 
 
 The recommended deployment keeps the private key **outside** the agent's runtime environment. A sidecar or proxy holds the key, handles the token lifecycle, and injects the access token into the agent's requests — the agent never sees the signing key. For fully locked-down environments where Jentic Mini is not internet-reachable, it is acceptable (but not recommended) to place the keypair inside the agent's container.
 
-**Non-breaking change:** These architecture changes are fully backward-compatible. Agents using the existing toolkit API key flow (`X-Jentic-API-Key: tk_xxx`) continue to work exactly as before with no code changes required. Agent identity is an additional authentication option for those agents, but the standard pattern for any future agents.
-
 ---
 
 ## Concepts
