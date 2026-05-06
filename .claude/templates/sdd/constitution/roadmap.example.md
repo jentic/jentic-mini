@@ -19,10 +19,18 @@ Guidelines:
 - Each phase should produce visible, testable progress.
 - If a phase feels too large, split it.
 
+**Priority values:** `High`, `Medium–High` (en-dash, U+2013), `Medium`. Append `(blocker)` to a
+`High` priority when the phase fixes a gap that makes the system unsafe for its current intended
+use (e.g. a known trust/security issue). Items required for a later readiness bar beyond today's
+intended use do not need `(blocker)` — state the forward-looking rationale in the phase body and
+use the appropriate normal priority. Only `(blocker)` implies a release gate for today's bar;
+other levels express relative queue position.
+
 ## Phase 1 — [FOUNDATION_PHASE_NAME]
 
 **Goal:** [establish a minimal runnable system]  
-**Depends on:** none
+**Depends on:** none  
+**Priority:** [High | Medium–High | Medium]
 
 - [set up core runtime / framework / entrypoint]
 - [confirm local development workflow works]
@@ -31,7 +39,8 @@ Guidelines:
 ## Phase 2 — [BASE_STRUCTURE_PHASE_NAME]
 
 **Goal:** [introduce shared structure and conventions]  
-**Depends on:** Phase 1
+**Depends on:** Phase 1  
+**Priority:** [High | Medium–High | Medium]
 
 - [add shared layout / structure / core modules]
 - [establish styling / organization / conventions]
@@ -40,7 +49,8 @@ Guidelines:
 ## Phase 3 — [FIRST_CORE_FEATURE]
 
 **Goal:** [deliver first meaningful user-facing capability]  
-**Depends on:** Phase 2
+**Depends on:** Phase 2  
+**Priority:** [High | Medium–High | Medium]
 
 - [introduce first core model / module]
 - [seed or create minimal usable data if needed]
@@ -49,7 +59,8 @@ Guidelines:
 ## Phase 4 — [DETAIL_OR_INTERACTION]
 
 **Goal:** [enable interaction with individual items]  
-**Depends on:** Phase 3
+**Depends on:** Phase 3  
+**Priority:** [High | Medium–High | Medium]
 
 - [support viewing or interacting with a single entity]
 - [display key attributes and state]
@@ -58,7 +69,8 @@ Guidelines:
 ## Phase 5 — [SECOND_CORE_CAPABILITY]
 
 **Goal:** [expand system capabilities with a second feature]  
-**Depends on:** Phase 4
+**Depends on:** Phase 4  
+**Priority:** [High | Medium–High | Medium]
 
 - [introduce another important model / module]
 - [connect it to existing functionality]
@@ -67,7 +79,8 @@ Guidelines:
 ## Phase 6 — [THIRD_CORE_CAPABILITY]
 
 **Goal:** [extend system with supporting capability]  
-**Depends on:** Phase 5
+**Depends on:** Phase 5  
+**Priority:** [High | Medium–High | Medium]
 
 - [add supporting subsystem or feature]
 - [integrate with previous data and flows]
@@ -76,7 +89,8 @@ Guidelines:
 ## Phase 7 — [PRIMARY_USER_ACTION]
 
 **Goal:** [enable a key user action]  
-**Depends on:** Phase 6
+**Depends on:** Phase 6  
+**Priority:** [High | Medium–High | Medium]
 
 - [implement a primary user workflow]
 - [add validation and error handling]
@@ -85,7 +99,8 @@ Guidelines:
 ## Phase 8 — [OPERATIONAL_VIEW]
 
 **Goal:** [support monitoring or management]  
-**Depends on:** Phase 7
+**Depends on:** Phase 7  
+**Priority:** [High | Medium–High | Medium]
 
 - [add dashboard / admin / summary view]
 - [surface aggregate or operational data]
@@ -94,7 +109,8 @@ Guidelines:
 ## Phase 9 — [POLISH_AND_ACCESSIBILITY]
 
 **Goal:** [improve usability and accessibility]  
-**Depends on:** Phase 8
+**Depends on:** Phase 8  
+**Priority:** [High | Medium–High | Medium]
 
 - [improve responsiveness and UX]
 - [audit accessibility and semantics]
@@ -103,7 +119,8 @@ Guidelines:
 ## Phase 10 — [HARDENING]
 
 **Goal:** [increase reliability and robustness]  
-**Depends on:** Phase 9
+**Depends on:** Phase 9  
+**Priority:** [High | Medium–High | Medium]
 
 - [add error handling and fallback states]
 - [improve validation and resilience]

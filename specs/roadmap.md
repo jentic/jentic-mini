@@ -16,6 +16,14 @@ testable slice of work**. Phases are ordered by priority and dependency. Each ph
 vertical slice: it touches whatever layers are needed (backend, frontend, tests) to deliver a
 complete, observable capability.
 
+**Priority values:** `High`, `Medium–High` (en-dash, U+2013), `Medium`. Append `(blocker)` to a
+`High` priority when the phase fixes a trust/security gap that makes Mini unsafe for real agent
+usage today (early-access safety bar — e.g. credential exposure, cross-toolkit data leakage).
+Items required for **production** readiness beyond the early-access bar do not need `(blocker)`:
+Mini is not recommended for production regardless (see `specs/mission.md`), so such phases use
+their normal priority with the production rationale stated in the phase body. Only `(blocker)`
+implies an early-access release gate; other levels express relative queue position.
+
 **Adding a phase:** run `/sdd-new-phase` in Claude Code to append a new active phase to this file
 via a review PR. The skill edits only `specs/roadmap.md`; once the PR is merged, materialize the
 phase with `/sdd-new-spec <N>`.
@@ -48,6 +56,7 @@ Variables provide the native mechanism for this.
 - Modify the broker to resolve the target URL from `apis.base_url` at request time rather than trusting the path segment literally
 - Update the dot-based host detection to allow configured aliases to bypass it
 - Add integration tests: import a spec with `base_url`, broker a request, verify it routes to the overridden URL
+- Close or cross-reference issues #229, #230
 
 ## Phase 2 — Backend Unit Test Coverage (Vault, Auth, Policy, Broker)
 
@@ -58,9 +67,12 @@ Variables provide the native mechanism for this.
 - Tests for vault encryption/decryption (`src/vault.py`)
 - Tests for auth middleware: key validation, revoked keys, IP allowlisting, trusted-subnet append semantics (`src/auth.py`)
 - Tests for broker credential injection: bearer, apiKey, basic, multi-header (`src/brokers/`)
+- Tests for broker URL rewriting: path-segment host detection, configured aliases, `server_variables` resolution, catalog-ID routes
 - Tests for policy engine: allow/deny rule evaluation, first-match-wins, default action
 - Tests for BM25 search ranking over a fixture catalog
+- Tests for complex multi-API workflow execution: two APIs with different auth schemes, credential selection per step, trace propagation across steps
 - All tests must pass in CI without external network access
+- Close or cross-reference issue #177
 
 ## Phase 3 — TypeScript Arazzo Runner Migration
 
@@ -73,6 +85,7 @@ Variables provide the native mechanism for this.
 - Validate broker URL rewriting works identically for multi-step workflows spanning multiple APIs with different auth schemes
 - Remove the PyPI `arazzo-runner` dependency once the shim is fully validated
 - Add integration tests with a multi-step workflow fixture (two APIs, two credentials)
+- Close or cross-reference issues #131, #251
 
 ## Phase 4 — API Surface Alignment with Jentic Standards
 
@@ -98,6 +111,7 @@ Variables provide the native mechanism for this.
 - Allow Arazzo workflow steps to reference the transform operation
 - Add integration tests: a two-step workflow where step 1 returns a large response and step 2 receives a filtered subset
 - Document the transform pseudo-operation in `docs/workflows.md`
+- Close or cross-reference issue #132
 
 ## Phase 6 — Human-in-the-Loop Credential Provisioning
 
@@ -110,6 +124,7 @@ Variables provide the native mechanism for this.
 - Add a UI page at the `user_url` where a human can enter the credential value directly
 - Store the value through the vault on human submission
 - Poll endpoint and UI page must both work correctly; add integration test for the full flow
+- Close or cross-reference issue #104
 
 ## Phase 7 — UI Deep-Link Actions (Single-URL Human Interventions)
 
@@ -163,7 +178,7 @@ Variables provide the native mechanism for this.
 
 **Goal:** Add baseline protection before any production exposure.
 **Depends on:** none (can proceed independently)
-**Priority:** Medium–High (required before production; currently absent on all endpoints including login)
+**Priority:** Medium–High (no inbound rate limiting on any endpoint, including login; audit trail for sensitive operations is absent)
 
 - Add per-IP rate limiting on: `POST /user/login`, `POST /user/token`, `POST /default-api-key/generate`
 - Add per-toolkit rate limiting on broker proxy requests
@@ -196,21 +211,164 @@ Python code in `src/` has no static type checking today — type regressions onl
 - Add a typecheck step to `.github/workflows/ci-backend.yml` alongside the existing lint/test steps so any pyright error fails the backend job
 - Update `specs/tech-stack.md`: rewrite the Python type-checking entry under the formatting/linting section (currently says Python has no static type checking) to reflect pyright adoption, and remove the "No mypy or pyright" bullet under "What We Are Not Using"
 
+## Phase 16 — Hash Toolkit Keys at Rest
+
+**Goal:** Store toolkit bearer tokens as one-way hashes so a database leak does not hand an attacker usable `tk_` keys.
+**Depends on:** none
+**Priority:** High (blocker)
+
+Today `toolkit_keys.api_key` holds the raw `tk_` string and `src/auth.py` looks it up with `WHERE ck.api_key = ?`. The vault protects credential *values*, but the toolkit keys themselves — which grant access to every credential bound to their toolkit — are plaintext. A SQLite snapshot, backup, or `docker exec` read gives instant access.
+
+- Switch `toolkit_keys.api_key` column to a SHA-256 hash and add a deterministic lookup column or key-id prefix so auth stays O(1) without scanning (bcrypt is not recommended — `tk_` keys already carry 256 bits of entropy from `secrets.token_hex(32)`, so bcrypt's cost factor is wasted per-request CPU)
+- Return the plaintext `tk_` to the caller at issuance time and never persist it
+- Add an Alembic migration that rehashes existing rows on upgrade, with rollback notes in the migration docstring
+- Update `src/auth.py` to hash the incoming header before the DB lookup
+- Add unit tests covering: valid key accepted, tampered key rejected, revoked key rejected, migration of legacy plaintext rows
+
+## Phase 17 — Scope Trace and Toolkit Reads to Caller
+
+**Goal:** Close the cross-toolkit information disclosure on `/traces` and `/toolkits` reads so an agent key can only see its own data.
+**Depends on:** none
+**Priority:** High (blocker)
+
+`src/routers/traces.py` `list_traces` and `get_trace` query `executions` with no `toolkit_id` filter — any authenticated key sees all traces. Same pattern needs auditing on `/toolkits` listing/detail reads when the caller is not admin.
+
+- Add `WHERE toolkit_id = ?` filtering to `GET /traces` and `GET /traces/{id}` when `request.state.is_admin` is false, return 404 for traces owned by a different toolkit
+- Audit `/toolkits`, `/toolkits/{id}`, `/toolkits/{id}/keys`, `/toolkits/{id}/credentials` and apply the same caller-scoped filter for non-admin callers
+- Add integration tests that create two toolkits, confirm toolkit A's key cannot read toolkit B's traces or metadata
+- Document the scoping rule in `AGENTS.md` next to the trace endpoints
+
+## Phase 18 — Control-Plane Route Audit (Human-Only Enforcement)
+
+**Goal:** Guarantee at runtime that agent keys cannot create toolkits, mint/rotate/revoke sibling keys, or perform admin-only credential operations — matching the OpenAPI intent.
+**Depends on:** none
+**Priority:** High (blocker)
+
+Some admin routes already check `request.state.is_admin` (e.g. `src/routers/toolkits.py:830,877`) but coverage is uneven. A full route-level audit is required so the OpenAPI contract and runtime enforcement agree.
+
+- Enumerate every mutating route under `/toolkits`, `/credentials`, `/apis`, `/overlays`, `/oauth-brokers`, and `/user` and classify each as human-only, toolkit-self, or agent-callable (`/user` is expected to be human-only by design; include it for confirmatory coverage)
+- Add an explicit `require_admin` dependency (or equivalent guard) to every human-only route; remove any reliance on OpenAPI description alone
+- Add integration tests using an agent key for each human-only route, asserting 403
+- Update `AGENTS.md` with the definitive list of agent-callable routes; remove ambiguity from endpoint docs
+
+## Phase 19 — Remove Legacy Inline HTML Routes
+
+**Goal:** Delete the shadowed inline-HTML branches for workflow viewer and legacy approval pages, and route all browser traffic through the SPA.
+**Depends on:** none
+**Priority:** High (blocker)
+
+`HTMLResponse` / `text/html` strings remain in `src/routers/access_requests.py`, `src/routers/broker.py`, `src/routers/workflows.py`, and `src/main.py`. The SPA pages are canonical; the inline HTML is shadowed for browser requests but still reachable and carries XSS risk where user-controlled values were interpolated.
+
+- Audit each inline HTML branch for unsafe interpolation of user-controlled values and patch any live XSS vector in the same PR — removal must not mask a latent bug worth fixing in parallel
+- Remove the inline HTML branches from workflow and access-request routers; redirect browser `Accept: text/html` requests to the corresponding SPA route
+- Keep JSON responses unchanged for agent callers
+- Add integration tests asserting the deleted branches return JSON only and that browser requests 302 to the SPA
+- Close or cross-reference issues #257, #255
+
+## Phase 20 — Serve Agent Docs Locally
+
+**Goal:** Self-hosted Mini serves `AGENTS.md` (and any other agent-facing docs) over HTTP and `llms.txt` links to them.
+**Depends on:** none
+**Priority:** Medium
+
+Currently only `llms.txt` is served. Agents running against a self-hosted Mini cannot fetch `AGENTS.md` without cloning the repo.
+
+- Add a `/docs/agents` route (or equivalent) serving `AGENTS.md` as markdown, read from disk at request time or bundled into the image
+- Update `llms.txt` to link the served URL
+- Add an integration test asserting the endpoint returns the current `AGENTS.md` content
+- Close or cross-reference issues #97, #139
+
+## Phase 21 — Global Emergency Stop
+
+**Goal:** A human admin can revoke all or a selected subset of toolkit keys in one call when an incident is suspected.
+**Depends on:** Rate Limiting and Audit Logging (needs the audit table to record the stop event)
+**Priority:** Medium–High
+
+Today revocation is per-key. During an incident, an admin has no single lever to halt agent traffic.
+
+- Add `POST /admin/emergency-stop` (human-only) accepting an optional `{toolkit_ids: [...]}` filter; default revokes every non-admin toolkit key
+- Record each revocation as an audit event with reason and actor
+- Add an integration test: issue keys for two toolkits, call emergency-stop with one toolkit filter, assert only that toolkit's keys are revoked
+- Close or cross-reference issue #98
+
+## Phase 22 — Query-Parameter Credential Injection
+
+**Goal:** Support OpenAPI `apiKey` security schemes with `in: query`, not just `in: header`.
+**Depends on:** none
+**Priority:** Medium
+
+The broker only injects header-based credentials; APIs that require a query-string key (common in legacy public APIs) fail at runtime.
+
+- Read the `in` field from the security scheme when selecting the injection site
+- For `in: query`, append the credential to the outbound URL after routing, before upstream dispatch; preserve existing query parameters
+- Add integration tests covering header, query, and mixed schemes
+- Close or cross-reference issue #224
+
+## Phase 23 — Broker Response Streaming
+
+**Goal:** Stream synchronous broker responses instead of buffering the full upstream body in memory.
+**Depends on:** none
+**Priority:** Medium
+
+Large upstream responses are fully buffered today, which spikes memory and blocks the broker loop. Async job bodies should also be truncated with a clear marker rather than stored unbounded.
+
+- Switch the broker's sync response path to a streaming passthrough (starlette `StreamingResponse` backed by the httpx response stream)
+- Keep trace recording: capture status, headers, and a bounded prefix of the body for the trace
+- Add a configurable truncation cap for async job bodies with an explicit "truncated" marker in the stored trace
+- Add integration tests: large upstream body returned to the client in full, trace body truncated at the cap
+- Close or cross-reference issue #225
+
 ---
 
 ## Later Phases (Not Yet Planned)
 
-- **OAuth2 first-party setup flow** — `POST /credentials/oauth2/init` → human-facing URL → token grant → auto-refresh; requires design decision on storage and token refresh scheduling
-- **Native `JenticOAuthBroker`** — replace Pipedream bridge with a first-party OAuth broker per `docs/oauth-broker.md`; zero API surface changes
+A handful of items below are **foundational dependencies** for several others in this list — most
+notably **Agent identity + grants + subagent delegation** (gates the execution envelope, activity
+monitor, Agent Centre, delegated session observability, agent context packaging, cron jobs, and
+LLM gateway), the **Docs harness + drift CI** (gates agent context packaging and the self-repair
+API), and **UI alignment with Hosted edition** (shapes the Persistent Agent Centre UX and most
+new admin surfaces). They are still parked here rather than as active phases because none has a
+settled enough design to qualify as a shippable slice; promoting any of them to active status
+should happen via `/sdd-new-phase` once the design is concrete.
+
+- **OAuth2 first-party setup flow** — `POST /credentials/oauth2/init` → human-facing URL → token grant → auto-refresh; requires design decision on storage and token refresh scheduling (#104)
+- **Native `JenticOAuthBroker`** — replace Pipedream bridge with a first-party OAuth broker per `docs/oauth-broker.md`; zero API surface changes (#104)
 - **Agent-contributed catalog flywheel** — agents submit workflows via `POST /import` private to their toolkit; admin promotes to public; mirrors the auth overlay flywheel pattern (notes system is the reading half of this loop)
 - **Workflow utility tools bundle** — jq-like transform, HTTP utilities, template rendering bundled as pseudo-operations or a sidecar (extends the step-to-step transformation work)
 - **Schema samples endpoint** — `POST /samples` returning example request bodies and response shapes for a given capability, useful for simulate-mode grounding
 - **HMAC request signing** — for higher-assurance credential binding on APIs that support it
 - **Production workflow domain** — canonical hostname for workflow IDs in production deployments (currently `localhost`)
 - **Workflow step-level credential injection** — per-step credential overrides for workflows that need different credentials for the same API host in different steps
-- **Unauthenticated search (rate-limited)** — allow discovery without a toolkit key; depends on baseline rate limiting being in place first
-- **API browser filtering** — filter the admin UI's API browser by credential status and toolkit access
+- **API browser filtering** — filter the admin UI's API browser by credential status and toolkit access (#161)
 - **Trace log view improvements** — richer filtering and run-to-run comparison in the trace log view
 - **Pagination model review** — confirm whether cursor-based pagination is needed anywhere beyond the current integer page-number scheme
+- **Agent identity + grants + subagent delegation** — give agents a first-class identity with scoped grants, revocation, and delegation (parents mint short-lived child credentials limited to operation subsets, TTLs, delegation depth, and kill callbacks); foundation for execution-envelope, activity-monitor, and Agent-Centre work below. Needs schema design and a legacy `tk_` rollout path before it becomes a shippable slice.
+- **Execution envelope injection** — attach a consistent safe per-call envelope (agent identity, grant, credential handle, operation subset, delegation/session ID, trace ID, policy decision, handoff links) to every broker/workflow call without exposing secrets; depends on agent identity
+- **Agent activity monitor + context API** — compact data/API layer for recent actions, failures, pending human actions, and toolkit health that humans and agents can both consume; depends on identity and trace scoping (Phase 17); see #99
+- **Persistent Agent Centre UX** — dedicated UI shell bringing together identity, activity, approvals, notifications, audit history, and emergency controls; depends on the activity monitor and audit log
+- **Delegated session observability** — expose parent/child session status, TTLs, revocation state, stale/orphan markers, and recovery context so external orchestrators can audit and recover delegated work; depends on subagent delegation
+- **Agent context packaging** — compact task-specific execution-context bundles (allowed operations, scoped docs/spec snippets, credential handles, recent traces, human handoff links) for agents and subagents; depends on identity, grants, and docs harness
+- **Notification center** — persistent event inbox for human-visible alerts, approvals, blocks, failures, and webhook deliveries; depends on audit/events
+- **Webhook retry + signing** — signed outbound webhooks with retry/backoff for job callbacks and block events
+- **Webhook on block / auto-block** — automatic suspension thresholds for misbehaving agents/toolkits with signed event notifications; depends on webhooks and audit/events; coordinate with Phase 21's emergency-stop scope (#98)
+- **Docs harness + drift CI** — generated docs sections plus CI drift checks across `llms.txt`, `AGENTS.md`, OpenAPI client, DockerHub, and import docs; source-of-truth and generated/manual boundaries need to be defined first (#186, #97, #139)
+- **UI alignment with Hosted edition** — define and implement shared visual/product patterns for the highest-traffic Mini/Hosted surfaces; needs design-system strategy agreement
+- **Production install practices** — registry-based compose, healthcheck, install docs for production-style self-hosting (#139)
+- **Operation scoping presets** — preset policy templates, optional tag-aware scoping, and explicit prefix-vs-regex `pattern` rules in the policy engine (#133, #122, #63)
+- **Pre-flight permission checks** — dedicated access-check API that returns structured next steps (including access-request links) before execution; depends on credential routing and policies (#77)
+- **Credential routing + readable IDs cleanup** — route-first credential selection with stable slugs, deterministic matching, and cleaned-up legacy routing semantics (#208, #84, #192, #230, #229, #61, #35); settle migration/backcompat scope first
+- **Credential management UX** — grouping/filtering, safe metadata edits for OAuth credentials (#78, #159, #158, #179)
+- **Access request editing** — patch/cancel pending access requests during human-agent negotiation (#82)
+- **Toolkit audit log — extended events and UX** — extends Phase 11's audit table with event types beyond the initial set (imports, permissions, key lifecycle) and adds admin UX for browsing/filtering audit history; Phase 11 delivers the base table and `GET /audit`
+- **Agent setup suggestions** — richer setup state machine returning one recommended next action for agents and humans
+- **Setup-mode catalog discovery** — instance-local catalog discovery before a toolkit key exists, summaries only, no execute links; needs explicit admin-controlled exposure policy
+- **Self-repair API** — coherent recovery path for failed calls using raw OpenAPI/Arazzo specs, stable operation/workflow IDs, and trace context; needs trust/safety model for exposing raw specs to agents (#253)
+- **Anti-looping guardrails** — detect repeated bad calls and stop agent loops before they consume quota or damage upstreams
+- **Telemetry feedback loop** — use failures, searches, docs gaps, and agent errors to improve catalog/docs/product quality; needs privacy decision and event schema
+- **LLM API gateway mode** — first-class streaming, rate-limit, and cost-attribution semantics for LLM HTTP calls routed through the broker (#99); depends on rate limits, traces, identity, and Phase 23 (broker streaming)
+- **Cron jobs** — scheduled workflow/API runs with clear owner, identity, and runtime isolation; depends on identity model
+- **Workflow viewer follow-up** — verify no remaining Mini viewer gaps after the SPA canonicalization (#255)
+- **Workflow collector** — save successful local runs as reusable workflow templates inside the Mini instance
+- **Pluggable credential backend** — allow self-hosters to back credentials with Vault/Bitwarden/1Password/etc.; needs backend protocol and metadata model (#96)
 
 <!-- Only include items here if they are clearly out of current scope. -->
