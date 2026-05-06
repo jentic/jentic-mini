@@ -6,6 +6,7 @@ Create Date: 2026-04-30
 """
 
 from alembic import op
+from sqlalchemy import text
 
 
 revision = "0005"
@@ -58,6 +59,14 @@ def upgrade() -> None:
     """)
     op.execute("CREATE INDEX IF NOT EXISTS idx_agent_tokens_client ON agent_tokens(client_id)")
     op.execute("CREATE INDEX IF NOT EXISTS idx_agent_tokens_expires ON agent_tokens(expires_at)")
+    # Refresh-token rotation defence-in-depth: at most one live child per parent
+    # so a racing reuse can't successfully mint a duplicate. Partial because root
+    # tokens (parent IS NULL) and revoked siblings should not collide.
+    op.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS uq_agent_tokens_parent_type "
+        "ON agent_tokens(parent_token_hash, token_type) "
+        "WHERE parent_token_hash IS NOT NULL"
+    )
 
     op.execute("""
         CREATE TABLE IF NOT EXISTS agent_nonces (
@@ -68,10 +77,19 @@ def upgrade() -> None:
     """)
     op.execute("CREATE INDEX IF NOT EXISTS idx_agent_nonces_expires ON agent_nonces(expires_at)")
 
-    try:
+    # SQLite has no `ALTER TABLE … ADD COLUMN IF NOT EXISTS`; introspect via
+    # PRAGMA so genuine errors still raise instead of being swallowed.
+    bind = op.get_bind()
+    cols = {row[1] for row in bind.execute(text("PRAGMA table_info(executions)"))}
+    if "agent_id" not in cols:
         op.execute("ALTER TABLE executions ADD COLUMN agent_id TEXT DEFAULT NULL")
-    except Exception:
-        pass
+    # Trace tenant scoping: non-admin reads filter by agent_id; partial index
+    # keeps it cheap given most pre-feature rows have NULL.
+    op.execute(
+        "CREATE INDEX IF NOT EXISTS idx_executions_agent_created "
+        "ON executions(agent_id, created_at) "
+        "WHERE agent_id IS NOT NULL"
+    )
 
 
 def downgrade() -> None:
