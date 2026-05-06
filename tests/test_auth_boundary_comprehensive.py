@@ -196,16 +196,21 @@ def test_default_api_key_generate_requires_human_session(app):
         )
 
 
-def test_public_endpoints_accessible_without_auth(client):
-    """Public endpoints should be accessible without any auth."""
-    # Test a few representative public endpoints
-    assert client.get("/health").status_code == 200
-    # NOTE: /version currently requires auth (may want to make it public)
-    # assert client.get("/version").status_code == 401
-    # NOTE: Discovery endpoints now require auth at runtime (spec says public, middleware says no)
-    # assert client.get("/search").status_code == 401
-    # assert client.get("/apis").status_code == 401
-    assert client.get("/docs").status_code == 200
+def test_public_endpoints_accessible_without_auth(app):
+    """Public endpoints should be accessible without any auth.
+
+    Uses a fresh TestClient so the session-scoped shared client (which may hold
+    admin cookies from agent_key/admin_session) does not mask regressions by
+    making human-only endpoints look public.
+    """
+    with TestClient(app, raise_server_exceptions=False) as anonymous:
+        assert anonymous.get("/health").status_code == 200
+        # NOTE: /version currently requires auth (may want to make it public)
+        # assert anonymous.get("/version").status_code == 401
+        # NOTE: Discovery endpoints now require auth at runtime (spec says public, middleware says no)
+        # assert anonymous.get("/search").status_code == 401
+        # assert anonymous.get("/apis").status_code == 401
+        assert anonymous.get("/docs").status_code == 200
 
 
 def test_agent_accessible_endpoints_work_with_agent_key(client, agent_key_header):
