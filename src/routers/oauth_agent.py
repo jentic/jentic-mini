@@ -174,6 +174,32 @@ async def get_registration(client_id: str, request: Request):
     return out
 
 
+def _registration_management_unsupported() -> JSONResponse:
+    # RFC 7592 §1: "the authorization server MAY return an HTTP 403 (Forbidden)
+    # error code if a particular action is not supported."
+    return JSONResponse(
+        status_code=403,
+        content={
+            "error": "operation_not_supported",
+            "message": "Client metadata updates and self-deregistration are not supported. "
+            "Contact an administrator to rotate keys (PUT /agents/{client_id}/jwks) or "
+            "deregister (DELETE /agents/{client_id}).",
+        },
+    )
+
+
+@router.put("/register/{client_id}", summary="Update client registration (RFC 7592, not supported)")
+async def put_registration(client_id: str):
+    return _registration_management_unsupported()
+
+
+@router.delete(
+    "/register/{client_id}", summary="Delete client registration (RFC 7592, not supported)"
+)
+async def delete_registration(client_id: str):
+    return _registration_management_unsupported()
+
+
 @router.post("/oauth/token", summary="OAuth 2.0 token endpoint")
 async def oauth_token(
     request: Request,
