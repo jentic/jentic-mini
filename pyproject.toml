@@ -1,6 +1,6 @@
 [project]
 name = "jentic-mini"
-version = "0.9.1"
+version = "0.10.0"
 description = "Self-hosted Jentic API — search, broker, observe"
 readme = "README.md"
 authors = [{ name = "Jentic", email = "hello@jentic.com" }]
