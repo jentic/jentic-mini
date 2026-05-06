@@ -145,16 +145,20 @@ export default function AgentsPage() {
 			});
 			if (!gr.ok) throw new Error(await gr.text());
 			const { grants } = (await gr.json()) as { grants: { toolkit_id: string }[] };
+			const toolkitResults = await Promise.all(
+				grants.map(async ({ toolkit_id }) => {
+					const tr = await fetch(`/toolkits/${encodeURIComponent(toolkit_id)}`, {
+						credentials: 'include',
+						headers: { Accept: 'application/json' },
+					});
+					if (!tr.ok) return { toolkit_id, credentials: [] as ToolkitCredentialRow[] };
+					const data = (await tr.json()) as { credentials?: ToolkitCredentialRow[] };
+					return { toolkit_id, credentials: data.credentials ?? [] };
+				}),
+			);
 			const byCred = new Map<string, MergedCredentialRow>();
-			for (const { toolkit_id } of grants) {
-				const tr = await fetch(`/toolkits/${encodeURIComponent(toolkit_id)}`, {
-					credentials: 'include',
-					headers: { Accept: 'application/json' },
-				});
-				if (!tr.ok) continue;
-				const data = (await tr.json()) as { credentials?: ToolkitCredentialRow[] };
-				const creds = data.credentials ?? [];
-				for (const c of creds) {
+			for (const { toolkit_id, credentials } of toolkitResults) {
+				for (const c of credentials) {
 					const id = c.credential_id;
 					if (!id) continue;
 					if (!byCred.has(id)) {
