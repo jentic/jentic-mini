@@ -20,6 +20,7 @@ from src.agent_identity_util import (
     new_client_id,
     new_refresh_token,
     new_registration_access_token,
+    sanitise_jwks,
     verify_jwt_bearer_assertion,
 )
 from src.config import (
@@ -118,7 +119,7 @@ async def dynamic_client_registration(request: Request, body: dict[str, Any] = B
         raise HTTPException(400, "jwks must be an object")
 
     try:
-        extract_jwks_public_key_x(jwks)
+        cleaned_jwks = sanitise_jwks(jwks)
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
 
@@ -128,7 +129,7 @@ async def dynamic_client_registration(request: Request, body: dict[str, Any] = B
     rat_hash = hash_token(rat)
     rat_exp = now + AGENT_REGISTRATION_TOKEN_TTL
     registration_client_uri = build_absolute_url(request, f"/register/{client_id}")
-    jwks_json = json.dumps(jwks)
+    jwks_json = json.dumps(cleaned_jwks)
 
     async with get_db() as db:
         await db.execute(
@@ -148,7 +149,7 @@ async def dynamic_client_registration(request: Request, body: dict[str, Any] = B
         "registration_client_uri": registration_client_uri,
         "grant_types": ["urn:ietf:params:oauth:grant-type:jwt-bearer"],
         "token_endpoint_auth_method": "private_key_jwt",
-        "jwks": jwks,
+        "jwks": cleaned_jwks,
         "status": "pending",
     }
 

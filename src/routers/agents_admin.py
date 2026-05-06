@@ -10,7 +10,7 @@ import aiosqlite
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request
 from pydantic import BaseModel, Field
 
-from src.agent_identity_util import extract_jwks_public_key_x, wiped_agent_jwks_json
+from src.agent_identity_util import sanitise_jwks, wiped_agent_jwks_json
 from src.auth import require_human_session
 from src.db import DB_PATH, get_db
 
@@ -205,7 +205,7 @@ async def rotate_agent_jwks(agent_id: str, body: dict):
     if not isinstance(jwks, dict):
         raise HTTPException(400, "jwks object is required")
     try:
-        extract_jwks_public_key_x(jwks)
+        cleaned_jwks = sanitise_jwks(jwks)
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
     async with get_db() as db:
@@ -216,7 +216,7 @@ async def rotate_agent_jwks(agent_id: str, body: dict):
                 raise HTTPException(404, "Agent not found")
         await db.execute(
             "UPDATE agents SET jwks_json=? WHERE client_id=? AND deleted_at IS NULL",
-            (json.dumps(jwks), agent_id),
+            (json.dumps(cleaned_jwks), agent_id),
         )
         await db.commit()
     return {"client_id": agent_id, "jwks": jwks}

@@ -45,12 +45,84 @@ def wiped_agent_jwks_json() -> str:
     return json.dumps({"keys": []})
 
 
-def extract_jwks_public_key_x(jwks: dict[str, Any]) -> str:
-    """Return base64url `x` for the single OKP Ed25519 public key in jwks."""
+# Keys we accept and persist on a JWK. Anything else is dropped before
+# storage so an agent can't smuggle arbitrary attributes into the row, and so
+# the GET /register/{client_id} reflection never echoes back fields we never
+# vetted. Private-key params (d, p, q, dp, dq, qi) are rejected outright by
+# _reject_private_key_material — never stripped, because their presence is a
+# protocol error, not an unknown field.
+_PUBLIC_JWK_FIELDS = frozenset({"kty", "crv", "x", "kid", "alg", "use"})
+_PRIVATE_JWK_FIELDS = frozenset({"d", "p", "q", "dp", "dq", "qi"})
+
+# Hard cap on the serialised JWKS payload accepted at registration. A single
+# Ed25519 public-key JWK is well under 200 bytes; this cap is generous enough
+# for forward compatibility without permitting an agent to plant a multi-MB
+# "jwks" blob in the agents table.
+JWKS_MAX_BYTES = 4096
+
+
+def _reject_private_key_material(key: dict[str, Any]) -> None:
+    for field in _PRIVATE_JWK_FIELDS:
+        if field in key:
+            raise ValueError("jwks must not contain private key material")
+
+
+def sanitise_jwks(jwks: dict[str, Any]) -> dict[str, Any]:
+    """Validate and normalise a JWKS submitted at registration / key rotation.
+
+    Accepts a single OKP / Ed25519 public-key JWK. Returns a JWKS with each
+    key stripped to the whitelisted public fields — so unknown attributes are
+    silently dropped rather than persisted and reflected back via
+    GET /register/{client_id}. Raises ValueError on:
+
+      * not exactly one key
+      * wrong kty / crv
+      * private-key parameters present
+      * alg present but not "EdDSA"
+      * use present but not "sig"
+      * x missing, non-string, or empty
+      * serialised length above JWKS_MAX_BYTES
+    """
     keys = jwks.get("keys")
     if not isinstance(keys, list) or len(keys) != 1:
         raise ValueError("jwks must contain exactly one key")
     key = keys[0]
+    if not isinstance(key, dict):
+        raise ValueError("jwks key must be an object")
+    _reject_private_key_material(key)
+    if key.get("kty") != "OKP" or key.get("crv") != "Ed25519":
+        raise ValueError("jwks key must be OKP / Ed25519")
+    alg = key.get("alg")
+    if alg is not None and alg != "EdDSA":
+        raise ValueError("jwks key alg must be EdDSA when present")
+    use = key.get("use")
+    if use is not None and use != "sig":
+        raise ValueError("jwks key use must be 'sig' when present")
+    x = key.get("x")
+    if not isinstance(x, str) or not x:
+        raise ValueError("jwks key missing x")
+
+    cleaned_key = {k: v for k, v in key.items() if k in _PUBLIC_JWK_FIELDS}
+    cleaned = {"keys": [cleaned_key]}
+    if len(json.dumps(cleaned)) > JWKS_MAX_BYTES:
+        raise ValueError("jwks too large")
+    return cleaned
+
+
+def extract_jwks_public_key_x(jwks: dict[str, Any]) -> str:
+    """Return base64url `x` for the single OKP Ed25519 public key in jwks.
+
+    Re-runs the same shape and private-material checks as ``sanitise_jwks`` so
+    that even if a row was persisted before the sanitiser existed, a
+    private-key-tainted JWKS cannot be used to verify an assertion.
+    """
+    keys = jwks.get("keys")
+    if not isinstance(keys, list) or len(keys) != 1:
+        raise ValueError("jwks must contain exactly one key")
+    key = keys[0]
+    if not isinstance(key, dict):
+        raise ValueError("jwks key must be an object")
+    _reject_private_key_material(key)
     if key.get("kty") != "OKP" or key.get("crv") != "Ed25519":
         raise ValueError("jwks key must be OKP / Ed25519")
     x = key.get("x")
@@ -81,7 +153,9 @@ def verify_jwt_bearer_assertion(
         raise ValueError("invalid_assertion_encoding") from exc
 
     alg = header.get("alg")
-    if alg not in ("EdDSA", "Ed25519"):
+    # RFC 8037 §3.1: only "EdDSA" is a JWS alg value. "Ed25519" is the JWK crv,
+    # not a signing algorithm, even though some libraries use it loosely.
+    if alg != "EdDSA":
         raise ValueError("invalid_assertion_alg")
 
     try:
