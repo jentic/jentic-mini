@@ -650,16 +650,20 @@ async def broker(request: Request, target: str):
     # credential (e.g. Calendar when the caller wants Gmail), causing spurious 403s
     # with a misleading credential_id in the error body.
     _resolved_cred_ids: list[str] = []
-
-    _policy_toolkit_id = grant_ids[0] if grant_ids else toolkit_id
+    # Per-credential origin toolkit. For OAuth agents with multiple grants this
+    # records which grant matched each credential, so policy errors can blame the
+    # right toolkit instead of an arbitrary first-grant choice.
+    _cred_source_toolkit: dict[str, str] = {}
 
     if credential_alias and (toolkit_id or grant_ids):
         # X-Jentic-Credential is a disambiguator, not a bypass — resolve by route
         # first, then verify the named credential is among the matches.
         if grant_ids:
-            _resolved_cred_ids = await vault.get_credential_ids_for_grants(
+            pairs = await vault.get_credential_ids_with_toolkit_for_grants(
                 grant_ids, upstream_host, upstream_path
             )
+            _cred_source_toolkit = {cid: tid for cid, tid in pairs}
+            _resolved_cred_ids = [cid for cid, _ in pairs]
         else:
             _resolved_cred_ids = await _resolve_credential_ids(
                 host=upstream_host, toolkit_id=toolkit_id, path=upstream_path
@@ -679,9 +683,11 @@ async def broker(request: Request, target: str):
     elif toolkit_id or grant_ids:
         try:
             if grant_ids:
-                _resolved_cred_ids = await vault.get_credential_ids_for_grants(
+                pairs = await vault.get_credential_ids_with_toolkit_for_grants(
                     grant_ids, upstream_host, upstream_path
                 )
+                _cred_source_toolkit = {cid: tid for cid, tid in pairs}
+                _resolved_cred_ids = [cid for cid, _ in pairs]
             else:
                 _resolved_cred_ids = await _resolve_credential_ids(
                     host=upstream_host, toolkit_id=toolkit_id, path=upstream_path
@@ -715,15 +721,18 @@ async def broker(request: Request, target: str):
         # to at least one credential for the target host. If none can be found,
         # deny immediately — never fall through to unenforced injection.
         await _write_trace("policy_denied", 403, f"No credential found for '{upstream_host}'")
+        # Multi-grant calls can't attribute the miss to a specific toolkit,
+        # so toolkit_id is omitted in that case to avoid a misleading remediation
+        # link. Single-toolkit (tk_) callers still get their toolkit echoed back.
+        error_body: dict = {
+            "error": "policy_denied",
+            "message": f"No credential configured for '{upstream_host}'. Request denied.",
+            "remediation": "Add a credential for this host via the Jentic Mini UI.",
+        }
+        if toolkit_id and not grant_ids:
+            error_body["toolkit_id"] = toolkit_id
         return Response(
-            content=json.dumps(
-                {
-                    "error": "policy_denied",
-                    "message": f"No credential configured for '{upstream_host}'. Request denied.",
-                    "toolkit_id": _policy_toolkit_id,
-                    "remediation": "Add a credential for this host via the Jentic Mini UI.",
-                }
-            ),
+            content=json.dumps(error_body),
             status_code=403,
             media_type="application/json",
             headers={"X-Jentic-Error": "true", "X-Jentic-Execution-Id": execution_id},
@@ -733,6 +742,10 @@ async def broker(request: Request, target: str):
         # Check against the first matched credential (primary).
         # When credential_alias is set this is always the aliased credential.
         primary_cred_id = _resolved_cred_ids[0]
+        # Attribute policy errors to the toolkit that actually surfaced this
+        # credential. For single-toolkit (tk_) callers this is just toolkit_id;
+        # for multi-grant OAuth agents it's whichever grant matched.
+        primary_source_toolkit = _cred_source_toolkit[primary_cred_id] if grant_ids else toolkit_id
         try:
             allowed, reason = await check_credential_policy(
                 credential_id=primary_cred_id,
@@ -746,12 +759,8 @@ async def broker(request: Request, target: str):
                     "error": "policy_denied",
                     "message": f"{request.method} {upstream_host}{upstream_path} denied by credential policy. {reason}",
                     "credential_id": primary_cred_id,
-                    "toolkit_id": _policy_toolkit_id,
-                    "remediation": (
-                        f"POST /toolkits/{_policy_toolkit_id}/access-requests to request expanded permissions."
-                        if _policy_toolkit_id
-                        else "Request expanded permissions on the relevant toolkit."
-                    ),
+                    "toolkit_id": primary_source_toolkit,
+                    "remediation": f"POST /toolkits/{primary_source_toolkit}/access-requests to request expanded permissions.",
                 }
                 return Response(
                     content=json.dumps(error_body),
@@ -910,18 +919,23 @@ async def broker(request: Request, target: str):
     # unauthenticated forwarding (or the request will fail upstream with 401).
     if not inject_headers:
         pd_account_id, pd_cred_id = None, None
+        # Track which granted toolkit surfaced the credential — used in policy
+        # error remediation so multi-grant OAuth agents get pointed at the right
+        # /toolkits/{id}/access-requests endpoint.
+        pd_source_toolkit: str | None = None
         if grant_ids:
             for tid in grant_ids:
                 a, c = await _find_pipedream_credential_for_host(
                     upstream_host, upstream_path, tid, alias=credential_alias
                 )
                 if a and c:
-                    pd_account_id, pd_cred_id = a, c
+                    pd_account_id, pd_cred_id, pd_source_toolkit = a, c, tid
                     break
         else:
             pd_account_id, pd_cred_id = await _find_pipedream_credential_for_host(
                 upstream_host, upstream_path, toolkit_id, alias=credential_alias
             )
+            pd_source_toolkit = toolkit_id
         if pd_account_id and pd_cred_id:
             # Policy check for this Pipedream credential (same gate as vault path)
             if toolkit_id or grant_ids:
@@ -938,12 +952,8 @@ async def broker(request: Request, target: str):
                             "error": "policy_denied",
                             "message": f"{request.method} {upstream_host}{upstream_path} denied. {reason}",
                             "credential_id": pd_cred_id,
-                            "toolkit_id": _policy_toolkit_id,
-                            "remediation": (
-                                f"POST /toolkits/{_policy_toolkit_id}/access-requests"
-                                if _policy_toolkit_id
-                                else "Use POST /toolkits/{toolkit_id}/access-requests on a relevant toolkit."
-                            ),
+                            "toolkit_id": pd_source_toolkit,
+                            "remediation": f"POST /toolkits/{pd_source_toolkit}/access-requests",
                         }
                         return Response(
                             content=json.dumps(error_body),

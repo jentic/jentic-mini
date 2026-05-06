@@ -592,14 +592,28 @@ async def get_credential_ids_for_grants(
     toolkit_ids: list[str], host: str, path: str = "/"
 ) -> list[str]:
     """Merge credential IDs for a host+path across multiple toolkits (grant order, deduped)."""
+    pairs = await get_credential_ids_with_toolkit_for_grants(toolkit_ids, host, path)
+    return [cid for cid, _ in pairs]
+
+
+async def get_credential_ids_with_toolkit_for_grants(
+    toolkit_ids: list[str], host: str, path: str = "/"
+) -> list[tuple[str, str]]:
+    """Like get_credential_ids_for_grants, but each entry carries the toolkit
+    it was matched through.
+
+    Used by the broker to attribute policy errors to the actual originating
+    toolkit (avoids surfacing a misleading toolkit_id when multiple grants
+    overlap on the same host).
+    """
     seen: set[str] = set()
-    ordered: list[str] = []
+    ordered: list[tuple[str, str]] = []
     for tid in toolkit_ids:
         ids = await get_credential_ids_for_route(tid, host, path)
         for cid in ids:
             if cid not in seen:
                 seen.add(cid)
-                ordered.append(cid)
+                ordered.append((cid, tid))
     return ordered
 
 
