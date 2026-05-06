@@ -316,8 +316,9 @@ async def add_grant(agent_id: str, body: GrantBody, request: Request):
                     409, f"Toolkit '{body.toolkit_id}' is disabled and cannot be granted"
                 )
         await db.execute(
-            """INSERT OR REPLACE INTO agent_toolkit_grants (client_id, toolkit_id, granted_at, granted_by)
-               VALUES (?,?,?,?)""",
+            """INSERT INTO agent_toolkit_grants (client_id, toolkit_id, granted_at, granted_by)
+               VALUES (?,?,?,?)
+               ON CONFLICT(client_id, toolkit_id) DO NOTHING""",
             (agent_id, body.toolkit_id, now, who),
         )
         await db.commit()
@@ -326,11 +327,20 @@ async def add_grant(agent_id: str, body: GrantBody, request: Request):
 
 @router.get("/{agent_id}/grants", dependencies=[Depends(require_human_session)])
 async def list_grants(agent_id: str):
+    # LEFT JOIN — surface the toolkit's `disabled` flag so the admin UI can
+    # warn that a previously-granted toolkit no longer takes effect at runtime
+    # (auth filters disabled toolkits out). LEFT JOIN tolerates the
+    # vanishingly-rare case where the toolkit row was hard-deleted out from
+    # under the grant — the cascade should normally take the grant with it,
+    # but we don't want a missing row to make the endpoint 500.
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
-            """SELECT toolkit_id, granted_at, granted_by FROM agent_toolkit_grants
-               WHERE client_id=? ORDER BY granted_at ASC""",
+            """SELECT g.toolkit_id, g.granted_at, g.granted_by, t.disabled
+               FROM agent_toolkit_grants g
+               LEFT JOIN toolkits t ON t.id = g.toolkit_id
+               WHERE g.client_id=?
+               ORDER BY g.granted_at ASC""",
             (agent_id,),
         ) as cur:
             rows = await cur.fetchall()
@@ -341,6 +351,7 @@ async def list_grants(agent_id: str):
                 "toolkit_id": r["toolkit_id"],
                 "granted_at": r["granted_at"],
                 "granted_by": r["granted_by"],
+                "disabled": bool(r["disabled"]) if r["disabled"] is not None else False,
             }
             for r in rows
         ],
