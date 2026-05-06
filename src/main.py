@@ -8,6 +8,7 @@ import re
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import Literal
 
 import httpx
 from fastapi import FastAPI, HTTPException, Request, Response
@@ -15,6 +16,7 @@ from fastapi.openapi.docs import get_redoc_html
 from fastapi.openapi.utils import get_openapi
 from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel, Field
 
 from src.auth import APIKeyMiddleware
 from src.brokers.pipedream import PipedreamOAuthBroker
@@ -226,8 +228,53 @@ app.include_router(oauth_brokers_router.router, tags=["credentials"])
 
 
 # ── Meta routes: health + root — MUST be before broker catch-all ─────────────
-@app.get("/health", tags=["meta"])
-async def health(request: Request):
+
+
+class HealthSetupRequired(BaseModel):
+    """Health response when no admin account exists yet.
+
+    Carries the URLs an agent or human needs to bootstrap: the OAuth metadata
+    document for agent DCR, the canonical token / registration endpoints, and
+    the human-facing setup_url for admin-account creation.
+    """
+
+    status: Literal["setup_required"] = Field(
+        description="Bootstrap state — no admin account exists",
+    )
+    account_created: Literal[False]
+    message: str
+    next_step: str
+    setup_url: str = Field(description="Human-facing URL to create the admin account")
+    oauth_authorization_server_metadata: str = Field(
+        description="Discovery document URL for agent DCR (RFC 8414)",
+    )
+    registration_endpoint: str
+    token_endpoint: str
+    version: str
+
+
+class HealthOk(BaseModel):
+    """Health response when the instance is fully set up."""
+
+    status: Literal["ok"] = Field(description="Instance is operational")
+    version: str
+    apis_registered: int = Field(ge=0)
+
+
+HealthOut = HealthSetupRequired | HealthOk
+
+
+@app.get(
+    "/health",
+    tags=["meta"],
+    response_model=HealthOut,
+    responses={
+        200: {
+            "description": "Setup state. Schema varies by status — discriminate on the `status` field."
+        }
+    },
+)
+async def health(request: Request) -> HealthOut:
     """Returns current setup state with explicit instructions for agents and UI.
 
     Response varies based on setup progress:

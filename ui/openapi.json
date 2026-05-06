@@ -1684,10 +1684,20 @@
 				"operationId": "health_health_get",
 				"responses": {
 					"200": {
-						"description": "Successful Response",
+						"description": "Setup state. Schema varies by status \u2014 discriminate on the `status` field.",
 						"content": {
 							"application/json": {
-								"schema": {}
+								"schema": {
+									"anyOf": [
+										{
+											"$ref": "#/components/schemas/HealthSetupRequired"
+										},
+										{
+											"$ref": "#/components/schemas/HealthOk"
+										}
+									],
+									"title": "Response Health Health Get"
+								}
 							}
 						}
 					}
@@ -5904,6 +5914,88 @@
 				"type": "object",
 				"title": "HTTPValidationError"
 			},
+			"HealthOk": {
+				"properties": {
+					"status": {
+						"type": "string",
+						"const": "ok",
+						"title": "Status",
+						"description": "Instance is operational"
+					},
+					"version": {
+						"type": "string",
+						"title": "Version"
+					},
+					"apis_registered": {
+						"type": "integer",
+						"minimum": 0.0,
+						"title": "Apis Registered"
+					}
+				},
+				"type": "object",
+				"required": ["status", "version", "apis_registered"],
+				"title": "HealthOk",
+				"description": "Health response when the instance is fully set up."
+			},
+			"HealthSetupRequired": {
+				"properties": {
+					"status": {
+						"type": "string",
+						"const": "setup_required",
+						"title": "Status",
+						"description": "Bootstrap state \u2014 no admin account exists"
+					},
+					"account_created": {
+						"type": "boolean",
+						"const": false,
+						"title": "Account Created"
+					},
+					"message": {
+						"type": "string",
+						"title": "Message"
+					},
+					"next_step": {
+						"type": "string",
+						"title": "Next Step"
+					},
+					"setup_url": {
+						"type": "string",
+						"title": "Setup Url",
+						"description": "Human-facing URL to create the admin account"
+					},
+					"oauth_authorization_server_metadata": {
+						"type": "string",
+						"title": "Oauth Authorization Server Metadata",
+						"description": "Discovery document URL for agent DCR (RFC 8414)"
+					},
+					"registration_endpoint": {
+						"type": "string",
+						"title": "Registration Endpoint"
+					},
+					"token_endpoint": {
+						"type": "string",
+						"title": "Token Endpoint"
+					},
+					"version": {
+						"type": "string",
+						"title": "Version"
+					}
+				},
+				"type": "object",
+				"required": [
+					"status",
+					"account_created",
+					"message",
+					"next_step",
+					"setup_url",
+					"oauth_authorization_server_metadata",
+					"registration_endpoint",
+					"token_endpoint",
+					"version"
+				],
+				"title": "HealthSetupRequired",
+				"description": "Health response when no admin account exists yet.\n\nCarries the URLs an agent or human needs to bootstrap: the OAuth metadata\ndocument for agent DCR, the canonical token / registration endpoints, and\nthe human-facing setup_url for admin-account creation."
+			},
 			"ImportOut": {
 				"properties": {
 					"status": {
@@ -6388,7 +6480,7 @@
 						"additionalProperties": true,
 						"type": "object",
 						"title": "Config",
-						"description": "Provider-specific configuration. For `pipedream`: `client_id`, `client_secret`, `project_id` (all from Pipedream workspace → API settings → OAuth clients). Optional: `environment` (`production` or `development`, default `production`), `support_email`, `default_external_user_id` (user identity for initial account sync, default `\"default\"`).",
+						"description": "Provider-specific configuration. For `pipedream`: `client_id`, `client_secret`, `project_id` (all from Pipedream workspace \u2192 API settings \u2192 OAuth clients). Optional: `environment` (`production` or `development`, default `production`), `support_email`, `default_external_user_id` (user identity for initial account sync, default `\"default\"`).",
 						"examples": [
 							{
 								"client_id": "oa_abc123",
