@@ -48,7 +48,6 @@ PUBLIC_ENDPOINTS = {
     ("POST", "/user/create"),
     ("POST", "/user/login"),
     ("POST", "/user/token"),
-    ("POST", "/default-api-key/generate"),
     ("GET", "/.well-known/oauth-authorization-server"),
     ("POST", "/register"),
     ("POST", "/oauth/token"),
@@ -150,6 +149,8 @@ HUMAN_ONLY_ENDPOINTS = {
     ("DELETE", "/oauth-brokers/{broker_id}"),
     ("POST", "/oauth-brokers/{broker_id}/accounts/{account_id}/reconnect-link"),
     ("PATCH", "/oauth-brokers/{broker_id}/accounts/{account_id}"),
+    # Default toolkit key (legacy, human-only; pre-claim returns 410)
+    ("POST", "/default-api-key/generate"),
     # User management
     ("POST", "/user/logout"),
     ("GET", "/user/me"),
@@ -179,6 +180,20 @@ def test_register_get_and_oauth_revoke_require_auth(app):
     with TestClient(app, raise_server_exceptions=False) as anonymous:
         assert anonymous.get("/register/ag_nonexistent").status_code == 401
         assert anonymous.post("/oauth/revoke", data={"token": "rt_notreal"}).status_code == 401
+
+
+def test_default_api_key_generate_requires_human_session(app):
+    """POST /default-api-key/generate is human-only at all times.
+
+    Uses a fresh TestClient to avoid session cookie leakage from other tests.
+    Pre-claim returns 410 to disallow agent self-enrollment; post-claim returns 401
+    without a human session. The endpoint is never anonymous-public.
+    """
+    with TestClient(app, raise_server_exceptions=False) as anonymous:
+        resp = anonymous.post("/default-api-key/generate")
+        assert resp.status_code in (401, 403, 410), (
+            f"POST /default-api-key/generate must not be anonymous-public; got {resp.status_code}"
+        )
 
 
 def test_public_endpoints_accessible_without_auth(client):
