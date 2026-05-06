@@ -30,3 +30,14 @@ AGENT_REFRESH_TTL = int(os.getenv("AGENT_REFRESH_TTL", str(7 * 24 * 3600)))
 AGENT_REGISTRATION_TOKEN_TTL = int(os.getenv("AGENT_REGISTRATION_TOKEN_TTL", "900"))
 AGENT_ASSERTION_MAX_AGE = int(os.getenv("AGENT_ASSERTION_MAX_AGE", "300"))
 AGENT_NONCE_WINDOW = int(os.getenv("AGENT_NONCE_WINDOW", "600"))
+
+# Replay protection invariant: the nonce-cache window must outlive the assertion's
+# acceptance window, otherwise a replayed JWT could land after its jti has been
+# pruned but before iat falls outside the max-age — silently bypassing the
+# replay check. Fail fast at import time so misconfiguration can't ship.
+if AGENT_NONCE_WINDOW <= AGENT_ASSERTION_MAX_AGE:
+    raise RuntimeError(
+        f"AGENT_NONCE_WINDOW ({AGENT_NONCE_WINDOW}s) must be greater than "
+        f"AGENT_ASSERTION_MAX_AGE ({AGENT_ASSERTION_MAX_AGE}s) to preserve "
+        "JWT-bearer replay protection."
+    )
