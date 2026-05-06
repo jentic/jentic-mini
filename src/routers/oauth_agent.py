@@ -293,33 +293,47 @@ async def oauth_token(
 
         jti = str(payload["jti"])
         now = time.time()
-        async with get_db() as db:
-            async with db.execute("SELECT jti FROM agent_nonces WHERE jti=?", (jti,)) as cur:
-                if await cur.fetchone():
-                    return invalid_assertion
-            await db.execute(
-                "INSERT INTO agent_nonces (jti, client_id, expires_at) VALUES (?,?,?)",
-                (jti, iss, now + AGENT_NONCE_WINDOW),
-            )
-            await db.execute("DELETE FROM agent_nonces WHERE expires_at < ?", (now,))
-            await db.commit()
-
         at = new_access_token()
         rt = new_refresh_token()
         at_h, rt_h = hash_token(at), hash_token(rt)
         exp_at = now + AGENT_ACCESS_TTL
         rt_exp = now + AGENT_REFRESH_TTL
+
+        # One transaction covers the jti reservation and the token mint so a crash
+        # mid-flight can't consume the nonce without issuing a token (and vice
+        # versa). INSERT OR IGNORE + cursor.rowcount is the atomic
+        # check-and-insert that closes the read-then-write replay race.
         async with get_db() as db:
-            await db.execute(
-                """INSERT INTO agent_tokens (token_hash, client_id, token_type, expires_at, created_at)
-                   VALUES (?, ?, 'access', ?, ?)""",
-                (at_h, iss, exp_at, now),
-            )
-            await db.execute(
-                """INSERT INTO agent_tokens (token_hash, client_id, token_type, expires_at, created_at)
-                   VALUES (?, ?, 'refresh', ?, ?)""",
-                (rt_h, iss, rt_exp, now),
-            )
+            await db.execute("BEGIN IMMEDIATE")
+            try:
+                cur = await db.execute(
+                    "INSERT OR IGNORE INTO agent_nonces (jti, client_id, expires_at) "
+                    "VALUES (?,?,?)",
+                    (jti, iss, now + AGENT_NONCE_WINDOW),
+                )
+                if cur.rowcount == 0:
+                    await db.rollback()
+                    return invalid_assertion
+                await db.execute(
+                    "INSERT INTO agent_tokens (token_hash, client_id, token_type, "
+                    "expires_at, created_at) VALUES (?, ?, 'access', ?, ?)",
+                    (at_h, iss, exp_at, now),
+                )
+                await db.execute(
+                    "INSERT INTO agent_tokens (token_hash, client_id, token_type, "
+                    "expires_at, created_at) VALUES (?, ?, 'refresh', ?, ?)",
+                    (rt_h, iss, rt_exp, now),
+                )
+                await db.commit()
+            except aiosqlite.IntegrityError:
+                # Defence-in-depth — should be unreachable given the IGNORE above.
+                await db.rollback()
+                return invalid_assertion
+
+        # Best-effort housekeeping outside the mint transaction so a busy nonce
+        # table can't stall token issuance.
+        async with get_db() as db:
+            await db.execute("DELETE FROM agent_nonces WHERE expires_at < ?", (now,))
             await db.commit()
 
         return {
@@ -334,45 +348,10 @@ async def oauth_token(
             return _oauth_error(400, "invalid_request", "refresh_token is required")
         rt_h = hash_token(refresh_token)
         now = time.time()
-        async with aiosqlite.connect(DB_PATH) as db:
-            db.row_factory = aiosqlite.Row
-            async with db.execute(
-                """SELECT token_hash, client_id, expires_at, consumed_at
-                   FROM agent_tokens WHERE token_hash=? AND token_type='refresh'""",
-                (rt_h,),
-            ) as cur:
-                row = await cur.fetchone()
-
-        if not row:
-            return _oauth_error(400, "invalid_grant", "Invalid or consumed refresh token")
-        if row["consumed_at"] is not None:
-            # RFC 6749 BCP §4.14: refresh-token reuse signals a likely chain compromise.
-            # Revoke the entire token family (all tokens with the same root ancestor) so
-            # neither the legitimate holder nor the attacker can keep rotating.
-            await _revoke_token_family(rt_h)
-            return _oauth_error(400, "invalid_grant", "Invalid or consumed refresh token")
-        if row["expires_at"] < now:
-            return _oauth_error(400, "invalid_grant", "Refresh token expired")
 
         # Uniform error for any client-bound failure — same rationale as the
         # JWT-bearer branch above (no enumeration oracle on client state).
         invalid_refresh = _oauth_error(400, "invalid_grant", "Refresh token cannot be used")
-
-        cid = row["client_id"]
-        async with aiosqlite.connect(DB_PATH) as db:
-            db.row_factory = aiosqlite.Row
-            async with db.execute(
-                """SELECT status, jwks_json FROM agents
-                   WHERE client_id=? AND deleted_at IS NULL""",
-                (cid,),
-            ) as cur:
-                ag = await cur.fetchone()
-        if not ag or ag["status"] != "approved":
-            return invalid_refresh
-        try:
-            extract_jwks_public_key_x(json.loads(ag["jwks_json"]))
-        except (ValueError, json.JSONDecodeError):
-            return invalid_refresh
 
         new_at = new_access_token()
         new_rt = new_refresh_token()
@@ -380,31 +359,98 @@ async def oauth_token(
         exp_at = now + AGENT_ACCESS_TTL
         rt_exp = now + AGENT_REFRESH_TTL
 
-        async with get_db() as db:
-            await db.execute(
-                "UPDATE agent_tokens SET consumed_at=? WHERE token_hash=?",
-                (now, rt_h),
-            )
-            await db.execute(
-                """INSERT INTO agent_tokens (token_hash, client_id, token_type, expires_at,
-                       parent_token_hash, created_at)
-                   VALUES (?, ?, 'access', ?, ?, ?)""",
-                (new_at_h, cid, exp_at, rt_h, now),
-            )
-            await db.execute(
-                """INSERT INTO agent_tokens (token_hash, client_id, token_type, expires_at,
-                       parent_token_hash, created_at)
-                   VALUES (?, ?, 'refresh', ?, ?, ?)""",
-                (new_rt_h, cid, rt_exp, rt_h, now),
-            )
-            await db.commit()
+        family_compromise = False
+        try:
+            # Single transaction: read row, CAS-consume, validate agent, insert
+            # rotated pair. Two concurrent rotations both reach the UPDATE — only
+            # the one matching `consumed_at IS NULL` mutates a row (rowcount==1);
+            # the loser sees rowcount==0 and falls through to invalid_grant.
+            async with get_db() as db:
+                db.row_factory = aiosqlite.Row
+                await db.execute("BEGIN IMMEDIATE")
+                try:
+                    async with db.execute(
+                        """SELECT token_hash, client_id, expires_at, consumed_at
+                           FROM agent_tokens
+                           WHERE token_hash=? AND token_type='refresh'""",
+                        (rt_h,),
+                    ) as cur:
+                        row = await cur.fetchone()
 
-        return {
-            "access_token": new_at,
-            "token_type": "Bearer",
-            "expires_in": AGENT_ACCESS_TTL,
-            "refresh_token": new_rt,
-        }
+                    if not row:
+                        await db.rollback()
+                        return _oauth_error(
+                            400, "invalid_grant", "Invalid or consumed refresh token"
+                        )
+                    if row["consumed_at"] is not None:
+                        # RFC 6749 BCP §4.14: refresh-token reuse signals a likely
+                        # chain compromise. Defer the family-revocation sweep to
+                        # outside this transaction so we can surface the rejection
+                        # immediately and do the cleanup with its own commit.
+                        await db.rollback()
+                        family_compromise = True
+                    elif row["expires_at"] < now:
+                        await db.rollback()
+                        return _oauth_error(400, "invalid_grant", "Refresh token expired")
+                    else:
+                        cid = row["client_id"]
+                        async with db.execute(
+                            """SELECT status, jwks_json FROM agents
+                               WHERE client_id=? AND deleted_at IS NULL""",
+                            (cid,),
+                        ) as cur:
+                            ag = await cur.fetchone()
+                        if not ag or ag["status"] != "approved":
+                            await db.rollback()
+                            return invalid_refresh
+                        try:
+                            extract_jwks_public_key_x(json.loads(ag["jwks_json"]))
+                        except (ValueError, json.JSONDecodeError):
+                            await db.rollback()
+                            return invalid_refresh
+
+                        consume = await db.execute(
+                            "UPDATE agent_tokens SET consumed_at=? "
+                            "WHERE token_hash=? AND token_type='refresh' "
+                            "AND consumed_at IS NULL",
+                            (now, rt_h),
+                        )
+                        if consume.rowcount != 1:
+                            # Lost the rotation race — peer transaction already
+                            # consumed this row.
+                            await db.rollback()
+                            return invalid_refresh
+
+                        await db.execute(
+                            """INSERT INTO agent_tokens (token_hash, client_id, token_type,
+                                   expires_at, parent_token_hash, created_at)
+                               VALUES (?, ?, 'access', ?, ?, ?)""",
+                            (new_at_h, cid, exp_at, rt_h, now),
+                        )
+                        await db.execute(
+                            """INSERT INTO agent_tokens (token_hash, client_id, token_type,
+                                   expires_at, parent_token_hash, created_at)
+                               VALUES (?, ?, 'refresh', ?, ?, ?)""",
+                            (new_rt_h, cid, rt_exp, rt_h, now),
+                        )
+                        await db.commit()
+                        return {
+                            "access_token": new_at,
+                            "token_type": "Bearer",
+                            "expires_in": AGENT_ACCESS_TTL,
+                            "refresh_token": new_rt,
+                        }
+                except aiosqlite.IntegrityError:
+                    # Hit the partial unique index on (parent_token_hash,
+                    # token_type) — a concurrent rotation already minted from this
+                    # parent. Treat as a lost race rather than a 500.
+                    await db.rollback()
+                    return invalid_refresh
+        finally:
+            if family_compromise:
+                await _revoke_token_family(rt_h)
+
+        return _oauth_error(400, "invalid_grant", "Invalid or consumed refresh token")
 
     return _oauth_error(400, "unsupported_grant_type", f"Unknown grant_type: {grant_type!r}")
 
