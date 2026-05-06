@@ -683,7 +683,7 @@ import json
 session = requests.Session()
 _bearer = os.environ.get("_JENTIC_BEARER", "").strip()
 if _bearer:
-    session.headers["Authorization"] = f"Bearer {{_bearer}}"
+    session.headers["Authorization"] = "Bearer " + _bearer
 else:
     session.headers["X-Jentic-API-Key"] = os.environ["_JENTIC_CALLER_KEY"]
 runner = ArazzoRunner.from_arazzo_path({repr(temp_arazzo)}, http_client=session)
