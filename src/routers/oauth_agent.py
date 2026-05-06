@@ -380,9 +380,13 @@ async def oauth_revoke(
 ):
     if not token:
         return _oauth_error(400, "invalid_request", "token is required")
-    th = hash_token(token)
     is_human = getattr(request.state, "is_human_session", False)
     caller_cid = getattr(request.state, "agent_client_id", None)
+    # Toolkit keys (tk_…) cannot revoke OAuth tokens — RFC 7009 implies the client
+    # that holds the token. Require an agent access token (at_…) or human session.
+    if not is_human and caller_cid is None:
+        return _oauth_error(403, "unauthorized_client", "Toolkit keys cannot revoke OAuth tokens")
+    th = hash_token(token)
     async with get_db() as db:
         if not is_human:
             async with db.execute(
@@ -392,7 +396,7 @@ async def oauth_revoke(
             # RFC 7009: revocation of an unknown token is treated as success.
             if row is None:
                 return Response(status_code=200)
-            if caller_cid is None or row["client_id"] != caller_cid:
+            if row["client_id"] != caller_cid:
                 return _oauth_error(
                     403, "unauthorized_client", "Cannot revoke another client's token"
                 )

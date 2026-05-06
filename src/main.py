@@ -618,6 +618,13 @@ def custom_openapi():
                     {"AgentOauthAccessToken": []},
                     {"HumanLogin": []},
                 ]
+            elif path == "/oauth/revoke" and method.lower() == "post":
+                # Token revocation (RFC 7009): at_ or human session — toolkit keys
+                # cannot revoke OAuth tokens (the client that holds the token revokes it).
+                operation["security"] = [
+                    {"AgentOauthAccessToken": []},
+                    {"HumanLogin": []},
+                ]
             else:
                 # Agent-accessible: toolkit key, agent access token, or human session
                 operation["security"] = [
