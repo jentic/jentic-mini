@@ -525,6 +525,16 @@ Every request authenticated by an agent access token records the resolved `agent
 
 Human-initiated actions on agent-owned resources (approving a registration, approving a self-service request, disabling an agent, granting a toolkit) are also recorded on the trace with the human user's identity as `approved_by` or `acted_by`, so policy changes are auditable end-to-end.
 
+### Read-side scoping on `GET /traces` and `GET /traces/{id}`
+
+Trace reads are scoped to the calling principal:
+
+- **Human session (admin):** sees all traces.
+- **Agent OAuth caller (`at_…`):** sees only traces stamped with its own `agent_id`.
+- **Toolkit-key caller (`tk_xxx`):** sees every trace tagged with the bound toolkit, regardless of which agent (or no agent) produced it. This is intentional — it preserves visibility for legacy / unregistered agents that call via a toolkit key and would otherwise have no `agent_id` to filter by, and it treats the toolkit-key holder as the operator of that toolkit.
+
+**Security note.** The blessed pattern is per-agent OAuth identity. Handing a long-lived `tk_xxx` key to a registered agent therefore upgrades that agent from "see only my own traces" to "see every trace from every agent that shares this toolkit". Treat toolkit keys as operator credentials, not agent credentials.
+
 ---
 
 ## Decisions
