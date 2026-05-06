@@ -42,6 +42,42 @@ def _oauth_error(status: int, error: str, description: str) -> JSONResponse:
     )
 
 
+async def _revoke_token_family(seed_hash: str) -> None:
+    """Revoke every token in the same lineage as ``seed_hash``.
+
+    Implements RFC 6749 Security BCP §4.14: when a refresh token is presented
+    after it has already been consumed, the chain is treated as compromised
+    and every access/refresh token sharing the same family root (ancestor with
+    ``parent_token_hash IS NULL``) is deleted in one shot. SQLite's recursive
+    CTEs walk both directions: up to the root, then down to every descendant.
+    """
+    async with get_db() as db:
+        await db.execute(
+            """
+            WITH RECURSIVE
+              ancestors(token_hash, parent_token_hash) AS (
+                SELECT token_hash, parent_token_hash
+                  FROM agent_tokens WHERE token_hash = ?
+                UNION ALL
+                SELECT t.token_hash, t.parent_token_hash
+                  FROM agent_tokens t JOIN ancestors a ON a.parent_token_hash = t.token_hash
+              ),
+              root AS (
+                SELECT token_hash FROM ancestors WHERE parent_token_hash IS NULL LIMIT 1
+              ),
+              family(token_hash) AS (
+                SELECT token_hash FROM root
+                UNION ALL
+                SELECT t.token_hash
+                  FROM agent_tokens t JOIN family f ON t.parent_token_hash = f.token_hash
+              )
+            DELETE FROM agent_tokens WHERE token_hash IN (SELECT token_hash FROM family)
+            """,
+            (seed_hash,),
+        )
+        await db.commit()
+
+
 def _jwt_payload_unverified(token: str) -> dict[str, Any]:
     parts = token.split(".")
     if len(parts) != 3:
@@ -312,7 +348,13 @@ async def oauth_token(
             ) as cur:
                 row = await cur.fetchone()
 
-        if not row or row["consumed_at"] is not None:
+        if not row:
+            return _oauth_error(400, "invalid_grant", "Invalid or consumed refresh token")
+        if row["consumed_at"] is not None:
+            # RFC 6749 BCP §4.14: refresh-token reuse signals a likely chain compromise.
+            # Revoke the entire token family (all tokens with the same root ancestor) so
+            # neither the legitimate holder nor the attacker can keep rotating.
+            await _revoke_token_family(rt_h)
             return _oauth_error(400, "invalid_grant", "Invalid or consumed refresh token")
         if row["expires_at"] < now:
             return _oauth_error(400, "invalid_grant", "Refresh token expired")

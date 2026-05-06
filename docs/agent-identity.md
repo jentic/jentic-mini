@@ -361,6 +361,7 @@ grant_type=refresh_token
 - Returns a new access + refresh token pair.
 - The consumed refresh token is immediately invalidated (rotation).
 - If expired or already consumed, re-authenticate with a new assertion.
+- **Reuse-detection (RFC 6749 Security BCP §4.14):** presenting an already-consumed refresh token signals a likely chain compromise. Jentic Mini walks the rotation chain via `parent_token_hash` and revokes the entire token family (all access and refresh tokens descending from the same root assertion) in one shot, so neither the legitimate holder nor an attacker can keep rotating. The agent must re-authenticate with a fresh JWT-bearer assertion.
 
 ### 7. Disabling an agent
 
