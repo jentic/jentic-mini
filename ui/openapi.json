@@ -80,6 +80,16 @@
 							}
 						}
 					},
+					"403": {
+						"description": "Human session required.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/HTTPErrorDetail"
+								}
+							}
+						}
+					},
 					"422": {
 						"description": "Validation Error",
 						"content": {
@@ -123,6 +133,26 @@
 							}
 						}
 					},
+					"403": {
+						"description": "Human session required.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/HTTPErrorDetail"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "Agent or toolkit not found.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/HTTPErrorDetail"
+								}
+							}
+						}
+					},
 					"422": {
 						"description": "Validation Error",
 						"content": {
@@ -159,6 +189,26 @@
 				"responses": {
 					"204": {
 						"description": "Successful Response"
+					},
+					"403": {
+						"description": "Human session required.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/HTTPErrorDetail"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "Agent or toolkit not found.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/HTTPErrorDetail"
+								}
+							}
+						}
 					},
 					"422": {
 						"description": "Validation Error",
@@ -200,6 +250,36 @@
 						"content": {
 							"application/json": {
 								"schema": {}
+							}
+						}
+					},
+					"400": {
+						"description": "Agent is not in 'pending' status.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/HTTPErrorDetail"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "Human session required.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/HTTPErrorDetail"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "Agent or toolkit not found.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/HTTPErrorDetail"
+								}
 							}
 						}
 					},
@@ -246,6 +326,36 @@
 							}
 						}
 					},
+					"400": {
+						"description": "Agent is not in 'pending' status.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/HTTPErrorDetail"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "Human session required.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/HTTPErrorDetail"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "Agent or toolkit not found.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/HTTPErrorDetail"
+								}
+							}
+						}
+					},
 					"422": {
 						"description": "Validation Error",
 						"content": {
@@ -289,6 +399,26 @@
 							}
 						}
 					},
+					"403": {
+						"description": "Human session required.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/HTTPErrorDetail"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "Agent or toolkit not found.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/HTTPErrorDetail"
+								}
+							}
+						}
+					},
 					"422": {
 						"description": "Validation Error",
 						"content": {
@@ -329,6 +459,36 @@
 						"content": {
 							"application/json": {
 								"schema": {}
+							}
+						}
+					},
+					"400": {
+						"description": "Agent is not currently disabled.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/HTTPErrorDetail"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "Human session required.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/HTTPErrorDetail"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "Agent or toolkit not found.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/HTTPErrorDetail"
+								}
 							}
 						}
 					},
@@ -385,6 +545,36 @@
 							}
 						}
 					},
+					"403": {
+						"description": "Human session required.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/HTTPErrorDetail"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "Agent or toolkit not found.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/HTTPErrorDetail"
+								}
+							}
+						}
+					},
+					"409": {
+						"description": "Conflicting state (e.g. disabled toolkit).",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/HTTPErrorDetail"
+								}
+							}
+						}
+					},
 					"422": {
 						"description": "Validation Error",
 						"content": {
@@ -423,6 +613,16 @@
 						"content": {
 							"application/json": {
 								"schema": {}
+							}
+						}
+					},
+					"403": {
+						"description": "Human session required.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/HTTPErrorDetail"
+								}
 							}
 						}
 					},
@@ -475,6 +675,36 @@
 						"content": {
 							"application/json": {
 								"schema": {}
+							}
+						}
+					},
+					"403": {
+						"description": "Human session required.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/HTTPErrorDetail"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "Agent or toolkit not found.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/HTTPErrorDetail"
+								}
+							}
+						}
+					},
+					"409": {
+						"description": "Conflicting state (e.g. disabled toolkit).",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/HTTPErrorDetail"
+								}
 							}
 						}
 					},
@@ -539,6 +769,36 @@
 							}
 						}
 					},
+					"400": {
+						"description": "Invalid or missing jwks.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/HTTPErrorDetail"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "Human session required.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/HTTPErrorDetail"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "Agent or toolkit not found.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/HTTPErrorDetail"
+								}
+							}
+						}
+					},
 					"422": {
 						"description": "Validation Error",
 						"content": {
@@ -587,6 +847,26 @@
 				"responses": {
 					"204": {
 						"description": "Successful Response"
+					},
+					"403": {
+						"description": "Human session required.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/HTTPErrorDetail"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "Agent or toolkit not found.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/HTTPErrorDetail"
+								}
+							}
+						}
 					},
 					"422": {
 						"description": "Validation Error",
@@ -2377,6 +2657,26 @@
 							}
 						}
 					},
+					"400": {
+						"description": "OAuth-formatted error (invalid_request, invalid_grant, unsupported_grant_type).",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/OAuthError"
+								}
+							}
+						}
+					},
+					"403": {
+						"description": "Caller is not allowed to revoke this token (e.g. tk_ key, or at_ for a different client_id).",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/OAuthError"
+								}
+							}
+						}
+					},
 					"422": {
 						"description": "Validation Error",
 						"content": {
@@ -2418,6 +2718,26 @@
 						"content": {
 							"application/json": {
 								"schema": {}
+							}
+						}
+					},
+					"400": {
+						"description": "OAuth-formatted error (invalid_request, invalid_grant, unsupported_grant_type).",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/OAuthError"
+								}
+							}
+						}
+					},
+					"401": {
+						"description": "OAuth-formatted authentication error (invalid_token).",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/OAuthError"
+								}
 							}
 						}
 					},
@@ -3091,6 +3411,16 @@
 							}
 						}
 					},
+					"400": {
+						"description": "Bad request (e.g. malformed jwks).",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/HTTPErrorDetail"
+								}
+							}
+						}
+					},
 					"422": {
 						"description": "Validation Error",
 						"content": {
@@ -3127,6 +3457,26 @@
 						"content": {
 							"application/json": {
 								"schema": {}
+							}
+						}
+					},
+					"401": {
+						"description": "OAuth-formatted authentication error (invalid_token).",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/OAuthError"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "Resource not found.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/HTTPErrorDetail"
+								}
 							}
 						}
 					},
@@ -5974,6 +6324,18 @@
 				"required": ["toolkit_ids"],
 				"title": "GrantsReplaceBody"
 			},
+			"HTTPErrorDetail": {
+				"properties": {
+					"detail": {
+						"type": "string",
+						"title": "Detail"
+					}
+				},
+				"type": "object",
+				"required": ["detail"],
+				"title": "HTTPErrorDetail",
+				"description": "Standard FastAPI HTTPException body \u2014 ``{\"detail\": \"...\"}``."
+			},
 			"HTTPValidationError": {
 				"properties": {
 					"detail": {
@@ -6638,6 +7000,31 @@
 				"required": ["config"],
 				"title": "OAuthBrokerUpdate",
 				"description": "Update OAuth broker configuration. Only provided fields are changed; secrets remain encrypted."
+			},
+			"OAuthError": {
+				"properties": {
+					"error": {
+						"type": "string",
+						"title": "Error",
+						"description": "OAuth error code (e.g. 'invalid_grant')."
+					},
+					"error_description": {
+						"anyOf": [
+							{
+								"type": "string"
+							},
+							{
+								"type": "null"
+							}
+						],
+						"title": "Error Description",
+						"description": "Human-readable description; safe to log, not safe to display."
+					}
+				},
+				"type": "object",
+				"required": ["error"],
+				"title": "OAuthError",
+				"description": "RFC 6749 \u00a75.2 / RFC 7591 \u00a73.2.2 error response body.\n\nOAuth routes intentionally bypass FastAPI's HTTPException \u2192 ``{\"detail\": ...}``\nconvention so the wire shape matches the spec."
 			},
 			"OperationListPage": {
 				"properties": {

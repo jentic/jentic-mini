@@ -35,6 +35,8 @@ export class OauthService {
             formData: formData,
             mediaType: 'application/x-www-form-urlencoded',
             errors: {
+                400: `OAuth-formatted error (invalid_request, invalid_grant, unsupported_grant_type).`,
+                403: `Caller is not allowed to revoke this token (e.g. tk_ key, or at_ for a different client_id).`,
                 422: `Validation Error`,
             },
         });
@@ -55,6 +57,8 @@ export class OauthService {
             formData: formData,
             mediaType: 'application/x-www-form-urlencoded',
             errors: {
+                400: `OAuth-formatted error (invalid_request, invalid_grant, unsupported_grant_type).`,
+                401: `OAuth-formatted authentication error (invalid_token).`,
                 422: `Validation Error`,
             },
         });
@@ -76,6 +80,7 @@ export class OauthService {
             body: requestBody,
             mediaType: 'application/json',
             errors: {
+                400: `Bad request (e.g. malformed jwks).`,
                 422: `Validation Error`,
             },
         });
@@ -97,6 +102,8 @@ export class OauthService {
                 'client_id': clientId,
             },
             errors: {
+                401: `OAuth-formatted authentication error (invalid_token).`,
+                404: `Resource not found.`,
                 422: `Validation Error`,
             },
         });

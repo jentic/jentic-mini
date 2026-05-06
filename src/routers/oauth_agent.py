@@ -10,6 +10,7 @@ from typing import Annotated, Any
 import aiosqlite
 from fastapi import APIRouter, Body, Form, HTTPException, Request
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel, Field
 from starlette.responses import Response
 
 from src.agent_identity_gate import verify_registration_access_token
@@ -34,6 +35,49 @@ from src.utils import build_canonical_url
 
 
 router = APIRouter(tags=["oauth"])
+
+
+class OAuthError(BaseModel):
+    """RFC 6749 §5.2 / RFC 7591 §3.2.2 error response body.
+
+    OAuth routes intentionally bypass FastAPI's HTTPException → ``{"detail": ...}``
+    convention so the wire shape matches the spec.
+    """
+
+    error: str = Field(description="OAuth error code (e.g. 'invalid_grant').")
+    error_description: str | None = Field(
+        default=None,
+        description="Human-readable description; safe to log, not safe to display.",
+    )
+
+
+class HTTPErrorDetail(BaseModel):
+    """Standard FastAPI HTTPException body — ``{"detail": "..."}``."""
+
+    detail: str
+
+
+# Response declarations reused across OAuth routes. Without these FastAPI's
+# generated schema only declares 200/422, and downstream SDKs / contract tests
+# treat the documented error path as "untyped" — agents see ``any`` for what
+# is in fact a stable RFC-shaped object.
+_OAUTH_ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
+    400: {
+        "model": OAuthError,
+        "description": "OAuth-formatted error (invalid_request, invalid_grant, unsupported_grant_type).",
+    },
+    401: {
+        "model": OAuthError,
+        "description": "OAuth-formatted authentication error (invalid_token).",
+    },
+}
+
+_HTTP_ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
+    400: {"model": HTTPErrorDetail, "description": "Bad request (e.g. malformed jwks)."},
+    401: {"model": HTTPErrorDetail, "description": "Authentication required."},
+    403: {"model": HTTPErrorDetail, "description": "Operation not permitted for this principal."},
+    404: {"model": HTTPErrorDetail, "description": "Resource not found."},
+}
 
 
 def _oauth_error(status: int, error: str, description: str) -> JSONResponse:
@@ -108,7 +152,12 @@ async def oauth_authorization_server_metadata(request: Request):
     }
 
 
-@router.post("/register", status_code=201, summary="Dynamic Client Registration (RFC 7591)")
+@router.post(
+    "/register",
+    status_code=201,
+    summary="Dynamic Client Registration (RFC 7591)",
+    responses={400: _HTTP_ERROR_RESPONSES[400]},
+)
 async def dynamic_client_registration(request: Request, body: dict[str, Any] = Body(...)):
     """Register an agent identity (client_name + jwks). Returns pending status until a human approves."""
     client_name = (body.get("client_name") or "").strip()
@@ -154,7 +203,14 @@ async def dynamic_client_registration(request: Request, body: dict[str, Any] = B
     }
 
 
-@router.get("/register/{client_id}", summary="Read client registration (RFC 7592)")
+@router.get(
+    "/register/{client_id}",
+    summary="Read client registration (RFC 7592)",
+    responses={
+        401: _OAUTH_ERROR_RESPONSES[401],
+        404: _HTTP_ERROR_RESPONSES[404],
+    },
+)
 async def get_registration(client_id: str, request: Request):
     auth = request.headers.get("Authorization", "")
     raw_bearer = auth[7:].strip() if auth.lower().startswith("bearer ") else None
@@ -243,7 +299,11 @@ async def delete_registration(client_id: str):
     return _registration_management_unsupported()
 
 
-@router.post("/oauth/token", summary="OAuth 2.0 token endpoint")
+@router.post(
+    "/oauth/token",
+    summary="OAuth 2.0 token endpoint",
+    responses=_OAUTH_ERROR_RESPONSES,
+)
 async def oauth_token(
     request: Request,
     grant_type: Annotated[str | None, Form()] = None,
@@ -456,7 +516,18 @@ async def oauth_token(
     return _oauth_error(400, "unsupported_grant_type", f"Unknown grant_type: {grant_type!r}")
 
 
-@router.post("/oauth/revoke", summary="OAuth 2.0 token revocation (RFC 7009)")
+@router.post(
+    "/oauth/revoke",
+    summary="OAuth 2.0 token revocation (RFC 7009)",
+    responses={
+        400: _OAUTH_ERROR_RESPONSES[400],
+        403: {
+            "model": OAuthError,
+            "description": "Caller is not allowed to revoke this token (e.g. tk_ key, "
+            "or at_ for a different client_id).",
+        },
+    },
+)
 async def oauth_revoke(
     request: Request,
     token: Annotated[str | None, Form()] = None,

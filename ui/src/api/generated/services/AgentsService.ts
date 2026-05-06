@@ -3,6 +3,7 @@
 /* tslint:disable */
 /* eslint-disable */
 import type { GrantBody } from '../models/GrantBody';
+import type { GrantsReplaceBody } from '../models/GrantsReplaceBody';
 import type { CancelablePromise } from '../core/CancelablePromise';
 import { OpenAPI } from '../core/OpenAPI';
 import { request as __request } from '../core/request';
@@ -33,6 +34,7 @@ export class AgentsService {
                 'status': status,
             },
             errors: {
+                403: `Human session required.`,
                 422: `Validation Error`,
             },
         });
@@ -54,6 +56,8 @@ export class AgentsService {
                 'agent_id': agentId,
             },
             errors: {
+                403: `Human session required.`,
+                404: `Agent or toolkit not found.`,
                 422: `Validation Error`,
             },
         });
@@ -76,6 +80,8 @@ export class AgentsService {
                 'agent_id': agentId,
             },
             errors: {
+                403: `Human session required.`,
+                404: `Agent or toolkit not found.`,
                 422: `Validation Error`,
             },
         });
@@ -97,6 +103,9 @@ export class AgentsService {
                 'agent_id': agentId,
             },
             errors: {
+                400: `Agent is not in 'pending' status.`,
+                403: `Human session required.`,
+                404: `Agent or toolkit not found.`,
                 422: `Validation Error`,
             },
         });
@@ -118,6 +127,9 @@ export class AgentsService {
                 'agent_id': agentId,
             },
             errors: {
+                400: `Agent is not in 'pending' status.`,
+                403: `Human session required.`,
+                404: `Agent or toolkit not found.`,
                 422: `Validation Error`,
             },
         });
@@ -139,6 +151,8 @@ export class AgentsService {
                 'agent_id': agentId,
             },
             errors: {
+                403: `Human session required.`,
+                404: `Agent or toolkit not found.`,
                 422: `Validation Error`,
             },
         });
@@ -160,6 +174,9 @@ export class AgentsService {
                 'agent_id': agentId,
             },
             errors: {
+                400: `Agent is not currently disabled.`,
+                403: `Human session required.`,
+                404: `Agent or toolkit not found.`,
                 422: `Validation Error`,
             },
         });
@@ -185,6 +202,9 @@ export class AgentsService {
             body: requestBody,
             mediaType: 'application/json',
             errors: {
+                403: `Human session required.`,
+                404: `Agent or toolkit not found.`,
+                409: `Conflicting state (e.g. disabled toolkit).`,
                 422: `Validation Error`,
             },
         });
@@ -206,6 +226,50 @@ export class AgentsService {
                 'agent_id': agentId,
             },
             errors: {
+                403: `Human session required.`,
+                422: `Validation Error`,
+            },
+        });
+    }
+    /**
+     * Replace the agent's grants atomically
+     * Replace the agent's full grant set in a single transaction.
+     *
+     * Used by the admin UI's grant-edit flow: the user picks a set of toolkits
+     * in a dialog and submits the whole set in one call, instead of dispatching
+     * a stream of POST/DELETE requests sequentially. A 5xx mid-operation under
+     * the old flow would leave the agent in a partial state — this endpoint
+     * eliminates that window.
+     *
+     * Behaviour:
+     *
+     * * Adds toolkits in ``toolkit_ids`` that the agent doesn't already hold.
+     * Disabled toolkits and unknown toolkit_ids reject the **whole** call.
+     * * Removes existing grants not in ``toolkit_ids``.
+     * * Preserves ``granted_at`` / ``granted_by`` for grants that survive
+     * (the conflict path is a no-op, exactly like POST).
+     * @returns any Successful Response
+     * @throws ApiError
+     */
+    public static replaceGrantsAgentsAgentIdGrantsPut({
+        agentId,
+        requestBody,
+    }: {
+        agentId: string,
+        requestBody: GrantsReplaceBody,
+    }): CancelablePromise<any> {
+        return __request(OpenAPI, {
+            method: 'PUT',
+            url: '/agents/{agent_id}/grants',
+            path: {
+                'agent_id': agentId,
+            },
+            body: requestBody,
+            mediaType: 'application/json',
+            errors: {
+                403: `Human session required.`,
+                404: `Agent or toolkit not found.`,
+                409: `Conflicting state (e.g. disabled toolkit).`,
                 422: `Validation Error`,
             },
         });
@@ -231,6 +295,9 @@ export class AgentsService {
             body: requestBody,
             mediaType: 'application/json',
             errors: {
+                400: `Invalid or missing jwks.`,
+                403: `Human session required.`,
+                404: `Agent or toolkit not found.`,
                 422: `Validation Error`,
             },
         });
@@ -258,6 +325,8 @@ export class AgentsService {
                 'toolkit_id': toolkitId,
             },
             errors: {
+                403: `Human session required.`,
+                404: `Agent or toolkit not found.`,
                 422: `Validation Error`,
             },
         });

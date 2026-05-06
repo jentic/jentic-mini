@@ -2,6 +2,8 @@
 /* istanbul ignore file */
 /* tslint:disable */
 /* eslint-disable */
+import type { HealthOk } from '../models/HealthOk';
+import type { HealthSetupRequired } from '../models/HealthSetupRequired';
 import type { CancelablePromise } from '../core/CancelablePromise';
 import { OpenAPI } from '../core/OpenAPI';
 import { request as __request } from '../core/request';
@@ -19,10 +21,10 @@ export class MetaService {
      *
      * Returns:
      * Setup status, version, and context-specific next steps or operational metrics.
-     * @returns any Successful Response
+     * @returns any Setup state. Schema varies by status — discriminate on the `status` field.
      * @throws ApiError
      */
-    public static healthHealthGet(): CancelablePromise<any> {
+    public static healthHealthGet(): CancelablePromise<(HealthSetupRequired | HealthOk)> {
         return __request(OpenAPI, {
             method: 'GET',
             url: '/health',

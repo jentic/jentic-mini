@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import time
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
 import aiosqlite
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request
@@ -16,6 +16,25 @@ from src.db import DB_PATH, get_db
 
 
 router = APIRouter(prefix="/agents", tags=["agents"])
+
+
+class HTTPErrorDetail(BaseModel):
+    """Standard FastAPI HTTPException body — ``{"detail": "..."}``."""
+
+    detail: str
+
+
+# Every /agents/* route already 403s on missing human session via the
+# ``require_human_session`` dependency, and the body shapes are all the
+# FastAPI default ``{"detail": "..."}``. Declaring them here so the
+# generated OpenAPI schema (and the TS SDK we ship to the UI) actually
+# carries types for the documented error paths instead of falling back
+# to ``any``.
+_ADMIN_ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
+    403: {"model": HTTPErrorDetail, "description": "Human session required."},
+    404: {"model": HTTPErrorDetail, "description": "Agent or toolkit not found."},
+    409: {"model": HTTPErrorDetail, "description": "Conflicting state (e.g. disabled toolkit)."},
+}
 
 
 async def _admin_username(request: Request) -> str:
@@ -40,7 +59,9 @@ class GrantsReplaceBody(BaseModel):
     )
 
 
-@router.get("", dependencies=[Depends(require_human_session)])
+@router.get(
+    "", dependencies=[Depends(require_human_session)], responses={403: _ADMIN_ERROR_RESPONSES[403]}
+)
 async def list_agents(
     view: Annotated[
         Literal["active", "declined", "removed"],
@@ -90,7 +111,11 @@ async def list_agents(
     }
 
 
-@router.get("/{agent_id}", dependencies=[Depends(require_human_session)])
+@router.get(
+    "/{agent_id}",
+    dependencies=[Depends(require_human_session)],
+    responses={403: _ADMIN_ERROR_RESPONSES[403], 404: _ADMIN_ERROR_RESPONSES[404]},
+)
 async def get_agent(agent_id: str):
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
@@ -121,7 +146,15 @@ async def get_agent(agent_id: str):
     }
 
 
-@router.post("/{agent_id}/approve", dependencies=[Depends(require_human_session)])
+@router.post(
+    "/{agent_id}/approve",
+    dependencies=[Depends(require_human_session)],
+    responses={
+        400: {"model": HTTPErrorDetail, "description": "Agent is not in 'pending' status."},
+        403: _ADMIN_ERROR_RESPONSES[403],
+        404: _ADMIN_ERROR_RESPONSES[404],
+    },
+)
 async def approve_agent(agent_id: str, request: Request):
     who = await _admin_username(request)
     now = time.time()
@@ -147,6 +180,11 @@ async def approve_agent(agent_id: str, request: Request):
     "/{agent_id}/deny",
     dependencies=[Depends(require_human_session)],
     summary="Decline registration",
+    responses={
+        400: {"model": HTTPErrorDetail, "description": "Agent is not in 'pending' status."},
+        403: _ADMIN_ERROR_RESPONSES[403],
+        404: _ADMIN_ERROR_RESPONSES[404],
+    },
 )
 async def deny_agent(agent_id: str):
     now = time.time()
@@ -185,7 +223,11 @@ async def deny_agent(agent_id: str):
     return {"client_id": agent_id, "status": "denied"}
 
 
-@router.post("/{agent_id}/disable", dependencies=[Depends(require_human_session)])
+@router.post(
+    "/{agent_id}/disable",
+    dependencies=[Depends(require_human_session)],
+    responses={403: _ADMIN_ERROR_RESPONSES[403], 404: _ADMIN_ERROR_RESPONSES[404]},
+)
 async def disable_agent(agent_id: str):
     now = time.time()
     async with get_db() as db:
@@ -220,7 +262,15 @@ async def disable_agent(agent_id: str):
     return {"client_id": agent_id, "status": "disabled"}
 
 
-@router.post("/{agent_id}/enable", dependencies=[Depends(require_human_session)])
+@router.post(
+    "/{agent_id}/enable",
+    dependencies=[Depends(require_human_session)],
+    responses={
+        400: {"model": HTTPErrorDetail, "description": "Agent is not currently disabled."},
+        403: _ADMIN_ERROR_RESPONSES[403],
+        404: _ADMIN_ERROR_RESPONSES[404],
+    },
+)
 async def enable_agent(agent_id: str):
     async with get_db() as db:
         async with db.execute(
@@ -239,7 +289,15 @@ async def enable_agent(agent_id: str):
     return {"client_id": agent_id, "status": "approved"}
 
 
-@router.put("/{agent_id}/jwks", dependencies=[Depends(require_human_session)])
+@router.put(
+    "/{agent_id}/jwks",
+    dependencies=[Depends(require_human_session)],
+    responses={
+        400: {"model": HTTPErrorDetail, "description": "Invalid or missing jwks."},
+        403: _ADMIN_ERROR_RESPONSES[403],
+        404: _ADMIN_ERROR_RESPONSES[404],
+    },
+)
 async def rotate_agent_jwks(agent_id: str, body: dict):
     jwks = body.get("jwks")
     if not isinstance(jwks, dict):
@@ -267,6 +325,7 @@ async def rotate_agent_jwks(agent_id: str, body: dict):
     status_code=204,
     dependencies=[Depends(require_human_session)],
     summary="Deregister agent (soft delete)",
+    responses={403: _ADMIN_ERROR_RESPONSES[403], 404: _ADMIN_ERROR_RESPONSES[404]},
 )
 async def delete_agent(agent_id: str):
     """Soft-delete for audit: revoke tokens, strip JWKS and registration secrets, drop grants."""
@@ -306,7 +365,11 @@ async def delete_agent(agent_id: str):
             raise
 
 
-@router.post("/{agent_id}/grants", dependencies=[Depends(require_human_session)])
+@router.post(
+    "/{agent_id}/grants",
+    dependencies=[Depends(require_human_session)],
+    responses=_ADMIN_ERROR_RESPONSES,
+)
 async def add_grant(agent_id: str, body: GrantBody, request: Request):
     who = await _admin_username(request)
     now = time.time()
@@ -336,7 +399,11 @@ async def add_grant(agent_id: str, body: GrantBody, request: Request):
     return {"client_id": agent_id, "toolkit_id": body.toolkit_id, "granted_at": now}
 
 
-@router.get("/{agent_id}/grants", dependencies=[Depends(require_human_session)])
+@router.get(
+    "/{agent_id}/grants",
+    dependencies=[Depends(require_human_session)],
+    responses={403: _ADMIN_ERROR_RESPONSES[403]},
+)
 async def list_grants(agent_id: str):
     # LEFT JOIN — surface the toolkit's `disabled` flag so the admin UI can
     # warn that a previously-granted toolkit no longer takes effect at runtime
@@ -373,6 +440,7 @@ async def list_grants(agent_id: str):
     "/{agent_id}/grants/{toolkit_id}",
     status_code=204,
     dependencies=[Depends(require_human_session)],
+    responses={403: _ADMIN_ERROR_RESPONSES[403], 404: _ADMIN_ERROR_RESPONSES[404]},
 )
 async def delete_grant(
     agent_id: str,
@@ -395,6 +463,7 @@ async def delete_grant(
     "/{agent_id}/grants",
     dependencies=[Depends(require_human_session)],
     summary="Replace the agent's grants atomically",
+    responses=_ADMIN_ERROR_RESPONSES,
 )
 async def replace_grants(agent_id: str, body: GrantsReplaceBody, request: Request):
     """Replace the agent's full grant set in a single transaction.
