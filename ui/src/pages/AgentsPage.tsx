@@ -298,33 +298,14 @@ export default function AgentsPage() {
 	]);
 
 	const saveGrantsMutation = useMutation({
-		mutationFn: async ({
-			clientId,
-			desired,
-			previous,
-		}: {
-			clientId: string;
-			desired: Set<string>;
-			previous: Set<string>;
-		}) => {
-			const toAdd = [...desired].filter((id) => !previous.has(id));
-			const toRemove = [...previous].filter((id) => !desired.has(id));
-			for (const toolkitId of toAdd) {
-				const r = await fetch(`/agents/${encodeURIComponent(clientId)}/grants`, {
-					method: 'POST',
-					credentials: 'include',
-					headers: { 'Content-Type': 'application/json' },
-					body: JSON.stringify({ toolkit_id: toolkitId }),
-				});
-				if (!r.ok) throw new Error(await r.text());
-			}
-			for (const toolkitId of toRemove) {
-				const r = await fetch(
-					`/agents/${encodeURIComponent(clientId)}/grants/${encodeURIComponent(toolkitId)}`,
-					{ method: 'DELETE', credentials: 'include' },
-				);
-				if (!r.ok) throw new Error(await r.text());
-			}
+		mutationFn: async ({ clientId, desired }: { clientId: string; desired: Set<string> }) => {
+			const r = await fetch(`/agents/${encodeURIComponent(clientId)}/grants`, {
+				method: 'PUT',
+				credentials: 'include',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ toolkit_ids: [...desired] }),
+			});
+			if (!r.ok) throw new Error(await r.text());
 		},
 		onSuccess: () => {
 			const id = grantAgentId;
@@ -864,13 +845,9 @@ export default function AgentsPage() {
 							}
 							onClick={() => {
 								if (!grantAgentId || !grantsForAgentQuery.data) return;
-								const previous = new Set(
-									grantsForAgentQuery.data.grants.map((g) => g.toolkit_id),
-								);
 								void saveGrantsMutation.mutateAsync({
 									clientId: grantAgentId,
 									desired: selectedToolkitIds,
-									previous,
 								});
 							}}
 						>

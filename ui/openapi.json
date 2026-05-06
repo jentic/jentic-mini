@@ -442,6 +442,64 @@
 						"HumanLogin": []
 					}
 				]
+			},
+			"put": {
+				"tags": ["agents"],
+				"summary": "Replace the agent's grants atomically",
+				"description": "Replace the agent's full grant set in a single transaction.\n\nUsed by the admin UI's grant-edit flow: the user picks a set of toolkits\nin a dialog and submits the whole set in one call, instead of dispatching\na stream of POST/DELETE requests sequentially. A 5xx mid-operation under\nthe old flow would leave the agent in a partial state \u2014 this endpoint\neliminates that window.\n\nBehaviour:\n\n* Adds toolkits in ``toolkit_ids`` that the agent doesn't already hold.\n  Disabled toolkits and unknown toolkit_ids reject the **whole** call.\n* Removes existing grants not in ``toolkit_ids``.\n* Preserves ``granted_at`` / ``granted_by`` for grants that survive\n  (the conflict path is a no-op, exactly like POST).",
+				"operationId": "replace_grants_agents__agent_id__grants_put",
+				"parameters": [
+					{
+						"name": "agent_id",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string",
+							"title": "Agent Id"
+						}
+					}
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/GrantsReplaceBody"
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "Successful Response",
+						"content": {
+							"application/json": {
+								"schema": {}
+							}
+						}
+					},
+					"422": {
+						"description": "Validation Error",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/HTTPValidationError"
+								}
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"JenticApiKey": []
+					},
+					{
+						"AgentOauthAccessToken": []
+					},
+					{
+						"HumanLogin": []
+					}
+				]
 			}
 		},
 		"/agents/{agent_id}/jwks": {
@@ -5900,6 +5958,21 @@
 				"type": "object",
 				"required": ["toolkit_id"],
 				"title": "GrantBody"
+			},
+			"GrantsReplaceBody": {
+				"properties": {
+					"toolkit_ids": {
+						"items": {
+							"type": "string"
+						},
+						"type": "array",
+						"title": "Toolkit Ids",
+						"description": "The complete set of toolkit_ids the agent should be granted after this call. Existing grants not in this list will be revoked. Toolkits in this list that the agent does not yet have a grant on will be added. Atomic: either all changes apply or none do."
+					}
+				},
+				"type": "object",
+				"required": ["toolkit_ids"],
+				"title": "GrantsReplaceBody"
 			},
 			"HTTPValidationError": {
 				"properties": {

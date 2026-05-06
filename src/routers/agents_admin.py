@@ -29,6 +29,17 @@ class GrantBody(BaseModel):
     toolkit_id: str = Field(description="Toolkit to grant this agent")
 
 
+class GrantsReplaceBody(BaseModel):
+    toolkit_ids: list[str] = Field(
+        description=(
+            "The complete set of toolkit_ids the agent should be granted after "
+            "this call. Existing grants not in this list will be revoked. "
+            "Toolkits in this list that the agent does not yet have a grant on "
+            "will be added. Atomic: either all changes apply or none do."
+        ),
+    )
+
+
 @router.get("", dependencies=[Depends(require_human_session)])
 async def list_agents(
     view: Annotated[
@@ -378,3 +389,106 @@ async def delete_grant(
             (agent_id, toolkit_id),
         )
         await db.commit()
+
+
+@router.put(
+    "/{agent_id}/grants",
+    dependencies=[Depends(require_human_session)],
+    summary="Replace the agent's grants atomically",
+)
+async def replace_grants(agent_id: str, body: GrantsReplaceBody, request: Request):
+    """Replace the agent's full grant set in a single transaction.
+
+    Used by the admin UI's grant-edit flow: the user picks a set of toolkits
+    in a dialog and submits the whole set in one call, instead of dispatching
+    a stream of POST/DELETE requests sequentially. A 5xx mid-operation under
+    the old flow would leave the agent in a partial state — this endpoint
+    eliminates that window.
+
+    Behaviour:
+
+    * Adds toolkits in ``toolkit_ids`` that the agent doesn't already hold.
+      Disabled toolkits and unknown toolkit_ids reject the **whole** call.
+    * Removes existing grants not in ``toolkit_ids``.
+    * Preserves ``granted_at`` / ``granted_by`` for grants that survive
+      (the conflict path is a no-op, exactly like POST).
+    """
+    who = await _admin_username(request)
+    now = time.time()
+    requested = list(dict.fromkeys(body.toolkit_ids))  # de-dupe, keep order
+
+    async with get_db() as db:
+        await db.execute("BEGIN IMMEDIATE")
+        try:
+            async with db.execute(
+                "SELECT client_id FROM agents WHERE client_id=? AND deleted_at IS NULL",
+                (agent_id,),
+            ) as cur:
+                if not await cur.fetchone():
+                    await db.rollback()
+                    raise HTTPException(404, "Agent not found")
+
+            if requested:
+                # Validate every requested toolkit exists and is enabled BEFORE
+                # we mutate anything. A single bad id rolls back the whole
+                # call — the admin UI never has to reconcile a half-applied
+                # state.
+                placeholders = ",".join("?" * len(requested))
+                async with db.execute(
+                    f"SELECT id, disabled FROM toolkits WHERE id IN ({placeholders})",
+                    requested,
+                ) as cur:
+                    rows = await cur.fetchall()
+                found = {r[0]: r[1] for r in rows}
+                missing = [tid for tid in requested if tid not in found]
+                if missing:
+                    await db.rollback()
+                    raise HTTPException(404, f"Unknown toolkit(s): {', '.join(missing)}")
+                disabled = [tid for tid, dis in found.items() if dis]
+                if disabled:
+                    await db.rollback()
+                    raise HTTPException(
+                        409,
+                        f"Disabled toolkit(s) cannot be granted: {', '.join(disabled)}",
+                    )
+
+            # Read current grants so we only insert genuinely new ones (and
+            # therefore preserve granted_at on survivors via the ON CONFLICT
+            # DO NOTHING path).
+            async with db.execute(
+                "SELECT toolkit_id FROM agent_toolkit_grants WHERE client_id=?",
+                (agent_id,),
+            ) as cur:
+                existing = {r[0] for r in await cur.fetchall()}
+
+            requested_set = set(requested)
+            to_add = [tid for tid in requested if tid not in existing]
+            to_remove = [tid for tid in existing if tid not in requested_set]
+
+            for tid in to_remove:
+                await db.execute(
+                    "DELETE FROM agent_toolkit_grants WHERE client_id=? AND toolkit_id=?",
+                    (agent_id, tid),
+                )
+            for tid in to_add:
+                await db.execute(
+                    """INSERT INTO agent_toolkit_grants
+                           (client_id, toolkit_id, granted_at, granted_by)
+                       VALUES (?,?,?,?)
+                       ON CONFLICT(client_id, toolkit_id) DO NOTHING""",
+                    (agent_id, tid, now, who),
+                )
+
+            await db.commit()
+        except HTTPException:
+            raise
+        except Exception:
+            await db.rollback()
+            raise
+
+    return {
+        "client_id": agent_id,
+        "added": to_add,
+        "removed": to_remove,
+        "toolkit_ids": requested,
+    }
