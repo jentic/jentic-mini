@@ -32,19 +32,16 @@ export default function SetupPage() {
 	});
 
 	// POST /user/create auto-issues the session cookie on success, so a
-	// separate /user/login call is unnecessary — and previously caused races
-	// where "Setup complete" depended on a fire-and-forget login request.
-	// The mutation is now atomic: it succeeds iff the account exists AND we
-	// have a session, and any failure surfaces through ErrorAlert.
+	// separate /user/login call is unnecessary. We deliberately do NOT
+	// invalidate ['health'] / ['user', 'me'] in onSuccess — doing so causes
+	// AuthGuard to redirect away from /setup the instant both queries refetch,
+	// before "Setup complete" can render. The invalidations happen on the
+	// "Go to Dashboard" click so the user sees the success screen first.
 	const createUserMutation = useMutation({
 		mutationFn: async () => {
 			await UserService.createUserUserCreatePost({
 				requestBody: { username, password },
 			});
-		},
-		onSuccess: () => {
-			void queryClient.invalidateQueries({ queryKey: ['health'] });
-			void queryClient.invalidateQueries({ queryKey: ['user', 'me'] });
 		},
 	});
 
@@ -68,7 +65,15 @@ export default function SetupPage() {
 							<Check className="h-4 w-4" /> Setup complete
 						</div>
 						<Button
-							onClick={() => navigate('/', { replace: true })}
+							onClick={() => {
+								// Invalidate auth queries so AuthGuard sees the new
+								// session, then navigate. Doing this here (rather
+								// than in onSuccess) lets "Setup complete" actually
+								// render before AuthGuard would otherwise redirect.
+								void queryClient.invalidateQueries({ queryKey: ['health'] });
+								void queryClient.invalidateQueries({ queryKey: ['user', 'me'] });
+								navigate('/', { replace: true });
+							}}
 							size="lg"
 							fullWidth
 						>
