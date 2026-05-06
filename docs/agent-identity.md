@@ -561,6 +561,10 @@ This is the correct pattern for the vast majority of use cases — each running 
 
 Scopes are not yet implemented for agent tokens. When scopes are added to the authentication system at large, agent identity tokens will support them — allowing fine-grained permission control (e.g. read-only access, execute access etc.). For now, an agent's capabilities are determined entirely by its toolkit grants.
 
+### Nonce table pruning
+
+The JWT-bearer replay cache (`agent_nonces`) is pruned on every successful assertion via `DELETE FROM agent_nonces WHERE expires_at < ?`. This is fine at expected volumes but is a write amplifier on the hot path under load. A future pass should move this to a periodic background sweep (or a small-table fast-path that skips the prune when the row count is below a threshold). Tracked for follow-up work.
+
 ---
 
 ## Open questions
