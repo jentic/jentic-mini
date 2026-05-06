@@ -1,6 +1,8 @@
 __pycache__/
 !/.claude
 /.claude/settings.local.json
+/.claude/worktrees/*
+!/.claude/worktrees/.gitkeep
 *.pyc
 *.pyo
 .env
