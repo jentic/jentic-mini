@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Check } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { AppLink } from '@/components/ui/AppLink';
 import { UserService } from '@/api/generated';
 import { Button } from '@/components/ui/Button';
@@ -18,6 +19,7 @@ type HealthPayload = {
  */
 export default function SetupPage() {
 	const queryClient = useQueryClient();
+	const navigate = useNavigate();
 	const [username, setUsername] = useState('');
 	const [password, setPassword] = useState('');
 
@@ -29,23 +31,45 @@ export default function SetupPage() {
 			) as Promise<HealthPayload>,
 	});
 
+	// Single mutation that owns the whole "create admin and sign in" flow.
+	// Chaining the login into the same mutation means:
+	//   - "Setup complete" only renders once we genuinely have a session;
+	//     a 5xx on /user/login no longer hides behind a green check.
+	//   - The button stays in `isPending` for the full duration, so the
+	//     user can't double-click into a half-bootstrapped state.
+	//   - Errors from either step flow through `createUserMutation.error`
+	//     and `ErrorAlert` instead of being silently swallowed by .finally.
 	const createUserMutation = useMutation({
-		mutationFn: () =>
-			UserService.createUserUserCreatePost({ requestBody: { username, password } }),
-		onSuccess: () => {
-			fetch('/user/login', {
+		mutationFn: async () => {
+			await UserService.createUserUserCreatePost({
+				requestBody: { username, password },
+			});
+			const loginRes = await fetch('/user/login', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
 				credentials: 'include',
 				body: JSON.stringify({ username, password }),
-			}).finally(() => {
-				void queryClient.invalidateQueries({ queryKey: ['health'] });
-				void queryClient.invalidateQueries({ queryKey: ['user', 'me'] });
 			});
+			if (!loginRes.ok) {
+				// Surface a structured error rather than the response body —
+				// the body is often an HTML error page from a misbehaving
+				// proxy and is not user-facing.
+				throw new Error(
+					`Account created, but sign-in failed (HTTP ${loginRes.status}). ` +
+						'Please try logging in manually.',
+				);
+			}
+		},
+		onSuccess: () => {
+			void queryClient.invalidateQueries({ queryKey: ['health'] });
+			void queryClient.invalidateQueries({ queryKey: ['user', 'me'] });
 		},
 	});
 
-	const createUserError = createUserMutation.error as { status?: number } | null;
+	const createUserError = createUserMutation.error as {
+		status?: number;
+		message?: string;
+	} | null;
 	const accountAlreadyExists = createUserError?.status === 409 || createUserError?.status === 410;
 
 	const alreadySetUp = health?.status === 'ok' || createUserMutation.isSuccess;
@@ -61,7 +85,11 @@ export default function SetupPage() {
 						<div className="bg-success/10 border-success/30 text-success mb-6 flex items-center justify-center gap-2 rounded-lg border p-4 text-sm font-semibold">
 							<Check className="h-4 w-4" /> Setup complete
 						</div>
-						<Button onClick={() => (window.location.href = '/')} size="lg" fullWidth>
+						<Button
+							onClick={() => navigate('/', { replace: true })}
+							size="lg"
+							fullWidth
+						>
 							Go to Dashboard →
 						</Button>
 					</div>
@@ -109,7 +137,10 @@ export default function SetupPage() {
 
 					{createUserMutation.isError && !accountAlreadyExists && (
 						<ErrorAlert
-							message="Something went wrong. Please try again."
+							message={
+								createUserError?.message ??
+								'Something went wrong. Please try again.'
+							}
 							className="mb-4"
 						/>
 					)}
