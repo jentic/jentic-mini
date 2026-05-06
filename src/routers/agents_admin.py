@@ -264,9 +264,16 @@ async def add_grant(agent_id: str, body: GrantBody, request: Request):
         ) as cur:
             if not await cur.fetchone():
                 raise HTTPException(404, "Agent not found")
-        async with db.execute("SELECT id FROM toolkits WHERE id=?", (body.toolkit_id,)) as cur:
-            if not await cur.fetchone():
+        async with db.execute(
+            "SELECT disabled FROM toolkits WHERE id=?", (body.toolkit_id,)
+        ) as cur:
+            row = await cur.fetchone()
+            if row is None:
                 raise HTTPException(404, f"Toolkit '{body.toolkit_id}' not found")
+            if row[0]:
+                raise HTTPException(
+                    409, f"Toolkit '{body.toolkit_id}' is disabled and cannot be granted"
+                )
         await db.execute(
             """INSERT OR REPLACE INTO agent_toolkit_grants (client_id, toolkit_id, granted_at, granted_by)
                VALUES (?,?,?,?)""",
