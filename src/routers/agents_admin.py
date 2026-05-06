@@ -140,25 +140,37 @@ async def approve_agent(agent_id: str, request: Request):
 async def deny_agent(agent_id: str):
     now = time.time()
     async with get_db() as db:
-        async with db.execute(
-            "SELECT status FROM agents WHERE client_id=? AND deleted_at IS NULL", (agent_id,)
-        ) as cur:
-            row = await cur.fetchone()
-        if not row:
-            raise HTTPException(404, "Agent not found")
-        if row[0] != "pending":
-            raise HTTPException(400, f"Cannot deny agent in status {row[0]!r}")
-        wiped = wiped_agent_jwks_json()
-        await db.execute("DELETE FROM agent_tokens WHERE client_id=?", (agent_id,))
-        await db.execute("DELETE FROM agent_toolkit_grants WHERE client_id=?", (agent_id,))
-        await db.execute("DELETE FROM agent_nonces WHERE client_id=?", (agent_id,))
-        await db.execute(
-            """UPDATE agents SET status='denied', denied_at=?, jwks_json=?,
-                   registration_token_hash=NULL, registration_token_expires_at=NULL
-               WHERE client_id=? AND deleted_at IS NULL""",
-            (now, wiped, agent_id),
-        )
-        await db.commit()
+        # Single transaction so a racing /oauth/token cannot mint after we've
+        # checked the status but before we've revoked tokens / wiped JWKS.
+        await db.execute("BEGIN IMMEDIATE")
+        try:
+            async with db.execute(
+                "SELECT status FROM agents WHERE client_id=? AND deleted_at IS NULL",
+                (agent_id,),
+            ) as cur:
+                row = await cur.fetchone()
+            if not row:
+                await db.rollback()
+                raise HTTPException(404, "Agent not found")
+            if row[0] != "pending":
+                await db.rollback()
+                raise HTTPException(400, f"Cannot deny agent in status {row[0]!r}")
+            wiped = wiped_agent_jwks_json()
+            await db.execute("DELETE FROM agent_tokens WHERE client_id=?", (agent_id,))
+            await db.execute("DELETE FROM agent_toolkit_grants WHERE client_id=?", (agent_id,))
+            await db.execute("DELETE FROM agent_nonces WHERE client_id=?", (agent_id,))
+            await db.execute(
+                """UPDATE agents SET status='denied', denied_at=?, jwks_json=?,
+                       registration_token_hash=NULL, registration_token_expires_at=NULL
+                   WHERE client_id=? AND deleted_at IS NULL""",
+                (now, wiped, agent_id),
+            )
+            await db.commit()
+        except HTTPException:
+            raise
+        except Exception:
+            await db.rollback()
+            raise
     return {"client_id": agent_id, "status": "denied"}
 
 
@@ -166,17 +178,34 @@ async def deny_agent(agent_id: str):
 async def disable_agent(agent_id: str):
     now = time.time()
     async with get_db() as db:
-        async with db.execute(
-            "SELECT client_id FROM agents WHERE client_id=? AND deleted_at IS NULL", (agent_id,)
-        ) as cur:
-            if not await cur.fetchone():
-                raise HTTPException(404, "Agent not found")
-        await db.execute(
-            "UPDATE agents SET status='disabled', disabled_at=? WHERE client_id=? AND deleted_at IS NULL",
-            (now, agent_id),
-        )
-        await db.execute("DELETE FROM agent_tokens WHERE client_id=?", (agent_id,))
-        await db.commit()
+        # Wrap the status flip + token wipe in a single transaction so an
+        # in-flight /oauth/token refresh either fully precedes us (and its
+        # tokens are then revoked by the DELETE below) or sees the new
+        # disabled status when its own BEGIN IMMEDIATE re-reads `agents`.
+        # We also wipe agent_nonces here — without this, a re-enabled agent
+        # could replay an unexpired jti from before the disable.
+        await db.execute("BEGIN IMMEDIATE")
+        try:
+            async with db.execute(
+                "SELECT client_id FROM agents WHERE client_id=? AND deleted_at IS NULL",
+                (agent_id,),
+            ) as cur:
+                if not await cur.fetchone():
+                    await db.rollback()
+                    raise HTTPException(404, "Agent not found")
+            await db.execute(
+                "UPDATE agents SET status='disabled', disabled_at=? "
+                "WHERE client_id=? AND deleted_at IS NULL",
+                (now, agent_id),
+            )
+            await db.execute("DELETE FROM agent_tokens WHERE client_id=?", (agent_id,))
+            await db.execute("DELETE FROM agent_nonces WHERE client_id=?", (agent_id,))
+            await db.commit()
+        except HTTPException:
+            raise
+        except Exception:
+            await db.rollback()
+            raise
     return {"client_id": agent_id, "status": "disabled"}
 
 
@@ -233,25 +262,37 @@ async def delete_agent(agent_id: str):
     now = time.time()
     wiped = wiped_agent_jwks_json()
     async with get_db() as db:
-        async with db.execute(
-            "SELECT deleted_at FROM agents WHERE client_id=?", (agent_id,)
-        ) as cur:
-            row = await cur.fetchone()
-        if not row:
-            raise HTTPException(404, "Agent not found")
-        if row[0] is not None:
+        # Single transaction: see the deny/disable handlers above for why a
+        # racing /oauth/token would otherwise mint after we've checked the
+        # row but before we've revoked its tokens.
+        await db.execute("BEGIN IMMEDIATE")
+        try:
+            async with db.execute(
+                "SELECT deleted_at FROM agents WHERE client_id=?", (agent_id,)
+            ) as cur:
+                row = await cur.fetchone()
+            if not row:
+                await db.rollback()
+                raise HTTPException(404, "Agent not found")
+            if row[0] is not None:
+                # Already soft-deleted — idempotent no-op.
+                await db.rollback()
+                return
+            await db.execute("DELETE FROM agent_tokens WHERE client_id=?", (agent_id,))
+            await db.execute("DELETE FROM agent_toolkit_grants WHERE client_id=?", (agent_id,))
+            await db.execute("DELETE FROM agent_nonces WHERE client_id=?", (agent_id,))
+            await db.execute(
+                """UPDATE agents SET deleted_at=?, jwks_json=?,
+                       registration_token_hash=NULL, registration_token_expires_at=NULL
+                   WHERE client_id=?""",
+                (now, wiped, agent_id),
+            )
             await db.commit()
-            return
-        await db.execute("DELETE FROM agent_tokens WHERE client_id=?", (agent_id,))
-        await db.execute("DELETE FROM agent_toolkit_grants WHERE client_id=?", (agent_id,))
-        await db.execute("DELETE FROM agent_nonces WHERE client_id=?", (agent_id,))
-        await db.execute(
-            """UPDATE agents SET deleted_at=?, jwks_json=?,
-                   registration_token_hash=NULL, registration_token_expires_at=NULL
-               WHERE client_id=?""",
-            (now, wiped, agent_id),
-        )
-        await db.commit()
+        except HTTPException:
+            raise
+        except Exception:
+            await db.rollback()
+            raise
 
 
 @router.post("/{agent_id}/grants", dependencies=[Depends(require_human_session)])
