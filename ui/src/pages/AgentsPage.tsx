@@ -6,6 +6,7 @@ import { Dialog } from '@/components/ui/Dialog';
 import { LoadingState } from '@/components/ui/LoadingState';
 import { ErrorAlert } from '@/components/ui/ErrorAlert';
 import { DataTable, type Column } from '@/components/ui/DataTable';
+import { parseApiError } from '@/lib/apiError';
 
 const DEFAULT_TOOLKIT_ID = 'default';
 
@@ -77,6 +78,7 @@ export default function AgentsPage() {
 	const grantSelectionInitRef = useRef<string | null>(null);
 	const [deregisterClientId, setDeregisterClientId] = useState<string | null>(null);
 	const [killswitchAgentId, setKillswitchAgentId] = useState<string | null>(null);
+	const [declineAgentId, setDeclineAgentId] = useState<string | null>(null);
 
 	const activeAgentsQuery = useQuery({
 		queryKey: ['agents', 'list', 'active'],
@@ -113,7 +115,7 @@ export default function AgentsPage() {
 			const r = await fetch(`/agents/${encodeURIComponent(aid)}`, {
 				credentials: 'include',
 			});
-			if (!r.ok) throw new Error(await r.text());
+			if (!r.ok) throw await parseApiError(r);
 			return r.json() as Promise<AgentDetail>;
 		},
 		enabled: selectedAgentId !== null,
@@ -127,7 +129,7 @@ export default function AgentsPage() {
 			const r = await fetch(`/agents/${encodeURIComponent(aid)}/grants`, {
 				credentials: 'include',
 			});
-			if (!r.ok) throw new Error(await r.text());
+			if (!r.ok) throw await parseApiError(r);
 			return r.json() as Promise<{
 				grants: { toolkit_id: string; granted_at: number; granted_by: string | null }[];
 			}>;
@@ -143,7 +145,7 @@ export default function AgentsPage() {
 			const gr = await fetch(`/agents/${encodeURIComponent(aid)}/grants`, {
 				credentials: 'include',
 			});
-			if (!gr.ok) throw new Error(await gr.text());
+			if (!gr.ok) throw await parseApiError(gr);
 			const { grants } = (await gr.json()) as { grants: { toolkit_id: string }[] };
 			const toolkitResults = await Promise.all(
 				grants.map(async ({ toolkit_id }) => {
@@ -189,7 +191,7 @@ export default function AgentsPage() {
 				method: 'POST',
 				credentials: 'include',
 			});
-			if (!r.ok) throw new Error(await r.text());
+			if (!r.ok) throw await parseApiError(r);
 		},
 		onSuccess: () => {
 			void queryClient.invalidateQueries({ queryKey: ['agents'] });
@@ -202,9 +204,10 @@ export default function AgentsPage() {
 				method: 'POST',
 				credentials: 'include',
 			});
-			if (!r.ok) throw new Error(await r.text());
+			if (!r.ok) throw await parseApiError(r);
 		},
 		onSuccess: () => {
+			setDeclineAgentId(null);
 			void queryClient.invalidateQueries({ queryKey: ['agents'] });
 		},
 	});
@@ -215,7 +218,7 @@ export default function AgentsPage() {
 				method: 'POST',
 				credentials: 'include',
 			});
-			if (!r.ok) throw new Error(await r.text());
+			if (!r.ok) throw await parseApiError(r);
 		},
 		onSuccess: (_data, clientId) => {
 			setKillswitchAgentId(null);
@@ -230,7 +233,7 @@ export default function AgentsPage() {
 				method: 'POST',
 				credentials: 'include',
 			});
-			if (!r.ok) throw new Error(await r.text());
+			if (!r.ok) throw await parseApiError(r);
 		},
 		onSuccess: (_data, clientId) => {
 			void queryClient.invalidateQueries({ queryKey: ['agents'] });
@@ -244,7 +247,7 @@ export default function AgentsPage() {
 				method: 'DELETE',
 				credentials: 'include',
 			});
-			if (!r.ok) throw new Error(await r.text());
+			if (!r.ok) throw await parseApiError(r);
 		},
 		onSuccess: (_data, clientId) => {
 			setDeregisterClientId(null);
@@ -258,7 +261,7 @@ export default function AgentsPage() {
 		queryKey: ['toolkits'],
 		queryFn: async () => {
 			const r = await fetch('/toolkits', { credentials: 'include' });
-			if (!r.ok) throw new Error(await r.text());
+			if (!r.ok) throw await parseApiError(r);
 			return r.json() as Promise<ToolkitRow[]>;
 		},
 		enabled: grantAgentId !== null,
@@ -272,7 +275,7 @@ export default function AgentsPage() {
 			const r = await fetch(`/agents/${encodeURIComponent(gid)}/grants`, {
 				credentials: 'include',
 			});
-			if (!r.ok) throw new Error(await r.text());
+			if (!r.ok) throw await parseApiError(r);
 			return r.json() as Promise<{ grants: { toolkit_id: string }[] }>;
 		},
 		enabled: grantAgentId !== null,
@@ -305,7 +308,7 @@ export default function AgentsPage() {
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({ toolkit_ids: [...desired] }),
 			});
-			if (!r.ok) throw new Error(await r.text());
+			if (!r.ok) throw await parseApiError(r);
 		},
 		onSuccess: () => {
 			const id = grantAgentId;
@@ -352,6 +355,11 @@ export default function AgentsPage() {
 									approveMutation.isPending &&
 									approveMutation.variables === row.client_id
 								}
+								disabled={
+									(approveMutation.isPending || denyMutation.isPending) &&
+									(approveMutation.variables === row.client_id ||
+										denyMutation.variables === row.client_id)
+								}
 								onClick={() => approveMutation.mutate(row.client_id)}
 							>
 								Approve
@@ -363,7 +371,12 @@ export default function AgentsPage() {
 									denyMutation.isPending &&
 									denyMutation.variables === row.client_id
 								}
-								onClick={() => denyMutation.mutate(row.client_id)}
+								disabled={
+									(approveMutation.isPending || denyMutation.isPending) &&
+									(approveMutation.variables === row.client_id ||
+										denyMutation.variables === row.client_id)
+								}
+								onClick={() => setDeclineAgentId(row.client_id)}
 							>
 								Decline
 							</Button>
@@ -764,6 +777,52 @@ export default function AgentsPage() {
 				)}
 				{disableMutation.isError && (
 					<ErrorAlert className="mt-3" message="Killswitch failed. Try again." />
+				)}
+			</Dialog>
+
+			<Dialog
+				open={declineAgentId !== null}
+				onClose={() => {
+					if (!denyMutation.isPending) setDeclineAgentId(null);
+				}}
+				title="Decline this registration?"
+				size="sm"
+				footer={
+					<>
+						<Button
+							variant="ghost"
+							disabled={denyMutation.isPending}
+							onClick={() => setDeclineAgentId(null)}
+						>
+							Cancel
+						</Button>
+						<Button
+							variant="danger"
+							loading={denyMutation.isPending}
+							onClick={() => {
+								if (declineAgentId) void denyMutation.mutateAsync(declineAgentId);
+							}}
+						>
+							Decline
+						</Button>
+					</>
+				}
+			>
+				<p className="text-foreground text-sm">
+					Declining is <strong>terminal</strong> — the agent record is archived and the
+					registration cannot be re-approved. The agent must register again from scratch
+					with a fresh client_id.
+				</p>
+				{declineAgentId && (
+					<p className="text-muted-foreground mt-2 font-mono text-xs">{declineAgentId}</p>
+				)}
+				{denyMutation.isError && (
+					<ErrorAlert
+						className="mt-3"
+						message={
+							(denyMutation.error as Error).message ?? 'Decline failed. Try again.'
+						}
+					/>
 				)}
 			</Dialog>
 
