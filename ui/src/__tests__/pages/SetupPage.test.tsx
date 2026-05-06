@@ -77,7 +77,7 @@ describe('SetupPage — Account creation', () => {
 		expect(await screen.findByText(/already exists/i)).toBeInTheDocument();
 	});
 
-	it('shows generic error for non-409 failure', async () => {
+	it('surfaces the server error message for non-409 failure', async () => {
 		const user = userEvent.setup();
 
 		worker.use(
@@ -94,7 +94,7 @@ describe('SetupPage — Account creation', () => {
 		await user.type(screen.getByLabelText('Password'), 'pass');
 		await user.click(screen.getByRole('button', { name: /create account/i }));
 
-		expect(await screen.findByText(/something went wrong/i)).toBeInTheDocument();
+		expect(await screen.findByText(/internal server error/i)).toBeInTheDocument();
 	});
 
 	it('has no critical accessibility violations', async () => {
