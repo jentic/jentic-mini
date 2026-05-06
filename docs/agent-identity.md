@@ -152,6 +152,10 @@ Only when **all** of the following hold:
 
 Even in this mode, access tokens are short-lived — a leaked token is time-bounded.
 
+### Rate limiting (operator responsibility)
+
+The unauthenticated endpoints `POST /register` and `POST /oauth/token` perform real work (signature generation, Ed25519 verification, DB writes) and are exposed to anonymous callers. Jentic Mini does **not** ship an in-process rate limiter — operators running an internet-facing instance should rate-limit these two endpoints (and ideally `GET /register/{client_id}`) at their reverse proxy or API gateway.
+
 ---
 
 ## API surface
@@ -262,7 +266,7 @@ Content-Type: application/json
 - `registration_client_uri` is the RFC 7592 client configuration endpoint for this agent. Only `GET` (read) is implemented and advertised in the OpenAPI spec — `PUT` and `DELETE` are not exposed to clients and return 403 (`operation_not_supported`) if called directly. See [Why not agent-initiated rotation?](#why-not-agent-initiated-rotation) for the rationale and the human-administered alternatives (`PUT /agents/{client_id}/jwks`, `DELETE /agents/{client_id}`).
 - `status` is a non-standard extension field indicating the approval state (`pending`, `active`, `disabled`). RFC 7591 §2 and §3.2.1 permit the server to include additional metadata values in the registration response; standard DCR clients that don't recognise the field will simply ignore it. The same field is also returned by `GET /register/{client_id}` and is what agents poll on while awaiting human approval (see [Agent polls status](#2-agent-polls-status-rfc-7592)).
 - `registration_access_token` is scoped to the `registration_client_uri` only (RFC 7592) and short-lived (15 minutes by default — see [Key rotation security note](#security-note-the-registration_access_token-is-a-sensitive-credential)).
-- **Note:** if the Jentic Mini instance is publicly accessible to the internet, this unauthenticated endpoint should be rate-limited to prevent registration spam. Not required for private-network deployments.
+- **Note:** for internet-facing deployments, rate-limit this endpoint at your reverse proxy — see [Rate limiting](#rate-limiting-operator-responsibility).
 
 ### 2. Agent polls status (RFC 7592)
 
