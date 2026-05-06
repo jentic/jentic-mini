@@ -223,7 +223,8 @@ GET /.well-known/oauth-authorization-server
   "revocation_endpoint": "https://mini.example.com/oauth/revoke",
   "grant_types_supported": ["urn:ietf:params:oauth:grant-type:jwt-bearer", "refresh_token"],
   "token_endpoint_auth_methods_supported": ["private_key_jwt"],
-  "token_endpoint_auth_signing_alg_values_supported": ["EdDSA"]
+  "token_endpoint_auth_signing_alg_values_supported": ["EdDSA"],
+  "response_types_supported": ["none"]
 }
 ```
 
