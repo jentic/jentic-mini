@@ -17,11 +17,11 @@ export class AgentsService {
         status,
     }: {
         /**
-         * active: operational; declined: denied only; removed: soft-deleted
+         * active: not denied and not deregistered; declined: denied only; removed: soft-deleted (deregistered)
          */
         view?: 'active' | 'declined' | 'removed',
         /**
-         * When view=active: pending, approved, or disabled
+         * When view=active only: pending, approved, disabled
          */
         status?: (string | null),
     }): CancelablePromise<any> {

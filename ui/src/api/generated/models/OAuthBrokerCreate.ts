@@ -15,7 +15,7 @@ export type OAuthBrokerCreate = {
      */
     type: string;
     /**
-     * Provider-specific configuration. For `pipedream`: `client_id`, `client_secret`, `project_id` (all from Pipedream workspace → API settings → OAuth clients). Optional: `environment` (`production` or `development`, default `production`), `support_email`.
+     * Provider-specific configuration. For `pipedream`: `client_id`, `client_secret`, `project_id` (all from Pipedream workspace → API settings → OAuth clients). Optional: `environment` (`production` or `development`, default `production`), `support_email`, `default_external_user_id` (user identity for initial account sync, default `"default"`).
      */
     config: Record<string, any>;
 };
