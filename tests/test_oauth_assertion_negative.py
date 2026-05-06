@@ -400,6 +400,44 @@ async def test_happy_path_mints_token_pair(client):  # noqa: ARG001
 
 
 @pytest.mark.asyncio
+async def test_initial_mint_links_access_token_into_refresh_family(client):  # noqa: ARG001
+    """The initial JWT-bearer grant must put both tokens into the same
+    revocation family. Otherwise a refresh-reuse family wipe leaves the
+    original access token alive — an unintended survival of a compromised
+    chain. We assert that the access-token row's ``parent_token_hash``
+    points at the refresh-token row's hash.
+    """
+    from src.agent_identity_util import hash_token  # noqa: PLC0415
+
+    sk, x = make_ed25519_keypair()
+    cid = _new_cid()
+    await _seed_approved_agent(cid, make_jwks(x))
+    try:
+        with TestClient(app, raise_server_exceptions=False) as tc:
+            status, body = _post_token(tc, make_assertion(sk, iss=cid, aud=AUD))
+            assert status == 200, body
+            at_h = hash_token(body["access_token"])
+            rt_h = hash_token(body["refresh_token"])
+
+        async with aiosqlite.connect(DB_PATH) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute(
+                """SELECT token_type, parent_token_hash FROM agent_tokens
+                   WHERE token_hash IN (?, ?)""",
+                (at_h, rt_h),
+            ) as cur:
+                rows = {r["token_type"]: r["parent_token_hash"] async for r in cur}
+
+        assert rows["refresh"] is None, "refresh token is the family root"
+        assert rows["access"] == rt_h, (
+            "initial access token must point at its sibling refresh token "
+            "so a family-revocation walk reaches it"
+        )
+    finally:
+        await _cleanup_agent(cid)
+
+
+@pytest.mark.asyncio
 async def test_kty_not_okp_rejected(client):  # noqa: ARG001
     """A non-OKP JWKS (e.g. RSA) must be rejected — even before signature
     verification — because the server only supports Ed25519 / OKP.

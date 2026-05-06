@@ -375,15 +375,20 @@ async def oauth_token(
                 if cur.rowcount == 0:
                     await db.rollback()
                     return invalid_assertion
-                await db.execute(
-                    "INSERT INTO agent_tokens (token_hash, client_id, token_type, "
-                    "expires_at, created_at) VALUES (?, ?, 'access', ?, ?)",
-                    (at_h, iss, exp_at, now),
-                )
+                # Insert the refresh token first so the access token can reference
+                # it via parent_token_hash. This puts the initial pair in a single
+                # token family, so refresh-token reuse triggers a family wipe that
+                # also revokes the original access token.
                 await db.execute(
                     "INSERT INTO agent_tokens (token_hash, client_id, token_type, "
                     "expires_at, created_at) VALUES (?, ?, 'refresh', ?, ?)",
                     (rt_h, iss, rt_exp, now),
+                )
+                await db.execute(
+                    "INSERT INTO agent_tokens (token_hash, client_id, token_type, "
+                    "expires_at, created_at, parent_token_hash) "
+                    "VALUES (?, ?, 'access', ?, ?, ?)",
+                    (at_h, iss, exp_at, now, rt_h),
                 )
                 await db.commit()
             except aiosqlite.IntegrityError:
