@@ -364,7 +364,7 @@ async def swagger_ui():
 <div class="auth-banner">
   🔑 <strong>Authentication.</strong>
   <strong>Agents (toolkit):</strong> <em>JenticApiKey</em> — your <code>tk_xxx</code> in <code>X-Jentic-API-Key</code>.
-  <strong>Agents (OAuth):</strong> <em>AgentOauthToken</em> — <code>Authorization: Bearer</code> with <code>at_…</code> or <code>rat_…</code> where applicable.
+  <strong>Agents (OAuth):</strong> <em>AgentOauthAccessToken</em> — <code>Authorization: Bearer</code> with <code>at_…</code>; <em>AgentOauthRegistrationToken</em> — <code>Authorization: Bearer</code> with <code>rat_…</code> where applicable.
   <strong>Humans:</strong> <em>HumanLogin</em> (username + password) — or <a href="/login" style="color:#a5b4fc">log in here</a> for a browser session.
   OAuth agents: <code>GET /.well-known/oauth-authorization-server</code> then <code>POST /register</code>. Toolkit keys are issued from the UI.
 </div>
