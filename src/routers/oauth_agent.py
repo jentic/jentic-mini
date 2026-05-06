@@ -188,13 +188,19 @@ def _registration_management_unsupported() -> JSONResponse:
     )
 
 
-@router.put("/register/{client_id}", summary="Update client registration (RFC 7592, not supported)")
+@router.put(
+    "/register/{client_id}",
+    summary="Update client registration (RFC 7592, not supported)",
+    include_in_schema=False,
+)
 async def put_registration(client_id: str):
     return _registration_management_unsupported()
 
 
 @router.delete(
-    "/register/{client_id}", summary="Delete client registration (RFC 7592, not supported)"
+    "/register/{client_id}",
+    summary="Delete client registration (RFC 7592, not supported)",
+    include_in_schema=False,
 )
 async def delete_registration(client_id: str):
     return _registration_management_unsupported()

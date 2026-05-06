@@ -101,46 +101,4 @@ export class OauthService {
             },
         });
     }
-    /**
-     * Update client registration (RFC 7592, not supported)
-     * @returns any Successful Response
-     * @throws ApiError
-     */
-    public static putRegistrationRegisterClientIdPut({
-        clientId,
-    }: {
-        clientId: string,
-    }): CancelablePromise<any> {
-        return __request(OpenAPI, {
-            method: 'PUT',
-            url: '/register/{client_id}',
-            path: {
-                'client_id': clientId,
-            },
-            errors: {
-                422: `Validation Error`,
-            },
-        });
-    }
-    /**
-     * Delete client registration (RFC 7592, not supported)
-     * @returns any Successful Response
-     * @throws ApiError
-     */
-    public static deleteRegistrationRegisterClientIdDelete({
-        clientId,
-    }: {
-        clientId: string,
-    }): CancelablePromise<any> {
-        return __request(OpenAPI, {
-            method: 'DELETE',
-            url: '/register/{client_id}',
-            path: {
-                'client_id': clientId,
-            },
-            errors: {
-                422: `Validation Error`,
-            },
-        });
-    }
 }

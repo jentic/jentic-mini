@@ -260,7 +260,7 @@ Content-Type: application/json
 ```
 
 - `grant_types` and `token_endpoint_auth_method` are set server-side (see [Server-side DCR defaults](#server-side-dcr-defaults)).
-- `registration_client_uri` is the RFC 7592 client configuration endpoint for this agent. Only `GET` (read) is implemented — `PUT` and `DELETE` return 403 (operation not supported); see [Why not agent-initiated rotation?](#why-not-agent-initiated-rotation) for the rationale and the human-administered alternatives (`PUT /agents/{client_id}/jwks`, `DELETE /agents/{client_id}`).
+- `registration_client_uri` is the RFC 7592 client configuration endpoint for this agent. Only `GET` (read) is implemented and advertised in the OpenAPI spec — `PUT` and `DELETE` are not exposed to clients and return 403 (`operation_not_supported`) if called directly. See [Why not agent-initiated rotation?](#why-not-agent-initiated-rotation) for the rationale and the human-administered alternatives (`PUT /agents/{client_id}/jwks`, `DELETE /agents/{client_id}`).
 - `status` is a non-standard extension field indicating the approval state. RFC 7591 §2 and §3.2.1 permit the server to include additional metadata values in the registration response; standard DCR clients that don't recognise the field will simply ignore it.
 - `registration_access_token` is scoped to the `registration_client_uri` only (RFC 7592) and short-lived (15 minutes by default — see [Key rotation security note](#security-note-the-registration_access_token-is-a-sensitive-credential)).
 - **Note:** if the Jentic Mini instance is publicly accessible to the internet, this unauthenticated endpoint should be rate-limited to prevent registration spam. Not required for private-network deployments.
@@ -422,7 +422,7 @@ Content-Type: application/json
 
 ### Why not agent-initiated rotation?
 
-RFC 7592 permits agents to update their own registration via `PUT /register/{client_id}` (and self-deregister via `DELETE`). Jentic Mini intentionally does **not** implement these — both endpoints return `403 operation_not_supported`, which RFC 7592 §1 explicitly allows ("the authorization server MAY return an HTTP 403 (Forbidden) error code if a particular action is not supported"). Allowing agents to rotate their own keys creates risk:
+RFC 7592 permits agents to update their own registration via `PUT /register/{client_id}` (and self-deregister via `DELETE`). Jentic Mini intentionally does **not** implement these — the routes are excluded from the OpenAPI spec and Swagger UI, and any direct call returns `403 operation_not_supported` (RFC 7592 §1 explicitly allows this: "the authorization server MAY return an HTTP 403 (Forbidden) error code if a particular action is not supported"). Allowing agents to rotate their own keys creates risk:
 
 - A compromised agent token (even short-lived) could be used to swap in an attacker's public key.
 - The `identity:rotate` scope approach adds complexity and still relies on token security.

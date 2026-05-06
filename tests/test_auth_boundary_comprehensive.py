@@ -298,7 +298,7 @@ def test_openapi_spec_endpoint_count_unchanged(client):
 
     # This is the baseline from v0.7.1 + Phase 1 changes
     # If this fails, audit the diff to ensure new endpoints have correct auth
-    EXPECTED_OPERATION_COUNT = 87  # + agent identity (OAuth) + agents admin + RFC 7592 stubs
+    EXPECTED_OPERATION_COUNT = 85  # + agent identity (OAuth) + agents admin
 
     assert total_operations == EXPECTED_OPERATION_COUNT, (
         f"Expected {EXPECTED_OPERATION_COUNT} operations, found {total_operations}. "
