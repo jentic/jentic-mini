@@ -654,10 +654,12 @@ async def execute_workflow_core(
         trace_id = new_trace_id()
 
     # Rewrite all sourceDescription spec servers to go through the local broker
-    # (http://localhost:8900/{host}). The arazzo-runner calls the broker instead
-    # of upstream directly; the broker injects credentials from the toolkit.
-    # No credential env vars needed in the subprocess — broker handles it all.
-    _BROKER_BASE = "http://localhost:8900"
+    # (http://localhost:{port}/{host}). The arazzo-runner calls the broker
+    # instead of upstream directly; the broker injects credentials from the
+    # toolkit. No credential env vars needed in the subprocess — broker handles
+    # it all.
+    _internal_port = int(os.environ.get("JENTIC_INTERNAL_PORT", "8900"))
+    _BROKER_BASE = f"http://localhost:{_internal_port}"
     temp_arazzo, temp_specs = _preprocess_arazzo_for_broker(arazzo_path, _BROKER_BASE)
 
     # Extract the API key the caller used — pass it to every broker request so
