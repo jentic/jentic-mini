@@ -561,5 +561,5 @@ Scopes are not yet implemented for agent tokens. When scopes are added to the au
 ## Open questions
 
 1. **Sidecar reference implementation** — should Jentic Mini ship a minimal sidecar container image, or just document the protocol for third-party proxies?
-2. **Multi-toolkit resolution** — when an agent has grants to multiple toolkits that have credentials for the same upstream host, which takes precedence? Options: first-match, explicit `X-Jentic-Toolkit` header, or error with `X-Jentic-Credential-Ambiguous`.
+2. **Multi-toolkit resolution** — *Decision (interim):* when an agent has grants to multiple toolkits with credentials for the same upstream host, the broker returns `409 CREDENTIAL_AMBIGUOUS` and the caller disambiguates with `X-Jentic-Credential` or `X-Jentic-Service`. Longer-term precedence semantics (e.g. agent-level defaults, per-grant priority) will be designed and implemented in future feature work.
 3. **MTLS alternative** — for environments that support it, mutual TLS with client certificates could replace the assertion flow. Worth supporting as a second auth method?
