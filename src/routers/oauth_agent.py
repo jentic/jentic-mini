@@ -272,14 +272,13 @@ async def oauth_token(
             ) as cur:
                 agent = await cur.fetchone()
 
-        if not agent:
-            return _oauth_error(400, "invalid_grant", "Unknown client_id (iss)")
-        if agent["status"] != "approved":
-            return _oauth_error(
-                400,
-                "invalid_grant",
-                "Client registration is not approved yet",
-            )
+        # Uniform error for any client-bound failure to avoid an enumeration oracle:
+        # unknown iss, not-yet-approved, missing key, bad signature, replayed jti, etc.
+        # all collapse to the same response. The specifics are still logged server-side.
+        invalid_assertion = _oauth_error(400, "invalid_grant", "Assertion is invalid")
+
+        if not agent or agent["status"] != "approved":
+            return invalid_assertion
 
         try:
             pub_x = extract_jwks_public_key_x(json.loads(agent["jwks_json"]))
@@ -290,18 +289,14 @@ async def oauth_token(
                 expected_aud=token_endpoint_aud,
             )
         except (ValueError, json.JSONDecodeError):
-            return _oauth_error(
-                400,
-                "invalid_grant",
-                "Client has no valid signing key",
-            )
+            return invalid_assertion
 
         jti = str(payload["jti"])
         now = time.time()
         async with get_db() as db:
             async with db.execute("SELECT jti FROM agent_nonces WHERE jti=?", (jti,)) as cur:
                 if await cur.fetchone():
-                    return _oauth_error(400, "invalid_grant", "jti replay")
+                    return invalid_assertion
             await db.execute(
                 "INSERT INTO agent_nonces (jti, client_id, expires_at) VALUES (?,?,?)",
                 (jti, iss, now + AGENT_NONCE_WINDOW),
@@ -359,6 +354,10 @@ async def oauth_token(
         if row["expires_at"] < now:
             return _oauth_error(400, "invalid_grant", "Refresh token expired")
 
+        # Uniform error for any client-bound failure — same rationale as the
+        # JWT-bearer branch above (no enumeration oracle on client state).
+        invalid_refresh = _oauth_error(400, "invalid_grant", "Refresh token cannot be used")
+
         cid = row["client_id"]
         async with aiosqlite.connect(DB_PATH) as db:
             db.row_factory = aiosqlite.Row
@@ -369,15 +368,11 @@ async def oauth_token(
             ) as cur:
                 ag = await cur.fetchone()
         if not ag or ag["status"] != "approved":
-            return _oauth_error(400, "invalid_grant", "Client is not active")
+            return invalid_refresh
         try:
             extract_jwks_public_key_x(json.loads(ag["jwks_json"]))
         except (ValueError, json.JSONDecodeError):
-            return _oauth_error(
-                400,
-                "invalid_grant",
-                "Client has no valid signing key",
-            )
+            return invalid_refresh
 
         new_at = new_access_token()
         new_rt = new_refresh_token()
