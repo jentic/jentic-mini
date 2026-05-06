@@ -12,8 +12,16 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 
-def _b64url_encode(raw: bytes) -> str:
+def b64url_encode(raw: bytes) -> str:
+    """JWT/JWS-style base64url with no padding. Public so test files that
+    forge their own headers/payloads (alg=none, HS256, missing-claim) can
+    assemble JWTs without re-implementing the encoder.
+    """
     return base64.urlsafe_b64encode(raw).rstrip(b"=").decode("ascii")
+
+
+# Backwards-compatible alias — older test modules imported the underscore name.
+_b64url_encode = b64url_encode
 
 
 def make_ed25519_keypair() -> tuple[Ed25519PrivateKey, str]:
