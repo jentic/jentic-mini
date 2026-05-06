@@ -31,34 +31,16 @@ export default function SetupPage() {
 			) as Promise<HealthPayload>,
 	});
 
-	// Single mutation that owns the whole "create admin and sign in" flow.
-	// Chaining the login into the same mutation means:
-	//   - "Setup complete" only renders once we genuinely have a session;
-	//     a 5xx on /user/login no longer hides behind a green check.
-	//   - The button stays in `isPending` for the full duration, so the
-	//     user can't double-click into a half-bootstrapped state.
-	//   - Errors from either step flow through `createUserMutation.error`
-	//     and `ErrorAlert` instead of being silently swallowed by .finally.
+	// POST /user/create auto-issues the session cookie on success, so a
+	// separate /user/login call is unnecessary — and previously caused races
+	// where "Setup complete" depended on a fire-and-forget login request.
+	// The mutation is now atomic: it succeeds iff the account exists AND we
+	// have a session, and any failure surfaces through ErrorAlert.
 	const createUserMutation = useMutation({
 		mutationFn: async () => {
 			await UserService.createUserUserCreatePost({
 				requestBody: { username, password },
 			});
-			const loginRes = await fetch('/user/login', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				credentials: 'include',
-				body: JSON.stringify({ username, password }),
-			});
-			if (!loginRes.ok) {
-				// Surface a structured error rather than the response body —
-				// the body is often an HTML error page from a misbehaving
-				// proxy and is not user-facing.
-				throw new Error(
-					`Account created, but sign-in failed (HTTP ${loginRes.status}). ` +
-						'Please try logging in manually.',
-				);
-			}
 		},
 		onSuccess: () => {
 			void queryClient.invalidateQueries({ queryKey: ['health'] });
