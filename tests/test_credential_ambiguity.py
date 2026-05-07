@@ -166,3 +166,37 @@ def test_alias_overrides_no_ambiguity(client, agent_key_header, ambiguous_creden
     resp = client.get(f"/{API_HOST}/v1/test", headers=headers)
     assert resp.headers.get("x-jentic-credential-ambiguous") is None
     assert resp.headers.get("x-jentic-credential-used") == CRED_ID_A
+
+
+def test_ambiguous_selection_is_independent_of_row_order(
+    client, agent_key_header, ambiguous_credentials
+):
+    """Selected credential is the lex-min ID and stays selected after the route
+    rows are rewritten in reverse physical order.
+
+    Regression for #192: Python's stable sort preserved SELECT order on
+    length ties, so the broker silently flipped credentials whenever SQLite
+    row order changed (VACUUM, reindex, delete+insert).
+    """
+    expected = min(CRED_ID_A, CRED_ID_B)
+
+    resp1 = client.get(f"/{API_HOST}/v1/test", headers=agent_key_header)
+    assert resp1.headers.get("x-jentic-credential-used") == expected
+
+    async def _reverse_route_order():
+        async with aiosqlite.connect(os.environ["DB_PATH"]) as db:
+            await db.execute(
+                "DELETE FROM credential_routes WHERE credential_id IN (?, ?)",
+                (CRED_ID_A, CRED_ID_B),
+            )
+            for cid in (CRED_ID_B, CRED_ID_A):
+                await db.execute(
+                    "INSERT INTO credential_routes (credential_id, host) VALUES (?, ?)",
+                    (cid, API_HOST),
+                )
+            await db.commit()
+
+    asyncio.run(_reverse_route_order())
+
+    resp2 = client.get(f"/{API_HOST}/v1/test", headers=agent_key_header)
+    assert resp2.headers.get("x-jentic-credential-used") == expected
