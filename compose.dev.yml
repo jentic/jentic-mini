@@ -15,7 +15,16 @@ services:
     image: node:24-slim
     restart: unless-stopped
     working_dir: /app/ui
-    command: sh -c "npm install --ignore-scripts && npm run dev"
+    # Start as root so we can chown the named volume on first run (Docker
+    # initialises empty named volumes as root-owned), then drop to the host
+    # UID/GID via setpriv before running npm/vite. This keeps writes to the
+    # bind-mounted ui/ directory owned by the developer's host user instead of
+    # root — matters on Linux hosts where docker-compose volume ownership is
+    # not virtualised.
+    command: >
+      sh -c "chown -R ${JENTIC_UID:-1000}:${JENTIC_GID:-1000} /app/ui/node_modules &&
+      exec setpriv --reuid=${JENTIC_UID:-1000} --regid=${JENTIC_GID:-1000} --clear-groups
+      sh -c 'npm install --ignore-scripts && npm run dev'"
     volumes:
       - ${JENTIC_HOST_PATH:-.}/ui:/app/ui
       - ui_node_modules:/app/ui/node_modules
