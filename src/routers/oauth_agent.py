@@ -538,8 +538,15 @@ async def oauth_token(
 async def oauth_revoke(
     request: Request,
     token: Annotated[str | None, Form()] = None,
-    token_type_hint: Annotated[str | None, Form()] = None,
+    token_type_hint: Annotated[str | None, Form()] = None,  # noqa: ARG001
 ):
+    # ``token_type_hint`` is intentionally accepted-but-ignored. RFC 7009
+    # §2.1 makes it OPTIONAL and explicitly says the server SHOULD use it as
+    # an optimisation hint only; behaviour is identical when it's omitted or
+    # wrong. We hash the supplied ``token`` and look it up in agent_tokens
+    # regardless — the lookup is already a single indexed query, so there's
+    # nothing to optimise. The parameter stays in the signature so RFC 7009
+    # clients that send it don't see a 422.
     if not token:
         return _oauth_error(400, "invalid_request", "token is required")
     is_human = getattr(request.state, "is_human_session", False)
