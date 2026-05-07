@@ -35,11 +35,15 @@ services:
       - |
         set -eu
         mkdir -p "$$JENTIC_NPM_HOME"
-        chown -R "$$JENTIC_UID:$$JENTIC_GID" /app/ui/node_modules "$$JENTIC_NPM_HOME"
-        HOME="$$JENTIC_NPM_HOME"
-        export HOME
-        exec setpriv --reuid="$$JENTIC_UID" --regid="$$JENTIC_GID" --clear-groups \
-          sh -c 'cd /app/ui && npm install --ignore-scripts && npm run dev'
+        chown "$$JENTIC_UID:$$JENTIC_GID" "$$JENTIC_NPM_HOME"
+        NM_DIR=/app/ui/node_modules
+        if [ "$$(stat -c %u "$$NM_DIR")" != "$$JENTIC_UID" ] \
+           || [ "$$(stat -c %g "$$NM_DIR")" != "$$JENTIC_GID" ]; then
+          chown -R "$$JENTIC_UID:$$JENTIC_GID" "$$NM_DIR"
+        fi
+        export HOME="$$JENTIC_NPM_HOME"
+        exec setpriv --no-new-privs --reuid="$$JENTIC_UID" --regid="$$JENTIC_GID" --clear-groups \
+          sh -c 'npm install --ignore-scripts && npm run dev'
     volumes:
       - ${JENTIC_HOST_PATH:-.}/ui:/app/ui
       - ui_node_modules:/app/ui/node_modules
