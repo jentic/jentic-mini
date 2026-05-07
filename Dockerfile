@@ -38,7 +38,7 @@ FROM python:3.11-slim
 # self-healing against future CVEs.
 RUN python -m pip install --upgrade --no-cache-dir pip setuptools wheel
 
-ARG APP_VERSION=0.10.1
+ARG APP_VERSION=0.11.0
 ENV APP_VERSION=${APP_VERSION}
 
 LABEL maintainer="vladimir@jentic.com" \
