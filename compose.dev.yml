@@ -9,28 +9,42 @@
 #
 # node_modules is stored in a named volume so subsequent restarts are instant.
 # On first start, npm install runs — takes ~30s.
+#
+# The vite service bind-mounts ./ui under /app/ui. On Linux hosts where your
+# UID ≠ 1000, export JENTIC_UID / JENTIC_GID alongside the backend (typically
+# `JENTIC_UID=$(id -u) JENTIC_GID=$(id -g)`) so file ownership under ./ui matches
+# your user rather than falling back to 1000:1000 inside the container.
 
 services:
   vite:
     image: node:24-slim
     restart: unless-stopped
     working_dir: /app/ui
-    # Start as root so we can chown the named volume on first run (Docker
-    # initialises empty named volumes as root-owned), then drop to the bundled
-    # `node` user (UID 1000) via `su -` before running npm/vite. Using `su -`
-    # also sets HOME=/home/node so npm's cache (~/.npm) lands in a writable
-    # directory — running as a non-root UID with HOME=/root would EACCES on
-    # the npm cache regardless of the named-volume permissions.
-    command: >
-      sh -c "chown -R node:node /app/ui/node_modules &&
-      exec su - node -s /bin/sh -c 'cd /app/ui && npm install --ignore-scripts && npm run dev'"
+    environment:
+      VITE_API_HOST: http://jentic-mini:8900
+      # Same UID/GID as compose.yml (jentic-mini service) so frontend + backend
+      # mounts stay coherent on Linux. Export JENTIC_UID=$(id -u) … when needed.
+      JENTIC_UID: "${JENTIC_UID:-1000}"
+      JENTIC_GID: "${JENTIC_GID:-1000}"
+      # Writable HOME prefix for npm (setpriv cannot keep HOME=/root when we
+      # drop privileges). Resolved at Compose parse time from the same UID/GID.
+      JENTIC_NPM_HOME: "/tmp/jentic-mini-npm-home-${JENTIC_UID:-1000}-${JENTIC_GID:-1000}"
+    command:
+      - sh
+      - -c
+      - |
+        set -eu
+        mkdir -p "$$JENTIC_NPM_HOME"
+        chown -R "$$JENTIC_UID:$$JENTIC_GID" /app/ui/node_modules "$$JENTIC_NPM_HOME"
+        HOME="$$JENTIC_NPM_HOME"
+        export HOME
+        exec setpriv --reuid="$$JENTIC_UID" --regid="$$JENTIC_GID" --clear-groups \
+          sh -c 'cd /app/ui && npm install --ignore-scripts && npm run dev'
     volumes:
       - ${JENTIC_HOST_PATH:-.}/ui:/app/ui
       - ui_node_modules:/app/ui/node_modules
     ports:
       - "5173:5173"
-    environment:
-      VITE_API_HOST: http://jentic-mini:8900
 
 volumes:
   ui_node_modules:

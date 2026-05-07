@@ -185,7 +185,7 @@ For UI development, use the dev compose override which runs Vite in a container 
 docker compose -f compose.yml -f compose.dev.yml up
 ```
 
-This starts a Vite dev server on `http://localhost:5173` with hot module replacement, proxying API calls to the backend on port 8900. Edit files in `ui/` and changes appear instantly.
+This starts a Vite dev server on `http://localhost:5173` with hot module replacement, proxying API calls to the backend on port 8900. Edit files in `ui/` and changes appear instantly. The Vite service uses the same `JENTIC_UID` / `JENTIC_GID` as `compose.yml` (defaults **1000:1000**), including for the bind-mounted `ui/` directory and for `npm`’s cache — **on Linux**, if your workstation user isn’t UID 1000, export matching values before spinning up compose (same snippet as below) so `./ui` is not littered with root- or mismatched-owner files from the container.
 
 Alternatively, run Vite directly on the host (requires Node.js 24):
 
@@ -206,9 +206,14 @@ See `ui/TESTING.md` for the full contributor guide.
 
 To rebuild the production UI bundle: `cd ui && npm run build`, then `docker compose up -d --build`.
 
-> **Note:** The container runs as a non-root user. `compose.yml` defaults to uid/gid 1000 for bind mount compatibility.
-> If your host user has a different uid, set `JENTIC_UID` and `JENTIC_GID` before starting:
-> `JENTIC_UID=$(id -u) JENTIC_GID=$(id -g) docker compose up -d`
+> **Note:** The backend container runs as a non-root user. `compose.yml` defaults to uid/gid 1000 for bind mount compatibility.
+> If your host user has a different UID/GID (common on Linux), set `JENTIC_UID` and `JENTIC_GID` before starting — applies to **`compose.yml`** and to **`compose.dev.yml`** so the bundled Vite service matches too:
+>
+> ```bash
+> JENTIC_UID=$(id -u) JENTIC_GID=$(id -g) docker compose up -d
+> # or with UI dev server:
+> JENTIC_UID=$(id -u) JENTIC_GID=$(id -g) docker compose -f compose.yml -f compose.dev.yml up
+> ```
 
 Swagger UI is available at `http://localhost:8900/docs` for interactive API exploration.
 

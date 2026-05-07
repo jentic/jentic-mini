@@ -98,7 +98,7 @@ Core modules live in `src/` and routers in `src/routers/`; see `CLAUDE.md` and
 
 - **Deployment target:** Docker container; published to DockerHub (`jentic/jentic-mini`) and GHCR (`ghcr.io/jentic/jentic-mini`); multi-arch (`amd64`, `arm64`)
 - **Port:** 8900 (exposed in Dockerfile; configurable via compose)
-- **User:** Non-root `jentic` system user; UID/GID configurable via `JENTIC_UID` / `JENTIC_GID`
+- **User:** Non-root `jentic` system user; UID/GID configurable via `JENTIC_UID` / `JENTIC_GID` (`compose.yml`). The bundled Vite stack in `compose.dev.yml` reuses those values for `npm` / Vite against the `./ui` bind mount (`HOME` is under `/tmp` inside the Node image after a brief root `chown` on the named `node_modules` volume).
 - **Environment management:** Optional `.env` file or Docker env vars. Key vars: `JENTIC_VAULT_KEY`, `JENTIC_PUBLIC_HOSTNAME`, `JENTIC_TRUSTED_SUBNETS`, `LOG_LEVEL`, `JENTIC_TELEMETRY`, `JENTIC_UID`, `JENTIC_GID`, `DB_PATH`
 - **Observability:** Python stdlib `logging` (configurable with `LOG_LEVEL`); execution traces stored in SQLite and queryable via `GET /traces`; `GET /version` (6-hour cache; see `docs/versioning.md`); anonymous install telemetry (opt-out via `JENTIC_TELEMETRY=off`)
 - **Error handling:** FastAPI exception handlers; broker propagates upstream HTTP status and `failed_step` detail on workflow errors; no rate limiting or audit trail currently
