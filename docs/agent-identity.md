@@ -327,6 +327,8 @@ grant_type=urn:ietf:params:oauth:grant-type:jwt-bearer
 3. Verify JWT signature (EdDSA) against the registered public key.
 4. Check `exp`, `aud`, `jti` (reject replayed nonces within a window).
 
+**Error model (no enumeration oracle).** Once an assertion is well-formed enough to be parsed and an `iss` extracted, every client-bound failure — unknown `iss`, agent not approved, signature mismatch, `aud` mismatch, replayed `jti`, malformed JWKS, etc. — collapses to the same `400 invalid_grant` body with `error_description: "Assertion is invalid"`. The specifics are still logged server-side, but on the wire an attacker cannot tell a non-existent `client_id` from a pending one or a wrong-key one. Pre-syntax errors (`assertion` missing, JWT not parseable, `iss` claim missing) keep their own descriptions because they reveal nothing about agent state — they're caller-input bugs, not probes for client existence.
+
 **Response:**
 
 ```json
