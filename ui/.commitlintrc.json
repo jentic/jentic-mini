@@ -1,0 +1,22 @@
+{
+	"extends": ["@commitlint/config-conventional"],
+	"rules": {
+		"header-max-length": [2, "always", 69],
+		"scope-empty": [2, "never"],
+		"scope-case": [
+			2,
+			"always",
+			[
+				"camel-case",
+				"kebab-case",
+				"upper-case",
+				"lower-case",
+				"pascal-case",
+				"sentence-case",
+				"snake-case",
+				"start-case"
+			]
+		]
+	},
+	"helpUrl": "https://github.com/jentic/jentic-mini/blob/main/.claude/rules/conventional-commits.md"
+}

@@ -149,6 +149,7 @@ See @DEVELOPMENT.md for commands.
 
 - **UI**: ESLint 9 (flat config) with Prettier as plugin. Config: `ui/eslint.config.js`, `ui/prettier.config.js`, `ui/.editorconfig`
 - **Husky + lint-staged**: pre-commit hook lints staged files automatically
+- **commitlint**: commit-msg hook validates Conventional Commits (config: `ui/.commitlintrc.json`). A Claude PreToolUse hook (`.claude/hooks/commitlint-before-commit.py`) runs the same check before `git commit` is fired so failures surface inside the agent loop.
 
 ## Data directory (all gitignored)
 - `data/jentic-mini.db` — SQLite database
