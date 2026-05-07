@@ -198,11 +198,17 @@ unauthenticated self-enrollment endpoint.
 Additional keys can be issued per toolkit. Keys are individually
 revocable and support per-key IP restrictions (`allowed_ips` CIDR list).
 
-### Subnet restriction (legacy default-key endpoint)
+### Subnet defaults for issued toolkit keys
 
-`POST /default-api-key/generate` enforces the `JENTIC_TRUSTED_SUBNETS`
-allowlist in addition to the human-session requirement. Default allowed
-ranges:
+`JENTIC_TRUSTED_SUBNETS` is **not** an authentication check on the
+key-generation endpoints. It controls the **default `allowed_ips`
+applied to a newly-issued `tk_xxx` key** when no explicit allowlist is
+provided — `POST /default-api-key/generate`, `POST /toolkits/{id}/keys`,
+and the bootstrap internal key all read this value. The broker then
+enforces those per-key ranges at request time, returning 403 if the
+caller's IP is outside the key's allowlist.
+
+Default ranges (always present, cannot be removed):
 
 - `10.0.0.0/8`
 - `172.16.0.0/12`
@@ -213,6 +219,15 @@ ranges:
 Extended via `JENTIC_TRUSTED_SUBNETS` env var (comma-separated CIDR
 list). The env var **appends** to the built-in defaults — setting it
 never removes the RFC-1918/loopback entries.
+
+#### Why no subnet check on `/default-api-key/generate` itself?
+
+The endpoint used to need a subnet guard because it was an anonymous
+self-enrollment path. It now requires a logged-in admin session and
+only rotates an already-claimed default key (fresh instances get `410
+default_toolkit_key_disabled`), so an admin session is a strictly
+stronger gate than the subnet check ever was. The env var's role on
+issued keys is unchanged.
 
 ---
 
