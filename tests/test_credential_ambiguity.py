@@ -184,20 +184,24 @@ def test_ambiguous_selection_is_independent_of_row_order(
     resp1 = client.get(f"/{API_HOST}/v1/test", headers=agent_key_header)
     assert resp1.headers.get("x-jentic-credential-used") == expected
 
-    async def _reverse_route_order():
+    async def _rewrite_routes_in_order(order):
         async with aiosqlite.connect(os.environ["DB_PATH"]) as db:
             await db.execute(
                 "DELETE FROM credential_routes WHERE credential_id IN (?, ?)",
                 (CRED_ID_A, CRED_ID_B),
             )
-            for cid in (CRED_ID_B, CRED_ID_A):
+            for cid in order:
                 await db.execute(
                     "INSERT INTO credential_routes (credential_id, host) VALUES (?, ?)",
                     (cid, API_HOST),
                 )
             await db.commit()
 
-    asyncio.run(_reverse_route_order())
-
-    resp2 = client.get(f"/{API_HOST}/v1/test", headers=agent_key_header)
-    assert resp2.headers.get("x-jentic-credential-used") == expected
+    # Force reverse physical row order, then restore so any test added later
+    # in this module-scoped fixture doesn't inherit the reversed state.
+    asyncio.run(_rewrite_routes_in_order((CRED_ID_B, CRED_ID_A)))
+    try:
+        resp2 = client.get(f"/{API_HOST}/v1/test", headers=agent_key_header)
+        assert resp2.headers.get("x-jentic-credential-used") == expected
+    finally:
+        asyncio.run(_rewrite_routes_in_order((CRED_ID_A, CRED_ID_B)))
