@@ -11,10 +11,8 @@ from collections.abc import Sequence
 import aiosqlite
 import bcrypt
 
+from src.auth import MIN_PASSWORD_LENGTH
 from src.db import get_db
-
-
-MIN_PASSWORD_LENGTH = 8
 
 
 class CliError(Exception):
@@ -37,7 +35,7 @@ def prompt_new_password() -> str:
     if password != confirmation:
         raise CliError("Passwords do not match.")
     if len(password) < MIN_PASSWORD_LENGTH:
-        raise CliError("Password must be at least 8 characters.")
+        raise CliError(f"Password must be at least {MIN_PASSWORD_LENGTH} characters.")
 
     return password
 
@@ -45,7 +43,7 @@ def prompt_new_password() -> str:
 async def reset_password(new_password: str) -> str:
     """Reset the single root account password and return its username."""
     if len(new_password) < MIN_PASSWORD_LENGTH:
-        raise CliError("Password must be at least 8 characters.")
+        raise CliError(f"Password must be at least {MIN_PASSWORD_LENGTH} characters.")
 
     password_hash = bcrypt.hashpw(new_password.encode(), bcrypt.gensalt()).decode()
 

@@ -58,6 +58,8 @@ except ImportError:
 
 JWT_ALGORITHM = "HS256"
 JWT_TTL_SECONDS = 30 * 24 * 3600  # 30 days
+
+MIN_PASSWORD_LENGTH = 8
 JWT_REFRESH_AFTER = 24 * 3600  # re-issue after 1 day of age
 
 # ── Paths that never need a key ───────────────────────────────────────────────

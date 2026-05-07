@@ -22,7 +22,7 @@ from fastapi.responses import RedirectResponse
 from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import BaseModel, Field, field_validator
 
-from src.auth import JWT_TTL_SECONDS, client_ip, make_jwt
+from src.auth import JWT_TTL_SECONDS, MIN_PASSWORD_LENGTH, client_ip, make_jwt
 from src.db import get_db, set_setting, setup_state
 from src.models import UserOut
 
@@ -91,8 +91,8 @@ async def create_user(body: UserCreate, request: Request, response: Response):
 
     if not body.username or not body.password:
         raise HTTPException(400, "username and password are required.")
-    if len(body.password) < 8:
-        raise HTTPException(400, "Password must be at least 8 characters.")
+    if len(body.password) < MIN_PASSWORD_LENGTH:
+        raise HTTPException(400, f"Password must be at least {MIN_PASSWORD_LENGTH} characters.")
 
     pw_hash = bcrypt.hashpw(body.password.encode(), bcrypt.gensalt()).decode()
     user_id = str(uuid.uuid4())
