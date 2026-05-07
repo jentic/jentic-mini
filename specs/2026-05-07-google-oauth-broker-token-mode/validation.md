@@ -10,7 +10,7 @@ All of the following must be true before this branch is merged.
 pdm run lint
 ```
 
-Exit code 0. Ruff check + Ruff format diff produce no findings.
+Exit code 0. Both `ruff check` and `ruff format --check --diff` produce no findings.
 
 ### 2. New backend tests pass
 
