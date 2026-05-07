@@ -1,13 +1,4 @@
-"""Credential selection determinism tests.
-
-When multiple credentials share the same host and path_prefix length,
-get_credential_ids_for_route must return them in a stable, deterministic
-order (alphabetical by credential ID) rather than relying on SQLite's
-internal row ordering.
-
-Without a secondary sort key, the selected credential (creds[0] in the
-broker) could flip between runs or after vacuum/reindex operations.
-"""
+"""Determinism of get_credential_ids_for_route ordering on equal path_prefix length."""
 
 import asyncio
 import os
@@ -24,7 +15,7 @@ CRED_A = "a-cred-for-order-test"
 
 
 @pytest.fixture(scope="module")
-def two_equal_prefix_creds(client, admin_session):
+def two_equal_prefix_creds(client):
     """Insert two credentials for the same host with the same (default) path_prefix."""
 
     async def setup():
@@ -60,9 +51,7 @@ def two_equal_prefix_creds(client, admin_session):
         db_path = os.environ["DB_PATH"]
         async with aiosqlite.connect(db_path) as db:
             for cred_id in (CRED_Z, CRED_A):
-                await db.execute(
-                    "DELETE FROM credential_routes WHERE credential_id=?", (cred_id,)
-                )
+                await db.execute("DELETE FROM credential_routes WHERE credential_id=?", (cred_id,))
                 await db.execute(
                     "DELETE FROM toolkit_credentials WHERE credential_id=?", (cred_id,)
                 )
@@ -81,7 +70,5 @@ def test_credential_order_is_deterministic(two_equal_prefix_creds):
 
     ids = asyncio.run(get_ids())
     assert len(ids) == 2, f"Expected 2 credentials, got {ids}"
-    assert ids == sorted(ids), (
-        f"Credentials not in deterministic (alphabetical) order: {ids}"
-    )
+    assert ids == sorted(ids), f"Credentials not in deterministic (alphabetical) order: {ids}"
     assert ids[0] == CRED_A, f"Expected '{CRED_A}' first (alphabetically), got '{ids[0]}'"
