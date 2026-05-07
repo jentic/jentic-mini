@@ -614,6 +614,7 @@ async def delete_toolkit(toolkit_id: Annotated[str, Path(description="Toolkit ID
     status_code=201,
     summary="Issue a new client API key for this toolkit",
     response_model=ToolkitKeyCreated,
+    dependencies=[Depends(require_human_session)],
     openapi_extra={
         "requestBody": {
             "description": "Key configuration: optional label and optional IP allowlist (CIDR ranges)"

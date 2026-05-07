@@ -15,7 +15,7 @@ import logging
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, HTTPException, Path, Query
+from fastapi import APIRouter, HTTPException, Path, Query, Request
 
 from src.db import get_db
 from src.models import TraceListPage, TraceOut
@@ -41,6 +41,7 @@ async def write_trace(
     duration_ms: int | None,
     error: str | None,
     step_outputs: dict | None = None,
+    agent_id: str | None = None,
 ) -> str:
     """Write an execution trace (+ optional step records) to the DB.
 
@@ -49,9 +50,9 @@ async def write_trace(
     async with get_db() as db:
         await db.execute(
             """INSERT INTO executions
-               (id, toolkit_id, operation_id, workflow_id, spec_path,
+               (id, toolkit_id, agent_id, operation_id, workflow_id, spec_path,
                 status, http_status, duration_ms, error, created_at, completed_at)
-               VALUES (?,?,?,?,?,?,?,?,?,unixepoch(),unixepoch())
+               VALUES (?,?,?,?,?,?,?,?,?,?,unixepoch(),unixepoch())
                ON CONFLICT(id) DO UPDATE SET
                  status=excluded.status,
                  http_status=excluded.http_status,
@@ -61,6 +62,7 @@ async def write_trace(
             (
                 trace_id,
                 toolkit_id,
+                agent_id,
                 operation_id,
                 workflow_id,
                 spec_path,
@@ -107,6 +109,40 @@ async def safe_write_trace(**kwargs) -> None:
         log.warning("trace write failed (non-fatal): %s", exc)
 
 
+def _trace_scope_clause(request: Request) -> tuple[str, list]:
+    """Return (sql_predicate, params) restricting trace reads to the caller's tenant.
+
+    Scoping rules:
+      - Human sessions (admin) see every trace.
+      - Agent OAuth callers (`at_…`) see only rows stamped with their `agent_id`.
+      - Toolkit-key callers (`tk_…`) see every trace tagged with their bound
+        toolkit, regardless of `agent_id`. This is intentional:
+          * It preserves visibility for legacy / unregistered agents that call
+            via a toolkit key and would otherwise have no `agent_id` to filter
+            by.
+          * The toolkit key holder is treated as the operator of that toolkit
+            and is expected to be able to audit everything happening under it.
+        Security note: the blessed pattern is per-agent OAuth identity. Handing
+        a long-lived toolkit key to a registered agent therefore upgrades that
+        agent from "see only my own traces" to "see every trace from every
+        agent that shares this toolkit". Treat toolkit keys as operator
+        credentials, not agent credentials.
+      - Anonymous callers are rejected by middleware before reaching here, so
+        the unrestricted branch never fires for untrusted callers.
+    """
+    if getattr(request.state, "is_admin", False):
+        return "1=1", []
+    agent_id = getattr(request.state, "agent_client_id", None)
+    if agent_id:
+        return "agent_id = ?", [agent_id]
+    toolkit_id = getattr(request.state, "toolkit_id", None)
+    if toolkit_id:
+        return "toolkit_id = ?", [toolkit_id]
+    # No principal we can scope by — fail closed so a future auth path that
+    # forgets to set state doesn't accidentally expose every trace.
+    return "0=1", []
+
+
 # ── Routes ────────────────────────────────────────────────────────────────────
 
 
@@ -126,22 +162,27 @@ async def safe_write_trace(**kwargs) -> None:
     ),
 )
 async def list_traces(
+    request: Request,
     limit: Annotated[
         int, Query(description="Maximum number of traces to return (1-500)", ge=1, le=500)
     ] = 20,
     offset: Annotated[int, Query(description="Number of traces to skip for pagination", ge=0)] = 0,
 ):
     """Returns recent execution traces with status, capability id, toolkit, timestamp, and HTTP status. Use GET /traces/{trace_id} for step-level detail."""
+    scope_sql, scope_params = _trace_scope_clause(request)
     async with get_db() as db:
         async with db.execute(
-            """SELECT id, toolkit_id, operation_id, workflow_id,
+            f"""SELECT id, toolkit_id, agent_id, operation_id, workflow_id,
                       status, http_status, duration_ms, error, created_at, completed_at
                FROM executions
+               WHERE {scope_sql}
                ORDER BY created_at DESC LIMIT ? OFFSET ?""",
-            (limit, offset),
+            (*scope_params, limit, offset),
         ) as cur:
             rows = await cur.fetchall()
-        async with db.execute("SELECT COUNT(*) FROM executions") as cur:
+        async with db.execute(
+            f"SELECT COUNT(*) FROM executions WHERE {scope_sql}", scope_params
+        ) as cur:
             total = (await cur.fetchone())[0]
 
     return {
@@ -152,14 +193,15 @@ async def list_traces(
             {
                 "id": r[0],
                 "toolkit_id": r[1],
-                "operation_id": r[2],
-                "workflow_id": r[3],
-                "status": r[4],
-                "http_status": r[5],
-                "duration_ms": r[6],
-                "error": r[7],
-                "created_at": r[8],
-                "completed_at": r[9],
+                "agent_id": r[2],
+                "operation_id": r[3],
+                "workflow_id": r[4],
+                "status": r[5],
+                "http_status": r[6],
+                "duration_ms": r[7],
+                "error": r[8],
+                "created_at": r[9],
+                "completed_at": r[10],
                 "_links": {"self": f"/traces/{r[0]}"},
             }
             for r in rows
@@ -186,19 +228,22 @@ async def list_traces(
     ),
 )
 async def get_trace(
+    request: Request,
     trace_id: Annotated[str, Path(description="Trace ID (format: exec_{12chars})")],
 ):
     """Returns the full execution trace with all steps: capability called, inputs, outputs, HTTP status, and timing. Useful for debugging failed workflow steps."""
+    scope_sql, scope_params = _trace_scope_clause(request)
     async with get_db() as db:
         async with db.execute(
-            """SELECT id, toolkit_id, operation_id, workflow_id, spec_path,
+            f"""SELECT id, toolkit_id, agent_id, operation_id, workflow_id, spec_path,
                       status, http_status, duration_ms, error, created_at, completed_at
-               FROM executions WHERE id=?""",
-            (trace_id,),
+               FROM executions WHERE id=? AND {scope_sql}""",
+            (trace_id, *scope_params),
         ) as cur:
             row = await cur.fetchone()
 
         if not row:
+            # 404 (not 403) for cross-tenant reads so we don't leak existence.
             raise HTTPException(404, f"Trace '{trace_id}' not found")
 
         async with db.execute(
@@ -228,15 +273,16 @@ async def get_trace(
     return {
         "id": row[0],
         "toolkit_id": row[1],
-        "operation_id": row[2],
-        "workflow_id": row[3],
-        "spec_path": row[4],
-        "status": row[5],
-        "http_status": row[6],
-        "duration_ms": row[7],
-        "error": row[8],
-        "created_at": row[9],
-        "completed_at": row[10],
+        "agent_id": row[2],
+        "operation_id": row[3],
+        "workflow_id": row[4],
+        "spec_path": row[5],
+        "status": row[6],
+        "http_status": row[7],
+        "duration_ms": row[8],
+        "error": row[9],
+        "created_at": row[10],
+        "completed_at": row[11],
         "steps": steps,
         "_links": {"self": f"/traces/{row[0]}"},
     }

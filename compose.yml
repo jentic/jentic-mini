@@ -15,9 +15,22 @@ services:
       - ${JENTIC_DATA_PATH:-${JENTIC_HOST_PATH:-.}/data}:/app/data
     environment:
       JENTIC_PUBLIC_HOSTNAME: ${JENTIC_PUBLIC_HOSTNAME}
+      # Pin the canonical base URL used to derive the OAuth issuer / token aud /
+      # registration_client_uri. Required for any deployment where the inbound
+      # Host: header is not strictly trustworthy (internet-facing or shared
+      # tenant). Format: scheme + host [+ port], no trailing slash.
+      # Example: https://jentic.example.com
+      JENTIC_PUBLIC_BASE_URL: ${JENTIC_PUBLIC_BASE_URL:-}
       # Extra subnets to trust, IN ADDITION TO built-in RFC-1918 + loopback defaults.
       # Comma-separated CIDRs. Add your Tailscale range, VPN, or office subnet here.
       # Example: 100.64.0.0/10,203.0.113.0/24
       # The built-in defaults (10/8, 172.16/12, 192.168/16, 127/8, ::1) always apply.
       JENTIC_TRUSTED_SUBNETS: ${JENTIC_TRUSTED_SUBNETS:-}
+      # Agent-identity TTLs (seconds). All optional — the defaults baked into
+      # src/config.py are sensible. Only override for ops-specific reasons.
+      AGENT_ACCESS_TTL: ${AGENT_ACCESS_TTL:-}
+      AGENT_REFRESH_TTL: ${AGENT_REFRESH_TTL:-}
+      AGENT_REGISTRATION_TOKEN_TTL: ${AGENT_REGISTRATION_TOKEN_TTL:-}
+      AGENT_ASSERTION_MAX_AGE: ${AGENT_ASSERTION_MAX_AGE:-}
+      AGENT_NONCE_WINDOW: ${AGENT_NONCE_WINDOW:-}
       LOG_LEVEL: ${LOG_LEVEL:-info}

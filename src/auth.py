@@ -40,6 +40,8 @@ from fastapi import HTTPException, Request
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 
+from src.agent_identity_gate import verify_registration_access_token
+from src.agent_identity_util import hash_token
 from src.db import DB_PATH, DEFAULT_TOOLKIT_ID, setup_state
 
 
@@ -73,7 +75,6 @@ SKIP = {
     "/user/login",  # API login endpoint — must be public (bug fix: was missing)
     "/user/token",  # OAuth2 password grant for Swagger UI
     "/user/create",  # One-time root account creation — must be public before account exists
-    "/default-api-key/generate",  # Handles its own subnet + session auth internally
 }
 SKIP_PREFIXES = ("/static", "/assets", "/proxy", "/approve", "/docs", "/redoc", "/debug")
 
@@ -90,6 +91,14 @@ def _is_public(path: str, method: str) -> bool:
         return True
     # OAuth connect-callback: browser redirect from Pipedream, no auth context available
     if re.match(r"^/oauth-brokers/[^/]+/connect-callback", path) and method == "GET":
+        return True
+    # Agent identity (RFC 8414 / 7591) — unauthenticated endpoints
+    if path == "/.well-known/oauth-authorization-server" and method == "GET":
+        return True
+    if path == "/register" and method == "POST":
+        return True
+    # POST /oauth/token must stay public: jwt-bearer grant has no prior access token (RFC 7523).
+    if path == "/oauth/token" and method == "POST":
         return True
     return False
 
@@ -242,6 +251,75 @@ def build_human_only_error():
     )
 
 
+async def _authenticate_agent_access_token(request: Request, bearer: str) -> bool:
+    """Validate opaque access token (at_…). Sets agent_client_id, granted_toolkit_ids, toolkit_id."""
+    th = hash_token(bearer)
+    now = time.time()
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            """SELECT t.client_id, t.expires_at, t.consumed_at, a.status
+               FROM agent_tokens t JOIN agents a ON a.client_id = t.client_id
+               WHERE t.token_hash=? AND t.token_type='access'
+                 AND a.deleted_at IS NULL""",
+            (th,),
+        ) as cur:
+            row = await cur.fetchone()
+
+    if not row or row["consumed_at"] is not None:
+        return False
+    if row["expires_at"] < now:
+        return False
+    if row["status"] != "approved":
+        return False
+
+    cid = row["client_id"]
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            """SELECT g.toolkit_id FROM agent_toolkit_grants g
+               JOIN toolkits tk ON tk.id = g.toolkit_id
+               WHERE g.client_id=? AND tk.disabled = 0
+               ORDER BY g.granted_at ASC""",
+            (cid,),
+        ) as cur:
+            grant_rows = await cur.fetchall()
+    grants = [r["toolkit_id"] for r in grant_rows]
+
+    request.state.agent_client_id = cid
+    request.state.granted_toolkit_ids = grants
+    request.state.toolkit_id = grants[0] if grants else None
+    request.state.is_admin = False
+    request.state.is_human_session = False
+    request.state.simulate = False
+    return True
+
+
+async def _human_session_response(request: Request, call_next, jwt_token: str | None):
+    """If jwt_token is a valid human session JWT, run the request and refresh the cookie when due."""
+    if not jwt_token or not JWT_AVAILABLE:
+        return None
+    state = await setup_state()
+    claims = _decode_jwt(jwt_token, state["jwt_secret"])
+    if not claims or claims.get("sub") != "human":
+        return None
+    request.state.is_human_session = True
+    request.state.is_admin = True
+    request.state.toolkit_id = DEFAULT_TOOLKIT_ID
+    response = await call_next(request)
+    issued_at = claims.get("iat", 0)
+    if time.time() - issued_at > JWT_REFRESH_AFTER:
+        new_token = make_jwt(state["jwt_secret"])
+        response.set_cookie(
+            "jentic_session",
+            new_token,
+            httponly=True,
+            samesite="strict",
+            max_age=JWT_TTL_SECONDS,
+        )
+    return response
+
+
 class APIKeyMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         path = request.url.path
@@ -252,6 +330,8 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
         request.state.is_admin = False
         request.state.is_human_session = False
         request.state.simulate = False
+        request.state.agent_client_id = None
+        request.state.granted_toolkit_ids = None
 
         # Resolve client IP early — used by multiple auth steps below
         req_ip = client_ip(request)
@@ -265,34 +345,71 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
         # but we DON'T reject if absent.
         is_open = _is_open_passthrough(path, method)
 
-        # ── 0. Check for human session JWT (cookie or Authorization: Bearer) ──
-        # Do this BEFORE the trusted-subnet passthrough so that Bearer tokens
-        # (e.g. from Swagger UI OAuth2 login) correctly set is_human_session.
         cookie = request.cookies.get("jentic_session")
         auth_hdr = request.headers.get("Authorization", "")
         bearer = auth_hdr[7:].strip() if auth_hdr.lower().startswith("bearer ") else None
-        jwt_token = cookie or bearer
-        if jwt_token and JWT_AVAILABLE:
-            state = await setup_state()
-            claims = _decode_jwt(jwt_token, state["jwt_secret"])
-            if claims and claims.get("sub") == "human":
-                request.state.is_human_session = True
-                request.state.is_admin = True
-                request.state.toolkit_id = DEFAULT_TOOLKIT_ID
 
-                # Rolling expiry — re-issue if token is older than JWT_REFRESH_AFTER
-                response = await call_next(request)
-                issued_at = claims.get("iat", 0)
-                if time.time() - issued_at > JWT_REFRESH_AFTER:
-                    new_token = make_jwt(state["jwt_secret"])
-                    response.set_cookie(
-                        "jentic_session",
-                        new_token,
-                        httponly=True,
-                        samesite="strict",
-                        max_age=JWT_TTL_SECONDS,
+        # GET /register/{client_id} — Bearer rat_, matching at_, or human session
+        m_reg = re.match(r"^/register/([^/]+)$", path)
+        if method == "GET" and m_reg:
+            cid = m_reg.group(1)
+            if bearer and bearer.startswith("rat_"):
+                if not await verify_registration_access_token(cid, bearer):
+                    return JSONResponse(
+                        {
+                            "detail": "Unauthorised",
+                            "hint": "Invalid or expired registration_access_token.",
+                        },
+                        status_code=401,
+                        headers={"WWW-Authenticate": 'Bearer error="invalid_token"'},
                     )
-                return response
+                return await call_next(request)
+            if bearer and bearer.startswith("at_"):
+                if await _authenticate_agent_access_token(request, bearer):
+                    if request.state.agent_client_id == cid:
+                        return await call_next(request)
+                return JSONResponse(
+                    {
+                        "detail": "Unauthorised",
+                        "hint": "Invalid agent access token or client_id mismatch.",
+                    },
+                    status_code=401,
+                    headers={"WWW-Authenticate": 'Bearer error="invalid_token"'},
+                )
+            jwt_human = cookie or (
+                bearer if bearer and not bearer.startswith(("at_", "rat_")) else None
+            )
+            human_resp = await _human_session_response(request, call_next, jwt_human)
+            if human_resp is not None:
+                return human_resp
+            return JSONResponse(
+                {
+                    "detail": "Unauthorised",
+                    "hint": ("Provide Bearer rat_…, a matching at_…, or an admin session cookie."),
+                },
+                status_code=401,
+                headers={"WWW-Authenticate": 'Bearer error="invalid_token"'},
+            )
+
+        # ── Agent access token (Authorization: Bearer at_…) ─────────────────────
+        if bearer and bearer.startswith("at_"):
+            if await _authenticate_agent_access_token(request, bearer):
+                return await call_next(request)
+            if not is_open:
+                return JSONResponse(
+                    {"detail": "Unauthorised", "hint": "Invalid or expired agent access token."},
+                    status_code=401,
+                    headers={"WWW-Authenticate": 'Bearer error="invalid_token"'},
+                )
+
+        # ── 0. Human session JWT (cookie or Authorization: Bearer human JWT) ──
+        # Do not treat rat_/at_ prefixes as human JWT (avoids noisy decode attempts).
+        jwt_token = cookie or (
+            bearer if bearer and not bearer.startswith(("at_", "rat_")) else None
+        )
+        human_resp = await _human_session_response(request, call_next, jwt_token)
+        if human_resp is not None:
+            return human_resp
 
         # ── 1. Check for agent key (X-Jentic-API-Key: tk_xxx) ─────────────────
         # Key check runs FIRST — even on trusted subnets. A request with a valid
@@ -367,14 +484,18 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
         else:
             try:
                 state = await setup_state()
-                if not state["default_key_claimed"]:
-                    hint = "No agent key has been issued yet. POST /default-api-key/generate from a trusted subnet."
-                elif not state["account_created"]:
-                    hint = "Visit /user/create to set up your admin account."
+                if not state["account_created"]:
+                    hint = (
+                        "Visit /user/create to set up your admin account. "
+                        "Agents should use GET /.well-known/oauth-authorization-server and POST /register."
+                    )
                 else:
-                    hint = "Provide X-Jentic-API-Key header with a toolkit key (tk_xxx), or log in at /user/login."
+                    hint = (
+                        "Provide Authorization: Bearer with an agent access token (at_…), "
+                        "or X-Jentic-API-Key with a toolkit key (tk_…), or log in at /user/login."
+                    )
             except Exception:
-                hint = "Provide X-Jentic-API-Key header with a toolkit key (tk_xxx)."
+                hint = "Provide Authorization: Bearer (at_…) or X-Jentic-API-Key (tk_…)."
 
         return JSONResponse(
             {"detail": "Unauthorised", "hint": hint},

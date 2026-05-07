@@ -441,6 +441,8 @@ async def dispatch_workflow(
     simulate: bool = False,
     prefer_wait: float | None = None,
     callback_url: str | None = None,
+    agent_id: str | None = None,
+    caller_bearer_token: str | None = None,
 ):
     """
     Core workflow execution logic — called by both the /workflows/{slug} route
@@ -531,6 +533,8 @@ async def dispatch_workflow(
                     toolkit_id=toolkit_id,
                     is_simulate=is_simulate,
                     trace_id=None,
+                    agent_id=agent_id,
+                    caller_bearer_token=caller_bearer_token,
                 )
                 # Parse the JSONResponse to extract result
                 body = json.loads(result_response.body)
@@ -634,6 +638,8 @@ async def dispatch_workflow(
         toolkit_id=toolkit_id,
         is_simulate=is_simulate,
         trace_id=None,
+        agent_id=agent_id,
+        caller_bearer_token=caller_bearer_token,
     )
 
 
@@ -649,6 +655,8 @@ async def execute_workflow_core(
     toolkit_id: str | None,
     is_simulate: bool,
     trace_id: str | None,
+    agent_id: str | None = None,
+    caller_bearer_token: str | None = None,
 ):
     if not trace_id:
         trace_id = new_trace_id()
@@ -673,7 +681,11 @@ import requests
 import json
 
 session = requests.Session()
-session.headers["X-Jentic-API-Key"] = os.environ["_JENTIC_CALLER_KEY"]
+_bearer = os.environ.get("_JENTIC_BEARER", "").strip()
+if _bearer:
+    session.headers["Authorization"] = "Bearer " + _bearer
+else:
+    session.headers["X-Jentic-API-Key"] = os.environ["_JENTIC_CALLER_KEY"]
 runner = ArazzoRunner.from_arazzo_path({repr(temp_arazzo)}, http_client=session)
 result = runner.execute_workflow({repr(workflow_id)}, {repr(inputs)})
 if hasattr(result, '__dataclass_fields__') or hasattr(result, '__dict__'):
@@ -691,7 +703,11 @@ print(json.dumps(out, default=str))
 """
     trace_id = new_trace_id()
     env = dict(os.environ)
-    env["_JENTIC_CALLER_KEY"] = caller_api_key
+    env["_JENTIC_CALLER_KEY"] = caller_api_key or ""
+    if caller_bearer_token:
+        env["_JENTIC_BEARER"] = caller_bearer_token
+    elif "_JENTIC_BEARER" in env:
+        del env["_JENTIC_BEARER"]
     t0 = time.monotonic()
     proc = await asyncio.create_subprocess_exec(
         sys.executable,
@@ -811,6 +827,7 @@ print(json.dumps(out, default=str))
     await write_trace(
         trace_id=trace_id,
         toolkit_id=toolkit_id,
+        agent_id=agent_id,
         operation_id=None,
         workflow_id=workflow_id,
         spec_path=arazzo_path,
@@ -902,6 +919,12 @@ async def execute_workflow_by_slug(slug: str, request: Request):
     """
     body_bytes = await request.body()
     caller_api_key = request.headers.get("x-jentic-api-key") or ""
+    _auth = request.headers.get("Authorization", "")
+    caller_bearer = None
+    if _auth.lower().startswith("bearer "):
+        _tok = _auth[7:].strip()
+        if _tok.startswith("at_"):
+            caller_bearer = _tok
     toolkit_id = getattr(request.state, "toolkit_id", None)
     simulate = getattr(request.state, "simulate", False)
     prefer_wait = parse_prefer_wait(request.headers.get("prefer"))
@@ -914,4 +937,6 @@ async def execute_workflow_by_slug(slug: str, request: Request):
         simulate,
         prefer_wait=prefer_wait,
         callback_url=callback_url,
+        agent_id=getattr(request.state, "agent_client_id", None),
+        caller_bearer_token=caller_bearer,
     )

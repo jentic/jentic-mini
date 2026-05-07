@@ -17,6 +17,7 @@ import JobsPage from '@/pages/JobsPage';
 import JobDetailPage from '@/pages/JobDetailPage';
 import TraceDetailPage from '@/pages/TraceDetailPage';
 import ApprovalPage from '@/pages/ApprovalPage';
+import AgentsPage from '@/pages/AgentsPage';
 
 const router = createBrowserRouter([
 	{
@@ -37,6 +38,7 @@ const router = createBrowserRouter([
 					{ path: '/toolkits', element: <ToolkitsPage /> },
 					{ path: '/toolkits/new', element: <ToolkitsPage createNew /> },
 					{ path: '/toolkits/:id', element: <ToolkitDetailPage /> },
+					{ path: '/agents', element: <AgentsPage /> },
 					{ path: '/credentials', element: <CredentialsPage /> },
 					{ path: '/credentials/new', element: <CredentialFormPage /> },
 					{ path: '/credentials/:id/edit', element: <CredentialFormPage /> },

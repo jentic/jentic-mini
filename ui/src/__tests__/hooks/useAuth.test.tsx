@@ -42,7 +42,7 @@ describe('useAuth', () => {
 
 	it('does not fetch user when setup is not complete', async () => {
 		worker.use(
-			http.get('/health', () => HttpResponse.json({ status: 'account_required' })),
+			http.get('/health', () => HttpResponse.json({ status: 'setup_required' })),
 			http.get('/user/me', () => {
 				throw new Error('Should not be called');
 			}),

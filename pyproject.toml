@@ -1,6 +1,6 @@
 [project]
 name = "jentic-mini"
-version = "0.9.1"
+version = "0.11.0"
 description = "Self-hosted Jentic API — search, broker, observe"
 readme = "README.md"
 authors = [{ name = "Jentic", email = "hello@jentic.com" }]
@@ -17,7 +17,7 @@ dependencies = [
   "aiosqlite==0.22.1",
   "bcrypt==5.0.0",
   "python-jose[cryptography]==3.5.0",
-  "python-multipart>=0.0.26",
+  "python-multipart>=0.0.27",
   "alembic>=1.18.4,<2",
   "jentic-openapi-common>=1.0.0a51",
   "arazzo-runner>=0.9.5",
