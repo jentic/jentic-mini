@@ -6,13 +6,13 @@ set -e
 export PYTHONPATH=/app
 
 echo "[entrypoint] Running database migrations..."
-python3 -m alembic upgrade head
+/app/.venv/bin/python -m alembic upgrade head
 
 echo "[entrypoint] Seeding broker app mappings..."
-python3 -c "import asyncio; from src.startup import seed_broker_apps; asyncio.run(seed_broker_apps())"
+/app/.venv/bin/python -c "import asyncio; from src.startup import seed_broker_apps; asyncio.run(seed_broker_apps())"
 
 echo "[entrypoint] Starting server..."
-exec uvicorn src.main:app \
+exec /app/.venv/bin/uvicorn src.main:app \
     --host 0.0.0.0 \
     --port 8900 \
     --log-level "${LOG_LEVEL:-info}" \
