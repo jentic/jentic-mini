@@ -229,3 +229,45 @@ def test_register_rejects_oversize_jwks(client):
     r = client.post("/register", json={"client_name": "too-big", "jwks": big})
     assert r.status_code == 400
     assert "too large" in r.json()["detail"]
+
+
+# ---------------------------------------------------------------------------
+# End-to-end: PUT /agents/{id}/jwks must echo the SANITISED JWKS, not the raw
+# input — symmetry with the registration response. Otherwise unknown fields
+# the server silently strips on storage round-trip back to the caller and
+# could leak attacker-injected metadata.
+# ---------------------------------------------------------------------------
+
+
+def test_rotate_jwks_response_matches_persisted_sanitised_jwks(client, admin_client):
+    _, x = make_ed25519_keypair()
+    reg = client.post(
+        "/register",
+        json={"client_name": "test-agent-rotate-echo", "jwks": make_jwks(x)},
+    )
+    assert reg.status_code == 201, reg.text
+    cid = reg.json()["client_id"]
+
+    _, x_new = make_ed25519_keypair()
+    rotation_body = {
+        "jwks": {
+            "keys": [
+                {
+                    "kty": "OKP",
+                    "crv": "Ed25519",
+                    "x": x_new,
+                    "alg": "EdDSA",
+                    "rogue_field": "should-not-round-trip",
+                }
+            ]
+        }
+    }
+    r = admin_client.put(f"/agents/{cid}/jwks", json=rotation_body)
+    assert r.status_code == 200, r.text
+
+    echoed_key = r.json()["jwks"]["keys"][0]
+    assert "rogue_field" not in echoed_key, (
+        "rotate response echoed a stripped field — must mirror persisted JWKS"
+    )
+    assert set(echoed_key.keys()) <= {"kty", "crv", "x", "kid", "alg", "use"}
+    assert echoed_key["x"] == x_new

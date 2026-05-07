@@ -317,7 +317,10 @@ async def rotate_agent_jwks(agent_id: str, body: dict):
             (json.dumps(cleaned_jwks), agent_id),
         )
         await db.commit()
-    return {"client_id": agent_id, "jwks": jwks}
+    # Echo the sanitised JWKS — never the raw submitted body — so the
+    # response matches what's persisted and unknown / stripped fields don't
+    # round-trip back to the caller.
+    return {"client_id": agent_id, "jwks": cleaned_jwks}
 
 
 @router.delete(
