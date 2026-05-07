@@ -2,7 +2,7 @@
 
 ## Definition of Done
 
-All of the following must be true before this branch is merged.
+All of the following must be true before the **implementation** branch (the PR that closes #336) is merged. This spec-scaffold PR carries no code and is reviewed for the spec content; the gates below apply to the follow-up implementation PR.
 
 ### 1. Backend lint clean
 
