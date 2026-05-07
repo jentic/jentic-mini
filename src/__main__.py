@@ -20,11 +20,11 @@ class CliError(Exception):
 
 
 class CliArgumentParser(argparse.ArgumentParser):
-    """Argument parser that exits with code 1 for command errors."""
+    """Argument parser that exits with code 2 for usage errors (POSIX convention)."""
 
     def error(self, message: str) -> None:
         self.print_usage(sys.stderr)
-        self.exit(1, f"{self.prog}: error: {message}\n")
+        self.exit(2, f"{self.prog}: error: {message}\n")
 
 
 def prompt_new_password() -> str:
