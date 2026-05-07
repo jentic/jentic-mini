@@ -15,7 +15,7 @@ Once the constitution exists, individual roadmap phases are materialized into **
 Supporting infrastructure:
 
 - `.claude/templates/sdd/constitution/*.example.md` — structural templates for each constitution section
-- `.claude/prompts/create-constitution.md` — constitution generator prompt
+- `.claude/skills/sdd-create-constitution/SKILL.md` — `/sdd-create-constitution` skill that bootstraps the constitution from repository evidence (refuses to overwrite an existing constitution without explicit user confirmation)
 - `.claude/templates/sdd/feature-spec/*.example.md` — structural templates for each feature-spec file
 - `.claude/skills/sdd-new-phase/SKILL.md` — `/sdd-new-phase` skill that appends a new active phase to `specs/roadmap.md`
 - `.claude/skills/sdd-new-spec/SKILL.md` — `/sdd-new-spec` skill that scaffolds a feature spec from a roadmap phase 
