@@ -166,3 +166,42 @@ def test_alias_overrides_no_ambiguity(client, agent_key_header, ambiguous_creden
     resp = client.get(f"/{API_HOST}/v1/test", headers=headers)
     assert resp.headers.get("x-jentic-credential-ambiguous") is None
     assert resp.headers.get("x-jentic-credential-used") == CRED_ID_A
+
+
+def test_ambiguous_selection_is_independent_of_row_order(
+    client, agent_key_header, ambiguous_credentials
+):
+    """X-Jentic-Credential-Used reports the lex-min ID and stays unchanged
+    after the route rows are rewritten in reverse physical order.
+
+    Regression for #192: without a stable tie-breaker, the credential ID
+    list returned by get_credential_ids_for_route — and therefore the
+    first ID, which X-Jentic-Credential-Used reports — flipped whenever
+    SQLite row order changed (VACUUM, reindex, delete+insert).
+    """
+    expected = min(CRED_ID_A, CRED_ID_B)
+
+    resp1 = client.get(f"/{API_HOST}/v1/test", headers=agent_key_header)
+    assert resp1.headers.get("x-jentic-credential-used") == expected
+
+    async def _rewrite_routes_in_order(order):
+        async with aiosqlite.connect(os.environ["DB_PATH"]) as db:
+            await db.execute(
+                "DELETE FROM credential_routes WHERE credential_id IN (?, ?)",
+                (CRED_ID_A, CRED_ID_B),
+            )
+            for cid in order:
+                await db.execute(
+                    "INSERT INTO credential_routes (credential_id, host) VALUES (?, ?)",
+                    (cid, API_HOST),
+                )
+            await db.commit()
+
+    # Force reverse physical row order, then restore so any test added later
+    # in this module-scoped fixture doesn't inherit the reversed state.
+    asyncio.run(_rewrite_routes_in_order((CRED_ID_B, CRED_ID_A)))
+    try:
+        resp2 = client.get(f"/{API_HOST}/v1/test", headers=agent_key_header)
+        assert resp2.headers.get("x-jentic-credential-used") == expected
+    finally:
+        asyncio.run(_rewrite_routes_in_order((CRED_ID_A, CRED_ID_B)))

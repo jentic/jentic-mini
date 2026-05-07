@@ -535,7 +535,7 @@ async def get_credential_ids_for_route(toolkit_id: str, host: str, path: str = "
     ]
     seen: set[str] = set()
     result: list[str] = []
-    for cid, _ in sorted(candidates, key=lambda x: len(x[1]), reverse=True):
+    for cid, _ in sorted(candidates, key=lambda x: (-len(x[1]), x[0])):
         if cid not in seen:
             seen.add(cid)
             result.append(cid)
