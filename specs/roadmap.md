@@ -327,7 +327,7 @@ Large upstream responses are fully buffered today, which spikes memory and block
 `PipedreamOAuthBroker` is Mini's only OAuth broker today and it's proxy-mode. The `OAuthBroker` Protocol already defines a token-mode path, but no implementation exists. This phase ships `GoogleOAuthBroker` as the first token-mode broker; follow-up brokers (GitHub, Microsoft) become URL/scope-format swaps.
 
 - Add `GoogleOAuthBroker` in `src/brokers/google.py` with `get_token` (refresh + cache), `exchange_code`, `has_scopes`, plus a scope→api_host map for Gmail/Calendar/Drive/Sheets/Docs
-- Add the optional `has_scopes()` method to the `OAuthBroker` Protocol with an async default of `True`; Pipedream inherits unchanged
+- Add the optional `has_scopes()` method to the `OAuthBroker` Protocol; concrete brokers implement it (Pipedream returns `True`, preserving current behaviour — `typing.Protocol` method bodies cannot ship runnable defaults)
 - Introduce `auth_type='broker_oauth'`, parallel to `'pipedream_oauth'`, to keep the two broker paths visibly distinct in `broker.py`
 - Add an Alembic migration with seven NULLable columns on `oauth_brokers` and `oauth_broker_accounts` for redirect URI, scopes, refresh/access tokens, token expiry, and provider user ID
 - Wire the broker into `src/routers/broker.py` (`_maybe_inject_broker_oauth` branch) and `src/main.py` lifespan registration; Pipedream's path is untouched
