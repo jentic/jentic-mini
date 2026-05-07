@@ -38,12 +38,18 @@ Single root account — no multi-user, no roles. One human owns the instance.
 | `POST` | `/user/logout` | Human session | Clears cookie. |
 | `GET` | `/user/me` | Optional | Returns current auth/session context; works with no auth. |
 
-**There is no password-reset API.** No "forgot password" link, no email reset,
-no security questions. If the password is lost, the rescue path is `docker exec`
-into the container and editing the SQLite database directly — either rewrite
-`users.password_hash` (bcrypt the new password first) or drop the `users` row
-and clear the `account_created` setting to re-enable one-time `POST /user/create`.
-`docker exec` is deliberately the only superuser path (see Overview).
+**Password reset is CLI-only.** No "forgot password" link, no email reset, no security
+questions. If the password is lost, run:
+
+```bash
+docker exec -it jentic-mini python3 -m src reset-password
+```
+
+The CLI prompts twice (with confirmation), enforces the same 8-character minimum as
+`POST /user/create`, and rewrites `users.password_hash` in place. To start over with
+one-time `POST /user/create` instead (e.g. to change the username), drop the `users`
+row and clear the `account_created` setting via direct SQLite edit. `docker exec` is
+deliberately the only superuser path (see Overview).
 
 ### JWT
 

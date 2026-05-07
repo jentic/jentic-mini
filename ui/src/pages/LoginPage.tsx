@@ -94,7 +94,7 @@ export default function LoginPage() {
 				<p className="text-muted-foreground mt-6 text-center text-xs">
 					To reset your password, run{' '}
 					<code className="bg-background px-1 font-mono">
-						docker exec jentic-mini python3 -m jentic reset-password
+						docker exec -it jentic-mini python3 -m src reset-password
 					</code>
 					.
 				</p>
