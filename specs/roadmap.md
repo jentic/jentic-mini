@@ -318,6 +318,24 @@ Large upstream responses are fully buffered today, which spikes memory and block
 - Add integration tests: large upstream body returned to the client in full, trace body truncated at the cap
 - Close or cross-reference issue #225
 
+## Phase 24 — Google OAuth Broker (Token Mode)
+
+**Goal:** Implement the first token-mode OAuth broker in Mini's broker library — Google — with code-exchange and refresh, alongside Pipedream's untouched proxy-mode broker.
+**Depends on:** none (additive — Pipedream untouched, schema additions NULLable)
+**Priority:** High
+
+`PipedreamOAuthBroker` is Mini's only OAuth broker today and it's proxy-mode. The `OAuthBroker` Protocol already defines a token-mode path, but no implementation exists. This phase ships `GoogleOAuthBroker` as the first token-mode broker; follow-up brokers (GitHub, Microsoft) become URL/scope-format swaps.
+
+- Add `GoogleOAuthBroker` in `src/brokers/google.py` with `get_token` (refresh + cache), `exchange_code`, `has_scopes`, plus a scope→api_host map for Gmail/Calendar/Drive/Sheets/Docs
+- Add the optional `has_scopes()` method to the `OAuthBroker` Protocol with an async default of `True`; Pipedream inherits unchanged
+- Introduce `auth_type='broker_oauth'`, parallel to `'pipedream_oauth'`, to keep the two broker paths visibly distinct in `broker.py`
+- Add an Alembic migration with seven NULLable columns on `oauth_brokers` and `oauth_broker_accounts` for redirect URI, scopes, refresh/access tokens, token expiry, and provider user ID
+- Wire the broker into `src/routers/broker.py` (`_maybe_inject_broker_oauth` branch) and `src/main.py` lifespan registration; Pipedream's path is untouched
+- Add `POST /oauth-brokers/{broker_id}/exchange-code` plus `body.type` dispatch in `POST /oauth-brokers`
+- Add `POST /admin/api-keys` for programmatic toolkit-key minting (independently shippable per the issue)
+- Add backend tests against a mocked `oauth2.googleapis.com`; existing Pipedream tests must continue to pass
+- Close #336 on implementation; cross-reference #104 (overlapping design, not a duplicate)
+
 ---
 
 ## Later Phases (Not Yet Planned)
