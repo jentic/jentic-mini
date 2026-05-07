@@ -37,9 +37,9 @@ Check for the three constitution files in parallel:
   - Options:
     - `Cancel — keep existing constitution` (recommended; first option)
     - `Overwrite all three files`
-  - The freeform write-in is provided automatically. Treat any write-in that is not an unambiguous overwrite confirmation as cancel.
+  - The freeform write-in is provided automatically. Treat **every** freeform write-in as cancel — only the explicit `Overwrite all three files` option-button selection proceeds.
 
-Only proceed past this gate if the user explicitly selects `Overwrite all three files`. Anything else — including silence, cancel, or an ambiguous write-in — aborts the run with a one-line summary ("Aborted; existing constitution preserved.").
+Only proceed past this gate if the user explicitly selects the `Overwrite all three files` option button. Anything else — including silence, cancel, or any freeform write-in regardless of its content — aborts the run with a one-line summary ("Aborted; existing constitution preserved.").
 
 If only one or two of the three files exist (a partial constitution), the same rule applies: any existing file means the guard fires. The skill regenerates all three together; it does not patch individual sections.
 
