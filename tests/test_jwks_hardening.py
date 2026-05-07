@@ -166,7 +166,7 @@ def test_verify_assertion_rejects_ed25519_as_alg():
     aud = "http://testserver/oauth/token"
     assertion = make_assertion(sk, iss=iss, aud=aud, alg="Ed25519")
     with pytest.raises(ValueError, match="invalid_assertion_alg"):
-        verify_jwt_bearer_assertion(assertion, x, expected_iss=iss, expected_aud=aud)
+        verify_jwt_bearer_assertion(assertion, x, expected_aud=aud)
 
 
 def test_verify_assertion_accepts_eddsa():
@@ -175,7 +175,7 @@ def test_verify_assertion_accepts_eddsa():
     iss = "agnt_test"
     aud = "http://testserver/oauth/token"
     assertion = make_assertion(sk, iss=iss, aud=aud, alg="EdDSA")
-    payload = verify_jwt_bearer_assertion(assertion, x, expected_iss=iss, expected_aud=aud)
+    payload = verify_jwt_bearer_assertion(assertion, x, expected_aud=aud)
     assert payload["iss"] == iss
     assert payload["aud"] == aud
 

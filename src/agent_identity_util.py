@@ -135,11 +135,18 @@ def verify_jwt_bearer_assertion(
     assertion: str,
     public_key_x_b64url: str,
     *,
-    expected_iss: str,
     expected_aud: str,
     max_age_seconds: int = AGENT_ASSERTION_MAX_AGE,
 ) -> dict[str, Any]:
-    """Verify RFC 7523 client assertion (EdDSA / Ed25519). Returns payload dict."""
+    """Verify RFC 7523 client assertion (EdDSA / Ed25519). Returns payload dict.
+
+    The ``iss`` claim is *not* re-checked against an expected value here —
+    callers select the verifying key by ``iss`` (the JWKS lookup is keyed off
+    it), so a successful signature already binds the assertion to that
+    issuer. Re-asserting ``payload["iss"] == iss`` would be a tautology
+    against the same string the caller just read from the unverified payload.
+    The claim is still validated structurally (must be a non-empty string).
+    """
     parts = assertion.split(".")
     if len(parts) != 3:
         raise ValueError("invalid_assertion_format")
@@ -173,7 +180,7 @@ def verify_jwt_bearer_assertion(
 
     now = time.time()
     iss = payload.get("iss")
-    if iss != expected_iss:
+    if not iss or not isinstance(iss, str):
         raise ValueError("invalid_assertion_iss")
     aud = payload.get("aud")
     if aud != expected_aud:

@@ -343,10 +343,12 @@ async def oauth_token(
 
         try:
             pub_x = extract_jwks_public_key_x(json.loads(agent["jwks_json"]))
+            # No expected_iss is passed: the JWKS lookup above is keyed off
+            # `iss`, so a successful signature implicitly binds the assertion
+            # to that issuer.
             payload = verify_jwt_bearer_assertion(
                 assertion,
                 pub_x,
-                expected_iss=iss,
                 expected_aud=token_endpoint_aud,
             )
         except (ValueError, json.JSONDecodeError):
