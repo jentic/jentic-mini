@@ -9,7 +9,7 @@ Endpoints:
   POST /user/logout  — clears session cookie (human session required)
 
 Password reset is CLI-only:
-  docker exec jentic-mini python3 -m src reset-password
+  docker exec -it jentic-mini python3 -m src reset-password
 """
 
 import logging
