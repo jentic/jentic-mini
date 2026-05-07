@@ -389,14 +389,33 @@ async def add_grant(agent_id: str, body: GrantBody, request: Request):
                 raise HTTPException(
                     409, f"Toolkit '{body.toolkit_id}' is disabled and cannot be granted"
                 )
-        await db.execute(
+        async with db.execute(
             """INSERT INTO agent_toolkit_grants (client_id, toolkit_id, granted_at, granted_by)
                VALUES (?,?,?,?)
                ON CONFLICT(client_id, toolkit_id) DO NOTHING""",
             (agent_id, body.toolkit_id, now, who),
-        )
+        ) as cur:
+            # ON CONFLICT DO NOTHING means a re-grant of an existing toolkit
+            # is a no-op — the original audit row wins. Read back the
+            # persisted row so the response always reflects what's actually
+            # in the DB rather than claiming `granted_at = now` for a row
+            # that may be hours / days old.
+            created = cur.rowcount == 1
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            """SELECT granted_at, granted_by FROM agent_toolkit_grants
+               WHERE client_id=? AND toolkit_id=?""",
+            (agent_id, body.toolkit_id),
+        ) as readback:
+            grant_row = await readback.fetchone()
         await db.commit()
-    return {"client_id": agent_id, "toolkit_id": body.toolkit_id, "granted_at": now}
+    return {
+        "client_id": agent_id,
+        "toolkit_id": body.toolkit_id,
+        "granted_at": grant_row["granted_at"],
+        "granted_by": grant_row["granted_by"],
+        "created": created,
+    }
 
 
 @router.get(

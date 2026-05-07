@@ -63,7 +63,9 @@ async def test_regrant_preserves_original_audit(admin_client):
     try:
         r1 = admin_client.post(f"/agents/{cid}/grants", json={"toolkit_id": tid})
         assert r1.status_code == 200, r1.text
-        first_granted_at = r1.json()["granted_at"]
+        body1 = r1.json()
+        first_granted_at = body1["granted_at"]
+        assert body1["created"] is True, "first POST should report a fresh insert"
 
         # Read back the persisted row so we know exactly what was stored,
         # not just what the response echoed.
@@ -82,6 +84,7 @@ async def test_regrant_preserves_original_audit(admin_client):
 
         r2 = admin_client.post(f"/agents/{cid}/grants", json={"toolkit_id": tid})
         assert r2.status_code == 200, r2.text
+        body2 = r2.json()
 
         async with aiosqlite.connect(DB_PATH) as db:
             db.row_factory = aiosqlite.Row
@@ -98,10 +101,13 @@ async def test_regrant_preserves_original_audit(admin_client):
         assert after["granted_by"] == original["granted_by"], (
             "regrant clobbered granted_by — audit trail lost"
         )
-        # And the response timestamp is whatever the handler said it would be —
-        # but the persisted row is unchanged. (We don't assert on the response
-        # field because callers should only trust the row.)
-        _ = first_granted_at
+        # The response now mirrors the persisted row (not `now`) and flags
+        # the no-op via `created`. Callers can safely trust either side.
+        assert body2["created"] is False, "regrant should report a no-op insert"
+        assert body2["granted_at"] == first_granted_at, (
+            "regrant response should echo the original granted_at, not now"
+        )
+        assert body2["granted_by"] == body1["granted_by"]
     finally:
         await _cleanup(cid, tid)
 
