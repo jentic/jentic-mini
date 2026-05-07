@@ -171,12 +171,13 @@ def test_alias_overrides_no_ambiguity(client, agent_key_header, ambiguous_creden
 def test_ambiguous_selection_is_independent_of_row_order(
     client, agent_key_header, ambiguous_credentials
 ):
-    """Selected credential is the lex-min ID and stays selected after the route
-    rows are rewritten in reverse physical order.
+    """X-Jentic-Credential-Used reports the lex-min ID and stays unchanged
+    after the route rows are rewritten in reverse physical order.
 
-    Regression for #192: Python's stable sort preserved SELECT order on
-    length ties, so the broker silently flipped credentials whenever SQLite
-    row order changed (VACUUM, reindex, delete+insert).
+    Regression for #192: without a stable tie-breaker, the credential ID
+    list returned by get_credential_ids_for_route — and therefore the
+    first ID, which X-Jentic-Credential-Used reports — flipped whenever
+    SQLite row order changed (VACUUM, reindex, delete+insert).
     """
     expected = min(CRED_ID_A, CRED_ID_B)
 
