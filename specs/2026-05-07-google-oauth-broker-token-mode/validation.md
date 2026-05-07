@@ -67,7 +67,7 @@ No matches. Per the lifecycle rule at `specs/roadmap.md:35-37`, the Phase 24 blo
 
 ### 8. Live broker-create smoke
 
-With the dev server up (`pdm run uvicorn src.main:app --port 8900 --reload`) and a human-session cookie in `cookies.txt`:
+**Prerequisite:** `cookies.txt` contains a valid human-session cookie obtained via a prior `POST /user/login` against the dev instance with admin credentials. With the dev server up (`pdm run uvicorn src.main:app --port 8900 --reload`):
 
 ```
 curl -sS -X POST http://localhost:8900/oauth-brokers \
