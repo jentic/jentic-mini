@@ -9,21 +9,46 @@
 #
 # node_modules is stored in a named volume so subsequent restarts are instant.
 # On first start, npm install runs — takes ~30s.
+#
+# The vite service bind-mounts ./ui under /app/ui. On Linux hosts where your
+# UID ≠ 1000, export JENTIC_UID / JENTIC_GID alongside the backend (typically
+# `JENTIC_UID=$(id -u) JENTIC_GID=$(id -g)`) so file ownership under ./ui matches
+# your user rather than falling back to 1000:1000 inside the container.
 
 services:
   vite:
     image: node:24-slim
-    user: "${JENTIC_UID:-1000}:${JENTIC_GID:-1000}"
     restart: unless-stopped
     working_dir: /app/ui
-    command: sh -c "npm install --ignore-scripts && npm run dev"
+    environment:
+      VITE_API_HOST: http://jentic-mini:8900
+      # Same UID/GID as compose.yml (jentic-mini service) so frontend + backend
+      # mounts stay coherent on Linux. Export JENTIC_UID=$(id -u) … when needed.
+      JENTIC_UID: "${JENTIC_UID:-1000}"
+      JENTIC_GID: "${JENTIC_GID:-1000}"
+      # Writable HOME prefix for npm (setpriv cannot keep HOME=/root when we
+      # drop privileges). Resolved at Compose parse time from the same UID/GID.
+      JENTIC_NPM_HOME: "/tmp/jentic-mini-npm-home-${JENTIC_UID:-1000}-${JENTIC_GID:-1000}"
+    command:
+      - sh
+      - -c
+      - |
+        set -eu
+        mkdir -p "$$JENTIC_NPM_HOME"
+        chown "$$JENTIC_UID:$$JENTIC_GID" "$$JENTIC_NPM_HOME"
+        NM_DIR=/app/ui/node_modules
+        if [ "$$(stat -c %u "$$NM_DIR")" != "$$JENTIC_UID" ] \
+           || [ "$$(stat -c %g "$$NM_DIR")" != "$$JENTIC_GID" ]; then
+          chown -R "$$JENTIC_UID:$$JENTIC_GID" "$$NM_DIR"
+        fi
+        export HOME="$$JENTIC_NPM_HOME"
+        exec setpriv --no-new-privs --reuid="$$JENTIC_UID" --regid="$$JENTIC_GID" --clear-groups \
+          sh -c 'npm install --ignore-scripts && npm run dev'
     volumes:
       - ${JENTIC_HOST_PATH:-.}/ui:/app/ui
       - ui_node_modules:/app/ui/node_modules
     ports:
       - "5173:5173"
-    environment:
-      VITE_API_HOST: http://jentic-mini:8900
 
 volumes:
   ui_node_modules:

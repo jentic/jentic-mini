@@ -46,6 +46,8 @@ docker compose up -d                                  # base only
 docker compose -f compose.yml -f compose.dev.yml up   # with UI dev server
 ```
 
+Export `JENTIC_UID=$(id -u)` and `JENTIC_GID=$(id -g)` (same shell line as `docker compose ...`) whenever your workstation UID/GID differs from Compose’s defaults (**1000:1000**) — notably on Linux, so `./ui`, `./src`, and `./data` stay owned by your user for both **jentic-mini** and **vite** (`compose.dev.yml` passes the same values through).
+
 The API is available at `http://localhost:8900` and the Swagger UI at `http://localhost:8900/docs`.
 
 ### 5. UI development (optional)
