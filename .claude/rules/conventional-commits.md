@@ -1,5 +1,7 @@
 Commit messages MUST follow Conventional Commits (https://www.conventionalcommits.org/en/v1.0.0/).
 
+*Enforced by `.husky/commit-msg` (commitlint, config: `ui/.commitlintrc.json`) and a Claude PreToolUse hook (`.claude/hooks/commitlint-before-commit.py`) that runs the same check before `git commit` is fired.*
+
 Format: `type(scope): description` — max 69 characters in the header.
 
 - Types: `feat`, `fix`, `chore`, `refactor`, `test`, `docs`, `perf`, `build`, `ci`, `style`, `revert`
