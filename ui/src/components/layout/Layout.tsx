@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 import {
 	BookOpen,
+	Bot,
 	ExternalLink,
 	Menu,
 	X,
@@ -111,6 +112,12 @@ function SidebarContents({ onClose }: { onClose?: () => void }) {
 					to="/toolkits"
 					icon={<Shield className="h-4 w-4" />}
 					label="Toolkits"
+					onClick={onClose}
+				/>
+				<NavLink
+					to="/agents"
+					icon={<Bot className="h-4 w-4" />}
+					label="Agents"
 					onClick={onClose}
 				/>
 				<NavLink

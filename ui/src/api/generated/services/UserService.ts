@@ -10,22 +10,11 @@ import { OpenAPI } from '../core/OpenAPI';
 import { request as __request } from '../core/request';
 export class UserService {
     /**
-     * Generate (or regenerate) the default agent API key
-     * Issue the default `tk_xxx` agent key bound to the default toolkit.
+     * Generate (or regenerate) the default toolkit API key
+     * Rotate the default `tk_xxx` key for the default toolkit (human session only).
      *
-     * **First call** — unauthenticated, subnet-restricted:
-     * - Available only before the key has been claimed
-     * - Only accessible from trusted subnets (RFC 1918 + loopback by default;
-     * configure via `JENTIC_TRUSTED_SUBNETS` env var)
-     * - Returns the key **once only** — it is not recoverable after this response
-     * - After this call, the endpoint requires a human session
-     *
-     * **Subsequent calls** — human session required:
-     * - Revokes the current default key
-     * - Issues and returns a fresh key
-     *
-     * The key works immediately — you do not need to wait for the admin account
-     * to be created before using it.
+     * Only available when a default key was created in the past. New instances use agent identity
+     * (OAuth DCR) for agent onboarding; toolkit keys remain valid for other uses.
      * @returns any Successful Response
      * @throws ApiError
      */

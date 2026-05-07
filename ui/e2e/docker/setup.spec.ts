@@ -8,23 +8,18 @@ const __dirname = dirname(__filename);
 export const SHARED_STATE_PATH = join(__dirname, '.docker-e2e-state.json');
 
 test.describe('Setup flow', () => {
-	test('creates admin account and generates API key', async ({ page, request }) => {
-		const healthRes = await request.get('/health');
+	test('creates admin account and stores toolkit key for downstream docker e2e', async ({
+		page,
+	}) => {
+		const healthRes = await page.request.get('/health');
 		const health = await healthRes.json();
 
-		if (health.status === 'ok') {
-			const keyRes = await request.post('/default-api-key/generate');
-			if (keyRes.ok()) {
-				const body = await keyRes.json();
-				if (body.key) {
-					fs.writeFileSync(SHARED_STATE_PATH, JSON.stringify({ apiKey: body.key }));
-				}
-			}
-			test.skip(true, 'Setup already completed — ensured shared state if key available');
+		if (health.status === 'ok' && fs.existsSync(SHARED_STATE_PATH)) {
+			test.skip(true, 'Setup already completed — shared state exists');
 			return;
 		}
 
-		expect(health.status).toMatch(/setup_required|account_required/);
+		expect(health.status).toBe('setup_required');
 
 		await page.goto('/');
 		await expect(page.getByText(/create admin account/i)).toBeVisible({ timeout: 15_000 });
@@ -33,18 +28,15 @@ test.describe('Setup flow', () => {
 		await page.getByRole('textbox', { name: 'Password' }).fill('admin123');
 		await page.getByRole('button', { name: /create account/i }).click();
 
-		await expect(page.getByText(/admin account created/i)).toBeVisible({ timeout: 15_000 });
+		await expect(page.getByText(/setup complete/i)).toBeVisible({ timeout: 30_000 });
 
-		await page.getByRole('button', { name: /generate agent api key/i }).click();
-		await expect(page.getByText(/will not be shown again/i)).toBeVisible({ timeout: 15_000 });
-
-		const keyText = await page.evaluate(() => {
-			const all = document.body.innerText;
-			const match = all.match(/tk_[a-zA-Z0-9_-]+/);
-			return match ? match[0] : null;
+		const keyRes = await page.request.post('/toolkits/default/keys', {
+			data: { label: 'docker-e2e' },
 		});
+		expect(keyRes.ok(), await keyRes.text()).toBeTruthy();
+		const keyBody = await keyRes.json();
+		expect(keyBody.key).toMatch(/^tk_/);
 
-		expect(keyText, 'Expected to find generated API key (tk_...) in page text').toBeTruthy();
-		fs.writeFileSync(SHARED_STATE_PATH, JSON.stringify({ apiKey: keyText }));
+		fs.writeFileSync(SHARED_STATE_PATH, JSON.stringify({ apiKey: keyBody.key }));
 	});
 });

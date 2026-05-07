@@ -8,6 +8,7 @@ import re
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import Literal
 
 import httpx
 from fastapi import FastAPI, HTTPException, Request, Response
@@ -15,6 +16,7 @@ from fastapi.openapi.docs import get_redoc_html
 from fastapi.openapi.utils import get_openapi
 from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel, Field
 
 from src.auth import APIKeyMiddleware
 from src.brokers.pipedream import PipedreamOAuthBroker
@@ -23,6 +25,7 @@ from src.db import run_migrations, setup_state
 from src.negotiate import negotiate_middleware
 from src.oauth_broker import registry as oauth_broker_registry
 from src.routers import access_requests as access_requests_router
+from src.routers import agents_admin as agents_admin_router
 from src.routers import apis as apis_router
 from src.routers import broker as broker_router
 from src.routers import capability as capability_router
@@ -33,6 +36,7 @@ from src.routers import default_key as default_key_router
 from src.routers import import_ as import_router
 from src.routers import jobs as jobs_router
 from src.routers import notes as notes_router
+from src.routers import oauth_agent as oauth_agent_router
 from src.routers import oauth_brokers as oauth_brokers_router
 from src.routers import overlays as overlays_router
 from src.routers import search as search_router
@@ -44,7 +48,7 @@ from src.routers.apis import rebuild_index_on_startup
 from src.routers.catalog import refresh_catalog_if_stale
 from src.routers.toolkits import policy_router as toolkits_policy_router
 from src.startup import backfill_credential_routes, seed_broker_apps, self_register
-from src.utils import build_absolute_url
+from src.utils import build_absolute_url, build_canonical_url
 
 
 logging.basicConfig(level=(os.getenv("LOG_LEVEL") or "info").upper())
@@ -141,9 +145,13 @@ app = FastAPI(
         "| **Simulation** | Basic simulate mode | Full sandbox for simulating API calls and toolkit behaviour (enterprise-only) |\n"
         "| **Catalog** | Local registry only | Central catalog — aggregates the collective know-how of agents across API definitions and Arazzo workflows |\n\n"
         "## Authentication\n"
-        "**Agents** — provide `X-Jentic-API-Key: tk_xxx` header.\n"
-        "**Humans** — [log in here](/login) for a session cookie (required for admin operations).\n"
-        "First time? Call `POST /default-api-key/generate` from a trusted subnet to get your agent key.\n\n"
+        "**Agents (OAuth identity)** — `Authorization: Bearer` with `at_…` access tokens "
+        "(from `POST /oauth/token`) or `rat_…` registration tokens (received from `POST /register`, "
+        "only usable for polling registration status). "
+        "New agents should use the registration flow; see `GET /.well-known/oauth-authorization-server` for OAuth metadata.\n"
+        "**Agents (toolkit key)** — `X-Jentic-API-Key: tk_xxx`. Legacy path; still supported but new agents "
+        "should use OAuth registration via `POST /register`.\n"
+        "**Humans** — [log in here](/login) for a session cookie (required for admin operations).\n\n"
         "## Tag groups\n"
         "| Tag | Who uses it | Purpose |\n"
         "|-----|-------------|----------|\n"
@@ -214,18 +222,64 @@ app.include_router(notes_router.router, tags=["catalog"])
 app.include_router(debug_router.router, include_in_schema=False)
 app.include_router(user_router.router)
 app.include_router(default_key_router.router)
+app.include_router(oauth_agent_router.router)
+app.include_router(agents_admin_router.router)
 app.include_router(oauth_brokers_router.router, tags=["credentials"])
 
 
 # ── Meta routes: health + root — MUST be before broker catch-all ─────────────
-@app.get("/health", tags=["meta"])
-async def health(request: Request):
+
+
+class HealthSetupRequired(BaseModel):
+    """Health response when no admin account exists yet.
+
+    Carries the URLs an agent or human needs to bootstrap: the OAuth metadata
+    document for agent DCR, the canonical token / registration endpoints, and
+    the human-facing setup_url for admin-account creation.
+    """
+
+    status: Literal["setup_required"] = Field(
+        description="Bootstrap state — no admin account exists",
+    )
+    account_created: Literal[False]
+    message: str
+    next_step: str
+    setup_url: str = Field(description="Human-facing URL to create the admin account")
+    oauth_authorization_server_metadata: str = Field(
+        description="Discovery document URL for agent DCR (RFC 8414)",
+    )
+    registration_endpoint: str
+    token_endpoint: str
+    version: str
+
+
+class HealthOk(BaseModel):
+    """Health response when the instance is fully set up."""
+
+    status: Literal["ok"] = Field(description="Instance is operational")
+    version: str
+    apis_registered: int = Field(ge=0)
+
+
+HealthOut = HealthSetupRequired | HealthOk
+
+
+@app.get(
+    "/health",
+    tags=["meta"],
+    response_model=HealthOut,
+    responses={
+        200: {
+            "description": "Setup state. Schema varies by status — discriminate on the `status` field."
+        }
+    },
+)
+async def health(request: Request) -> HealthOut:
     """Returns current setup state with explicit instructions for agents and UI.
 
     Response varies based on setup progress:
-    - status='setup_required': No default API key claimed yet → agent should call POST /default-api-key/generate
-    - status='account_required': Agent key active, admin account not created → user should visit setup_url
-    - status='ok': Fully set up → includes version and apis_registered count
+    - status='setup_required': No admin account yet → OAuth metadata URLs for agent DCR; human setup_url
+    - status='ok': Admin account exists → includes version and apis_registered count
 
     This endpoint is always public (no auth required) so agents can check setup state before
     attempting authenticated calls. UI uses this to determine whether to show setup wizard.
@@ -234,24 +288,25 @@ async def health(request: Request):
         Setup status, version, and context-specific next steps or operational metrics.
     """
     state = await setup_state()
-
-    if not state["default_key_claimed"]:
-        return {
-            "status": "setup_required",
-            "account_created": state["account_created"],
-            "message": "No default API key has been issued yet.",
-            "next_step": "Call POST /default-api-key/generate from a trusted subnet to obtain your agent key.",
-            "generate_url": "/default-api-key/generate",
-            "version": APP_VERSION,
-        }
+    # Pin the agent-identity discovery URLs to the canonical base so a spoofed
+    # Host:/X-Forwarded-Host: cannot point clients at a non-canonical token
+    # endpoint. The setup_url remains request-derived because it is a UX hint
+    # for the same caller, not a security claim.
+    issuer = build_canonical_url(request, "").rstrip("/")
 
     if not state["account_created"]:
         return {
-            "status": "account_required",
-            "message": "Agent key is active. No admin account has been created yet.",
-            "next_step": "Tell your user to visit setup_url to create their admin account. "
-            "Your agent key works immediately — you do not need to wait.",
+            "status": "setup_required",
+            "account_created": False,
+            "message": "Create an admin account to finish setup. Agents use OAuth registration in parallel.",
+            "next_step": (
+                "Agents: GET /.well-known/oauth-authorization-server, then POST /register with client_name and jwks. "
+                "Humans: open setup_url to create the admin account, then approve agents and grant toolkits."
+            ),
             "setup_url": build_absolute_url(request, "/user/create"),
+            "oauth_authorization_server_metadata": f"{issuer}/.well-known/oauth-authorization-server",
+            "registration_endpoint": f"{issuer}/register",
+            "token_endpoint": f"{issuer}/oauth/token",
             "version": APP_VERSION,
         }
 
@@ -359,9 +414,10 @@ async def swagger_ui():
 <body>
 <div class="auth-banner">
   🔑 <strong>Authentication.</strong>
-  <strong>Agents:</strong> Click <strong>Authorize 🔓</strong> and enter your <code>tk_xxx</code> key in the <em>JenticApiKey</em> field.
-  <strong>Humans:</strong> Click <strong>Authorize 🔓</strong> and use the <em>HumanLogin</em> username + password form — or <a href="/login" style="color:#a5b4fc">log in here</a> for a persistent browser session.
-  First time? Call <code>POST /default-api-key/generate</code> from a local subnet.
+  <strong>Agents (toolkit):</strong> <em>JenticApiKey</em> — your <code>tk_xxx</code> in <code>X-Jentic-API-Key</code>.
+  <strong>Agents (OAuth):</strong> <em>AgentOauthAccessToken</em> — <code>Authorization: Bearer</code> with <code>at_…</code>; <em>AgentOauthRegistrationToken</em> — <code>Authorization: Bearer</code> with <code>rat_…</code> where applicable.
+  <strong>Humans:</strong> <em>HumanLogin</em> (username + password) — or <a href="/login" style="color:#a5b4fc">log in here</a> for a browser session.
+  OAuth agents: <code>GET /.well-known/oauth-authorization-server</code> then <code>POST /register</code>. Toolkit keys are issued from the UI.
 </div>
 <div id="swagger-ui"></div>
 <script src="/static/swagger-ui-bundle.js"> </script>
@@ -418,6 +474,7 @@ _SPA_PATHS = {
     "/oauth-brokers",
     "/setup",
     "/login",
+    "/agents",
 }
 
 
@@ -459,7 +516,9 @@ _OPEN_OPERATIONS: set[tuple[str, str]] = {
     ("/user/create", "post"),
     ("/user/login", "post"),
     ("/user/token", "post"),
-    ("/default-api-key/generate", "post"),
+    ("/.well-known/oauth-authorization-server", "get"),
+    ("/register", "post"),
+    ("/oauth/token", "post"),
     # Search + inspect: public read-only discovery
     ("/search", "get"),
     ("/apis", "get"),
@@ -474,6 +533,8 @@ _OPEN_OPERATIONS: set[tuple[str, str]] = {
 
 # Human-only operations - require human session, reject agent keys
 _HUMAN_ONLY_OPERATIONS: set[tuple[str, str]] = {
+    # Default toolkit key (legacy, human-only rotation)
+    ("/default-api-key/generate", "post"),
     # Credentials write
     ("/credentials", "post"),
     ("/credentials/{cid}", "patch"),
@@ -505,6 +566,17 @@ _HUMAN_ONLY_OPERATIONS: set[tuple[str, str]] = {
     ("/oauth-brokers/{broker_id}/accounts/{account_id}", "patch"),
     # User management
     ("/user/logout", "post"),
+    ("/agents", "get"),
+    ("/agents/{agent_id}", "get"),
+    ("/agents/{agent_id}/approve", "post"),
+    ("/agents/{agent_id}/deny", "post"),
+    ("/agents/{agent_id}/disable", "post"),
+    ("/agents/{agent_id}/enable", "post"),
+    ("/agents/{agent_id}/jwks", "put"),
+    ("/agents/{agent_id}", "delete"),
+    ("/agents/{agent_id}/grants", "post"),
+    ("/agents/{agent_id}/grants", "get"),
+    ("/agents/{agent_id}/grants/{toolkit_id}", "delete"),
 }
 
 
@@ -528,12 +600,33 @@ def custom_openapi():
 
     schema.setdefault("components", {})
 
+    # Agent OAuth tokens (at_… and rat_…) use RFC 7523 JWT Bearer assertion and RFC 7591
+    # Dynamic Client Registration flows. OpenAPI doesn't natively support these OAuth grant
+    # types, so we document them as generic HTTP bearer schemes with descriptive text.
     schema["components"]["securitySchemes"] = {
         "JenticApiKey": {
             "type": "apiKey",
             "in": "header",
             "name": "X-Jentic-API-Key",
-            "description": "Agent toolkit key (`tk_xxx`). Issue via `POST /default-api-key/generate`.",
+            "description": "Toolkit API key (`tk_xxx`) issued for a toolkit (legacy agent path).",
+        },
+        "AgentOauthAccessToken": {
+            "type": "http",
+            "scheme": "bearer",
+            "bearerFormat": "opaque",
+            "description": (
+                "Agent access token (`at_…`) from `POST /oauth/token`. "
+                "Used for all agent-authenticated operations."
+            ),
+        },
+        "AgentOauthRegistrationToken": {
+            "type": "http",
+            "scheme": "bearer",
+            "bearerFormat": "opaque",
+            "description": (
+                "Short-lived registration token (`rat_…`) from `POST /register`. "
+                "Only valid for `GET /register/{client_id}` to poll approval status."
+            ),
         },
         "HumanLogin": {
             "type": "oauth2",
@@ -546,14 +639,19 @@ def custom_openapi():
             },
         },
     }
-    # Global default: endpoints require JenticApiKey OR HumanLogin
-    schema["security"] = [{"JenticApiKey": []}, {"HumanLogin": []}]
+    # Global default: toolkit key OR agent access token OR human session
+    schema["security"] = [
+        {"JenticApiKey": []},
+        {"AgentOauthAccessToken": []},
+        {"HumanLogin": []},
+    ]
 
     # Set explicit security on all operations (required for SEC dimension scoring)
-    # Three-tier model:
+    # Tiers:
     # 1. Public (no auth): security: []
     # 2. Human-only: security: [{"HumanLogin": []}]
-    # 3. Agent-accessible (agents OR humans): security: [{"JenticApiKey": []}, {"HumanLogin": []}]
+    # 3. Agent-accessible: toolkit key, agent access token, or human session
+    # 4. Registration read: also accepts AgentOauthRegistrationToken
     for path, path_item in schema.get("paths", {}).items():
         for method, operation in path_item.items():
             if not isinstance(operation, dict):
@@ -564,9 +662,27 @@ def custom_openapi():
             elif (path, method.lower()) in _HUMAN_ONLY_OPERATIONS:
                 # Human-only operations: require human session, reject agent keys
                 operation["security"] = [{"HumanLogin": []}]
+            elif path == "/register/{client_id}" and method.lower() == "get":
+                # Registration read: rat_, at_, or human session
+                operation["security"] = [
+                    {"AgentOauthRegistrationToken": []},
+                    {"AgentOauthAccessToken": []},
+                    {"HumanLogin": []},
+                ]
+            elif path == "/oauth/revoke" and method.lower() == "post":
+                # Token revocation (RFC 7009): at_ or human session — toolkit keys
+                # cannot revoke OAuth tokens (the client that holds the token revokes it).
+                operation["security"] = [
+                    {"AgentOauthAccessToken": []},
+                    {"HumanLogin": []},
+                ]
             else:
-                # Agent-accessible operations: agents OR humans can use
-                operation["security"] = [{"JenticApiKey": []}, {"HumanLogin": []}]
+                # Agent-accessible: toolkit key, agent access token, or human session
+                operation["security"] = [
+                    {"JenticApiKey": []},
+                    {"AgentOauthAccessToken": []},
+                    {"HumanLogin": []},
+                ]
 
     # Reorder paths: group by root resource prefix, then depth (least → most specific),
     # then alphabetically within the same depth. This produces the natural logical order:

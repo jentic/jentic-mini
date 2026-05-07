@@ -588,6 +588,75 @@ async def get_credentials_for_route(toolkit_id: str, host: str, path: str) -> li
     return result
 
 
+async def get_credential_ids_for_grants(
+    toolkit_ids: list[str], host: str, path: str = "/"
+) -> list[str]:
+    """Merge credential IDs for a host+path across multiple toolkits (grant order, deduped)."""
+    pairs = await get_credential_ids_with_toolkit_for_grants(toolkit_ids, host, path)
+    return [cid for cid, _ in pairs]
+
+
+async def get_credential_ids_with_toolkit_for_grants(
+    toolkit_ids: list[str], host: str, path: str = "/"
+) -> list[tuple[str, str]]:
+    """Like get_credential_ids_for_grants, but each entry carries the toolkit
+    it was matched through.
+
+    Used by the broker to attribute policy errors to the actual originating
+    toolkit (avoids surfacing a misleading toolkit_id when multiple grants
+    overlap on the same host).
+    """
+    seen: set[str] = set()
+    ordered: list[tuple[str, str]] = []
+    for tid in toolkit_ids:
+        ids = await get_credential_ids_for_route(tid, host, path)
+        for cid in ids:
+            if cid not in seen:
+                seen.add(cid)
+                ordered.append((cid, tid))
+    return ordered
+
+
+async def get_credentials_for_grants(toolkit_ids: list[str], host: str, path: str) -> list[dict]:
+    """Decrypt credentials for host+path across multiple granted toolkits."""
+    ids = await get_credential_ids_for_grants(toolkit_ids, host, path)
+    if not ids:
+        return []
+
+    placeholders = ",".join("?" * len(ids))
+    async with get_db() as db:
+        async with db.execute(
+            f"""SELECT id, encrypted_value, auth_type, identity, server_variables, scheme, api_id
+                FROM credentials WHERE id IN ({placeholders})""",
+            ids,
+        ) as cur:
+            rows = await cur.fetchall()
+
+    row_by_id = {row[0]: row for row in rows}
+    result = []
+    for cid in ids:
+        row = row_by_id.get(cid)
+        if not row:
+            continue
+        cid, enc_val, auth_type, identity, sv_raw, scheme_raw, api_id = row
+        try:
+            server_variables = json.loads(sv_raw) if sv_raw else None
+        except Exception:
+            server_variables = None
+        result.append(
+            {
+                "id": cid,
+                "value": decrypt(enc_val),
+                "auth_type": auth_type,
+                "identity": identity,
+                "server_variables": server_variables,
+                "scheme": json.loads(scheme_raw) if scheme_raw else None,
+                "api_id": api_id,
+            }
+        )
+    return result
+
+
 def _row_to_dict(row) -> dict:
     # Columns from _CREDENTIAL_COLS (explicit SELECT — immune to schema churn):
     # 0:id, 1:label, 2:created_at, 3:updated_at, 4:api_id, 5:auth_type,

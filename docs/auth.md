@@ -6,8 +6,13 @@ Jentic Mini uses two distinct authentication mechanisms for two distinct actors:
 
 | Actor | Mechanism | Purpose |
 |---|---|---|
-| **Human** | bcrypt password → httpOnly JWT cookie | Admin operations, approving permission requests, managing keys |
-| **Agent** | `X-Jentic-API-Key: tk_xxx` | Search, inspect, execute, toolkit-scoped operations |
+| **Human** | bcrypt password → httpOnly JWT cookie | Admin operations, approving permission requests, managing keys, approving agent registrations |
+| **Agent (OAuth, recommended)** | RFC 7591 Dynamic Client Registration → JWT-bearer assertion → `Authorization: Bearer at_…` | Search, inspect, execute, toolkit-scoped operations bound to the registered agent identity |
+| **Agent (legacy)** | `X-Jentic-API-Key: tk_xxx` | Search, inspect, execute, toolkit-scoped operations on a static, per-toolkit shared secret |
+
+For the OAuth path see [agent-identity.md](agent-identity.md) — it covers
+discovery, registration, JWT-bearer assertion shape, refresh-token rotation,
+revocation, and admin lifecycle (approve / disable / deregister).
 
 There is **no admin API key** (no `JENTIC_API_KEY` env var). CLI access to the container is
 already a stronger trust boundary — anyone with `docker exec` can read the database directly.
@@ -60,7 +65,9 @@ sensitive endpoints. Key examples:
 - `PUT|PATCH /toolkits/{toolkit_id}/credentials/{cred_id}/permissions`
 - `POST|PATCH|DELETE /oauth-brokers...` admin endpoints
 
-`POST /default-api-key/generate` also requires a human session **after** first claim.
+`POST /default-api-key/generate` requires a human session — it is no longer
+an agent self-enrollment endpoint. See [Toolkit-key issuance](#toolkit-key-issuance)
+below.
 
 Not all write operations are currently human-session-only: some routes allow agent keys when
 policy allows (for example credential writes with explicit credential policy rules).
@@ -81,11 +88,11 @@ X-Jentic-API-Key: tk_a1b2c3d4e5f67890abcdef1234567890abcd
 
 ### Default API key
 
-Every instance has exactly one **default API key**, bound to the default toolkit. This is the
-key issued to an agent during self-enrollment (see below).
-
-The default key is bound to the `default` toolkit and can be used immediately for normal
-agent flows (search/inspect/execute and toolkit-scoped operations).
+Every instance has exactly one **default API key**, bound to the default
+toolkit. It is created by an admin via the UI (or
+`POST /default-api-key/generate` from a human session) and shared with
+the agent out of band. The default key can be used for normal agent
+flows (search/inspect/execute and toolkit-scoped operations).
 
 ### Additional keys
 
@@ -111,10 +118,12 @@ Some endpoints are intentionally open — no key required:
 | Path | Reason |
 |---|---|
 | `GET /health` | Discovery; explicit setup instructions for agents |
-| `POST /default-api-key/generate` | Self-enrollment (subnet-only on first call) |
+| `GET /.well-known/oauth-authorization-server` | RFC 8414 OAuth metadata for agent DCR |
+| `POST /register` | RFC 7591 Dynamic Client Registration (yields `pending` until human approves) |
+| `POST /oauth/token` | OAuth token endpoint — signature on the assertion is the auth |
 | `POST /user/create`, `POST /user/login`, `POST /user/token` | Initial/setup and human login flows |
 | `GET /user/me` | Session/auth context probe (works with or without auth) |
-| `GET /docs`, `/redoc`, `/openapi.json` | API documentation |
+| `GET /docs`, `/redoc`, `/openapi.json`, `/llms.txt` | API documentation |
 | `GET /static/*` | Static assets |
 | `/{host}/{path}` (broker) | Transparent conduit — upstream auth is upstream's problem |
 | `POST /workflows/{slug}` | Open passthrough workflow execution |
@@ -131,83 +140,94 @@ design document.
 
 ---
 
-## Self-Enrollment Flow
+## Onboarding flows
 
-The intended zero-human-intervention onboarding path for an agent:
+### OAuth (recommended)
 
-### 1. Discovery
-
-```
-GET /health
-→ 200 {"status": "setup_required",
-        "message": "No default API key has been issued yet.",
-        "next_step": "Call POST /default-api-key/generate from a trusted subnet to obtain your agent key.",
-        "generate_url": "/default-api-key/generate"}
-```
-
-### 2. Key claim
+The agent registers itself, the human approves, the agent mints a token.
+This is the path documented at [agent-identity.md](agent-identity.md).
 
 ```
-POST /default-api-key/generate   (no auth, subnet IP only)
-→ 201 {"key": "tk_a1b2c3d4e5f67890abcdef1234567890abcd",
-        "message": "This key will not be shown again. Store it securely.",
-        "next_step": "Tell your user to visit setup_url to create their admin account.",
-        "setup_url": "https://jentic-mini.example.com/user/create"}
+# 1. Agent discovers endpoints.
+GET /.well-known/oauth-authorization-server
+→ 200 {"issuer": "...", "registration_endpoint": "...", "token_endpoint": "...", ...}
+
+# 2. Agent registers (RFC 7591) with its Ed25519 public key in JWKS form.
+POST /register
+{"client_name": "my-agent",
+ "jwks": {"keys": [{"kty":"OKP","crv":"Ed25519","x":"...","kid":"k1"}]}}
+→ 201 {"client_id": "agnt_…",
+       "registration_access_token": "rat_…",
+       "registration_client_uri": ".../register/agnt_…",
+       "status": "pending"}
+
+# 3. Agent polls until a human approves the registration in the admin UI.
+GET /register/{client_id}
+Authorization: Bearer rat_…
+→ {"status": "approved", ...}
+
+# 4. Agent signs a JWT-bearer assertion (RFC 7523) with the matching private key
+#    and exchanges it for an access token.
+POST /oauth/token
+grant_type=urn:ietf:params:oauth:grant-type:jwt-bearer&assertion=eyJhbGciOiJFZERTQSIs...
+→ 200 {"access_token": "at_…", "refresh_token": "rt_…", "expires_in": 900, ...}
 ```
 
-The key is **returned once only by this endpoint**, but it is stored in `toolkit_keys.api_key`
-for runtime lookup (i.e., anyone with direct database access can read it). If lost at the API/UI
-layer, regenerate it.
+The agent then sends `Authorization: Bearer at_…` on every request.
+Refresh tokens rotate per call and reuse of a consumed `rt_` revokes the
+entire family (RFC 6749 BCP §4.14). Humans can disable, deny, or
+deregister an agent from the admin UI's Agents page — disable revokes all
+issued tokens, deny is terminal, deregister soft-deletes the row.
 
-After this call, `POST /default-api-key/generate` requires a human session on all subsequent
-calls.
+### Toolkit-key issuance
 
-### 3. Health check confirms key is active
+The legacy path: a human creates a `tk_xxx` key in the admin UI and
+shares it with the agent out of band. There is no longer an
+unauthenticated self-enrollment endpoint.
 
-```
-GET /health
-→ 200 {"status": "account_required",
-        "message": "Agent key is active. No admin account has been created yet.",
-        "next_step": "Tell your user to visit setup_url to create their admin account.",
-        "setup_url": "https://jentic-mini.example.com/user/create"}
-```
+1. Human signs in to the admin UI.
+2. **Toolkits → default → Keys → Generate key** (or `POST
+   /default-api-key/generate` from a human session for the default
+   toolkit; `POST /toolkits/{toolkit_id}/keys` for additional keys).
+3. The `tk_xxx` value is shown **once only** by the API/UI. It is also
+   stored in `toolkit_keys.api_key` for runtime lookup, so anyone with
+   direct database access can read it.
+4. The human pastes the key into the agent's configuration. The agent
+   sends it as `X-Jentic-API-Key: tk_xxx`.
 
-The agent key works immediately — the agent does not need to wait for the human to complete
-account setup before executing broker calls or workflows.
+Additional keys can be issued per toolkit. Keys are individually
+revocable and support per-key IP restrictions (`allowed_ips` CIDR list).
 
-### 4. Human creates root account (separate, async)
+### Subnet defaults for issued toolkit keys
 
-The agent tells its human to visit `setup_url`. Human sets username and password. `POST /user/create` closes permanently.
+`JENTIC_TRUSTED_SUBNETS` is **not** an authentication check on the
+key-generation endpoints. It controls the **default `allowed_ips`
+applied to a newly-issued `tk_xxx` key** when no explicit allowlist is
+provided — `POST /default-api-key/generate`, `POST /toolkits/{id}/keys`,
+and the bootstrap internal key all read this value. The broker then
+enforces those per-key ranges at request time, returning 403 if the
+caller's IP is outside the key's allowlist.
 
-```
-GET /health
-→ 200 {"status": "ok", "version": "...", "apis_registered": 23}
-```
+Default ranges (always present, cannot be removed):
 
-### Race condition / human-first variant
-
-The human may visit the UI before the agent has connected. The UI's first-run screen shows:
-
-> **Your default agent key is: `tk_a1b2c3d4e5f67890abcdef1234567890abcd`**
-> Copy this into your agent configuration. It will not be shown again.
-
-Under the hood this is the same `POST /default-api-key/generate` call — just surfaced in the
-UI rather than via API. Whoever calls the endpoint first (agent or human) claims the key.
-
-### Subnet restriction
-
-`POST /default-api-key/generate` (unauthenticated, first-call only) is restricted to trusted
-subnets. Default allowed ranges:
 - `10.0.0.0/8`
 - `172.16.0.0/12`
 - `192.168.0.0/16`
 - `127.0.0.0/8`
 - `::1/128`
 
-Extended via `JENTIC_TRUSTED_SUBNETS` env var (comma-separated CIDR list). The env var
-**appends** to the built-in defaults — setting it never removes the RFC-1918/loopback entries.
-This prevents an internet-facing instance from being claimed by an attacker before the
-legitimate agent.
+Extended via `JENTIC_TRUSTED_SUBNETS` env var (comma-separated CIDR
+list). The env var **appends** to the built-in defaults — setting it
+never removes the RFC-1918/loopback entries.
+
+#### Why no subnet check on `/default-api-key/generate` itself?
+
+The endpoint used to need a subnet guard because it was an anonymous
+self-enrollment path. It now requires a logged-in admin session and
+only rotates an already-claimed default key (fresh instances get `410
+default_toolkit_key_disabled`), so an admin session is a strictly
+stronger gate than the subnet check ever was. The env var's role on
+issued keys is unchanged.
 
 ---
 

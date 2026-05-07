@@ -2,7 +2,7 @@
 
 import re
 
-from src.config import JENTIC_PUBLIC_HOSTNAME
+from src.config import JENTIC_PUBLIC_BASE_URL, JENTIC_PUBLIC_HOSTNAME
 
 
 def build_absolute_url(request, path: str) -> str:
@@ -24,6 +24,21 @@ def build_absolute_url(request, path: str) -> str:
     if scheme not in ("http", "https"):
         scheme = "http"
     return f"{scheme}://{host}{path}"
+
+
+def build_canonical_url(request, path: str) -> str:
+    """Build an absolute URL pinned to the operator-configured public base URL.
+
+    Used by agent-identity routes (issuer, token aud, registration_client_uri)
+    so an attacker who can spoof Host:/X-Forwarded-Host: cannot mint or verify
+    assertions against an issuer that doesn't match the canonical deployment.
+
+    Falls back to ``build_absolute_url`` when ``JENTIC_PUBLIC_BASE_URL`` is
+    unset, preserving the existing dev / on-localhost ergonomics.
+    """
+    if JENTIC_PUBLIC_BASE_URL:
+        return f"{JENTIC_PUBLIC_BASE_URL}{path}"
+    return build_absolute_url(request, path)
 
 
 # Jentic research: 2 sentences is optimal for tool-selection accuracy.

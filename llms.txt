@@ -8,22 +8,37 @@ Jentic Mini gives AI agents a local execution layer: BM25 search over APIs
 and workflows, authenticated request brokering (credential injection without
 exposing secrets), access policy enforcement, and execution tracing.
 
-Two-actor trust boundary: agents authenticate with `X-Jentic-API-Key: tk_xxx`
-and can search, inspect, execute, and request permissions. Humans use a
-username + password UI session to approve requests, manage credentials, and
-complete OAuth flows.
+Two-actor trust boundary: agents authenticate via OAuth 2.0 Dynamic Client
+Registration (`Authorization: Bearer at_…`); a legacy static toolkit-key
+flow (`X-Jentic-API-Key: tk_xxx`) is still accepted for agents that already
+hold a key. Humans use a username + password UI session to set up the
+instance, approve agent registrations, and manage credentials.
 
 Getting started:
 
-1. Human opens `/setup` in a browser to create an admin account
-2. Agent calls `GET /health` to check instance status
-3. Agent calls `POST /default-api-key/generate` to claim its API key (shown once only)
-4. Agent sets `X-Jentic-API-Key: tk_xxx` on all subsequent requests
-5. Agent uses **search** → **inspect** → **execute** workflow
+1. Human opens `/setup` in a browser to create the admin account.
+2. Agent calls `GET /health` to confirm the instance is reachable. If
+   `status: "setup_required"` the human still needs to finish step 1.
+3. Agent registers via OAuth Dynamic Client Registration:
+   - `GET /.well-known/oauth-authorization-server` for endpoint discovery.
+   - `POST /register` (RFC 7591) with `client_name` + a JWKS containing the
+     agent's Ed25519 public key. Wait for human approval.
+   - `POST /oauth/token` with a JWT-bearer assertion (RFC 7523) signed by
+     the matching private key to obtain an access token (`at_…`).
+   - Send `Authorization: Bearer at_…` on subsequent requests.
+   - See [docs/agent-identity.md](https://github.com/jentic/jentic-mini/blob/main/docs/agent-identity.md)
+     for the full flow, refresh rotation, and key management.
+4. Agent uses **search** → **inspect** → **execute** workflow.
+
+> **Legacy:** if a human has already issued you a toolkit key (`tk_xxx`),
+> you may continue sending it as `X-Jentic-API-Key: tk_xxx` instead of the
+> OAuth flow. New integrations should prefer OAuth — the toolkit-key path
+> is retained for backwards compatibility, not as the recommended onboarding.
 
 ## Docs
 
 - [AGENTS.md](https://github.com/jentic/jentic-mini/blob/main/AGENTS.md): Agent onboarding — bootstrap, auth, search/inspect/execute, credential injection
+- [docs/agent-identity.md](https://github.com/jentic/jentic-mini/blob/main/docs/agent-identity.md): OAuth-based agent identity (DCR, JWT-bearer assertions, token rotation)
 - [OpenAPI spec](/openapi.json): Machine-readable API specification
 - [Swagger UI](/docs): Interactive API explorer
 - [ReDoc](/redoc): Detailed schema reference
@@ -32,14 +47,16 @@ Getting started:
 
 ## Key Endpoints
 
-- [POST /default-api-key/generate](/docs#/user/generate_default_key_default_api_key_generate_post): Claim agent API key (first call, subnet-restricted)
+- [GET /.well-known/oauth-authorization-server](/docs#/oauth/oauth_authorization_server_metadata__well_known_oauth_authorization_server_get): OAuth 2.0 discovery (RFC 8414)
+- [POST /register](/docs#/oauth/dynamic_client_registration_register_post): Dynamic Client Registration (RFC 7591)
+- [POST /oauth/token](/docs#/oauth/oauth_token_oauth_token_post): Mint or refresh an agent access token
 - [GET /search?q=TEXT](/docs#/search/search_search_get): Find APIs and workflows by intent
 - [GET /inspect/{id}](/docs#/inspect/get_capability_inspect__capability_id__get): Full capability schema, parameters, auth, errors
 - [/{host}/{path}](/docs#/execute/broker_get): Execute via broker with credential injection (supports all HTTP methods). When multiple credentials share a host (e.g. Google APIs), use `X-Jentic-Service: {app_slug}` to select the right one.
 - [GET /workflows](/docs#/catalog/list_workflows_workflows_get): List available workflows
 - [GET /workflows/{slug}](/docs#/catalog/get_workflow_workflows__slug__get): Inspect workflow definition and input schema
 - [GET /health](/docs#/meta/health_health_get): Instance status and bootstrap info
-- [GET /traces](/docs#/observe/list_traces_traces_get): Execution trace history
+- [GET /traces](/docs#/observe/list_traces_traces_get): Execution trace history (scoped to caller's tenant)
 
 ## Optional
 

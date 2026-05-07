@@ -2,29 +2,23 @@
 /* istanbul ignore file */
 /* tslint:disable */
 /* eslint-disable */
-/**
- * Update an existing credential. Only provided fields are changed. Rotates secrets without rebinding.
- */
 export type CredentialPatch = {
-    /**
-     * New credential label (optional)
-     */
     label?: (string | null);
-    /**
-     * New credential value for rotation (optional, encrypted before storage)
-     */
     value?: (string | null);
-    /**
-     * New identity value (optional)
-     */
     identity?: (string | null);
-    /**
-     * New API ID to rebind this credential (optional)
-     */
     api_id?: (string | null);
     /**
      * Update the auth type for this credential. See `POST /credentials` for valid values and semantics.
      */
-    auth_type?: ('bearer' | 'basic' | 'apiKey' | null);
+    auth_type?: ('bearer' | 'basic' | 'apiKey' | 'none' | null);
+    server_variables?: (Record<string, string> | null);
+    /**
+     * Update the self-describing injection rule. See POST /credentials for format.
+     */
+    scheme?: (Record<string, any> | null);
+    /**
+     * Update the host+path routing patterns for this credential.
+     */
+    routes?: (Array<string> | null);
 };
 

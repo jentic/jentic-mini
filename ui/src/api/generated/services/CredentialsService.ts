@@ -115,28 +115,13 @@ export class CredentialsService {
     }
     /**
      * Get an upstream API credential by ID
-     * Retrieve metadata for a single credential.
-     *
-     * Returns the credential's label, API binding, auth type, and identity field (if set).
-     * The secret value is never returned after creation for security.
-     *
-     * Parameters:
-     * cid: Credential ID (format: hostname or hostname/path, e.g. 'api.github.com')
-     *
-     * Returns:
-     * Credential metadata including id, label, api_id, auth_type, timestamps, and identity.
-     *
-     * Use this to confirm a credential exists before binding it to a toolkit or to inspect
-     * its configuration before making authenticated calls.
+     * Retrieve metadata for a single credential. Value is never returned.
      * @returns CredentialOut Successful Response
      * @throws ApiError
      */
     public static getCredentialCredentialsCidGet({
         cid,
     }: {
-        /**
-         * Credential ID (format: hostname or hostname/path)
-         */
         cid: string,
     }): CancelablePromise<CredentialOut> {
         return __request(OpenAPI, {
@@ -329,7 +314,7 @@ export class CredentialsService {
                  */
                 brokerId: string,
                 /**
-                 * Fields to update: type, config, or encrypted credentials — only provided fields are changed
+                 * Provider-specific config fields to update: client_id, client_secret, project_id — only provided fields are changed, secrets re-encrypted
                  */
                 requestBody: OAuthBrokerUpdate,
             }): CancelablePromise<OAuthBrokerOut> {
@@ -470,7 +455,7 @@ export class CredentialsService {
                  */
                 brokerId: string,
                 /**
-                 * Connect link request: API slug, optional external ID for tracking, optional OAuth scopes, and return URL
+                 * Connect link request: Pipedream app slug (e.g. gmail, slack), human-readable label for the connection, and optional api_id override for catalog binding
                  */
                 requestBody: ConnectLinkRequest,
             }): CancelablePromise<any> {

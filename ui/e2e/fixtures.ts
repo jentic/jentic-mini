@@ -132,13 +132,6 @@ export async function mockSetupRequired(page: Page) {
 	});
 }
 
-export async function mockAccountRequired(page: Page) {
-	await page.route('**/health', (route) => {
-		if (!isApiRequest(route)) return route.continue();
-		return route.fulfill({ json: { status: 'account_required' } });
-	});
-}
-
 export async function mockNotLoggedIn(page: Page) {
 	await page.route('**/health', (route) => {
 		if (!isApiRequest(route)) return route.continue();

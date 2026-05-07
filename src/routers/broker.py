@@ -128,9 +128,10 @@ async def _resolve_credential_ids(host: str, toolkit_id: str | None, path: str =
 async def _find_credential_for_host(
     host: str,
     path: str,
-    toolkit_id: str,
+    toolkit_id: str | None,
     alias: str | None,
     service: str | None = None,
+    toolkit_ids: list[str] | None = None,
 ) -> tuple[dict[str, str], str | None, str | None, bool]:
     """
     Return (headers_to_inject, api_id, credential_id, is_ambiguous) for the given upstream host.
@@ -146,10 +147,20 @@ async def _find_credential_for_host(
 
     api_id = None  # populated from credential record below
     _broker_log.debug(
-        "CRED LOOKUP: host=%r path=%r toolkit=%r alias=%r", host, path, toolkit_id, alias
+        "CRED LOOKUP: host=%r path=%r toolkit=%r toolkit_ids=%r alias=%r",
+        host,
+        path,
+        toolkit_id,
+        toolkit_ids,
+        alias,
     )
 
-    creds = await vault.get_credentials_for_route(toolkit_id, host, path)
+    if toolkit_ids:
+        creds = await vault.get_credentials_for_grants(toolkit_ids, host, path)
+    elif toolkit_id:
+        creds = await vault.get_credentials_for_route(toolkit_id, host, path)
+    else:
+        creds = []
     _broker_log.debug(
         "CRED LOOKUP: %d cred(s) via route for host=%r: %s",
         len(creds),
@@ -157,7 +168,7 @@ async def _find_credential_for_host(
         [c.get("id") for c in creds],
     )
 
-    if not creds and toolkit_id:
+    if not creds and (toolkit_id or toolkit_ids):
         # Don't block no-auth APIs — only raise if the API spec defines security schemes.
         # If someone added an overlay with security schemes, they'd also have created
         # a credential — so creds wouldn't be empty and we'd never reach this branch.
@@ -521,6 +532,12 @@ async def broker(request: Request, target: str):
         if slug:
             body_bytes_wf = await request.body()
             caller_key = request.headers.get("x-jentic-api-key") or ""
+            _auth_wf = request.headers.get("Authorization", "")
+            caller_bearer_wf = None
+            if _auth_wf.lower().startswith("bearer "):
+                _t = _auth_wf[7:].strip()
+                if _t.startswith("at_"):
+                    caller_bearer_wf = _t
             toolkit_id_wf = getattr(request.state, "toolkit_id", None)
             simulate_wf = (
                 getattr(request.state, "simulate", False)
@@ -536,10 +553,23 @@ async def broker(request: Request, target: str):
                 simulate=simulate_wf,
                 prefer_wait=prefer_wait_wf,
                 callback_url=callback_url_wf,
+                agent_id=getattr(request.state, "agent_client_id", None),
+                caller_bearer_token=caller_bearer_wf,
             )
 
     execution_id = new_trace_id()
     started_at = time.time()
+
+    # toolkit_id is None for unauthenticated (anonymous) requests —
+    # credential injection and policy checks are skipped in that case.
+    toolkit_id: str | None = getattr(request.state, "toolkit_id", None)
+    grant_ids: list[str] | None = getattr(request.state, "granted_toolkit_ids", None)
+    agent_cid: str | None = getattr(request.state, "agent_client_id", None)
+
+    is_simulate = (
+        getattr(request.state, "simulate", False)
+        or request.headers.get("x-jentic-simulate", "").lower() == "true"
+    )
 
     # Helper to write broker traces (reduces duplication across 10+ call sites)
     async def _write_trace(status: str, http_status: int, error: str | None = None) -> None:
@@ -548,6 +578,7 @@ async def broker(request: Request, target: str):
             await safe_write_trace(
                 trace_id=execution_id,
                 toolkit_id=toolkit_id,
+                agent_id=agent_cid,
                 operation_id=f"{request.method}/{upstream_host}{upstream_path}",
                 workflow_id=None,
                 spec_path=None,
@@ -558,24 +589,34 @@ async def broker(request: Request, target: str):
                 step_outputs=None,
             )
 
-    # toolkit_id is None for unauthenticated (anonymous) requests —
-    # credential injection and policy checks are skipped in that case.
-    toolkit_id: str | None = getattr(request.state, "toolkit_id", None)
-    is_simulate = (
-        getattr(request.state, "simulate", False)
-        or request.headers.get("x-jentic-simulate", "").lower() == "true"
-    )
     credential_alias = request.headers.get("x-jentic-credential")
     credential_service = request.headers.get("x-jentic-service")
     callback_url = request.headers.get("x-jentic-callback")
     if callback_url and not is_http_https_url(callback_url):
         raise HTTPException(400, "X-Jentic-Callback must be an http or https URL")
 
-    # ── Killswitch: reject all requests for disabled toolkits ─────────────────
-    if toolkit_id:
+    if agent_cid is not None and grant_ids is not None and len(grant_ids) == 0:
+        await _write_trace("policy_denied", 403, "Agent has no toolkit grants")
+        return Response(
+            content=json.dumps(
+                {
+                    "error": "policy_denied",
+                    "message": "This agent is approved but has no toolkit grants. "
+                    "An admin must POST /agents/{id}/grants with a toolkit_id.",
+                    "agent_id": agent_cid,
+                }
+            ),
+            status_code=403,
+            media_type="application/json",
+            headers={"X-Jentic-Error": "true", "X-Jentic-Execution-Id": execution_id},
+        )
+
+    # ── Killswitch: reject if any bound toolkit is suspended ───────────────────
+    _kits_to_check = list(grant_ids) if grant_ids else ([toolkit_id] if toolkit_id else [])
+    for _tid in _kits_to_check:
         async with get_db() as _ks_db:
             async with _ks_db.execute(
-                "SELECT disabled FROM toolkits WHERE id=?", (toolkit_id,)
+                "SELECT disabled FROM toolkits WHERE id=?", (_tid,)
             ) as _ks_cur:
                 _ks_row = await _ks_cur.fetchone()
         if _ks_row and _ks_row[0]:
@@ -583,8 +624,8 @@ async def broker(request: Request, target: str):
                 content=json.dumps(
                     {
                         "error": "toolkit_suspended",
-                        "message": f"Toolkit '{toolkit_id}' has been suspended. All API access is blocked. Contact the toolkit owner to restore access.",
-                        "toolkit_id": toolkit_id,
+                        "message": f"Toolkit '{_tid}' has been suspended. All API access is blocked. Contact the toolkit owner to restore access.",
+                        "toolkit_id": _tid,
                     }
                 ),
                 status_code=403,
@@ -609,13 +650,24 @@ async def broker(request: Request, target: str):
     # credential (e.g. Calendar when the caller wants Gmail), causing spurious 403s
     # with a misleading credential_id in the error body.
     _resolved_cred_ids: list[str] = []
+    # Per-credential origin toolkit. For OAuth agents with multiple grants this
+    # records which grant matched each credential, so policy errors can blame the
+    # right toolkit instead of an arbitrary first-grant choice.
+    _cred_source_toolkit: dict[str, str] = {}
 
-    if credential_alias and toolkit_id:
+    if credential_alias and (toolkit_id or grant_ids):
         # X-Jentic-Credential is a disambiguator, not a bypass — resolve by route
         # first, then verify the named credential is among the matches.
-        _resolved_cred_ids = await _resolve_credential_ids(
-            host=upstream_host, toolkit_id=toolkit_id, path=upstream_path
-        )
+        if grant_ids:
+            pairs = await vault.get_credential_ids_with_toolkit_for_grants(
+                grant_ids, upstream_host, upstream_path
+            )
+            _cred_source_toolkit = {cid: tid for cid, tid in pairs}
+            _resolved_cred_ids = [cid for cid, _ in pairs]
+        else:
+            _resolved_cred_ids = await _resolve_credential_ids(
+                host=upstream_host, toolkit_id=toolkit_id, path=upstream_path
+            )
         if credential_alias in _resolved_cred_ids:
             _resolved_cred_ids = [credential_alias]
         elif _resolved_cred_ids:
@@ -628,18 +680,28 @@ async def broker(request: Request, target: str):
                 upstream_host,
             )
         # If _resolved_cred_ids is empty, fall through to the fail-closed check below.
-    elif toolkit_id:
+    elif toolkit_id or grant_ids:
         try:
-            _resolved_cred_ids = await _resolve_credential_ids(
-                host=upstream_host, toolkit_id=toolkit_id, path=upstream_path
-            )
+            if grant_ids:
+                pairs = await vault.get_credential_ids_with_toolkit_for_grants(
+                    grant_ids, upstream_host, upstream_path
+                )
+                _cred_source_toolkit = {cid: tid for cid, tid in pairs}
+                _resolved_cred_ids = [cid for cid, _ in pairs]
+            else:
+                _resolved_cred_ids = await _resolve_credential_ids(
+                    host=upstream_host, toolkit_id=toolkit_id, path=upstream_path
+                )
         except Exception:
             # Fail closed: if we can't resolve credentials for policy checking,
             # don't proceed to credential injection — deny the request.
             # Only applies to authenticated requests; anonymous passthrough
             # skips credential resolution entirely.
             log.exception(
-                "Credential resolution failed for %r (toolkit=%s)", upstream_host, toolkit_id
+                "Credential resolution failed for %r (toolkit=%s grant_ids=%s)",
+                upstream_host,
+                toolkit_id,
+                grant_ids,
             )
             await _write_trace("error", 500, f"Credential resolution failed for {upstream_host}")
             return Response(
@@ -654,29 +716,36 @@ async def broker(request: Request, target: str):
                 headers={"X-Jentic-Error": "true", "X-Jentic-Execution-Id": execution_id},
             )
 
-    if toolkit_id and not _resolved_cred_ids:
+    if (toolkit_id or grant_ids) and not _resolved_cred_ids:
         # Fail closed: an authenticated request with a toolkit_id must resolve
         # to at least one credential for the target host. If none can be found,
         # deny immediately — never fall through to unenforced injection.
         await _write_trace("policy_denied", 403, f"No credential found for '{upstream_host}'")
+        # Multi-grant calls can't attribute the miss to a specific toolkit,
+        # so toolkit_id is omitted in that case to avoid a misleading remediation
+        # link. Single-toolkit (tk_) callers still get their toolkit echoed back.
+        error_body: dict = {
+            "error": "policy_denied",
+            "message": f"No credential configured for '{upstream_host}'. Request denied.",
+            "remediation": "Add a credential for this host via the Jentic Mini UI.",
+        }
+        if toolkit_id and not grant_ids:
+            error_body["toolkit_id"] = toolkit_id
         return Response(
-            content=json.dumps(
-                {
-                    "error": "policy_denied",
-                    "message": f"No credential configured for '{upstream_host}'. Request denied.",
-                    "toolkit_id": toolkit_id,
-                    "remediation": "Add a credential for this host via the Jentic Mini UI.",
-                }
-            ),
+            content=json.dumps(error_body),
             status_code=403,
             media_type="application/json",
             headers={"X-Jentic-Error": "true", "X-Jentic-Execution-Id": execution_id},
         )
 
-    if toolkit_id and _resolved_cred_ids:
+    if (toolkit_id or grant_ids) and _resolved_cred_ids:
         # Check against the first matched credential (primary).
         # When credential_alias is set this is always the aliased credential.
         primary_cred_id = _resolved_cred_ids[0]
+        # Attribute policy errors to the toolkit that actually surfaced this
+        # credential. For single-toolkit (tk_) callers this is just toolkit_id;
+        # for multi-grant OAuth agents it's whichever grant matched.
+        primary_source_toolkit = _cred_source_toolkit[primary_cred_id] if grant_ids else toolkit_id
         try:
             allowed, reason = await check_credential_policy(
                 credential_id=primary_cred_id,
@@ -690,8 +759,8 @@ async def broker(request: Request, target: str):
                     "error": "policy_denied",
                     "message": f"{request.method} {upstream_host}{upstream_path} denied by credential policy. {reason}",
                     "credential_id": primary_cred_id,
-                    "toolkit_id": toolkit_id,
-                    "remediation": f"POST /toolkits/{toolkit_id}/access-requests to request expanded permissions.",
+                    "toolkit_id": primary_source_toolkit,
+                    "remediation": f"POST /toolkits/{primary_source_toolkit}/access-requests to request expanded permissions.",
                 }
                 return Response(
                     content=json.dumps(error_body),
@@ -745,6 +814,7 @@ async def broker(request: Request, target: str):
             toolkit_id=toolkit_id,
             alias=credential_alias,
             service=credential_service,
+            toolkit_ids=grant_ids,
         )
     except ServiceNotFoundError as e:
         await _write_trace("error", 409, str(e))
@@ -848,12 +918,27 @@ async def broker(request: Request, target: str):
     # No implicit fallback. If no credential is provisioned, we fall through to
     # unauthenticated forwarding (or the request will fail upstream with 401).
     if not inject_headers:
-        pd_account_id, pd_cred_id = await _find_pipedream_credential_for_host(
-            upstream_host, upstream_path, toolkit_id, alias=credential_alias
-        )
+        pd_account_id, pd_cred_id = None, None
+        # Track which granted toolkit surfaced the credential — used in policy
+        # error remediation so multi-grant OAuth agents get pointed at the right
+        # /toolkits/{id}/access-requests endpoint.
+        pd_source_toolkit: str | None = None
+        if grant_ids:
+            for tid in grant_ids:
+                a, c = await _find_pipedream_credential_for_host(
+                    upstream_host, upstream_path, tid, alias=credential_alias
+                )
+                if a and c:
+                    pd_account_id, pd_cred_id, pd_source_toolkit = a, c, tid
+                    break
+        else:
+            pd_account_id, pd_cred_id = await _find_pipedream_credential_for_host(
+                upstream_host, upstream_path, toolkit_id, alias=credential_alias
+            )
+            pd_source_toolkit = toolkit_id
         if pd_account_id and pd_cred_id:
             # Policy check for this Pipedream credential (same gate as vault path)
-            if toolkit_id:
+            if toolkit_id or grant_ids:
                 try:
                     allowed, reason = await check_credential_policy(
                         credential_id=pd_cred_id,
@@ -867,8 +952,8 @@ async def broker(request: Request, target: str):
                             "error": "policy_denied",
                             "message": f"{request.method} {upstream_host}{upstream_path} denied. {reason}",
                             "credential_id": pd_cred_id,
-                            "toolkit_id": toolkit_id,
-                            "remediation": f"POST /toolkits/{toolkit_id}/access-requests",
+                            "toolkit_id": pd_source_toolkit,
+                            "remediation": f"POST /toolkits/{pd_source_toolkit}/access-requests",
                         }
                         return Response(
                             content=json.dumps(error_body),

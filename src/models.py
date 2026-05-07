@@ -710,6 +710,11 @@ class TraceOut(BaseModel):
     toolkit_id: str | None = Field(
         default=None, examples=["default"], description="Toolkit that executed this capability"
     )
+    agent_id: str | None = Field(
+        default=None,
+        examples=["agnt_abc123"],
+        description="Agent client_id when the call used an agent access token (at_…)",
+    )
     operation_id: str | None = Field(
         default=None,
         examples=["GET/api.github.com/repos/{owner}/{repo}"],

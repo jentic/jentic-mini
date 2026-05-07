@@ -107,15 +107,34 @@ Optional environment variables (set in `.env` or pass to `docker compose`):
 
 ### Authentication
 
-- **Toolkit key** (`tk_xxx`): scoped to a toolkit's credentials and policy — give this to agents
-- **Human session**: username/password login for admin operations (credential management, toolkit setup)
+Two ways an agent can authenticate to Jentic Mini:
 
-First-time setup is guided through the UI at `http://localhost:8900`. Alternatively, via the API:
+- **OAuth (recommended)** — agent registers via [Dynamic Client
+  Registration](docs/agent-identity.md), a human approves the registration
+  in the admin UI, the agent signs a JWT-bearer assertion to mint an
+  access token (`at_…`), and sends `Authorization: Bearer at_…` on every
+  request. Refresh tokens rotate automatically.
+- **Toolkit key (legacy)** (`tk_xxx`) — a static, per-toolkit shared
+  secret created by an admin in the UI. Sent as `X-Jentic-API-Key:
+  tk_xxx`. Retained for backwards compatibility; new integrations should
+  prefer OAuth.
 
-1. `POST /default-api-key/generate` from a trusted subnet to get your agent key
-2. `POST /user/create` with `{"username": "...", "password": "..."}` to create an admin account
-3. Add credentials for your APIs — specs are auto-imported from the [public catalog](https://github.com/jentic/jentic-public-apis)
-4. Agents authenticate with the `tk_xxx` key via `X-Jentic-API-Key` header
+Humans use a username + password session for admin operations (credential
+management, toolkit setup, agent approvals).
+
+First-time setup is guided through the UI at `http://localhost:8900`.
+Roughly:
+
+1. Open `/setup` and create the admin account (username + password).
+2. *(OAuth path)* Have your agent call `GET
+   /.well-known/oauth-authorization-server`, then `POST /register`, then
+   approve the registration from the admin UI's Agents page. The agent
+   then mints a token via `POST /oauth/token`.
+3. *(Legacy path)* Create a toolkit key from the admin UI under
+   `Toolkits → default → Keys` and share the `tk_xxx` value with your
+   agent out of band.
+4. Add credentials for your APIs — specs are auto-imported from the
+   [public catalog](https://github.com/jentic/jentic-public-apis).
 
 ## API Overview
 

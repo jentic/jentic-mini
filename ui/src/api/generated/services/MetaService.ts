@@ -2,6 +2,8 @@
 /* istanbul ignore file */
 /* tslint:disable */
 /* eslint-disable */
+import type { HealthOk } from '../models/HealthOk';
+import type { HealthSetupRequired } from '../models/HealthSetupRequired';
 import type { CancelablePromise } from '../core/CancelablePromise';
 import { OpenAPI } from '../core/OpenAPI';
 import { request as __request } from '../core/request';
@@ -11,19 +13,18 @@ export class MetaService {
      * Returns current setup state with explicit instructions for agents and UI.
      *
      * Response varies based on setup progress:
-     * - status='setup_required': No default API key claimed yet → agent should call POST /default-api-key/generate
-     * - status='account_required': Agent key active, admin account not created → user should visit setup_url
-     * - status='ok': Fully set up → includes version and apis_registered count
+     * - status='setup_required': No admin account yet → OAuth metadata URLs for agent DCR; human setup_url
+     * - status='ok': Admin account exists → includes version and apis_registered count
      *
      * This endpoint is always public (no auth required) so agents can check setup state before
      * attempting authenticated calls. UI uses this to determine whether to show setup wizard.
      *
      * Returns:
      * Setup status, version, and context-specific next steps or operational metrics.
-     * @returns any Successful Response
+     * @returns any Setup state. Schema varies by status — discriminate on the `status` field.
      * @throws ApiError
      */
-    public static healthHealthGet(): CancelablePromise<any> {
+    public static healthHealthGet(): CancelablePromise<(HealthSetupRequired | HealthOk)> {
         return __request(OpenAPI, {
             method: 'GET',
             url: '/health',

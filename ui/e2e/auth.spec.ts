@@ -3,7 +3,6 @@ import {
 	captureConsoleErrors,
 	mockNotLoggedIn,
 	mockSetupRequired,
-	mockAccountRequired,
 	mockAuthenticatedUser,
 	mockDashboard,
 } from './fixtures';
@@ -58,13 +57,6 @@ test.describe('Auth — Setup page', () => {
 		await page.goto('/');
 		await page.waitForURL('**/setup');
 		await expect(page.getByRole('heading', { name: /welcome to jentic mini/i })).toBeVisible();
-	});
-
-	test('redirects to setup when health returns account_required', async ({ page }) => {
-		await mockAccountRequired(page);
-
-		await page.goto('/');
-		await page.waitForURL('**/setup');
 	});
 
 	test('redirects logged-in user away from setup to dashboard', async ({ page }) => {
