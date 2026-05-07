@@ -318,7 +318,7 @@ async def oauth_token(
         try:
             payload_pre = _jwt_payload_unverified(assertion)
             iss = payload_pre.get("iss")
-        except Exception:
+        except (ValueError, json.JSONDecodeError):
             return _oauth_error(400, "invalid_grant", "Malformed assertion JWT")
 
         if not iss or not isinstance(iss, str):
