@@ -68,9 +68,7 @@ def test_reset_password_cli_updates_single_root_account(tmp_path, monkeypatch, c
     assert not bcrypt.checkpw("oldpassword".encode(), new_hash.encode())
 
 
-def test_reset_password_cli_errors_when_no_user_account_exists(
-    tmp_path, monkeypatch, capsys
-):
+def test_reset_password_cli_errors_when_no_user_account_exists(tmp_path, monkeypatch, capsys):
     _setup_test_db(tmp_path, monkeypatch)
     passwords = iter(["newpassword", "newpassword"])
     monkeypatch.setattr(cli.getpass, "getpass", lambda _prompt: next(passwords))
@@ -81,9 +79,7 @@ def test_reset_password_cli_errors_when_no_user_account_exists(
     assert "No user account exists." in captured.err
 
 
-def test_reset_password_cli_errors_when_multiple_users_exist(
-    tmp_path, monkeypatch, capsys
-):
+def test_reset_password_cli_errors_when_multiple_users_exist(tmp_path, monkeypatch, capsys):
     db_path = _setup_test_db(tmp_path, monkeypatch)
     _create_user()
     password_hash = bcrypt.hashpw(b"placeholder", bcrypt.gensalt()).decode()
@@ -115,9 +111,7 @@ def test_reset_password_cli_errors_when_password_confirmation_mismatches(
     assert bcrypt.checkpw("oldpassword".encode(), current_hash.encode())
 
 
-def test_reset_password_cli_errors_when_password_is_too_short(
-    tmp_path, monkeypatch, capsys
-):
+def test_reset_password_cli_errors_when_password_is_too_short(tmp_path, monkeypatch, capsys):
     db_path = _setup_test_db(tmp_path, monkeypatch)
     _create_user()
     original_hash = asyncio.run(_password_hash(db_path))
