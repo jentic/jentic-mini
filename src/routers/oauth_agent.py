@@ -547,20 +547,27 @@ async def oauth_revoke(
     if not is_human and caller_cid is None:
         return _oauth_error(403, "unauthorized_client", "Toolkit keys cannot revoke OAuth tokens")
     th = hash_token(token)
-    async with get_db() as db:
-        db.row_factory = aiosqlite.Row
-        if not is_human:
+    if not is_human:
+        # Caller-binding check: agents may only revoke tokens minted for their
+        # own client_id. Humans are trusted to revoke anything.
+        async with get_db() as db:
+            db.row_factory = aiosqlite.Row
             async with db.execute(
                 "SELECT client_id FROM agent_tokens WHERE token_hash=?", (th,)
             ) as cur:
                 row = await cur.fetchone()
-            # RFC 7009: revocation of an unknown token is treated as success.
-            if row is None:
-                return Response(status_code=200)
-            if row["client_id"] != caller_cid:
-                return _oauth_error(
-                    403, "unauthorized_client", "Cannot revoke another client's token"
-                )
-        await db.execute("DELETE FROM agent_tokens WHERE token_hash=?", (th,))
-        await db.commit()
+        # RFC 7009: revocation of an unknown token is treated as success.
+        if row is None:
+            return Response(status_code=200)
+        if row["client_id"] != caller_cid:
+            return _oauth_error(403, "unauthorized_client", "Cannot revoke another client's token")
+
+    # RFC 7009 §2: "the authorization server SHOULD invalidate the other token
+    # based on the same authorization grant." Walking the lineage via
+    # _revoke_token_family wipes every access/refresh in the family — so
+    # revoking a refresh kills its sibling access (and any in-flight rotation
+    # descendants), and revoking an access kills the parent refresh too. For
+    # an unknown hash the recursive CTE simply matches no rows and is a no-op,
+    # which preserves the "unknown token = success" semantics for humans.
+    await _revoke_token_family(th)
     return Response(status_code=200)
