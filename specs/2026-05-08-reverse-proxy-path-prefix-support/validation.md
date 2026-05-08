@@ -76,40 +76,42 @@ Exit code 0. Must include the new `ui/e2e/docker/prefix-mount.spec.ts` (or equiv
 Run a built container with no `JENTIC_ROOT_PATH` and no `X-Forwarded-Prefix`. Then:
 
 ```
-curl -sS http://localhost:8900/ | grep -F '<base href="/" />'
+curl -sS http://localhost:8900/ | grep -F 'href="/"'
 curl -sS -o /dev/null -w '%{http_code}\n' http://localhost:8900/openapi.json
 curl -sS http://localhost:8900/docs | grep -q 'swagger-ui-bundle.js'
 curl -sS -o /dev/null -w '%{http_code}\n' http://localhost:8900/health
 ```
 
-In order: exit 0 with the substring matched (verbatim form preserved by the Vite build from `ui/index.html:6`); `200`; exit 0; `200`.
+In order: exit 0 with the `href="/"` substring matched on the `<base>` tag (attribute-only check is robust to formatting drift in the Vite build — self-closing vs not, whitespace variants); `200`; exit 0; `200`.
 
 ### 10. Mode B curl smoke (env-driven)
 
 Run a built container with `-e JENTIC_ROOT_PATH=/foo`. Then:
 
 ```
-curl -sS http://localhost:8900/foo/ | grep -F '<base href="/foo/" />'
-curl -sS -H 'Accept: text/html' http://localhost:8900/foo/credentials | grep -F '<base href="/foo/" />'
+curl -sS http://localhost:8900/foo/ | grep -F 'href="/foo/"'
+curl -sS -H 'Accept: text/html' http://localhost:8900/foo/credentials | grep -F 'href="/foo/"'
 curl -sS -o /dev/null -w '%{http_code}\n' http://localhost:8900/foo/openapi.json
 curl -sS http://localhost:8900/foo/docs | grep -q 'swagger-ui-bundle.js'
 curl -sS -o /dev/null -w '%{http_code}\n' http://localhost:8900/foo/health
+curl -sS -i -X POST -H 'Content-Type: application/json' -d '{"username":"<root>","password":"<pw>"}' http://localhost:8900/foo/user/login | grep -E '^Set-Cookie:.*Path=/foo'
 ```
 
-In order: exit 0; exit 0 (proves SPA fallback fires under prefix); `200`; exit 0; `200`. The `swagger-ui-bundle.js` substring proves the hand-rolled `/docs` HTML was prefix-rewritten — the asset URL must include `/foo/static/...` for the page to actually load Swagger.
+In order: exit 0; exit 0 (proves SPA fallback fires under prefix — both the `_SPA_PATHS` path-strip and the `<base>` injection are exercised); `200`; exit 0; `200`; exit 0 (cookie scoped to the mount, not origin-root). The `swagger-ui-bundle.js` substring proves the hand-rolled `/docs` HTML was prefix-rewritten — the asset URL must include `/foo/static/...` for the page to actually load Swagger. The login curl uses placeholder credentials — substitute the actual root account values when running locally.
 
 ### 11. Mode C curl smoke (header-driven)
 
 Run a built container with no `JENTIC_ROOT_PATH`. Then:
 
 ```
-curl -sS -H 'X-Forwarded-Prefix: /foo' http://localhost:8900/foo/ | grep -F '<base href="/foo/" />'
-curl -sS -H 'Accept: text/html' -H 'X-Forwarded-Prefix: /foo' http://localhost:8900/foo/credentials | grep -F '<base href="/foo/" />'
+curl -sS -H 'X-Forwarded-Prefix: /foo' http://localhost:8900/foo/ | grep -F 'href="/foo/"'
+curl -sS -H 'Accept: text/html' -H 'X-Forwarded-Prefix: /foo' http://localhost:8900/foo/credentials | grep -F 'href="/foo/"'
 curl -sS -o /dev/null -w '%{http_code}\n' -H 'X-Forwarded-Prefix: /foo' http://localhost:8900/foo/openapi.json
 curl -sS -H 'X-Forwarded-Prefix: /foo' http://localhost:8900/foo/docs | grep -q 'swagger-ui-bundle.js'
+curl -sS -i -X POST -H 'Content-Type: application/json' -H 'X-Forwarded-Prefix: /foo' -d '{"username":"<root>","password":"<pw>"}' http://localhost:8900/foo/user/login | grep -E '^Set-Cookie:.*Path=/foo'
 ```
 
-In order: exit 0; exit 0; `200`; exit 0.
+In order: exit 0; exit 0; `200`; exit 0; exit 0 (proves the cookie `Path` reads from per-request `scope["root_path"]`, not the static config — Mode C's load-bearing cookie-scoping check).
 
 ### 12. README.md Configuration section lists `JENTIC_ROOT_PATH`
 
