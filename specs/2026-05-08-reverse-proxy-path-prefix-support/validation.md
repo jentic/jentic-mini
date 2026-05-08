@@ -2,7 +2,9 @@
 
 ## Definition of Done
 
-All of the following must be true before this branch is merged.
+These gates apply to the **implementation PR for Phase 25** — the follow-up PR that lands the actual code change described in `plan.md`. The current spec-scaffold PR ships the three spec files only and is reviewed for spec quality, not against these gates.
+
+All of the following must be true before that implementation PR is merged.
 
 ### 1. Backend lint clean
 
