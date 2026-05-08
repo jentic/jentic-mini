@@ -336,6 +336,18 @@ Large upstream responses are fully buffered today, which spikes memory and block
 - Add backend tests against a mocked `oauth2.googleapis.com`; existing Pipedream tests must continue to pass
 - Close #336 on implementation; cross-reference #104 (overlapping design, not a duplicate)
 
+## Phase 25 — Reverse-Proxy Path Prefix Support
+
+**Goal:** Allow Jentic Mini to be mounted at any path prefix behind a reverse proxy, not only the subdomain root.
+**Depends on:** none (self-contained)
+**Priority:** High (unblocks self-hosted reverse-proxy deploys)
+
+- Set Vite `base: './'` so bundled assets resolve relative to the served `index.html`
+- Initialize `FastAPI(root_path=...)` from `JENTIC_ROOT_PATH` env (fallback: `X-Forwarded-Prefix` header)
+- Render the served `index.html` with a dynamic `<base href="{root_path}/">` from `request.scope["root_path"]`
+- Add tests covering unmounted (default) and mounted (`/foo`) modes — SPA load, asset paths, `/docs`, `/openapi.json`, internal routes
+- Close or cross-reference issue #356
+
 ---
 
 ## Later Phases (Not Yet Planned)
