@@ -341,13 +341,12 @@ Large upstream responses are fully buffered today, which spikes memory and block
 ## Later Phases (Not Yet Planned)
 
 A handful of items below are **foundational dependencies** for several others in this list — most
-notably **Agent identity + grants + subagent delegation** (gates the execution envelope, activity
-monitor, Agent Centre, delegated session observability, agent context packaging, cron jobs, and
-LLM gateway), the **Docs harness + drift CI** (gates agent context packaging and the self-repair
-API), and **UI alignment with Hosted edition** (shapes the Persistent Agent Centre UX and most
-new admin surfaces). They are still parked here rather than as active phases because none has a
-settled enough design to qualify as a shippable slice; promoting any of them to active status
-should happen via `/sdd-new-phase` once the design is concrete.
+notably **Subagent delegation** (gates delegated session observability), the **Docs harness +
+drift CI** (gates agent context packaging and the self-repair API), and **UI alignment with
+Hosted edition** (shapes the Persistent Agent Centre UX and most new admin surfaces). They are
+still parked here rather than as active phases because none has a settled enough design to
+qualify as a shippable slice; promoting any of them to active status should happen via
+`/sdd-new-phase` once the design is concrete.
 
 - **OAuth2 first-party setup flow** — `POST /credentials/oauth2/init` → human-facing URL → token grant → auto-refresh; requires design decision on storage and token refresh scheduling (#104)
 - **Native `JenticOAuthBroker`** — replace Pipedream bridge with a first-party OAuth broker per `docs/oauth-broker.md`; zero API surface changes (#104)
@@ -360,12 +359,13 @@ should happen via `/sdd-new-phase` once the design is concrete.
 - **API browser filtering** — filter the admin UI's API browser by credential status and toolkit access (#161)
 - **Trace log view improvements** — richer filtering and run-to-run comparison in the trace log view
 - **Pagination model review** — confirm whether cursor-based pagination is needed anywhere beyond the current integer page-number scheme
-- **Agent identity + grants + subagent delegation** — give agents a first-class identity with scoped grants, revocation, and delegation (parents mint short-lived child credentials limited to operation subsets, TTLs, delegation depth, and kill callbacks); foundation for execution-envelope, activity-monitor, and Agent-Centre work below. Needs schema design and a legacy `tk_` rollout path before it becomes a shippable slice.
-- **Execution envelope injection** — attach a consistent safe per-call envelope (agent identity, grant, credential handle, operation subset, delegation/session ID, trace ID, policy decision, handoff links) to every broker/workflow call without exposing secrets; depends on agent identity
-- **Agent activity monitor + context API** — compact data/API layer for recent actions, failures, pending human actions, and toolkit health that humans and agents can both consume; depends on identity and trace scoping (Phase 17); see #99
+- **Subagent delegation** — parents mint short-lived child credentials limited to operation subsets, TTLs, delegation depth, and kill callbacks. Builds on agent identity (`docs/agent-identity.md`).
+- **Agent token scopes and self-service** — fine-grained scopes on agent OAuth tokens plus `/agents/me/requests` for agent-initiated grant and credential requests; extends `docs/agent-identity.md`.
+- **Execution envelope injection** — attach a consistent safe per-call envelope (agent identity, grant, credential handle, operation subset, delegation/session ID, trace ID, policy decision, handoff links) to every broker/workflow call without exposing secrets
+- **Agent activity monitor + context API** — compact data/API layer for recent actions, failures, pending human actions, and toolkit health that humans and agents can both consume; depends on trace scoping (Phase 17); see #99
 - **Persistent Agent Centre UX** — dedicated UI shell bringing together identity, activity, approvals, notifications, audit history, and emergency controls; depends on the activity monitor and audit log
 - **Delegated session observability** — expose parent/child session status, TTLs, revocation state, stale/orphan markers, and recovery context so external orchestrators can audit and recover delegated work; depends on subagent delegation
-- **Agent context packaging** — compact task-specific execution-context bundles (allowed operations, scoped docs/spec snippets, credential handles, recent traces, human handoff links) for agents and subagents; depends on identity, grants, and docs harness
+- **Agent context packaging** — compact task-specific execution-context bundles (allowed operations, scoped docs/spec snippets, credential handles, recent traces, human handoff links) for agents and subagents; depends on docs harness
 - **Notification center** — persistent event inbox for human-visible alerts, approvals, blocks, failures, and webhook deliveries; depends on audit/events
 - **Webhook retry + signing** — signed outbound webhooks with retry/backoff for job callbacks and block events
 - **Webhook on block / auto-block** — automatic suspension thresholds for misbehaving agents/toolkits with signed event notifications; depends on webhooks and audit/events; coordinate with Phase 21's emergency-stop scope (#98)
@@ -384,8 +384,8 @@ should happen via `/sdd-new-phase` once the design is concrete.
 - **Self-repair API** — coherent recovery path for failed calls using raw OpenAPI/Arazzo specs, stable operation/workflow IDs, and trace context; needs trust/safety model for exposing raw specs to agents (#253)
 - **Anti-looping guardrails** — detect repeated bad calls and stop agent loops before they consume quota or damage upstreams
 - **Telemetry feedback loop** — use failures, searches, docs gaps, and agent errors to improve catalog/docs/product quality; needs privacy decision and event schema
-- **LLM API gateway mode** — first-class streaming, rate-limit, and cost-attribution semantics for LLM HTTP calls routed through the broker (#99); depends on rate limits, traces, identity, and Phase 23 (broker streaming)
-- **Cron jobs** — scheduled workflow/API runs with clear owner, identity, and runtime isolation; depends on identity model
+- **LLM API gateway mode** — first-class streaming, rate-limit, and cost-attribution semantics for LLM HTTP calls routed through the broker (#99); depends on rate limits, traces, and Phase 23 (broker streaming)
+- **Cron jobs** — scheduled workflow/API runs with clear owner, identity, and runtime isolation
 - **Workflow viewer follow-up** — verify no remaining Mini viewer gaps after the SPA canonicalization (#255)
 - **Workflow collector** — save successful local runs as reusable workflow templates inside the Mini instance
 - **Pluggable credential backend** — allow self-hosters to back credentials with Vault/Bitwarden/1Password/etc.; needs backend protocol and metadata model (#96)
