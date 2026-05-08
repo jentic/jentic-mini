@@ -29,7 +29,7 @@ The de-facto standard used by Traefik and nginx Ingress; not in any RFC. `X-Scri
 
 ### Precedence: `JENTIC_ROOT_PATH` env wins over header
 
-If `JENTIC_ROOT_PATH` is set, it is the source of truth and `X-Forwarded-Prefix` is ignored. If unset, the header is read per-request via ASGI middleware that mutates `scope["root_path"]`. Mirrors the precedence pattern already used in `build_absolute_url` (`X-Forwarded-Host` > `Host` > `JENTIC_PUBLIC_HOSTNAME`).
+If `JENTIC_ROOT_PATH` is set, it is the source of truth and `X-Forwarded-Prefix` is ignored. If unset, the header is read per-request via ASGI middleware that mutates `scope["root_path"]`. Env-pinned config wins over per-request headers, mirroring the `JENTIC_PUBLIC_BASE_URL` pattern (operator-pinned canonical URL preferred over `X-Forwarded-Host` for security-sensitive surfaces).
 
 ### Prefix normalisation and validation
 

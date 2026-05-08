@@ -12,13 +12,16 @@ pdm run lint
 
 Exit code 0 (ruff check + ruff format --check --diff per `pyproject.toml`).
 
-### 2. New three-mode backend tests pass
+### 2. New tests pass — unit + integration
 
 ```
-pdm run test -- tests/test_root_path.py -v
+pdm run test -- tests/test_root_path_unit.py tests/test_root_path.py -v
 ```
 
-Exit code 0. The file must include all three scenarios — Mode A (unset; regression), Mode B (`JENTIC_ROOT_PATH=/foo`), Mode C (`X-Forwarded-Prefix: /foo` header). Each mode asserts the served HTML's `<base href>` value, the reachability of `/openapi.json`, `/docs`, `/health`, and at least one SPA-fallback route.
+Exit code 0. Two layers must pass:
+
+- **`tests/test_root_path_unit.py`** — pure-function tests for `_inject_base_href` (synthetic bytes, no fixture file) and parametrised config-validation tests (`"foo"`, `"//"`, `"/foo bar"`, `"/foo?q=1"`, `"/foo#frag"`, `"/foo/../bar"` all raise `RuntimeError`; `""`, `"/"`, `"/foo"`, `"/foo/"` succeed and normalise correctly).
+- **`tests/test_root_path.py`** — three-mode integration tests (Mode A unset / Mode B `JENTIC_ROOT_PATH=/foo` / Mode C `X-Forwarded-Prefix: /foo` header). Uses `tests/fixtures/index.html` via a `STATIC_DIR` monkeypatch. Each mode asserts the served HTML's `<base href>` value, the reachability of `/openapi.json`, `/docs`, `/health`, at least one SPA-fallback route, and that `build_absolute_url`-derived self-links are correctly prefixed (or not, in Mode A).
 
 ### 3. Full backend suite passes (regression gate)
 
@@ -73,21 +76,21 @@ Exit code 0. Must include the new `ui/e2e/docker/prefix-mount.spec.ts` (or equiv
 Run a built container with no `JENTIC_ROOT_PATH` and no `X-Forwarded-Prefix`. Then:
 
 ```
-curl -sS http://localhost:8900/ | grep -F '<base href="/">'
+curl -sS http://localhost:8900/ | grep -F '<base href="/" />'
 curl -sS -o /dev/null -w '%{http_code}\n' http://localhost:8900/openapi.json
 curl -sS http://localhost:8900/docs | grep -q 'swagger-ui-bundle.js'
 curl -sS -o /dev/null -w '%{http_code}\n' http://localhost:8900/health
 ```
 
-In order: exit 0 with the substring matched; `200`; exit 0; `200`.
+In order: exit 0 with the substring matched (verbatim form preserved by the Vite build from `ui/index.html:6`); `200`; exit 0; `200`.
 
 ### 10. Mode B curl smoke (env-driven)
 
 Run a built container with `-e JENTIC_ROOT_PATH=/foo`. Then:
 
 ```
-curl -sS http://localhost:8900/foo/ | grep -F '<base href="/foo/">'
-curl -sS -H 'Accept: text/html' http://localhost:8900/foo/credentials | grep -F '<base href="/foo/">'
+curl -sS http://localhost:8900/foo/ | grep -F '<base href="/foo/" />'
+curl -sS -H 'Accept: text/html' http://localhost:8900/foo/credentials | grep -F '<base href="/foo/" />'
 curl -sS -o /dev/null -w '%{http_code}\n' http://localhost:8900/foo/openapi.json
 curl -sS http://localhost:8900/foo/docs | grep -q 'swagger-ui-bundle.js'
 curl -sS -o /dev/null -w '%{http_code}\n' http://localhost:8900/foo/health
@@ -100,8 +103,8 @@ In order: exit 0; exit 0 (proves SPA fallback fires under prefix); `200`; exit 0
 Run a built container with no `JENTIC_ROOT_PATH`. Then:
 
 ```
-curl -sS -H 'X-Forwarded-Prefix: /foo' http://localhost:8900/foo/ | grep -F '<base href="/foo/">'
-curl -sS -H 'Accept: text/html' -H 'X-Forwarded-Prefix: /foo' http://localhost:8900/foo/credentials | grep -F '<base href="/foo/">'
+curl -sS -H 'X-Forwarded-Prefix: /foo' http://localhost:8900/foo/ | grep -F '<base href="/foo/" />'
+curl -sS -H 'Accept: text/html' -H 'X-Forwarded-Prefix: /foo' http://localhost:8900/foo/credentials | grep -F '<base href="/foo/" />'
 curl -sS -o /dev/null -w '%{http_code}\n' -H 'X-Forwarded-Prefix: /foo' http://localhost:8900/foo/openapi.json
 curl -sS -H 'X-Forwarded-Prefix: /foo' http://localhost:8900/foo/docs | grep -q 'swagger-ui-bundle.js'
 ```
