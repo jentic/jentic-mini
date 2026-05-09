@@ -43,6 +43,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from src.agent_identity_gate import verify_registration_access_token
 from src.agent_identity_util import hash_token
 from src.db import DB_PATH, DEFAULT_TOOLKIT_ID, setup_state
+from src.utils import route_path
 
 
 logger = logging.getLogger("jentic.auth")
@@ -318,13 +319,14 @@ async def _human_session_response(request: Request, call_next, jwt_token: str | 
             httponly=True,
             samesite="strict",
             max_age=JWT_TTL_SECONDS,
+            path=request.scope.get("root_path") or "/",
         )
     return response
 
 
 class APIKeyMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
-        path = request.url.path
+        path = route_path(request.scope)
         method = request.method
 
         # ── Default state ─────────────────────────────────────────────────────

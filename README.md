@@ -99,11 +99,12 @@ Open `http://localhost:8900` to complete setup.
 
 Optional environment variables (set in `.env` or pass to `docker compose`):
 
-| Variable                 | Default        | Description                                                                       |
-| ------------------------ | -------------- | --------------------------------------------------------------------------------- |
-| `JENTIC_VAULT_KEY`       | auto-generated | [Fernet](https://cryptography.io/en/latest/fernet/) key for the credentials vault |
-| `JENTIC_PUBLIC_HOSTNAME` | `localhost`    | Public hostname for self-links and workflow IDs, e.g. `jentic.example.com`        |
-| `LOG_LEVEL`              | `info`         | `debug`, `info`, `warning`, `error`                                               |
+| Variable                 | Default        | Description                                                                                                                                                                                                    |
+| ------------------------ | -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `JENTIC_VAULT_KEY`       | auto-generated | [Fernet](https://cryptography.io/en/latest/fernet/) key for the credentials vault                                                                                                                              |
+| `JENTIC_PUBLIC_HOSTNAME` | `localhost`    | Public hostname for self-links and workflow IDs, e.g. `jentic.example.com`                                                                                                                                     |
+| `JENTIC_ROOT_PATH`       | _(unset)_      | Path prefix to mount the app under, e.g. `/jentic`. Pair with `JENTIC_PUBLIC_BASE_URL` (which must include the prefix) for OAuth issuer correctness. If unset, falls back to `X-Forwarded-Prefix` per request. |
+| `LOG_LEVEL`              | `info`         | `debug`, `info`, `warning`, `error`                                                                                                                                                                            |
 
 ### Authentication
 

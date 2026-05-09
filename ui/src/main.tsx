@@ -6,8 +6,11 @@ import '@/index.css';
 import { OpenAPI } from '@/api/generated';
 import { ApiError } from '@/api/generated/core/ApiError';
 
-// Configure OpenAPI client before any services are used
-OpenAPI.BASE = ''; // Use relative URLs (same origin as UI) — works in dev (Vite proxy) and prod (same port)
+// Configure OpenAPI client before any services are used.
+// BASE is the path component of the active mount (from <base href>) so the
+// generated client emits prefixed absolute paths under any reverse-proxy
+// path prefix while staying same-origin.
+OpenAPI.BASE = new URL(document.baseURI).pathname.replace(/\/$/, '');
 OpenAPI.WITH_CREDENTIALS = true;
 
 function isNonTransientError(error: unknown): boolean {

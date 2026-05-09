@@ -20,7 +20,7 @@ from pydantic import BaseModel, Field
 
 from src.auth import APIKeyMiddleware
 from src.brokers.pipedream import PipedreamOAuthBroker
-from src.config import APP_VERSION
+from src.config import APP_VERSION, JENTIC_ROOT_PATH, normalise_root_path
 from src.db import run_migrations, setup_state
 from src.negotiate import negotiate_middleware
 from src.oauth_broker import registry as oauth_broker_registry
@@ -48,7 +48,7 @@ from src.routers.apis import rebuild_index_on_startup
 from src.routers.catalog import refresh_catalog_if_stale
 from src.routers.toolkits import policy_router as toolkits_policy_router
 from src.startup import backfill_credential_routes, seed_broker_apps, self_register
-from src.utils import build_absolute_url, build_canonical_url
+from src.utils import build_absolute_url, build_canonical_url, route_path
 
 
 logging.basicConfig(level=(os.getenv("LOG_LEVEL") or "info").upper())
@@ -81,6 +81,44 @@ async def lifespan(app: FastAPI):
     log.info("Jentic ready")
     yield
     log.info("Jentic shutting down")
+
+
+class ForwardedPrefixMiddleware:
+    """Resolve the active root_path on each ASGI scope.
+
+    Sources, in precedence order:
+    1. ``JENTIC_ROOT_PATH`` env var — already on ``scope["root_path"]`` from
+       the FastAPI constructor.
+    2. ``X-Forwarded-Prefix`` header — read per request when the env var is
+       unset; invalid values are silently ignored (treated as no mount).
+
+    Path stripping is intentionally left to Starlette's routing machinery
+    (``get_route_path``) so ``Mount`` / ``StaticFiles`` cooperation stays
+    intact — pre-stripping here causes ``StaticFiles`` to look in the wrong
+    directory because ``Mount.matches`` recomputes ``root_path`` assuming
+    the prefix is still on ``scope["path"]``. Custom middleware that compare
+    against unprefixed constants use :func:`src.utils.route_path` instead.
+    """
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        if not scope.get("root_path"):
+            for key, value in scope.get("headers", []):
+                if key == b"x-forwarded-prefix":
+                    try:
+                        scope["root_path"] = normalise_root_path(value.decode("latin-1"))
+                    except RuntimeError:
+                        # Hostile / malformed header → treat as no mount.
+                        pass
+                    break
+
+        await self.app(scope, receive, send)
 
 
 # Tag order controls Swagger UI section order.
@@ -127,6 +165,7 @@ _TAGS_METADATA = [
 
 app = FastAPI(
     title="Jentic Mini",
+    root_path=JENTIC_ROOT_PATH,
     openapi_tags=_TAGS_METADATA,
     description=(
         "**Jentic Mini** is the open-source, self-hosted implementation of the Jentic API — "
@@ -202,6 +241,35 @@ app.middleware("http")(negotiate_middleware)
 
 # ── Static dir — defined early so route handlers can reference it ──────────────
 STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
+
+
+# Tolerant regex: matches <base ...> with any href, with-or-without self-close,
+# with-or-without extra spaces. Substitutes only the first occurrence.
+_BASE_TAG_RE = re.compile(rb'<base\s+href="[^"]*"\s*/?\s*>')
+
+
+def _inject_base_href(html: bytes, root_path: str) -> bytes:
+    """Substitute the SPA's <base href="..."> with one that includes root_path.
+
+    When ``root_path`` is empty, the bytes are returned unchanged. Otherwise the
+    first ``<base ...>`` tag is replaced with ``<base href="{root_path}/" />``
+    (trailing slash intentional — browsers resolve relative URLs against
+    ``<base href>`` differently with vs. without it). HTML without any
+    ``<base>`` tag is returned unchanged.
+    """
+    if not root_path:
+        return html
+    return _BASE_TAG_RE.sub(f'<base href="{root_path}/" />'.encode(), html, count=1)
+
+
+def _render_index(request: Request) -> HTMLResponse:
+    """Read SPA index.html, inject the per-request base href, return HTML."""
+    body = _inject_base_href(
+        (STATIC_DIR / "index.html").read_bytes(),
+        request.scope.get("root_path", ""),
+    )
+    return HTMLResponse(body, media_type="text/html")
+
 
 app.include_router(capability_router.router, tags=["inspect"])
 app.include_router(workflows_router.router)
@@ -383,32 +451,36 @@ async def llms_txt():
 
 
 @app.get("/", tags=["meta"], include_in_schema=False)
-async def root():
+async def root(request: Request):
     index_path = STATIC_DIR / "index.html"
     if index_path.exists():
-        return FileResponse(index_path)
+        return _render_index(request)
     return {"message": "Jentic API is running. See /docs for API documentation."}
 
 
 # ── Docs served locally (no CDN, works offline / on patchy connections) ───────
 @app.get("/docs", include_in_schema=False)
-async def swagger_ui():
-    # Custom Swagger UI with persistAuthorization + auth banner
-    html = """<!DOCTYPE html>
+async def swagger_ui(request: Request):
+    rp = request.scope.get("root_path", "")
+    # Custom Swagger UI with persistAuthorization + auth banner. Every absolute
+    # path the browser resolves (CSS / JS asset URLs, the login link, the
+    # OpenAPI URL) is prefixed with the active root_path so the page works
+    # under any mount.
+    html = f"""<!DOCTYPE html>
 <html>
 <head>
   <title>Jentic — Swagger UI</title>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <link rel="stylesheet" type="text/css" href="/static/swagger-ui.css" >
+  <link rel="stylesheet" type="text/css" href="{rp}/static/swagger-ui.css" >
   <style>
-    .auth-banner {
+    .auth-banner {{
       background: #1a1a2e; border-left: 4px solid #667eea;
       color: #e0e0e0; padding: 12px 20px; font-family: monospace;
       font-size: 14px; margin: 0;
-    }
-    .auth-banner strong { color: #667eea; }
-    .auth-banner code { background: #2d2d2d; padding: 2px 6px; border-radius: 3px; }
+    }}
+    .auth-banner strong {{ color: #667eea; }}
+    .auth-banner code {{ background: #2d2d2d; padding: 2px 6px; border-radius: 3px; }}
   </style>
 </head>
 <body>
@@ -416,23 +488,23 @@ async def swagger_ui():
   🔑 <strong>Authentication.</strong>
   <strong>Agents (toolkit):</strong> <em>JenticApiKey</em> — your <code>tk_xxx</code> in <code>X-Jentic-API-Key</code>.
   <strong>Agents (OAuth):</strong> <em>AgentOauthAccessToken</em> — <code>Authorization: Bearer</code> with <code>at_…</code>; <em>AgentOauthRegistrationToken</em> — <code>Authorization: Bearer</code> with <code>rat_…</code> where applicable.
-  <strong>Humans:</strong> <em>HumanLogin</em> (username + password) — or <a href="/login" style="color:#a5b4fc">log in here</a> for a browser session.
+  <strong>Humans:</strong> <em>HumanLogin</em> (username + password) — or <a href="{rp}/login" style="color:#a5b4fc">log in here</a> for a browser session.
   OAuth agents: <code>GET /.well-known/oauth-authorization-server</code> then <code>POST /register</code>. Toolkit keys are issued from the UI.
 </div>
 <div id="swagger-ui"></div>
-<script src="/static/swagger-ui-bundle.js"> </script>
+<script src="{rp}/static/swagger-ui-bundle.js"> </script>
 <script>
-  window.onload = function() {
-    SwaggerUIBundle({
-      url: "/openapi.json",
+  window.onload = function() {{
+    SwaggerUIBundle({{
+      url: "{rp}/openapi.json",
       dom_id: '#swagger-ui',
       presets: [ SwaggerUIBundle.presets.apis, SwaggerUIBundle.SwaggerUIStandalonePreset ],
       layout: "BaseLayout",
       persistAuthorization: true,
       tryItOutEnabled: true,
-      requestInterceptor: function(req) { return req; },
-    })
-  }
+      requestInterceptor: function(req) {{ return req; }},
+    }})
+  }}
 </script>
 </body>
 </html>"""
@@ -440,11 +512,12 @@ async def swagger_ui():
 
 
 @app.get("/redoc", include_in_schema=False)
-async def redoc():
+async def redoc(request: Request):
+    rp = request.scope.get("root_path", "")
     return get_redoc_html(
-        openapi_url="/openapi.json",
+        openapi_url=f"{rp}/openapi.json",
         title="Jentic — Redoc",
-        redoc_js_url="/static/redoc.standalone.js",
+        redoc_js_url=f"{rp}/static/redoc.standalone.js",
     )
 
 
@@ -481,7 +554,7 @@ _SPA_PATHS = {
 @app.middleware("http")
 async def spa_middleware(request: Request, call_next):
     if request.method == "GET":
-        path = request.url.path
+        path = route_path(request.scope)
         accept = request.headers.get("accept", "")
         wants_html = any(part.strip().startswith("text/html") for part in accept.split(","))
         # Exclude connect-callback from SPA interception (real GET endpoint, browser redirect)
@@ -493,12 +566,19 @@ async def spa_middleware(request: Request, call_next):
         ):
             index_path = STATIC_DIR / "index.html"
             if index_path.exists():
-                resp = FileResponse(index_path)
+                resp = _render_index(request)
                 resp.headers["Vary"] = "Accept"
                 resp.headers["Cache-Control"] = "no-store"
                 return resp
             return Response(content="UI not built", status_code=404, media_type="text/plain")
     return await call_next(request)
+
+
+# ── Reverse-proxy prefix middleware — registered last so it ends up Starlette's
+#    outermost middleware. Resolves scope["root_path"] from JENTIC_ROOT_PATH or
+#    X-Forwarded-Prefix and strips it from scope["path"] before any downstream
+#    middleware reads request.url.path.
+app.add_middleware(ForwardedPrefixMiddleware)
 
 
 # ── Broker catch-all — MUST be registered last ────────────────────────────────

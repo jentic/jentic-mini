@@ -15,6 +15,11 @@ services:
       - ${JENTIC_DATA_PATH:-${JENTIC_HOST_PATH:-.}/data}:/app/data
     environment:
       JENTIC_PUBLIC_HOSTNAME: ${JENTIC_PUBLIC_HOSTNAME}
+      # Optional path prefix when Mini is mounted under a reverse proxy
+      # (e.g. example.com/jentic). Empty / unset / "/" all mean "no mount".
+      # When unset, Mini honours the per-request X-Forwarded-Prefix header.
+      # Pair with JENTIC_PUBLIC_BASE_URL (which must include the prefix).
+      JENTIC_ROOT_PATH: ${JENTIC_ROOT_PATH:-}
       # Pin the canonical base URL used to derive the OAuth issuer / token aud /
       # registration_client_uri. Required for any deployment where the inbound
       # Host: header is not strictly trustworthy (internet-facing or shared

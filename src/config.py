@@ -21,6 +21,39 @@ WORKFLOWS_DIR = DATA_DIR / "workflows"
 # ── Public hostname ───────────────────────────────────────────────────────────
 JENTIC_PUBLIC_HOSTNAME = os.getenv("JENTIC_PUBLIC_HOSTNAME") or "localhost"
 
+
+# ── Reverse-proxy path prefix ─────────────────────────────────────────────────
+# Optional path at which Mini is mounted behind a reverse proxy (Caddy, Traefik,
+# nginx Ingress, etc.). Empty / unset / "/" all mean "no mount" → "". When set,
+# the SPA bundle, hand-rolled docs, and self-links resolve under the prefix; if
+# unset, the per-request X-Forwarded-Prefix header is honoured. Pair with
+# JENTIC_PUBLIC_BASE_URL (which must include the prefix) when mounting.
+def normalise_root_path(value: str) -> str:
+    """Normalise and validate a path-prefix value.
+
+    Empty string and "/" both mean "no mount" → "". Other values must start
+    with "/" and contain no whitespace, "?", "#", "..", or consecutive "//".
+    A single trailing slash is stripped ("/foo/" → "/foo"); "/foo" is returned
+    unchanged. Validation runs against the raw value so "//" surfaces here
+    rather than collapsing silently.
+    """
+    if value in ("", "/"):
+        return ""
+    if (
+        not value.startswith("/")
+        or any(ch.isspace() or ch in "?#" for ch in value)
+        or ".." in value
+        or "//" in value
+    ):
+        raise RuntimeError(
+            "JENTIC_ROOT_PATH must start with '/' and contain no whitespace, "
+            "query, fragment, '..', or '//'"
+        )
+    return value[:-1] if value.endswith("/") and len(value) > 1 else value
+
+
+JENTIC_ROOT_PATH = normalise_root_path(os.getenv("JENTIC_ROOT_PATH", ""))
+
 # ── Public base URL ───────────────────────────────────────────────────────────
 # Operator-pinned canonical base URL (no trailing slash) — e.g.
 # "https://jentic.example.com". When set, the issuer / token aud /
