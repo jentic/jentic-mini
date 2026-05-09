@@ -180,7 +180,8 @@ Numbered task groups. Granularity per the user's Question 2 answer.
 
 - Tasks are plain numbered items, **not checkboxes**. One concrete change each (file / function / test / route / migration / CLI command).
 - **The last group is always `Verify`**, listing the concrete checks that confirm the whole plan succeeded: command + expected result (e.g. `pdm run test tests/broker` exits 0; `curl localhost:8900/…` returns 200 with JSON containing `{ … }`).
-- **Do not include meta-workflow** in the plan (test-suite runs belong in `Verify`; squash/commit/PR/roadmap-delete are governed by `.claude/rules/git-workflow.md` and `.claude/rules/conventional-commits.md` — no need to repeat per phase).
+- **Include the roadmap-deletion task** as a concrete numbered task in the final non-Verify group (typically a docs/lifecycle group). Roadmap deletion is a phase-specific markdown edit that ships with the work, not generic meta-workflow — `/sdd-implement-spec` halts on plans that omit it. Pair it with a `grep`-style assertion in the Verify group that confirms the entry is gone.
+- **Do not include meta-workflow** in the plan (test-suite runs belong in `Verify`; squash/commit/PR creation are governed by `.claude/rules/git-workflow.md` and `.claude/rules/conventional-commits.md` — no need to repeat per phase).
 
 Do not pad. If three groups plus `Verify` cover the work, that is correct.
 

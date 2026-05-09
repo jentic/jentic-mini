@@ -1,0 +1,270 @@
+---
+name: sdd-implement-spec
+description: Implement an existing feature spec end-to-end — pick an unprocessed feature spec (one whose `## Phase N — ...` block is still in `specs/roadmap.md`), cut a feature branch, walk `plan.md` task groups in order with one primary atomic Conventional-Commits commit per group (plus optional small fix-up commits during verification), run `plan.md`'s Verify group plus every check in `validation.md`, push, and open a PR. The spec is read-only during implementation; if it is wrong or incomplete, the skill stops and surfaces the gap rather than patching the spec mid-flight. Reports implementation and verification results at the end. When `$ARGUMENTS` is empty, enumerates unprocessed specs via AskUserQuestion.
+argument-hint: "[phase-number | slug-fragment | spec-dir-path] (optional)"
+---
+
+# /sdd-implement-spec — implement a feature spec
+
+You are operating within a Spec-Driven Development (SDD) workflow. See `.claude/rules/sdd-constitution.md`.
+
+This skill takes one **unprocessed feature spec** (a `specs/YYYY-MM-DD-<slug>/` directory whose `## Phase N — ...` block is still in `specs/roadmap.md`) and drives the work end-to-end: cuts the feature branch, walks `plan.md` task groups, runs the verification gates, commits atomically per group, pushes, opens a PR, and reports back on implementation and verification.
+
+The skill **drives** implementation — it is not merely scaffolding around it. The actual code changes happen in the main loop guided by `plan.md`. The spec itself is read-only.
+
+## Inputs
+
+Argument in `$ARGUMENTS` (optional):
+
+- empty → enumerate unprocessed specs and pick via AskUserQuestion
+- integer (`24`, `25`) → spec whose `requirements.md` H1 starts with `# Phase <N>`
+- slug fragment (`"oauth-broker"`) → case-insensitive contains match against spec dir slugs (the portion after the date prefix); if ambiguous, list matches and ask
+- relative path (`specs/2026-05-07-google-oauth-broker-token-mode`) → use directly; verify it exists and is a valid spec dir
+
+## Hard constraints
+
+- **The spec is read-only during implementation.** Do not edit `specs/<dir>/requirements.md`, `plan.md`, or `validation.md`. If the spec is wrong, incomplete, or contradicts current code, stop and surface the gap; the user owns spec edits and may re-run the skill after revising.
+- **`plan.md` is the source of truth for ordering and scope.** Walk groups sequentially. Each non-Verify group produces one primary atomic commit; verification (Phase 7) may add small fix-up commits if a check fails. Tasks within a group can interleave as needed for the change to make sense.
+- **`validation.md` is the source of truth for done.** Every numbered check must pass before opening the PR. If a check fails and cannot be fixed without changing the spec, stop and surface it.
+- **Roadmap entry deletion is part of `plan.md`.** The convention is for `plan.md` to include "Delete the Phase N entry from `specs/roadmap.md`" as a numbered task in its final docs/lifecycle group; respect it. If `plan.md` does not include the deletion, surface the gap before starting — do not improvise it.
+- **Conventional Commits + DCO sign-off.** Per `.claude/rules/conventional-commits.md` and `.claude/rules/git-workflow.md`. Every commit `git commit -s`; header ≤ 69 chars; type+scope reflect the group's primary subject; lowercase imperative description, no trailing period.
+- **Atomic, surgical commits.** Per `.claude/rules/git-workflow.md` and `.claude/rules/karpathy-guidelines.md`: one logical change per commit (applies equally to primary group commits and Phase 7 verification fix-ups), touch only what the change requires, do not improve adjacent code.
+- **No destructive git.** No `--force`, no `reset --hard`, no `--no-verify`. If a pre-commit hook rejects the commit, no commit was created — fix the underlying issue, restage, and retry the same `git commit` (don't add a duplicate). The "never amend" rule applies *after* a commit already exists and you discover a problem; in that case add a fix-up commit on top instead of amending.
+- **Stage explicit paths.** Never `git add -A` or `git add .` — name the files the group touched. After staging, verify `git diff --cached --name-only` lists only those paths.
+- **Ask the user when work surfaces a real decision.** During Phase 6 (implementation) and Phase 7 (verification), if a task surfaces a choice the spec doesn't lock down — multiple valid approaches a reasonable engineer would weigh, an adjacent change the spec didn't anticipate, drift between spec and code that has more than one reasonable resolution, ambiguous validation expectations — use `AskUserQuestion` to surface it inline rather than picking silently or halting outright. Halting is for genuine blockers; questions are for genuine choices. The user is the source of truth when the spec isn't.
+
+## Phase 0 — Preflight
+
+Run in parallel:
+
+- `git status --porcelain` empty
+- Current branch is `main`
+- `git fetch origin main` succeeds; local `main` not behind `origin/main`. If behind and fast-forwardable, offer `git pull --ff-only` and wait for confirmation. If diverged, stop.
+- `gh auth status` succeeds — fail fast here; Phase 8 depends on it.
+
+Load context in parallel:
+
+- @specs/mission.md
+- @specs/tech-stack.md
+- @specs/roadmap.md
+- @.claude/rules/sdd-constitution.md
+- @.claude/rules/git-workflow.md
+- @.claude/rules/conventional-commits.md
+- @.claude/rules/testing.md
+- @.claude/rules/karpathy-guidelines.md
+
+## Phase 1 — Enumerate unprocessed specs and pick
+
+A spec is **unprocessed** when:
+
+1. `specs/YYYY-MM-DD-<slug>/` exists with `requirements.md`, `plan.md`, and `validation.md` present
+2. Its `# Phase <N> Requirements — ...` H1 names a phase number
+3. `## Phase <N> — ...` is still present in `specs/roadmap.md`
+
+**`$ARGUMENTS` is matched only against unprocessed specs.** If a fragment or path resolves to a spec dir whose phase is no longer in `specs/roadmap.md` (already shipped), surface it explicitly ("`<dir>` matched but Phase <N> has already shipped — no longer in roadmap") and stop. Do not silently fall back to fresh enumeration.
+
+**If `$ARGUMENTS` resolves to exactly one unprocessed spec**, show it (phase number + title + dir + one-line goal from roadmap) and ask the user to confirm before continuing.
+
+**If `$ARGUMENTS` resolves to multiple unprocessed specs** (e.g. ambiguous slug fragment), issue an `AskUserQuestion` call with one option per match — same shape as the empty-args enumeration below (`header: "Spec"`, options carrying `label` + `description`). Do not silently choose the first.
+
+**If `$ARGUMENTS` resolves to zero unprocessed specs** (e.g. integer doesn't match a spec dir, slug fragment matches nothing, path doesn't exist), surface the mismatch with the candidate list and stop. Do not silently fall through to enumeration.
+
+**If `$ARGUMENTS` is empty**, enumerate all unprocessed specs and present them by count:
+
+- 0 → stop with a one-line summary; nothing to implement
+- 1 → show it (phase + title + dir + goal) and ask the user to confirm
+- 2–4 → issue a single `AskUserQuestion` call with one option per spec
+- 5+ → issue `AskUserQuestion` with the 3 lowest-numbered specs (oldest pending work first); the automatic freeform write-in lets the user specify any other phase number or slug
+
+The `AskUserQuestion` call uses `header: "Spec"` (max 12 chars, per the schema) and question text like `"Which unprocessed spec should I implement?"`. Each option provides only `label` and `description`:
+
+- `label`: `Phase <N> — <Title>` (truncate the title if needed; full title appears in the description)
+- `description`: `<spec-dir>; <one-line goal from roadmap>`
+
+**Freeform write-in handling.** Every `AskUserQuestion` call gets an automatic freeform "Other" option. If the user types a phase number or slug there (whether in the multi-match, the 2–4-spec, or the 5+-spec branch above), treat the freeform value as a fresh `$ARGUMENTS` and re-run the matching rules at the top of this phase. If it still doesn't resolve to exactly one unprocessed spec, ask again.
+
+If the chosen phase has unsatisfied dependencies (per `Depends on:` in `specs/roadmap.md` — any named phase still present in the active section means it has not shipped), warn with the specific dependencies and ask the user to confirm before continuing.
+
+**Spec age check.** Run `git log -1 --format=%ai -- specs/<dir>` for the chosen spec. If the spec was last touched more than ~14 days ago, warn the user that `plan.md`'s file/line references may have drifted from current `main` and ask whether to proceed, refresh the spec first, or abort. Heuristic only — never block on age alone.
+
+## Phase 2 — Load and parse the spec
+
+Load in parallel:
+
+- `specs/<dir>/requirements.md`
+- `specs/<dir>/plan.md`
+- `specs/<dir>/validation.md`
+
+Parse `plan.md`:
+
+- Extract `## Group <N> — <Title>` blocks in order
+- Extract numbered tasks under each (sequential numbering across all groups, per the scaffolding convention)
+- Identify the final group as the Verify group. Per `sdd-new-spec`'s template the last group is always named `Verify` and contains command-style verification tasks (no code changes). If a future spec uses a different name but the content is still command-style, treat it as Verify. If the final group contains code-change tasks the spec is malformed against the SDD convention — stop and report; do not improvise alternative control flow for Phases 6 and 7.
+- Locate the **roadmap-deletion task** — a numbered task in the final docs/lifecycle group whose body says to delete the phase block from `specs/roadmap.md`
+
+Parse `validation.md`:
+
+- Extract `### <N>. <Check Title>` numbered subsections under `## Definition of Done`
+- Each subsection contains either a fenced command + expectation, or a structural assertion (file contents, presence of a row, etc.)
+- Note the trailing `## Not Required` section — surfaced in the PR body's "Out of scope" subsection so reviewers see what's deliberately deferred
+
+If parsing fails (no groups, no validation checks, missing roadmap-deletion task in `plan.md`, malformed structure), stop and report what couldn't be parsed. Do not improvise around a malformed spec.
+
+## Phase 3 — Derive branch name and check idempotence
+
+Slug: the trailing portion of the spec dir name after the `YYYY-MM-DD-` prefix (e.g. `2026-05-08-reverse-proxy-path-prefix-support` → `reverse-proxy-path-prefix-support`).
+
+Branch prefix per `.claude/rules/git-workflow.md`:
+
+- `feature/` (default)
+- `fix/` if the phase title starts with "Fix" or the goal describes a defect
+- `chore/` for tooling / maintenance phases
+- `docs/` for pure documentation phases
+- `test/` for phases that are purely test coverage with no production-code changes (e.g. "Backend Unit Test Coverage")
+
+Ask the user once: "Is there a GitHub issue for this phase? (issue number, or 'no')". If yes, branch = `<prefix>/<issue>-<slug>`; else `<prefix>/<slug>`.
+
+Branch idempotence: if the target branch already exists locally or on `origin`, stop and ask whether to switch to it / rename / abort. Resuming a partially-implemented branch is out of scope for this skill — surface the situation and let the user decide.
+
+## Phase 4 — Cut the branch
+
+```
+git checkout -b <branch>
+```
+
+Do not push yet — Phase 8 handles push after the final commit.
+
+## Phase 5 — Seed TaskCreate from plan.md groups
+
+Use `TaskCreate` to create one task per `## Group <N> — <Title>` block, **including** the final Verify group. Each task description: the group title.
+
+This gives the user a live progress view while the skill walks groups. Phase 6 (non-Verify groups) and Phase 7 (Verify group) own their own per-group `in_progress` / `completed` transitions; do not pre-mark them in Phase 5.
+
+## Phase 6 — Implement: walk non-Verify groups
+
+For each `## Group <N> — <Title>` in order, **excluding** the final Verify group:
+
+1. `TaskUpdate` the group task → `in_progress`.
+2. Implement the numbered tasks within the group:
+   - Match existing code patterns; surgical changes only (per `.claude/rules/karpathy-guidelines.md`).
+   - Use the file/line references in `plan.md` as authoritative starting points. Minor drift (line numbers off by a few from intervening commits) is fine and silent; if a referenced file or symbol is clearly absent or has been replaced wholesale, stop and surface — do not improvise around the spec.
+   - Do not add scope the spec did not call for. If the work obviously requires an adjacent change the spec missed, surface it and ask before adding.
+3. After the group's tasks are implemented, run any group-relevant local gates per `.claude/rules/testing.md` (scoped to the area touched if practical):
+   - Backend changes: `pdm run lint` and `pdm run test` (target a subset like `pdm run test -- tests/<area>` when the change is narrow)
+   - UI changes: `cd ui && npm run lint && npx tsc --noEmit && npm run test:run` — chained so all three run inside `ui/`. Use `test:run`, not `test` (`test` is watch mode and won't exit).
+4. Stage the files this group touched by explicit path. Run `git diff --cached --name-only` and confirm only the expected paths appear; if anything else is staged, stop and surface.
+5. Commit per `.claude/rules/conventional-commits.md`:
+   - Header `<type>(<scope>): <description>` ≤ 69 chars; type/scope reflect the group's primary subject (e.g. `feat(broker): support reverse-proxy path prefix`, `test(root_path): add three-mode integration coverage`)
+   - Body: short paragraph naming what shipped. Include `Refs #<issue>` if the user provided one. **Do not** use GitHub close-keywords (`Closes`, `Fixes`, `Resolves`) here — they belong only in the PR body.
+   - `git commit -s` (DCO sign-off)
+6. `TaskUpdate` the group task → `completed`.
+
+If a pre-commit hook rejects the commit, no commit was created — fix the underlying issue, restage, and re-run the same `git commit` command. Don't add a duplicate. Never `--amend`, never `--no-verify`.
+
+If implementation hits an obstacle mid-group, decide first whether it's a **genuine blocker** (no path forward without spec changes) or a **decision** (more than one reasonable resolution exists). For decisions, use `AskUserQuestion` per the hard constraint and continue based on the answer. For genuine blockers (a task is impossible against current code, an external dependency is missing, an assumption in `plan.md` is false), stop immediately and report:
+
+- Which group / numbered task halted
+- The specific error or unmet condition
+- Last successful commit SHA on the branch
+- Recommended next step (typically: revise `plan.md`, fix locally outside the spec, or abort and re-plan)
+
+The roadmap-deletion task identified in Phase 2 lives inside one of the groups (typically the final docs/lifecycle group, before Verify). Implement it as part of that group's commit — do not split it into its own commit unless the spec instructs otherwise.
+
+## Phase 7 — Run plan.md Verify group + validation.md
+
+`TaskUpdate` the Verify group task → `in_progress`.
+
+`plan.md`'s Verify group and `validation.md`'s Definition-of-Done often overlap (e.g. both say `pdm run lint`). For overlapping commands, run each unique command **once** and mark both gates satisfied for that command — don't re-run a passing test just because it's listed in two places.
+
+**Run `plan.md`'s Verify group commands** in order. These are local-gate verifications, not code changes — they produce no commit. Capture exit codes and key output lines for the Phase 9 report.
+
+**Run `validation.md` numbered checks** sequentially (some depend on prior state — do not parallelise):
+
+- Fenced command + expectation → execute, compare exit code / status / output substring against the stated expectation
+- Non-command check (file content, structural assertion) → inspect and confirm
+
+For any failure:
+
+- If the cause is obviously trivial and within the spec's scope (lint nit, missing import, doc-row gap, typo) → fix it and commit the fix as its own atomic commit. Conventional Commits header reflects the fix (typically `fix(<scope>): ...` or `docs(<scope>): ...`). `git commit -s`.
+- If the fix isn't trivial, stop and report — do not iterate on guesses, and do not patch the spec to make a check pass.
+
+After every check passes, `TaskUpdate` the Verify group → `completed` and assemble a verification summary for Phase 9:
+
+- Each `plan.md` Verify command + result (pass/fail + key line)
+- Each `validation.md` check + result (pass/fail + the asserted condition that held)
+
+## Phase 8 — Push and open the PR
+
+```
+git push -u origin <branch>
+```
+
+**Search for related issues** before drafting the PR body. Run `gh issue list --search "<keyword from phase title>"` and try one or two close synonyms (e.g. for Phase 24, search "oauth", "broker", "credentials"). Per `.claude/rules/git-workflow.md`, link related issues in the PR body. If any open issues plausibly relate to the phase and weren't named in Phase 3, surface them to the user and ask whether to link any with `Closes #<issue>` (full resolution) or `Refs #<issue>` (partial). If nothing relevant turns up, proceed with only the Phase 3 issue (if any).
+
+Open the PR with `gh pr create`. The PR title shape is the Conventional Commits header that will become the squash-merge commit (commitlint enforces this on the merge):
+
+- Pick the type+scope of the headline change for the phase. Often this is the same shape as the largest non-Verify group's commit (e.g. `feat(broker): support reverse-proxy path prefix`).
+- If the phase spans multiple modules (backend + UI + docs is common), prefer the most user-facing scope — the squash-merge commit must read like a release-note line for the phase as a whole, not a description of one slice.
+- ≤ 69 chars; lowercase imperative; no trailing period.
+
+Body via HEREDOC:
+
+```
+## Summary
+
+Implements **Phase <N>: <Title>** from the SDD roadmap.
+
+Spec: `specs/<date>-<slug>/`
+
+### What changed
+
+- <one bullet per non-Verify group — short noun phrase, e.g. "Config plumbing for `JENTIC_ROOT_PATH`". The group whose commit performs the roadmap-deletion task should mention it inline (e.g. "Docs + roadmap entry retired per lifecycle"); do not add a separate trailing bullet for the deletion.>
+
+## Validation
+
+All gates from `specs/<date>-<slug>/validation.md` passed:
+
+- <check 1 title> — pass
+- <check 2 title> — pass
+…
+
+### Out of scope (from `validation.md` "Not Required")
+
+- <one bullet per item under `## Not Required` in `validation.md` — short paraphrase, not a verbatim copy>
+
+## Test plan
+
+- [ ] CI green
+- [ ] Manual smoke per `validation.md` (only if `validation.md` has manual-smoke checks)
+
+Closes #<issue>
+Refs: `specs/<date>-<slug>/`
+```
+
+PR body rules:
+
+- `Closes #<issue>` is included **only** when the user provided an issue number in Phase 3 — the implementation PR for a phase typically fully resolves its tracking issue. If no issue was given, omit the line entirely (do not write `Closes #` with no number).
+- `Refs:` always points at the spec dir.
+- **No `🤖 Generated with [Claude Code]` trailer.** Sibling SDD skills (`sdd-new-spec`, `sdd-new-phase`) follow the same convention — the PR is the final step of an SDD workflow whose spec was reviewed and merged separately, so the "generated by Claude" framing doesn't fit. Do not add it back.
+
+## Phase 9 — Report back
+
+Return to the user in this shape:
+
+- **Spec**: `Phase <N> — <Title>` (`specs/<date>-<slug>/`)
+- **Branch**: name
+- **Commits** (in order): each line as `<sha-short> <type>(<scope>): <description> — <group title>`. Include the verification fix-up commits, if any, with the group they amended.
+- **PR URL**
+- **Implementation summary**: one short paragraph naming what was built and where (modules / files / migrations / UI surfaces touched). Aim for the shape a reviewer would skim before opening the diff.
+- **Verification summary**:
+  - `plan.md` Verify group: each command + pass/fail
+  - `validation.md`: each numbered check + pass/fail
+- **Deviations from `plan.md`** (if any): tasks that were split, merged, or required follow-up fixes; spec gaps surfaced (without patching them)
+- **Next step**: human review on the PR. The spec dir stays as history per the lifecycle rule; the roadmap entry was removed by the relevant commit in this PR.
+
+If the run halted before completion, replace the post-completion sections with:
+
+- **Halted at**: Group / numbered task + the specific reason
+- **Last successful commit**: SHA + label
+- **Verification status so far**: any checks that did pass; checks that were skipped or failed
+- **What to do next**: concrete options (revise the spec, fix locally, re-run skill once the blocker is unblocked)
