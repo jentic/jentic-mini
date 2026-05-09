@@ -99,7 +99,7 @@ Parse `plan.md`:
 
 - Extract `## Group <N> — <Title>` blocks in order
 - Extract numbered tasks under each (sequential numbering across all groups, per the scaffolding convention)
-- Identify the final group as the Verify group. Per `sdd-new-spec`'s template the last group is always named `Verify` and contains command-style verification tasks (no code changes). If a future spec deviates and the final group's tasks are still command-style only, treat it as Verify; if it contains code-change tasks, treat it as a regular non-Verify group and run only `validation.md` as the gate in Phase 7.
+- Identify the final group as the Verify group. Per `sdd-new-spec`'s template the last group is always named `Verify` and contains command-style verification tasks (no code changes). If a future spec uses a different name but the content is still command-style, treat it as Verify. If the final group contains code-change tasks the spec is malformed against the SDD convention — stop and report; do not improvise alternative control flow for Phases 6 and 7.
 - Locate the **roadmap-deletion task** — a numbered task in the final docs/lifecycle group whose body says to delete the phase block from `specs/roadmap.md`
 
 Parse `validation.md`:
