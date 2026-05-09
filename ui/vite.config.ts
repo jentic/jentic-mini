@@ -51,7 +51,9 @@ export default defineConfig({
 		},
 	},
 	plugins: [react(), tailwindcss(), copyApiDocsAssets()],
-	base: '/',
+	// Relative base — bundled assets resolve against the served index.html's
+	// <base href>, so the same build can be served at any path prefix.
+	base: './',
 	build: { outDir: '../static', emptyOutDir: true },
 	server: {
 		host: '0.0.0.0',
