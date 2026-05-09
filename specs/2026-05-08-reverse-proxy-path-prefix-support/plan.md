@@ -25,11 +25,11 @@
 
 9. Split the SPA index rendering into a pure transformation and an HTTP wrapper, both in `src/main.py` near `STATIC_DIR`:
 
-    a. Pure helper `_inject_base_href(html: bytes, root_path: str) -> bytes` — when `root_path` is non-empty, substitute the existing `<base ...>` tag using a tolerant regex (e.g. `re.compile(rb'<base\s+href="[^"]*"\s*/?\s*>')`) with `f'<base href="{root_path}/" />'.encode()`. Use `count=1` so we only touch the first occurrence. The regex absorbs formatting drift across Vite versions: with-or-without-self-close, with-or-without-spaces. When `root_path == ""`, return `html` unchanged. Pure function — easily unit-testable with synthetic bytes; covered in step 18.
+    a. Pure helper `_inject_base_href(html: bytes, root_path: str) -> bytes` — when `root_path` is non-empty, substitute the existing `<base ...>` tag using a tolerant regex (e.g. `re.compile(rb'<base\s+href="[^"]*"\s*/?\s*>')`) with `f'<base href="{root_path}/" />'.encode()`. Use `count=1` so we only touch the first occurrence. The regex absorbs formatting drift across Vite versions: with-or-without-self-close, with-or-without-spaces. When `root_path == ""`, return `html` unchanged. Pure function — easily unit-testable with synthetic bytes; covered in step 17.
 
     b. HTTP wrapper `_render_index(request: Request) -> HTMLResponse` — reads `STATIC_DIR / "index.html"` as bytes, calls `_inject_base_href(body, request.scope.get("root_path", ""))`, returns `HTMLResponse(body, media_type="text/html")`.
 
-    Both `_render_index` callsites (root handler and `spa_middleware`) reuse the wrapper; the pure helper is what the tests in step 18 hit primarily.
+    Both `_render_index` callsites (root handler and `spa_middleware`) reuse the wrapper; the pure helper is what the tests in step 17 hit primarily.
 10. Replace `FileResponse(index_path)` in the root handler `@app.get("/")` (`src/main.py:385-390`) with `_render_index(request)`. Update the route signature to accept `request: Request`.
 11. Replace `FileResponse(index_path)` in `spa_middleware` (`src/main.py:481-501`, around line 496) with `_render_index(request)`, preserving the existing `Vary: Accept` and `Cache-Control: no-store` response headers. No explicit path strip needed here: task 6's middleware has already stripped `scope["path"]` to the unprefixed form by the time `spa_middleware` reads `request.url.path`, so `_SPA_PATHS` matching and the `is_spa_excluded` regex continue to work as written.
 12. Update the hand-rolled `/docs` Swagger HTML (`src/main.py:397-438`) to prepend `request.scope.get("root_path", "")` to **every absolute path** in the inline HTML/JS — not just the asset URLs. The current template includes `<link href="/static/swagger-ui.css">`, `<script src="/static/swagger-ui-bundle.js">`, an auth-banner login link (`<a href="/login" ...>`), and `url: "/openapi.json"` (line 427, inside the JS init). The general rule: any string starting with `/` that the browser resolves as an absolute URL must become `{root_path}/...` so the rendered page works under any mount. Audit the template once and prefix all such occurrences. Update the `/docs` route signature to accept `request: Request` if it does not already.
@@ -84,7 +84,7 @@
 28. `pdm run test -- tests/test_openapi_contract.py::test_ui_openapi_matches_served_spec -v` exits 0 — schema content unchanged (no path/security changes; `root_path` is request-time only).
 29. `cd ui && npm run lint` exits 0.
 30. `cd ui && npx tsc --noEmit` exits 0.
-31. `cd ui && npm run test:run` exits 0 — Vitest browser-mode suite passes (existing tests use `MemoryRouter`; basename behaviour is exercised by the Docker E2E in step 33).
+31. `cd ui && npm run test:run` exits 0 — Vitest browser-mode suite passes (existing tests use `MemoryRouter`; basename behaviour is exercised by the Docker E2E in step 32).
 32. `cd ui && npm run test:e2e:docker` exits 0 — including the new prefix-mounted spec.
 33. Manual smoke against a built container with `-e JENTIC_ROOT_PATH=/foo`:
     - `curl -sS http://localhost:8900/foo/ | grep -F 'href="/foo/"'` exits 0
