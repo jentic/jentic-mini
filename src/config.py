@@ -28,7 +28,7 @@ JENTIC_PUBLIC_HOSTNAME = os.getenv("JENTIC_PUBLIC_HOSTNAME") or "localhost"
 # the SPA bundle, hand-rolled docs, and self-links resolve under the prefix; if
 # unset, the per-request X-Forwarded-Prefix header is honoured. Pair with
 # JENTIC_PUBLIC_BASE_URL (which must include the prefix) when mounting.
-def _normalise_root_path(value: str) -> str:
+def normalise_root_path(value: str) -> str:
     """Normalise and validate a path-prefix value.
 
     Empty string and "/" both mean "no mount" → "". Other values must start
@@ -52,7 +52,7 @@ def _normalise_root_path(value: str) -> str:
     return value[:-1] if value.endswith("/") and len(value) > 1 else value
 
 
-JENTIC_ROOT_PATH = _normalise_root_path(os.getenv("JENTIC_ROOT_PATH", ""))
+JENTIC_ROOT_PATH = normalise_root_path(os.getenv("JENTIC_ROOT_PATH", ""))
 
 # ── Public base URL ───────────────────────────────────────────────────────────
 # Operator-pinned canonical base URL (no trailing slash) — e.g.

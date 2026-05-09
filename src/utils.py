@@ -8,7 +8,9 @@ from src.config import JENTIC_PUBLIC_BASE_URL, JENTIC_PUBLIC_HOSTNAME
 def build_absolute_url(request, path: str) -> str:
     """Build an absolute URL from a request and a path.
 
-    Respects X-Forwarded-Proto behind reverse proxies.
+    Respects X-Forwarded-Proto behind reverse proxies and prepends the active
+    ``root_path`` (from ``JENTIC_ROOT_PATH`` or ``X-Forwarded-Prefix``) so
+    self-links resolve under the mount.
     Handles comma-separated values from chained proxies.
     """
     host = (
@@ -23,7 +25,8 @@ def build_absolute_url(request, path: str) -> str:
     scheme = request.headers.get("x-forwarded-proto", request.url.scheme).split(",")[0].strip()
     if scheme not in ("http", "https"):
         scheme = "http"
-    return f"{scheme}://{host}{path}"
+    root_path = request.scope.get("root_path", "") if hasattr(request, "scope") else ""
+    return f"{scheme}://{host}{root_path}{path}"
 
 
 def build_canonical_url(request, path: str) -> str:

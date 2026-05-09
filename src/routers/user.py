@@ -115,6 +115,7 @@ async def create_user(body: UserCreate, request: Request, response: Response):
         httponly=True,
         samesite="strict",
         max_age=JWT_TTL_SECONDS,
+        path=request.scope.get("root_path") or "/",
     )
 
     audit_log.info("ACCOUNT_CREATED user=%s ip=%s", body.username.strip(), client_ip(request))
@@ -207,7 +208,12 @@ async def login(
             redirect_to = "/"
         redir = RedirectResponse(url=redirect_to, status_code=303)
         redir.set_cookie(
-            "jentic_session", token, httponly=True, samesite="strict", max_age=JWT_TTL_SECONDS
+            "jentic_session",
+            token,
+            httponly=True,
+            samesite="strict",
+            max_age=JWT_TTL_SECONDS,
+            path=request.scope.get("root_path") or "/",
         )
         return redir
 
@@ -217,6 +223,7 @@ async def login(
         httponly=True,
         samesite="strict",
         max_age=JWT_TTL_SECONDS,
+        path=request.scope.get("root_path") or "/",
     )
 
     return {"message": "Logged in.", "username": row["username"]}
@@ -297,7 +304,7 @@ async def logout(request: Request, response: Response):
     except Exception:
         pass
     audit_log.info("LOGOUT user=%s ip=%s", username, client_ip(request))
-    response.delete_cookie("jentic_session")
+    response.delete_cookie("jentic_session", path=request.scope.get("root_path") or "/")
     return {"message": "Logged out."}
 
 

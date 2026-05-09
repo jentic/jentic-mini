@@ -20,7 +20,7 @@ from pydantic import BaseModel, Field
 
 from src.auth import APIKeyMiddleware
 from src.brokers.pipedream import PipedreamOAuthBroker
-from src.config import APP_VERSION
+from src.config import APP_VERSION, JENTIC_ROOT_PATH, normalise_root_path
 from src.db import run_migrations, setup_state
 from src.negotiate import negotiate_middleware
 from src.oauth_broker import registry as oauth_broker_registry
@@ -83,6 +83,56 @@ async def lifespan(app: FastAPI):
     log.info("Jentic shutting down")
 
 
+class ForwardedPrefixMiddleware:
+    """Resolve and strip the active root_path from each ASGI scope.
+
+    Sources, in precedence order:
+    1. ``JENTIC_ROOT_PATH`` env var — already on ``scope["root_path"]`` from the
+       FastAPI constructor.
+    2. ``X-Forwarded-Prefix`` header — read per request when the env var is
+       unset; invalid values are silently ignored (treated as no mount).
+
+    After resolving, the middleware strips the prefix from ``scope["path"]``
+    and ``scope["raw_path"]`` so downstream middleware comparing
+    ``request.url.path`` against unprefixed constants (``_SPA_PATHS``,
+    ``_is_public``) keeps working under any mount. Idempotent.
+
+    Registered last so it ends up Starlette's outermost middleware and runs
+    first on the way in.
+    """
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        if not scope.get("root_path"):
+            for key, value in scope.get("headers", []):
+                if key == b"x-forwarded-prefix":
+                    try:
+                        scope["root_path"] = normalise_root_path(value.decode("latin-1"))
+                    except RuntimeError:
+                        # Hostile / malformed header → treat as no mount.
+                        pass
+                    break
+
+        root_path = scope.get("root_path", "")
+        if root_path:
+            path = scope.get("path", "")
+            if path.startswith(root_path):
+                scope["path"] = path[len(root_path) :] or "/"
+            raw_path = scope.get("raw_path")
+            if raw_path is not None:
+                root_path_bytes = root_path.encode("latin-1")
+                if raw_path.startswith(root_path_bytes):
+                    scope["raw_path"] = raw_path[len(root_path_bytes) :] or b"/"
+
+        await self.app(scope, receive, send)
+
+
 # Tag order controls Swagger UI section order.
 # Within each section, operations appear in router-registration order.
 _TAGS_METADATA = [
@@ -127,6 +177,7 @@ _TAGS_METADATA = [
 
 app = FastAPI(
     title="Jentic Mini",
+    root_path=JENTIC_ROOT_PATH,
     openapi_tags=_TAGS_METADATA,
     description=(
         "**Jentic Mini** is the open-source, self-hosted implementation of the Jentic API — "
@@ -499,6 +550,13 @@ async def spa_middleware(request: Request, call_next):
                 return resp
             return Response(content="UI not built", status_code=404, media_type="text/plain")
     return await call_next(request)
+
+
+# ── Reverse-proxy prefix middleware — registered last so it ends up Starlette's
+#    outermost middleware. Resolves scope["root_path"] from JENTIC_ROOT_PATH or
+#    X-Forwarded-Prefix and strips it from scope["path"] before any downstream
+#    middleware reads request.url.path.
+app.add_middleware(ForwardedPrefixMiddleware)
 
 
 # ── Broker catch-all — MUST be registered last ────────────────────────────────

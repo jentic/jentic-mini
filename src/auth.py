@@ -318,6 +318,7 @@ async def _human_session_response(request: Request, call_next, jwt_token: str | 
             httponly=True,
             samesite="strict",
             max_age=JWT_TTL_SECONDS,
+            path=request.scope.get("root_path") or "/",
         )
     return response
 
