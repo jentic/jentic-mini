@@ -254,6 +254,35 @@ app.middleware("http")(negotiate_middleware)
 # ── Static dir — defined early so route handlers can reference it ──────────────
 STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
 
+
+# Tolerant regex: matches <base ...> with any href, with-or-without self-close,
+# with-or-without extra spaces. Substitutes only the first occurrence.
+_BASE_TAG_RE = re.compile(rb'<base\s+href="[^"]*"\s*/?\s*>')
+
+
+def _inject_base_href(html: bytes, root_path: str) -> bytes:
+    """Substitute the SPA's <base href="..."> with one that includes root_path.
+
+    When ``root_path`` is empty, the bytes are returned unchanged. Otherwise the
+    first ``<base ...>`` tag is replaced with ``<base href="{root_path}/" />``
+    (trailing slash intentional — browsers resolve relative URLs against
+    ``<base href>`` differently with vs. without it). HTML without any
+    ``<base>`` tag is returned unchanged.
+    """
+    if not root_path:
+        return html
+    return _BASE_TAG_RE.sub(f'<base href="{root_path}/" />'.encode(), html, count=1)
+
+
+def _render_index(request: Request) -> HTMLResponse:
+    """Read SPA index.html, inject the per-request base href, return HTML."""
+    body = _inject_base_href(
+        (STATIC_DIR / "index.html").read_bytes(),
+        request.scope.get("root_path", ""),
+    )
+    return HTMLResponse(body, media_type="text/html")
+
+
 app.include_router(capability_router.router, tags=["inspect"])
 app.include_router(workflows_router.router)
 app.include_router(import_router.router, tags=["catalog"])
@@ -434,32 +463,36 @@ async def llms_txt():
 
 
 @app.get("/", tags=["meta"], include_in_schema=False)
-async def root():
+async def root(request: Request):
     index_path = STATIC_DIR / "index.html"
     if index_path.exists():
-        return FileResponse(index_path)
+        return _render_index(request)
     return {"message": "Jentic API is running. See /docs for API documentation."}
 
 
 # ── Docs served locally (no CDN, works offline / on patchy connections) ───────
 @app.get("/docs", include_in_schema=False)
-async def swagger_ui():
-    # Custom Swagger UI with persistAuthorization + auth banner
-    html = """<!DOCTYPE html>
+async def swagger_ui(request: Request):
+    rp = request.scope.get("root_path", "")
+    # Custom Swagger UI with persistAuthorization + auth banner. Every absolute
+    # path the browser resolves (CSS / JS asset URLs, the login link, the
+    # OpenAPI URL) is prefixed with the active root_path so the page works
+    # under any mount.
+    html = f"""<!DOCTYPE html>
 <html>
 <head>
   <title>Jentic — Swagger UI</title>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <link rel="stylesheet" type="text/css" href="/static/swagger-ui.css" >
+  <link rel="stylesheet" type="text/css" href="{rp}/static/swagger-ui.css" >
   <style>
-    .auth-banner {
+    .auth-banner {{
       background: #1a1a2e; border-left: 4px solid #667eea;
       color: #e0e0e0; padding: 12px 20px; font-family: monospace;
       font-size: 14px; margin: 0;
-    }
-    .auth-banner strong { color: #667eea; }
-    .auth-banner code { background: #2d2d2d; padding: 2px 6px; border-radius: 3px; }
+    }}
+    .auth-banner strong {{ color: #667eea; }}
+    .auth-banner code {{ background: #2d2d2d; padding: 2px 6px; border-radius: 3px; }}
   </style>
 </head>
 <body>
@@ -467,23 +500,23 @@ async def swagger_ui():
   🔑 <strong>Authentication.</strong>
   <strong>Agents (toolkit):</strong> <em>JenticApiKey</em> — your <code>tk_xxx</code> in <code>X-Jentic-API-Key</code>.
   <strong>Agents (OAuth):</strong> <em>AgentOauthAccessToken</em> — <code>Authorization: Bearer</code> with <code>at_…</code>; <em>AgentOauthRegistrationToken</em> — <code>Authorization: Bearer</code> with <code>rat_…</code> where applicable.
-  <strong>Humans:</strong> <em>HumanLogin</em> (username + password) — or <a href="/login" style="color:#a5b4fc">log in here</a> for a browser session.
+  <strong>Humans:</strong> <em>HumanLogin</em> (username + password) — or <a href="{rp}/login" style="color:#a5b4fc">log in here</a> for a browser session.
   OAuth agents: <code>GET /.well-known/oauth-authorization-server</code> then <code>POST /register</code>. Toolkit keys are issued from the UI.
 </div>
 <div id="swagger-ui"></div>
-<script src="/static/swagger-ui-bundle.js"> </script>
+<script src="{rp}/static/swagger-ui-bundle.js"> </script>
 <script>
-  window.onload = function() {
-    SwaggerUIBundle({
-      url: "/openapi.json",
+  window.onload = function() {{
+    SwaggerUIBundle({{
+      url: "{rp}/openapi.json",
       dom_id: '#swagger-ui',
       presets: [ SwaggerUIBundle.presets.apis, SwaggerUIBundle.SwaggerUIStandalonePreset ],
       layout: "BaseLayout",
       persistAuthorization: true,
       tryItOutEnabled: true,
-      requestInterceptor: function(req) { return req; },
-    })
-  }
+      requestInterceptor: function(req) {{ return req; }},
+    }})
+  }}
 </script>
 </body>
 </html>"""
@@ -491,11 +524,12 @@ async def swagger_ui():
 
 
 @app.get("/redoc", include_in_schema=False)
-async def redoc():
+async def redoc(request: Request):
+    rp = request.scope.get("root_path", "")
     return get_redoc_html(
-        openapi_url="/openapi.json",
+        openapi_url=f"{rp}/openapi.json",
         title="Jentic — Redoc",
-        redoc_js_url="/static/redoc.standalone.js",
+        redoc_js_url=f"{rp}/static/redoc.standalone.js",
     )
 
 
@@ -544,7 +578,7 @@ async def spa_middleware(request: Request, call_next):
         ):
             index_path = STATIC_DIR / "index.html"
             if index_path.exists():
-                resp = FileResponse(index_path)
+                resp = _render_index(request)
                 resp.headers["Vary"] = "Accept"
                 resp.headers["Cache-Control"] = "no-store"
                 return resp
