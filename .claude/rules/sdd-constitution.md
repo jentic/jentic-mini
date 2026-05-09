@@ -18,4 +18,5 @@ Supporting infrastructure:
 - `.claude/skills/sdd-create-constitution/SKILL.md` — `/sdd-create-constitution` skill that bootstraps the constitution from repository evidence (refuses to overwrite an existing constitution without explicit user confirmation)
 - `.claude/templates/sdd/feature-spec/*.example.md` — structural templates for each feature-spec file
 - `.claude/skills/sdd-new-phase/SKILL.md` — `/sdd-new-phase` skill that appends a new active phase to `specs/roadmap.md`
-- `.claude/skills/sdd-new-spec/SKILL.md` — `/sdd-new-spec` skill that scaffolds a feature spec from a roadmap phase 
+- `.claude/skills/sdd-new-spec/SKILL.md` — `/sdd-new-spec` skill that scaffolds a feature spec from a roadmap phase
+- `.claude/skills/sdd-implement-spec/SKILL.md` — `/sdd-implement-spec` skill that implements an existing feature spec end-to-end (branch, commits per `plan.md` group, verification per `validation.md`, PR) 
