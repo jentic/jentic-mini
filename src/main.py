@@ -48,7 +48,7 @@ from src.routers.apis import rebuild_index_on_startup
 from src.routers.catalog import refresh_catalog_if_stale
 from src.routers.toolkits import policy_router as toolkits_policy_router
 from src.startup import backfill_credential_routes, seed_broker_apps, self_register
-from src.utils import build_absolute_url, build_canonical_url
+from src.utils import build_absolute_url, build_canonical_url, route_path
 
 
 logging.basicConfig(level=(os.getenv("LOG_LEVEL") or "info").upper())
@@ -84,21 +84,20 @@ async def lifespan(app: FastAPI):
 
 
 class ForwardedPrefixMiddleware:
-    """Resolve and strip the active root_path from each ASGI scope.
+    """Resolve the active root_path on each ASGI scope.
 
     Sources, in precedence order:
-    1. ``JENTIC_ROOT_PATH`` env var — already on ``scope["root_path"]`` from the
-       FastAPI constructor.
+    1. ``JENTIC_ROOT_PATH`` env var — already on ``scope["root_path"]`` from
+       the FastAPI constructor.
     2. ``X-Forwarded-Prefix`` header — read per request when the env var is
        unset; invalid values are silently ignored (treated as no mount).
 
-    After resolving, the middleware strips the prefix from ``scope["path"]``
-    and ``scope["raw_path"]`` so downstream middleware comparing
-    ``request.url.path`` against unprefixed constants (``_SPA_PATHS``,
-    ``_is_public``) keeps working under any mount. Idempotent.
-
-    Registered last so it ends up Starlette's outermost middleware and runs
-    first on the way in.
+    Path stripping is intentionally left to Starlette's routing machinery
+    (``get_route_path``) so ``Mount`` / ``StaticFiles`` cooperation stays
+    intact — pre-stripping here causes ``StaticFiles`` to look in the wrong
+    directory because ``Mount.matches`` recomputes ``root_path`` assuming
+    the prefix is still on ``scope["path"]``. Custom middleware that compare
+    against unprefixed constants use :func:`src.utils.route_path` instead.
     """
 
     def __init__(self, app):
@@ -118,17 +117,6 @@ class ForwardedPrefixMiddleware:
                         # Hostile / malformed header → treat as no mount.
                         pass
                     break
-
-        root_path = scope.get("root_path", "")
-        if root_path:
-            path = scope.get("path", "")
-            if path.startswith(root_path):
-                scope["path"] = path[len(root_path) :] or "/"
-            raw_path = scope.get("raw_path")
-            if raw_path is not None:
-                root_path_bytes = root_path.encode("latin-1")
-                if raw_path.startswith(root_path_bytes):
-                    scope["raw_path"] = raw_path[len(root_path_bytes) :] or b"/"
 
         await self.app(scope, receive, send)
 
@@ -566,7 +554,7 @@ _SPA_PATHS = {
 @app.middleware("http")
 async def spa_middleware(request: Request, call_next):
     if request.method == "GET":
-        path = request.url.path
+        path = route_path(request.scope)
         accept = request.headers.get("accept", "")
         wants_html = any(part.strip().startswith("text/html") for part in accept.split(","))
         # Exclude connect-callback from SPA interception (real GET endpoint, browser redirect)

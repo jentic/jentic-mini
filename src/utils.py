@@ -5,6 +5,27 @@ import re
 from src.config import JENTIC_PUBLIC_BASE_URL, JENTIC_PUBLIC_HOSTNAME
 
 
+def route_path(scope) -> str:
+    """Return ``scope["path"]`` with ``scope["root_path"]`` stripped if applicable.
+
+    Mirrors Starlette's internal ``get_route_path`` so middleware that compares
+    against unprefixed constants (``_SPA_PATHS``, ``_is_public``) keeps working
+    when Mini is mounted under a path prefix. Path stripping is left to
+    Starlette's routing machinery for ``Mount`` / ``StaticFiles`` cooperation;
+    custom middleware call this helper to read the same view of the path that
+    decorator-style routes see.
+    """
+    path = scope.get("path", "")
+    root_path = scope.get("root_path", "")
+    if not root_path or not path.startswith(root_path):
+        return path
+    if path == root_path:
+        return ""
+    if path[len(root_path)] == "/":
+        return path[len(root_path) :]
+    return path
+
+
 def build_absolute_url(request, path: str) -> str:
     """Build an absolute URL from a request and a path.
 
