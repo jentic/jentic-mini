@@ -19,4 +19,4 @@ Supporting infrastructure:
 - `.claude/templates/sdd/feature-spec/*.example.md` — structural templates for each feature-spec file
 - `.claude/skills/sdd-new-phase/SKILL.md` — `/sdd-new-phase` skill that appends a new active phase to `specs/roadmap.md`
 - `.claude/skills/sdd-new-spec/SKILL.md` — `/sdd-new-spec` skill that scaffolds a feature spec from a roadmap phase
-- `.claude/skills/sdd-implement-spec/SKILL.md` — `/sdd-implement-spec` skill that implements an existing feature spec end-to-end (branch, commits per `plan.md` group, verification per `validation.md`, PR) 
+- `.claude/skills/sdd-implement-spec/SKILL.md` — `/sdd-implement-spec` skill that implements an existing feature spec end-to-end (branch, commits per `plan.md` group, verification per `validation.md`, PR)
