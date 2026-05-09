@@ -71,6 +71,33 @@ sed -i 's/JENTIC_PUBLIC_HOSTNAME=.*/JENTIC_PUBLIC_HOSTNAME=your-domain.com/' /op
 docker restart jentic-mini
 ```
 
+### Step 5b (optional) - Mounting under a path prefix
+
+Want Jentic Mini to share a domain with other apps (e.g. `your-domain.com/jentic`)?
+Use Caddy's `handle_path` directive to strip the prefix before forwarding, and pin
+the prefix on the container so the SPA bundle, hand-rolled docs, and self-links
+resolve under the mount.
+
+```caddyfile
+your-domain.com {
+    handle_path /jentic/* {
+        reverse_proxy localhost:8900
+    }
+    # other apps on the same domain go here
+}
+```
+
+```bash
+cat >> /opt/jentic-mini/jentic-mini.env <<EOF
+JENTIC_ROOT_PATH=/jentic
+JENTIC_PUBLIC_BASE_URL=https://your-domain.com/jentic
+EOF
+docker restart jentic-mini
+```
+
+`JENTIC_PUBLIC_BASE_URL` must include the prefix — the OAuth issuer is pinned to
+this value and is security-critical. Operators must set both env vars when mounting.
+
 ### Updating
 
 SSH into the droplet and run:
