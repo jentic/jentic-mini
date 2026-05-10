@@ -197,6 +197,8 @@ After every check passes, `TaskUpdate` the Verify group → `completed` and asse
 
 After Phase 7 passes and before pushing, run two reviews of the branch diff. Both fire **before `git push`** (Phase 9) so any fixes can land as cheap fix-up commits on the local branch.
 
+If the run halts mid-phase (user dismisses the synthesis question, tool error during a fix-up commit, etc.), surface the situation per Phase 3's branch-idempotence policy and stop — partial-resume of Phase 8 is out of scope. A re-run starts Phase 8 from scratch on the same branch; the existing per-group commits and any landed fix-ups are preserved.
+
 `TaskUpdate` the `Pre-push review` task → `in_progress`.
 
 ### Capture diff context once
@@ -207,9 +209,11 @@ Run these once and pass the output to every reviewer:
 - `git diff --stat main...HEAD` — the file-level summary
 - `git diff main...HEAD` — the full diff
 
+For very large diffs (≥ ~2000 lines or ≥ ~30 files), pass each subagent the commit list, the file-level summary, and the list of paths to read directly via `Read` — sending a multi-megabyte diff inline to four reviewers wastes tokens and can blow the context window.
+
 ### A. Built-in `/review` skill
 
-Invoke the `Skill` tool with `skill: "review"` and `args: "branch changes against main"`. Treat it as a normal capability of the skill — do not narrate the invocation mechanism, do not explain arguments, do not frame the call as a workaround. Surface its findings verbatim. If the invocation itself fails (tool error, unrecognized arg, unreachable), surface the error and continue to B; do not retry more than once.
+Invoke the `Skill` tool with `skill: "review"` and ``args: "branch changes against main (`git diff main...HEAD`)"``. The string is best-effort — `/review` is built around PR URLs and a "local changes" working-tree mode, so it may interpret a branch-vs-main scope fluidly or report it has nothing concrete to review; either result is fine. Surface whatever it returns verbatim, do not narrate the invocation mechanism, do not retry. The load-bearing reviewer is the three-perspective deep review in **B** below; `/review` here is a sanity-check pass. If the invocation itself fails (tool error, unreachable), surface the error and continue to B.
 
 ### B. Three-perspective deep review
 
@@ -223,7 +227,7 @@ The shared question for every perspective: *from this lens, is anything in the d
 
 **Perspective 2 — Code quality and simplicity.** Inputs: the diff, the commit list, `.claude/rules/karpathy-guidelines.md`, `.claude/rules/git-workflow.md`, `.claude/rules/conventional-commits.md`. Look for: speculative features the spec doesn't require; abstractions for single-use code; error handling for impossible scenarios; "improvements" to adjacent code beyond the change scope; comments explaining WHAT instead of WHY (especially comments referencing the current task / fix / caller); non-atomic commits; CC type/scope that misrepresents the commit's content. Finding-types: `bloat`, `abstraction`, `adjacent-edit`, `dead-comment`, `commit-shape`.
 
-**Perspective 3 — Risk and robustness.** Inputs: the diff, `specs/tech-stack.md`, and any load-bearing invariants documented in the project's `CLAUDE.md` (root + nested) — the subagent reads what's actually present at runtime; the skill itself does not bake in domain knowledge or project-specific invariants. Look for: security concerns (auth bypass, credential exposure, secrets in logs, injection); validation gaps (edge cases `validation.md` doesn't cover but the diff plausibly hits); regression risks to invariants the subagent surfaces from `tech-stack.md` or `CLAUDE.md`; observability gaps (a new code path with no trace/log); performance or scaling concerns (N+1 queries, unbounded growth, blocking I/O on the request path). Finding-types: `security`, `regression`, `edge-case`, `observability`, `performance`.
+**Perspective 3 — Risk and robustness.** Inputs: the diff, `specs/tech-stack.md`, and any load-bearing invariants documented in the project's `CLAUDE.md` files anywhere in the tree (repo root, `.claude/`, or nested per-directory) — the subagent reads what's actually present at runtime; the skill itself does not bake in domain knowledge or project-specific invariants. Look for: security concerns (auth bypass, credential exposure, secrets in logs, injection); validation gaps (edge cases `validation.md` doesn't cover but the diff plausibly hits); regression risks to invariants the subagent surfaces from `tech-stack.md` or `CLAUDE.md`; observability gaps (a new code path with no trace/log); performance or scaling concerns (N+1 queries, unbounded growth, blocking I/O on the request path). Finding-types: `security`, `regression`, `edge-case`, `observability`, `performance`.
 
 ### Synthesize
 
@@ -249,7 +253,7 @@ For blockers the user declines to fix, confirm explicitly that you should procee
 After fix-ups:
 
 - Re-run the `validation.md` numbered checks whose covered area intersects the fix-up diff (don't re-run the whole Verify group unless every check is plausibly affected)
-- Re-invoke `/review` only if the fixes are non-trivial; do **not** re-spawn the three subagents — once is enough
+- Re-invoke `/review` at most **once**, and only if any fix-up commit touched code (not docs/config-only paths). Do **not** re-spawn the three subagents — they fire once per skill run.
 
 `TaskUpdate` the `Pre-push review` task → `completed`.
 
