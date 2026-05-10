@@ -40,7 +40,7 @@ Run in parallel:
 - `git status --porcelain` empty
 - Current branch is `main`
 - `git fetch origin main` succeeds; local `main` not behind `origin/main`. If behind and fast-forwardable, offer `git pull --ff-only` and wait for confirmation. If diverged, stop.
-- `gh auth status` succeeds — fail fast here; Phase 8 depends on it.
+- `gh auth status` succeeds — fail fast here; Phase 9 depends on it.
 
 Load context in parallel:
 
@@ -132,7 +132,7 @@ Branch idempotence: if the target branch already exists locally or on `origin`, 
 git checkout -b <branch>
 ```
 
-Do not push yet — Phase 8 handles push after the final commit.
+Do not push yet — Phase 9 handles push after the final commit (Phase 8 runs the pre-push review first).
 
 ## Phase 5 — Seed TaskCreate from plan.md groups
 
@@ -176,7 +176,7 @@ The roadmap-deletion task identified in Phase 2 lives inside one of the groups (
 
 `plan.md`'s Verify group and `validation.md`'s Definition-of-Done often overlap (e.g. both say `pdm run lint`). For overlapping commands, run each unique command **once** and mark both gates satisfied for that command — don't re-run a passing test just because it's listed in two places.
 
-**Run `plan.md`'s Verify group commands** in order. These are local-gate verifications, not code changes — they produce no commit. Capture exit codes and key output lines for the Phase 9 report.
+**Run `plan.md`'s Verify group commands** in order. These are local-gate verifications, not code changes — they produce no commit. Capture exit codes and key output lines for the Phase 10 report.
 
 **Run `validation.md` numbered checks** sequentially (some depend on prior state — do not parallelise):
 
@@ -188,7 +188,7 @@ For any failure:
 - If the cause is obviously trivial and within the spec's scope (lint nit, missing import, doc-row gap, typo) → fix it and commit the fix as its own atomic commit. Conventional Commits header reflects the fix (typically `fix(<scope>): ...` or `docs(<scope>): ...`). `git commit -s`.
 - If the fix isn't trivial, stop and report — do not iterate on guesses, and do not patch the spec to make a check pass.
 
-After every check passes, `TaskUpdate` the Verify group → `completed` and assemble a verification summary for Phase 9:
+After every check passes, `TaskUpdate` the Verify group → `completed` and assemble a verification summary for Phase 10:
 
 - Each `plan.md` Verify command + result (pass/fail + key line)
 - Each `validation.md` check + result (pass/fail + the asserted condition that held)
