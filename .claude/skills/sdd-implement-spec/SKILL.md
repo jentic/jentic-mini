@@ -1,6 +1,6 @@
 ---
 name: sdd-implement-spec
-description: Implement an existing feature spec end-to-end — pick an unprocessed feature spec (one whose `## Phase N — ...` block is still in `specs/roadmap.md`), cut a feature branch, walk `plan.md` task groups in order with one primary atomic Conventional-Commits commit per group (plus optional small fix-up commits during verification), run `plan.md`'s Verify group plus every check in `validation.md`, push, and open a PR. The spec is read-only during implementation; if it is wrong or incomplete, the skill stops and surfaces the gap rather than patching the spec mid-flight. Reports implementation and verification results at the end. When `$ARGUMENTS` is empty, enumerates unprocessed specs via AskUserQuestion.
+description: Implement an existing feature spec end-to-end — pick an unprocessed feature spec (one whose `## Phase N — ...` block is still in `specs/roadmap.md`), cut a feature branch, walk `plan.md` task groups in order with one primary atomic Conventional-Commits commit per group (plus optional small fix-up commits during verification or pre-push review), run `plan.md`'s Verify group plus every check in `validation.md`, then run a pre-push review pairing the built-in `/review` skill with three parallel deep-review subagents (spec-adherence, code-quality, risk-and-robustness) before pushing and opening the PR. The spec is read-only during implementation; if it is wrong or incomplete, the skill stops and surfaces the gap rather than patching the spec mid-flight. Reports implementation, review, and verification results at the end. When `$ARGUMENTS` is empty, enumerates unprocessed specs via AskUserQuestion.
 argument-hint: "[phase-number | slug-fragment | spec-dir-path] (optional)"
 ---
 
@@ -8,7 +8,7 @@ argument-hint: "[phase-number | slug-fragment | spec-dir-path] (optional)"
 
 You are operating within a Spec-Driven Development (SDD) workflow. See `.claude/rules/sdd-constitution.md`.
 
-This skill takes one **unprocessed feature spec** (a `specs/YYYY-MM-DD-<slug>/` directory whose `## Phase N — ...` block is still in `specs/roadmap.md`) and drives the work end-to-end: cuts the feature branch, walks `plan.md` task groups, runs the verification gates, commits atomically per group, pushes, opens a PR, and reports back on implementation and verification.
+This skill takes one **unprocessed feature spec** (a `specs/YYYY-MM-DD-<slug>/` directory whose `## Phase N — ...` block is still in `specs/roadmap.md`) and drives the work end-to-end: cuts the feature branch, walks `plan.md` task groups, runs the verification gates, commits atomically per group, runs a pre-push review (built-in `/review` plus three parallel deep-review subagents), pushes, opens a PR, and reports back on implementation, review, and verification.
 
 The skill **drives** implementation — it is not merely scaffolding around it. The actual code changes happen in the main loop guided by `plan.md`. The spec itself is read-only.
 
@@ -136,9 +136,9 @@ Do not push yet — Phase 8 handles push after the final commit.
 
 ## Phase 5 — Seed TaskCreate from plan.md groups
 
-Use `TaskCreate` to create one task per `## Group <N> — <Title>` block, **including** the final Verify group. Each task description: the group title.
+Use `TaskCreate` to create one task per `## Group <N> — <Title>` block (**including** the final Verify group), plus one trailing synthetic task labeled `Pre-push review` for Phase 8. Each plan-group task's description is the group title.
 
-This gives the user a live progress view while the skill walks groups. Phase 6 (non-Verify groups) and Phase 7 (Verify group) own their own per-group `in_progress` / `completed` transitions; do not pre-mark them in Phase 5.
+This gives the user a live progress view while the skill walks groups. Phase 6 (non-Verify groups), Phase 7 (Verify group), and Phase 8 (pre-push review) own their own `in_progress` / `completed` transitions; do not pre-mark them in Phase 5.
 
 ## Phase 6 — Implement: walk non-Verify groups
 
@@ -193,7 +193,67 @@ After every check passes, `TaskUpdate` the Verify group → `completed` and asse
 - Each `plan.md` Verify command + result (pass/fail + key line)
 - Each `validation.md` check + result (pass/fail + the asserted condition that held)
 
-## Phase 8 — Push and open the PR
+## Phase 8 — Pre-push review
+
+After Phase 7 passes and before pushing, run two reviews of the branch diff. Both fire **before `git push`** (Phase 9) so any fixes can land as cheap fix-up commits on the local branch.
+
+`TaskUpdate` the `Pre-push review` task → `in_progress`.
+
+### Capture diff context once
+
+Run these once and pass the output to every reviewer:
+
+- `git log main..HEAD --oneline` — the commit list
+- `git diff --stat main...HEAD` — the file-level summary
+- `git diff main...HEAD` — the full diff
+
+### A. Built-in `/review` skill
+
+Invoke the `Skill` tool with `skill: "review"` and `args: "branch changes against main"`. Treat it as a normal capability of the skill — do not narrate the invocation mechanism, do not explain arguments, do not frame the call as a workaround. Surface its findings verbatim. If the invocation itself fails (tool error, unrecognized arg, unreachable), surface the error and continue to B; do not retry more than once.
+
+### B. Three-perspective deep review
+
+Spawn three `Agent` calls **in a single message** (parallel) using `subagent_type: "general-purpose"`. Each subagent gets a perspective-specific brief, the diff context captured above, and the spec/rule files relevant to its lens. Cap each response at ~400 words — the goal is a structured findings list, not narrative.
+
+The shared question for every perspective: *from this lens, is anything in the diff wrong, surprising, missing, or obviously improvable?* Each finding line takes the shape:
+
+`<finding-type>: <one-line summary> — <file:line if applicable> — <suggested fix, or "surface to user">`
+
+**Perspective 1 — Spec adherence.** Inputs: `specs/<dir>/requirements.md`, `plan.md`, `validation.md`, the commit list, the diff. Look for: groups/tasks in `plan.md` not visible in any commit; commits introducing work outside the spec's scope; deviations from `plan.md`'s prescribed file/line targets without surfacing; the roadmap-deletion task missing from its expected group commit. Finding-types: `missing-task`, `extra-scope`, `silent-deviation`, `roadmap-deletion-missing`.
+
+**Perspective 2 — Code quality and simplicity.** Inputs: the diff, the commit list, `.claude/rules/karpathy-guidelines.md`, `.claude/rules/git-workflow.md`, `.claude/rules/conventional-commits.md`. Look for: speculative features the spec doesn't require; abstractions for single-use code; error handling for impossible scenarios; "improvements" to adjacent code beyond the change scope; comments explaining WHAT instead of WHY (especially comments referencing the current task / fix / caller); non-atomic commits; CC type/scope that misrepresents the commit's content. Finding-types: `bloat`, `abstraction`, `adjacent-edit`, `dead-comment`, `commit-shape`.
+
+**Perspective 3 — Risk and robustness.** Inputs: the diff, `specs/tech-stack.md`, and any load-bearing invariants documented in the project's `CLAUDE.md` (root + nested) — the subagent reads what's actually present at runtime; the skill itself does not bake in domain knowledge or project-specific invariants. Look for: security concerns (auth bypass, credential exposure, secrets in logs, injection); validation gaps (edge cases `validation.md` doesn't cover but the diff plausibly hits); regression risks to invariants the subagent surfaces from `tech-stack.md` or `CLAUDE.md`; observability gaps (a new code path with no trace/log); performance or scaling concerns (N+1 queries, unbounded growth, blocking I/O on the request path). Finding-types: `security`, `regression`, `edge-case`, `observability`, `performance`.
+
+### Synthesize
+
+Combine findings from `/review` + the three subagents into one grouped list:
+
+- **Blockers** — in-scope issues that should be fixed before PR (broken validation, missing spec coverage, security regression, architectural violation, commit-shape error that would survive the squash-merge)
+- **Suggestions** — optional improvements (simpler approach, better naming, additional test case, observability gap)
+- **Nits** — cosmetic only (typos, formatting)
+
+Deduplicate findings raised by more than one reviewer; keep the strongest framing. Demote out-of-scope findings (changes adjacent to the spec but not within it) to **Suggestions** with an `(out-of-scope, optional)` tag — never silently promote them to blockers, and never silently apply them.
+
+### Resolve
+
+Surface the grouped report to the user. If there are blockers, use a single `AskUserQuestion` (multi-select) to choose which to fix. For suggestions/nits, list them and ask once whether to apply any (default: skip).
+
+For each accepted fix:
+
+- Apply as a small atomic fix-up commit per Phase 6's commit rules — Conventional Commits header (typically `fix(<scope>): ...`, `refactor(<scope>): ...`, or `docs(<scope>): ...`), `git commit -s`, stage explicit paths, no `--amend`, no `--no-verify`
+- Unrelated fixes → multiple commits
+
+For blockers the user declines to fix, confirm explicitly that you should proceed and record a one-liner for the Phase 10 report (`Proceeded over blocker: <one-liner>`).
+
+After fix-ups:
+
+- Re-run the `validation.md` numbered checks whose covered area intersects the fix-up diff (don't re-run the whole Verify group unless every check is plausibly affected)
+- Re-invoke `/review` only if the fixes are non-trivial; do **not** re-spawn the three subagents — once is enough
+
+`TaskUpdate` the `Pre-push review` task → `completed`.
+
+## Phase 9 — Push and open the PR
 
 ```
 git push -u origin <branch>
@@ -247,18 +307,19 @@ PR body rules:
 - `Refs:` always points at the spec dir.
 - **No `🤖 Generated with [Claude Code]` trailer.** Sibling SDD skills (`sdd-new-spec`, `sdd-new-phase`) follow the same convention — the PR is the final step of an SDD workflow whose spec was reviewed and merged separately, so the "generated by Claude" framing doesn't fit. Do not add it back.
 
-## Phase 9 — Report back
+## Phase 10 — Report back
 
 Return to the user in this shape:
 
 - **Spec**: `Phase <N> — <Title>` (`specs/<date>-<slug>/`)
 - **Branch**: name
-- **Commits** (in order): each line as `<sha-short> <type>(<scope>): <description> — <group title>`. Include the verification fix-up commits, if any, with the group they amended.
+- **Commits** (in order): each line as `<sha-short> <type>(<scope>): <description> — <group title>`. Include verification fix-up commits and pre-push review fix-up commits, each tagged with the group/finding they amend.
 - **PR URL**
 - **Implementation summary**: one short paragraph naming what was built and where (modules / files / migrations / UI surfaces touched). Aim for the shape a reviewer would skim before opening the diff.
 - **Verification summary**:
   - `plan.md` Verify group: each command + pass/fail
   - `validation.md`: each numbered check + pass/fail
+- **Pre-push review outcome**: one of `clean` (no findings), `findings addressed` (had findings, applied fixes — list their SHAs and what they addressed), or `proceeded over blocker` (had blockers, user accepted as-is — include the one-liner). Suggestions or nits the user declined to apply get one short bullet each as optional follow-ups, not regressions. If `/review` couldn't run (tool error), say so on this line instead.
 - **Deviations from `plan.md`** (if any): tasks that were split, merged, or required follow-up fixes; spec gaps surfaced (without patching them)
 - **Next step**: human review on the PR. The spec dir stays as history per the lifecycle rule; the roadmap entry was removed by the relevant commit in this PR.
 
