@@ -380,6 +380,38 @@ Large upstream responses are fully buffered today, which spikes memory and block
 - Add tests covering unmounted (default) and mounted (`/foo`) modes — SPA load, asset paths, `/docs`, `/openapi.json`, internal routes
 - Close or cross-reference issue #356
 
+## Phase 26 — Incremental `modify_permissions` Access Requests
+
+**Goal:** Make `modify_permissions` access requests append to the agent's existing ruleset on approval instead of replacing it, removing the silent-privilege-loss footgun.
+**Depends on:** none (self-contained)
+**Priority:** High (blocker)
+
+Today, approving a `modify_permissions` access request silently replaces the agent's entire ruleset with the request's `rules`. An agent that asks for one new rule loses every rule it relied on — silently, on approval. This pushes agents toward over-broad initial asks (because narrowing later requires perfect recall of the current ruleset) and breaks the human reviewer's mental model of what they are approving. The behavior is `bug`+`security`-labelled and matches the early-access trust bar that other `(blocker)` phases (16, 17, 18, 19) target.
+
+- Change `modify_permissions` access-request semantics: on approval, append the request's rules to the agent's existing rules; never replace. The feature spec may introduce a parallel `add_permissions` request type as a fallback if a concrete backwards-compatibility blocker surfaces during design, but the primary direction is the in-place semantics change
+- Keep full-replace policy editing on the human-only `PUT /toolkits/{id}/credentials/{cred_id}/permissions` path for explicit admin rewrites
+- Document the change as logic-only — no schema migration expected (rule storage shape is unchanged)
+- Add integration tests: starting rules `A,B` + request `C` → `A,B,C` on approval; two sequential requests stack correctly; full-replace path on `PUT` still works
+- Audit `AGENTS.md` and `docs/auth.md` for wording that implies replace semantics; correct it
+- Close #325; cross-reference #324 (validation hardens the new shape)
+
+## Phase 27 — Validate Access Requests with Actionable Feedback
+
+**Goal:** Reject malformed `modify_permissions` access requests with structured 422 guidance an agent can self-correct against.
+**Depends on:** none (self-contained — see context)
+**Priority:** High
+
+The API currently accepts access requests with empty `rules`, no `reason`, rules that duplicate the always-appended system safety rules, or unconstrained `allow` rules — silently. Agents have no signal that the request is malformed, and human reviewers see "Modify permissions: 0 rule(s)" with no context. The result is wasted human review and a soft pressure toward broad asks. The four checks below stand under either current replace or post-Phase 26 append semantics; only the wording in the 422 `best_practice` payload (the example request and the prose around what "empty `rules`" means) revises when Phase 26 lands. Either order is shippable.
+
+- Reject `modify_permissions` requests with empty or missing `rules` (HTTP 422 with `type: "invalid_access_request"`)
+- Reject requests with no substantive `reason` (minimum length, e.g. 20 chars)
+- Reject rules that exact-match a system safety rule (same `effect` + `methods` + `path`) — they are redundant since system rules are always appended
+- Reject `allow` rules with no `path` and no `operations` constraint (effectively "allow everything")
+- Return 422 with a structured `issues` list (per-rule indices) and a `best_practice` payload containing summary, rules, and a minimal example, per the shape proposed in #324
+- Cover each rejection path with integration tests; cover happy-path acceptance with one representative request
+- Update `AGENTS.md` and any agent-facing examples to show a well-formed request
+- Close #324; cross-reference #325
+
 ---
 
 ## Later Phases (Not Yet Planned)
