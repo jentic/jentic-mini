@@ -21,11 +21,12 @@ OpenAPI.WITH_CREDENTIALS = true;
  *  generated OpenAPI client. Use for every raw `fetch` call so navigations
  *  under a path-prefix mount (`JENTIC_ROOT_PATH=/jentic`) don't 404.
  *
- *  Throws in development if `path` looks like an absolute URL (e.g. someone
- *  accidentally passes `https://...` or `//host/...`), which would produce a
- *  nonsensical prefixed URL like `/foo/https://...`. */
+ *  Always throws if `path` is not a valid app-relative path: missing leading
+ *  slash (`health` → `/foohealth`), scheme (`https://...`), or
+ *  protocol-relative (`//host/...`) would all produce a nonsensical prefixed
+ *  URL. */
 export function apiUrl(path: string): string {
-	if (/^[a-z][a-z0-9+.-]*:/i.test(path) || path.startsWith('//')) {
+	if (!path.startsWith('/') || path.startsWith('//') || /^[a-z][a-z0-9+.-]*:/i.test(path)) {
 		throw new Error(
 			`apiUrl() requires an app-relative path starting with "/", got: ${JSON.stringify(path)}`,
 		);
