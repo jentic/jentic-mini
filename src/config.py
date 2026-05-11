@@ -60,6 +60,14 @@ def normalise_root_path(value: str) -> str:
 
 JENTIC_ROOT_PATH = normalise_root_path(os.getenv("JENTIC_ROOT_PATH", ""))
 
+# Per-request X-Forwarded-Prefix fallback toggle. Defaults to True so existing
+# Mode C deploys (proxy injects the header, env unset) continue to work. Set to
+# false ("false" / "0" / "no" / "off") on instances reached directly by clients
+# — there, the header is attacker-controllable and there's no proxy to strip it.
+JENTIC_TRUST_FORWARDED_PREFIX = os.getenv(
+    "JENTIC_TRUST_FORWARDED_PREFIX", "true"
+).strip().lower() not in ("false", "0", "no", "off")
+
 # ── Public base URL ───────────────────────────────────────────────────────────
 # Operator-pinned canonical base URL (no trailing slash) — e.g.
 # "https://jentic.example.com". When set, the issuer / token aud /

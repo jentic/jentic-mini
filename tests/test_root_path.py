@@ -234,6 +234,19 @@ def test_hostile_forwarded_prefix_does_not_reach_docs(client, static_fixtures):
         assert bad.encode("latin-1") not in resp.content
 
 
+def test_forwarded_prefix_disabled_by_env(client, static_fixtures, monkeypatch):
+    """JENTIC_TRUST_FORWARDED_PREFIX=false → header is ignored, even when valid."""
+    monkeypatch.setattr("src.main.JENTIC_TRUST_FORWARDED_PREFIX", False)
+    resp = client.get(
+        "/",
+        headers={"Accept": "text/html", "X-Forwarded-Prefix": "/foo"},
+    )
+    assert resp.status_code == 200
+    # With the fallback disabled, even a well-formed prefix is dropped.
+    assert b'href="/"' in resp.content
+    assert b'href="/foo/"' not in resp.content
+
+
 def test_hostile_forwarded_prefix_does_not_reach_set_cookie(admin_client, static_fixtures):
     """Validator-rejected prefixes must not appear in the Set-Cookie Path attribute."""
     for bad in _HOSTILE_PREFIXES:

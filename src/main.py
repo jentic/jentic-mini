@@ -20,7 +20,12 @@ from pydantic import BaseModel, Field
 
 from src.auth import APIKeyMiddleware
 from src.brokers.pipedream import PipedreamOAuthBroker
-from src.config import APP_VERSION, JENTIC_ROOT_PATH, normalise_root_path
+from src.config import (
+    APP_VERSION,
+    JENTIC_ROOT_PATH,
+    JENTIC_TRUST_FORWARDED_PREFIX,
+    normalise_root_path,
+)
 from src.db import run_migrations, setup_state
 from src.negotiate import negotiate_middleware
 from src.oauth_broker import registry as oauth_broker_registry
@@ -90,7 +95,10 @@ class ForwardedPrefixMiddleware:
     1. ``JENTIC_ROOT_PATH`` env var — already on ``scope["root_path"]`` from
        the FastAPI constructor.
     2. ``X-Forwarded-Prefix`` header — read per request when the env var is
-       unset; invalid values are silently ignored (treated as no mount).
+       unset AND ``JENTIC_TRUST_FORWARDED_PREFIX`` is truthy (the default).
+       Invalid values are silently ignored (treated as no mount). Operators
+       reaching Mini directly (no header-sanitising proxy in front) should set
+       ``JENTIC_TRUST_FORWARDED_PREFIX=false`` to disable this fallback.
 
     Path stripping is intentionally left to Starlette's routing machinery
     (``get_route_path``) so ``Mount`` / ``StaticFiles`` cooperation stays
@@ -108,7 +116,7 @@ class ForwardedPrefixMiddleware:
             await self.app(scope, receive, send)
             return
 
-        if not scope.get("root_path"):
+        if JENTIC_TRUST_FORWARDED_PREFIX and not scope.get("root_path"):
             for key, value in scope.get("headers", []):
                 if key == b"x-forwarded-prefix":
                     try:

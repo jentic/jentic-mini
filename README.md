@@ -104,6 +104,7 @@ Optional environment variables (set in `.env` or pass to `docker compose`):
 | `JENTIC_VAULT_KEY`       | auto-generated | [Fernet](https://cryptography.io/en/latest/fernet/) key for the credentials vault                                                                                                                              |
 | `JENTIC_PUBLIC_HOSTNAME` | `localhost`    | Public hostname for self-links and workflow IDs, e.g. `jentic.example.com`                                                                                                                                     |
 | `JENTIC_ROOT_PATH`       | _(unset)_      | Path prefix to mount the app under, e.g. `/jentic`. Pair with `JENTIC_PUBLIC_BASE_URL` (which must include the prefix) for OAuth issuer correctness. If unset, falls back to `X-Forwarded-Prefix` per request. |
+| `JENTIC_TRUST_FORWARDED_PREFIX` | `true`  | Whether the per-request `X-Forwarded-Prefix` fallback is honoured when `JENTIC_ROOT_PATH` is unset. Set to `false` on instances reached directly by clients (no header-sanitising proxy) to pin the mount path. |
 | `LOG_LEVEL`              | `info`         | `debug`, `info`, `warning`, `error`                                                                                                                                                                            |
 
 ### Authentication
