@@ -25,6 +25,7 @@ from pydantic import BaseModel, Field, field_validator
 from src.auth import JWT_TTL_SECONDS, MIN_PASSWORD_LENGTH, client_ip, make_jwt
 from src.db import get_db, set_setting, setup_state
 from src.models import UserOut
+from src.validators import validate_relative_redirect
 
 
 audit_log = logging.getLogger("jentic.audit")
@@ -203,10 +204,21 @@ async def login(
     token = make_jwt(state["jwt_secret"])
 
     if redirect_to:
-        # Prevent open redirect — only allow relative paths
-        if not redirect_to.startswith("/") or redirect_to.startswith("//"):
-            redirect_to = "/"
-        redir = RedirectResponse(url=redirect_to, status_code=303)
+        safe_redirect = validate_relative_redirect(redirect_to)
+        if safe_redirect is None:
+            # Format both user-controlled fields with %r so repr() escapes
+            # any embedded control characters — keeps this new audit line
+            # injection-safe even though the validator already rejects
+            # control chars in redirect_to. Truncate to bound log volume
+            # under sustained probe traffic.
+            audit_log.warning(
+                "LOGIN_REDIRECT_BLOCKED user=%r ip=%s redirect_to=%r",
+                username.strip(),
+                ip,
+                redirect_to[:200],
+            )
+            safe_redirect = "/"
+        redir = RedirectResponse(url=safe_redirect, status_code=303)
         redir.set_cookie(
             "jentic_session",
             token,
