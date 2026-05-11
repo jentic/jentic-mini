@@ -93,11 +93,10 @@ class ForwardedPrefixMiddleware:
        unset; invalid values are silently ignored (treated as no mount).
 
     The header is accepted from any client, which is correct when Mini sits
-    behind a header-sanitising reverse proxy (the documented deployment).
-    Operators on direct-exposure deploys (no proxy in front) should either
-    fix the deployment posture or wait for issue #366's peer-IP CIDR gate,
-    which will scope every proxy header (this one plus ``X-Auth-Email``) to
-    a single trust boundary.
+    behind a reverse proxy that strips inbound ``X-Forwarded-*`` from clients
+    before setting its own. Direct-internet exposure is the at-risk posture;
+    a future peer-IP-gated trust boundary will scope every proxy header
+    (this one plus ``X-Auth-Email``) to a single CIDR allowlist.
 
     Path stripping is intentionally left to Starlette's routing machinery
     (``get_route_path``) so ``Mount`` / ``StaticFiles`` cooperation stays
