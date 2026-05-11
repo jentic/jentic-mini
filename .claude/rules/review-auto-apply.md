@@ -1,4 +1,4 @@
-`/review` and `/security-review` always produce comments — that's the audit trail. For findings that pass the re-check (below), push a follow-up commit on the same PR (per `git-workflow.md` / `conventional-commits.md`). When auto-applying a bug fix, append an `## Auto-applied fixes` section to the PR review comment (or post a new comment if none exists). If the finding lived in a PR review thread, resolve it per `copilot-review-comments.md`.
+`/review` and `/security-review` always produce comments — that's the audit trail. For findings that pass the re-check (below), push a follow-up commit on the same PR (per `git-workflow.md` / `conventional-commits.md`) and append an `## Auto-applied fixes` section to the PR review comment (or post a new comment if none exists), listing every auto-applied finding. If the finding lived in a PR review thread, resolve it per `copilot-review-comments.md`.
 
 The re-check is per-finding: re-open the file(s) the finding points at, confirm the issue still applies against current code, and confirm the fix fits the categories below. If uncertain, leave it as a comment directed to the PR author.
 
