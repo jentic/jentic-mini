@@ -2,6 +2,7 @@ __pycache__/
 !/.claude
 /.claude/settings.local.json
 /.claude/worktrees/*
+/.claude/scheduled_tasks*
 !/.claude/worktrees/.gitkeep
 *.pyc
 *.pyo
