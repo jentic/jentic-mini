@@ -2,7 +2,7 @@ import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Search, X, ChevronDown, ChevronUp, ExternalLink, Loader2, Zap, Globe } from 'lucide-react';
-import { api } from '@/api/client';
+import { api, apiUrl } from '@/api/client';
 import { Badge, MethodBadge } from '@/components/ui/Badge';
 import { CopyButton } from '@/components/ui/CopyButton';
 import { Button } from '@/components/ui/Button';
@@ -164,7 +164,7 @@ function CatalogPanel({ result, onClose }: { result: any; onClose: () => void })
 		setError(null);
 		try {
 			// Step 1: Get spec URL from catalog
-			const catalogRes = await fetch(`/catalog/${apiId}`, { credentials: 'include' });
+			const catalogRes = await fetch(apiUrl(`/catalog/${apiId}`), { credentials: 'include' });
 			if (!catalogRes.ok) {
 				const body = await catalogRes.json().catch(() => ({}));
 				throw new Error(body.detail || `Catalog lookup failed (${catalogRes.status})`);
@@ -175,7 +175,7 @@ function CatalogPanel({ result, onClose }: { result: any; onClose: () => void })
 			}
 
 			// Step 2: Import via POST /import
-			const importRes = await fetch('/import', {
+			const importRes = await fetch(apiUrl('/import'), {
 				method: 'POST',
 				credentials: 'include',
 				headers: { 'Content-Type': 'application/json' },

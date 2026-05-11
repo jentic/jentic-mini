@@ -1,11 +1,12 @@
 import { useQuery } from '@tanstack/react-query';
+import { apiUrl } from '@/api/client';
 import { UserService } from '@/api/generated';
 
 export function useAuth() {
 	// Check system setup state first
 	const healthQuery = useQuery({
 		queryKey: ['health'],
-		queryFn: () => fetch('/health').then((r) => r.json()),
+		queryFn: () => fetch(apiUrl('/health')).then((r) => r.json()),
 		retry: false,
 	});
 

@@ -8,10 +8,21 @@ import {
 	InspectService,
 } from './generated';
 
-// Configure OpenAPI client (also set in main.tsx for explicitness, but initialized here
-// to ensure tests that import this module directly get the correct config)
-OpenAPI.BASE = ''; // Use relative URLs (same origin as UI) — works in dev (Vite proxy) and prod (same port)
+// Path component of the active mount, derived from the backend-injected
+// <base href>. Empty when unmounted; "/jentic" (no trailing slash) under
+// `JENTIC_ROOT_PATH=/jentic`. Used by the generated OpenAPI client AND every
+// hand-rolled fetch in this file — absolute paths starting with "/" bypass
+// <base href> per the HTML spec, so every URL must be prefixed explicitly.
+OpenAPI.BASE =
+	typeof document !== 'undefined' ? new URL(document.baseURI).pathname.replace(/\/$/, '') : '';
 OpenAPI.WITH_CREDENTIALS = true;
+
+/** Prepend the active mount prefix to an API path. Same source of truth as the
+ *  generated OpenAPI client. Use for every raw `fetch` call so navigations
+ *  under a path-prefix mount (`JENTIC_ROOT_PATH=/jentic`) don't 404. */
+export function apiUrl(path: string): string {
+	return `${OpenAPI.BASE}${path}`;
+}
 
 export const api = {
 	getMe: () => UserService.meUserMeGet(),
@@ -190,7 +201,7 @@ export class ApiError extends Error {
 }
 
 async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
-	const res = await fetch(url, { credentials: 'include', ...init });
+	const res = await fetch(apiUrl(url), { credentials: 'include', ...init });
 	if (!res.ok) {
 		const body = await res.text().catch(() => '');
 		let data: Record<string, any> | null = null;
@@ -245,7 +256,7 @@ export const oauthBrokers = {
 			body: JSON.stringify(body),
 		}),
 	delete: (id: string) =>
-		fetch(`/oauth-brokers/${encodeURIComponent(id)}`, {
+		fetch(apiUrl(`/oauth-brokers/${encodeURIComponent(id)}`), {
 			method: 'DELETE',
 			credentials: 'include',
 		}).then((r) => {
@@ -257,7 +268,9 @@ export const oauthBrokers = {
 		),
 	deleteAccount: (id: string, accountId: string) =>
 		fetch(
-			`/oauth-brokers/${encodeURIComponent(id)}/accounts/${encodeURIComponent(accountId)}`,
+			apiUrl(
+				`/oauth-brokers/${encodeURIComponent(id)}/accounts/${encodeURIComponent(accountId)}`,
+			),
 			{
 				method: 'DELETE',
 				credentials: 'include',

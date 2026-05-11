@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { apiUrl } from '@/api/client';
 
 interface UpdateStatus {
 	currentVersion: string | null;
@@ -53,7 +54,7 @@ export function useUpdateCheck(): UpdateStatus {
 			try {
 				// Backend proxies the GitHub check with a 6h server-side cache —
 				// avoids browser hitting GitHub directly (rate limits, private repos)
-				const res = await fetch('/version');
+				const res = await fetch(apiUrl('/version'));
 				if (!res.ok) return;
 				const data = await res.json();
 

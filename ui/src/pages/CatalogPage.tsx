@@ -14,7 +14,7 @@ import {
 	Globe,
 } from 'lucide-react';
 import { AppLink } from '@/components/ui/AppLink';
-import { api } from '@/api/client';
+import { api, apiUrl } from '@/api/client';
 import { Badge, MethodBadge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
@@ -271,7 +271,7 @@ function CatalogTab({ q }: { q: string }) {
 		setImportingId(apiId);
 		try {
 			// Step 1: Get spec URL from catalog
-			const catalogRes = await fetch(`/catalog/${apiId}`, { credentials: 'include' });
+			const catalogRes = await fetch(apiUrl(`/catalog/${apiId}`), { credentials: 'include' });
 			if (!catalogRes.ok) {
 				const body = await catalogRes.json().catch(() => ({}));
 				throw new Error(body.detail || `Catalog lookup failed (${catalogRes.status})`);
@@ -282,7 +282,7 @@ function CatalogTab({ q }: { q: string }) {
 			}
 
 			// Step 2: Import via POST /import
-			const importRes = await fetch('/import', {
+			const importRes = await fetch(apiUrl('/import'), {
 				method: 'POST',
 				credentials: 'include',
 				headers: { 'Content-Type': 'application/json' },
