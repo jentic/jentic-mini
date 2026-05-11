@@ -76,7 +76,7 @@ def norm_param(v: Optional[str]) -> Optional[str]:
 # ---------------------------------------------------------------------------
 
 
-def validate_relative_redirect(target: str) -> str | None:
+def validate_relative_redirect(target: str | None) -> str | None:
     """Return *target* as a same-origin relative path, or None if hostile.
 
     Used by endpoints that accept a caller-supplied path
@@ -89,9 +89,10 @@ def validate_relative_redirect(target: str) -> str | None:
     depth against Location-header smuggling if downstream URL quoting ever
     regresses, and to keep audit logs of rejected values injection-safe.
 
-    Returns the backslash-normalized safe path, or ``None`` if the input is
-    hostile or absent. Callers should fall back to a known-safe default and
-    audit-log the rejection.
+    Accepts ``None`` and empty strings (returns None for both) so callers
+    can pass query-param values directly without pre-filtering. Returns the
+    backslash-normalized safe path on success. Callers should fall back to a
+    known-safe default and audit-log the rejection.
     """
     if not target:
         return None

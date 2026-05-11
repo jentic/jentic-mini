@@ -37,6 +37,7 @@ from src.validators import NormModel, validate_relative_redirect
 
 
 log = logging.getLogger("jentic.routers.oauth_brokers")
+audit_log = logging.getLogger("jentic.audit")
 
 router = APIRouter(prefix="/oauth-brokers", tags=["credentials"])
 
@@ -798,7 +799,8 @@ async def connect_callback(
     safe_return_to = validate_relative_redirect(return_to)
     if safe_return_to is None:
         if return_to:
-            log.warning("OAUTH_RETURN_TO_BLOCKED return_to=%r", return_to)
+            # Truncate to bound log volume under probe-rate attacks.
+            audit_log.warning("OAUTH_RETURN_TO_BLOCKED return_to=%r", return_to[:200])
         safe_return_to = "/oauth-brokers"
     ui_url = build_absolute_url(request, safe_return_to)
     return RedirectResponse(url=ui_url, status_code=302)

@@ -83,23 +83,20 @@ def test_login_hostile_redirect_to_neutralized(admin_client, hostile):
     )
 
 
-@pytest.mark.parametrize(
-    "ctrl_input",
-    [
-        "/\r\n//evil.com",
-        "/\r//evil.com",
-        "/\n//evil.com",
-        "/\t//evil.com",
-    ],
-)
-def test_login_redirect_to_control_chars_cannot_smuggle_into_location(admin_client, ctrl_input):
-    """Defense-in-depth: even if the guard accepts an input with control chars
-    (because it starts with a single '/'), the emitted Location header must
-    not contain literal CR/LF/tab and must not redirect cross-origin.
+_CTRL_INPUTS = [
+    "/\r\n//evil.com",
+    "/\r//evil.com",
+    "/\n//evil.com",
+    "/\t//evil.com",
+]
 
-    Today this is enforced by Starlette's RedirectResponse percent-encoding
-    via quote(). This test locks that contract in so a future regression that
-    let raw control chars through would fail loudly.
+
+@pytest.mark.parametrize("ctrl_input", _CTRL_INPUTS)
+def test_login_redirect_to_control_chars_no_literal_crlf_in_location(admin_client, ctrl_input):
+    """The Location header must not contain literal CR/LF/tab even if the
+    underlying input did. Today this is enforced by Starlette's
+    RedirectResponse percent-encoding via quote(); this test locks the
+    contract in so a regression there fails loudly.
     """
     resp = _post_login(admin_client, ctrl_input)
     assert resp.status_code == 303
@@ -107,6 +104,48 @@ def test_login_redirect_to_control_chars_cannot_smuggle_into_location(admin_clie
     assert "\r" not in location, f"literal CR in Location {location!r}"
     assert "\n" not in location, f"literal LF in Location {location!r}"
     assert "\t" not in location, f"literal TAB in Location {location!r}"
-    # Must stay same-origin: not protocol-relative, not schemed.
+
+
+@pytest.mark.parametrize("ctrl_input", _CTRL_INPUTS)
+def test_login_redirect_to_control_chars_stay_same_origin(admin_client, ctrl_input):
+    """A control-char input must never redirect cross-origin — the validator
+    rejects it and the response falls back to '/'.
+    """
+    resp = _post_login(admin_client, ctrl_input)
+    assert resp.status_code == 303
+    location = resp.headers["location"]
     assert not location.startswith("//"), f"protocol-relative Location {location!r}"
     assert "://" not in location, f"schemed Location {location!r}"
+
+
+def test_login_redirect_to_blocked_emits_audit_log(admin_client, caplog):
+    """Hostile inputs must produce a LOGIN_REDIRECT_BLOCKED warning on the
+    `jentic.audit` logger so security teams can spot phishing probes.
+    """
+    with caplog.at_level("WARNING", logger="jentic.audit"):
+        resp = _post_login(admin_client, "/\\evil.com")
+    assert resp.status_code == 303
+    assert resp.headers["location"] == "/"
+    blocked = [r for r in caplog.records if "LOGIN_REDIRECT_BLOCKED" in r.getMessage()]
+    assert blocked, "expected a LOGIN_REDIRECT_BLOCKED audit-log line"
+    # Logged value must be escaped (no literal control chars / quote chars
+    # leaking into the audit line via %r).
+    msg = blocked[-1].getMessage()
+    assert "\r" not in msg and "\n" not in msg[len("LOGIN_REDIRECT_BLOCKED") :]
+
+
+def test_login_redirect_to_audit_log_truncates_long_input(admin_client, caplog):
+    """A very long hostile redirect_to must be truncated in the audit log
+    so probe traffic can't blow up log volume.
+    """
+    payload = "//" + ("A" * 5000)
+    with caplog.at_level("WARNING", logger="jentic.audit"):
+        resp = _post_login(admin_client, payload)
+    assert resp.status_code == 303
+    blocked = [r for r in caplog.records if "LOGIN_REDIRECT_BLOCKED" in r.getMessage()]
+    assert blocked
+    msg = blocked[-1].getMessage()
+    # The logged %r of a truncated 200-char prefix is bounded; the full
+    # 5000-char attacker payload must not appear verbatim.
+    assert len(msg) < 500, f"audit message not truncated, length={len(msg)}"
+    assert "A" * 500 not in msg

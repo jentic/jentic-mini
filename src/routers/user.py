@@ -206,11 +206,13 @@ async def login(
     if redirect_to:
         safe_redirect = validate_relative_redirect(redirect_to)
         if safe_redirect is None:
+            # Truncate the logged value so an attacker can't blow up log
+            # volume by probing the endpoint with very long hostile inputs.
             audit_log.warning(
                 "LOGIN_REDIRECT_BLOCKED user=%s ip=%s redirect_to=%r",
                 username.strip(),
                 ip,
-                redirect_to,
+                redirect_to[:200],
             )
             safe_redirect = "/"
         redir = RedirectResponse(url=safe_redirect, status_code=303)
