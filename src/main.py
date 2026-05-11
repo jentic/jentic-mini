@@ -251,9 +251,11 @@ app.middleware("http")(negotiate_middleware)
 STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
 
 
-# Tolerant regex: matches <base ...> with any href, with-or-without self-close,
-# with-or-without extra spaces. Substitutes only the first occurrence.
-_BASE_TAG_RE = re.compile(rb'<base\s+href="[^"]*"\s*/?\s*>')
+# Matches any <base ...> tag regardless of the number of attributes.
+# Using href="..." as the anchor would silently become a no-op if Vite ever
+# adds a second attribute (e.g. crossorigin). The \s after 'base' prevents
+# matching <basefont>. Substitutes only the first occurrence.
+_BASE_TAG_RE = re.compile(rb"<base\s[^>]*>")
 
 
 def _inject_base_href(html: bytes, root_path: str) -> bytes:
