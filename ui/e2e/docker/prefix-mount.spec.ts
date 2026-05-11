@@ -18,20 +18,10 @@ test.describe('Reverse-proxy prefix mount', () => {
 	});
 
 	test('no failed XHR during initial SPA render at the prefix', async ({ page }) => {
-		// Regression guard for #365: SPA-initiated fetches (React Query,
-		// hand-rolled raw fetch) used to issue absolute paths like /health
-		// instead of /foo/health, which 404 under a path-prefix mount because
-		// absolute paths bypass <base href> per the HTML spec.
-		//
-		// Listen for every response while the SPA cold-boots. Any 4xx/5xx on a
-		// same-origin XHR / fetch is a regression. We exclude 401s on /user/me
-		// — that endpoint is intentionally returned as a logged-out signal
-		// before auth, not an error.
-		// Capture same-origin fetch/XHR failures. Intentionally NOT filtered to
-		// PREFIX_BASE: the bug this test guards against is the SPA issuing requests
-		// WITHOUT the prefix (e.g. /health instead of /foo/health), so those
-		// failing URLs would NOT start with PREFIX_BASE and would be silently
-		// dropped by such a filter. Filter to same origin only to exclude CDN.
+		// Regression guard: SPA fetches must include the mount prefix.
+		// Intentionally NOT filtered to PREFIX_BASE — the bug is the SPA issuing
+		// /health instead of /foo/health, so those URLs would NOT start with
+		// PREFIX_BASE and would be silently dropped. Same-origin filter only.
 		const origin = new URL(PREFIX_BASE).origin;
 		const failures: { url: string; status: number }[] = [];
 		page.on('response', (resp) => {

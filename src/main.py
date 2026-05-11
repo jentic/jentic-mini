@@ -688,9 +688,13 @@ def custom_openapi():
         tags=app.openapi_tags,  # controls section order in Swagger UI
     )
 
-    # Add servers (HTTPS first). When mounted under a path prefix, prepend a
-    # simple prefix-relative entry so Swagger UI "Try it out" and code-generators
-    # (openapi-ts, openapi-generator, Postman) use the correct base path.
+    # Add servers. When JENTIC_ROOT_PATH is set, prepend a prefix-relative entry
+    # so Swagger UI "Try it out" and code-generators use the correct base path.
+    # Note: the schema is cached after the first call (app.openapi_schema), so
+    # this entry reflects the *static* JENTIC_ROOT_PATH only. Mode C deployments
+    # (X-Forwarded-Prefix per request, JENTIC_ROOT_PATH unset) will always see
+    # app.servers here — Swagger UI "Try it out" may not work under a Mode C
+    # prefix mount. Set JENTIC_ROOT_PATH for full Swagger UI compatibility.
     schema["servers"] = (
         [{"url": JENTIC_ROOT_PATH, "description": "This instance (path-prefix mount)"}]
         + app.servers

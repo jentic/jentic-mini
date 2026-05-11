@@ -25,7 +25,7 @@ OpenAPI.WITH_CREDENTIALS = true;
  *  accidentally passes `https://...` or `//host/...`), which would produce a
  *  nonsensical prefixed URL like `/foo/https://...`. */
 export function apiUrl(path: string): string {
-	if (/^[a-z][a-z0-9+.-]*:/i.test(path)) {
+	if (/^[a-z][a-z0-9+.-]*:/i.test(path) || path.startsWith('//')) {
 		throw new Error(
 			`apiUrl() requires an app-relative path starting with "/", got: ${JSON.stringify(path)}`,
 		);
