@@ -3,6 +3,7 @@
 import os
 import re
 from pathlib import Path
+from urllib.parse import urlparse
 
 
 # ── Version ───────────────────────────────────────────────────────────────────
@@ -73,6 +74,19 @@ JENTIC_ROOT_PATH = normalise_root_path(os.getenv("JENTIC_ROOT_PATH", ""))
 # behaviour). Operators on internet-facing deployments are strongly
 # encouraged to set this to a fully-qualified URL.
 JENTIC_PUBLIC_BASE_URL = (os.getenv("JENTIC_PUBLIC_BASE_URL") or "").rstrip("/")
+
+# Fail-fast when the two path-prefix sources disagree. If an operator sets
+# JENTIC_PUBLIC_BASE_URL=https://example.com/foo alongside JENTIC_ROOT_PATH=/bar,
+# stored URLs (approve_url, OAuth callbacks) embed /foo while request-derived
+# URLs embed /bar — silently broken tokens, 404 OAuth callbacks, failed agent
+# assertions. Same pattern as the AGENT_NONCE_WINDOW invariant below.
+if JENTIC_PUBLIC_BASE_URL:
+    _pub_path = urlparse(JENTIC_PUBLIC_BASE_URL).path.rstrip("/")
+    if _pub_path != JENTIC_ROOT_PATH.rstrip("/"):
+        raise RuntimeError(
+            f"JENTIC_PUBLIC_BASE_URL path ({_pub_path!r}) disagrees with "
+            f"JENTIC_ROOT_PATH ({JENTIC_ROOT_PATH!r}); both must use the same prefix"
+        )
 
 # ── Toolkit defaults ──────────────────────────────────────────────────────────
 DEFAULT_TOOLKIT_ID = "default"

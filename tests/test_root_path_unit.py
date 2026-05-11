@@ -1,6 +1,9 @@
 """Unit tests for the path-prefix helpers — pure functions, no app fixture."""
 
+import importlib
+
 import pytest
+import src.config
 from src.config import normalise_root_path
 from src.main import _inject_base_href  # noqa: PLC2701
 from src.utils import build_absolute_url
@@ -90,6 +93,51 @@ def test_normalise_root_path_invalid(value):
 )
 def test_normalise_root_path_valid(value, expected):
     assert normalise_root_path(value) == expected
+
+
+# ── JENTIC_PUBLIC_BASE_URL vs JENTIC_ROOT_PATH sanity check ─────────────────
+
+
+@pytest.mark.parametrize(
+    "base_url,root_path",
+    [
+        # Paths agree — no error.
+        ("https://example.com/foo", "/foo"),
+        ("https://example.com/foo/bar", "/foo/bar"),
+        # Both at origin root — no error.
+        ("https://example.com", ""),
+        ("https://example.com/", ""),
+        ("https://example.com", "/"),
+    ],
+)
+def test_public_base_url_root_path_match_is_ok(base_url, root_path, monkeypatch):
+
+    monkeypatch.setenv("JENTIC_PUBLIC_BASE_URL", base_url)
+    monkeypatch.setenv("JENTIC_ROOT_PATH", root_path)
+    importlib.reload(src.config)  # should not raise
+
+
+@pytest.mark.parametrize(
+    "base_url,root_path",
+    [
+        ("https://example.com/foo", "/bar"),
+        ("https://example.com/foo", ""),
+        ("https://example.com", "/foo"),
+    ],
+)
+def test_public_base_url_root_path_mismatch_raises(base_url, root_path, monkeypatch):
+
+    monkeypatch.setenv("JENTIC_PUBLIC_BASE_URL", base_url)
+    monkeypatch.setenv("JENTIC_ROOT_PATH", root_path)
+    with pytest.raises(RuntimeError, match="JENTIC_PUBLIC_BASE_URL"):
+        importlib.reload(src.config)
+
+
+def test_public_base_url_unset_skips_check(monkeypatch):
+
+    monkeypatch.delenv("JENTIC_PUBLIC_BASE_URL", raising=False)
+    monkeypatch.setenv("JENTIC_ROOT_PATH", "/foo")
+    importlib.reload(src.config)  # should not raise even with root_path set
 
 
 # ── build_absolute_url ───────────────────────────────────────────────────────
