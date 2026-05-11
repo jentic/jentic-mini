@@ -206,10 +206,13 @@ async def login(
     if redirect_to:
         safe_redirect = validate_relative_redirect(redirect_to)
         if safe_redirect is None:
-            # Truncate the logged value so an attacker can't blow up log
-            # volume by probing the endpoint with very long hostile inputs.
+            # Format both user-controlled fields with %r so repr() escapes
+            # any embedded control characters — keeps this new audit line
+            # injection-safe even though the validator already rejects
+            # control chars in redirect_to. Truncate to bound log volume
+            # under sustained probe traffic.
             audit_log.warning(
-                "LOGIN_REDIRECT_BLOCKED user=%s ip=%s redirect_to=%r",
+                "LOGIN_REDIRECT_BLOCKED user=%r ip=%s redirect_to=%r",
                 username.strip(),
                 ip,
                 redirect_to[:200],
