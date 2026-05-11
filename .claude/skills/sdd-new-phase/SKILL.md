@@ -1,6 +1,6 @@
 ---
 name: sdd-new-phase
-description: Append a new active phase to specs/roadmap.md. Parses existing phases to compute the next stable phase number (gaps preserved per the lifecycle rule), grounds the proposal against specs/mission.md and specs/tech-stack.md, groups structured questions (goal, dependencies, priority) via AskUserQuestion, then collects a freeform bullet list for the phase body. Edits specs/roadmap.md in place, then invokes the built-in /review skill against the pending change before stopping — committing, pushing, and opening a PR are left to the user. Does not create a feature spec; that is /sdd-new-spec's job.
+description: Append a new active phase to specs/roadmap.md. Parses existing phases (active and ✅-completed) to compute the next stable phase number per the lifecycle rule, grounds the proposal against specs/mission.md and specs/tech-stack.md, groups structured questions (goal, dependencies, priority) via AskUserQuestion, then collects a freeform bullet list for the phase body. Edits specs/roadmap.md in place, then invokes the built-in /review skill against the pending change before stopping — committing, pushing, and opening a PR are left to the user. Does not create a feature spec; that is /sdd-new-spec's job.
 argument-hint: "[short title or one-sentence intent] (optional)"
 ---
 
@@ -20,7 +20,7 @@ Argument in `$ARGUMENTS` (optional):
 ## Hard constraints
 
 - **Roadmap-only — zero code changes, zero git actions.** This skill never modifies anything outside `specs/roadmap.md`. It does not run `git`, `gh`, or any commit / branch / push / PR commands. The user handles git themselves after reviewing the edit.
-- **Do not renumber existing phases.** Phase numbers are stable identifiers; gaps mark shipped phases (per the lifecycle rule in `specs/roadmap.md`). The new phase number is always `max(existing active phase numbers) + 1` — never `len(active phases) + 1`.
+- **Do not renumber existing phases.** Phase numbers are stable identifiers; completed phases stay in the file with a `✅` marker on their heading (per the lifecycle rule in `specs/roadmap.md`). The new phase number is always `max(all existing phase numbers) + 1` — count both active and ✅-completed phases.
 - **Do not create a feature spec.** That is `/sdd-new-spec`'s job.
 - **Do not touch the `## Later Phases (Not Yet Planned)` section** or the trailing `<!-- Only include items here if they are clearly out of current scope. -->` comment. Active phases and the parking lot are distinct.
 - **Do not write to disk before AskUserQuestion completes.** The structured questions lock in decisions that shape the entry; writing early wastes the call.
@@ -42,8 +42,9 @@ No git state checks — this skill doesn't touch git.
 
 Parse `specs/roadmap.md` to extract:
 
-- Every **active phase** block (`## Phase N — Title`): number, title, goal, `Depends on:`, `Priority:`. Ignore the `## Later Phases (Not Yet Planned)` section.
-- **Next phase number**: `max(active phase numbers) + 1`. Do NOT use `len(active phases) + 1` — gaps mark shipped phases.
+- Every phase block (`## Phase N — Title`, with or without a trailing `✅`): number, title, goal, `Depends on:`, `Priority:`, and a `completed` flag set when the heading ends with `✅`. Ignore the `## Later Phases (Not Yet Planned)` section.
+- **Active phases** are those without `✅`; **completed phases** are those with `✅`. The duplicate-overlap check below runs against active phases only — overlapping with already-shipped work is not a conflict.
+- **Next phase number**: `max(all phase numbers, active and completed) + 1`. Phase numbers never get reused, so completed phases count toward the ceiling.
 
 If `$ARGUMENTS` is empty, prompt the user for a one-sentence description of what the phase delivers.
 
@@ -63,7 +64,7 @@ Issue a single `AskUserQuestion` call containing three grouped questions. Each q
 
 **Question 2 — Dependencies** (shapes the `**Depends on:**` line):
   - Prompt: "Which existing active phase must ship before this one?"
-  - Options: "none (self-contained)", each active phase title from `specs/roadmap.md` as a separate option, and "other (multiple — specify comma-separated)". If the user picks "other", validate the comma-separated names against active phase titles (case-insensitive contains match). Reject inventions with a one-line correction prompt.
+  - Options: "none (self-contained)", each **active** (non-✅) phase title from `specs/roadmap.md` as a separate option, and "other (multiple — specify comma-separated)". Do not offer ✅-completed phases as dependency options — they have already shipped and cannot block new work. If the user picks "other", validate the comma-separated names against active phase titles (case-insensitive contains match). Reject inventions with a one-line correction prompt.
 
 **Question 3 — Priority** (shapes the `**Priority:**` line):
   - Prompt: "What priority level does this phase carry?"
@@ -88,10 +89,10 @@ If the user clearly typed a paragraph of prose rather than bullets, split it int
 
 Edit `specs/roadmap.md` to insert the new phase. **Insertion rules:**
 
-- Active phase blocks are separated from the `## Later Phases (Not Yet Planned)` section by a `---` horizontal rule.
-- Insert the new block **immediately before the `---` that precedes `## Later Phases`** — after the last existing active phase.
-- Separate the new block from the previous active phase with a single blank line; match the existing file's spacing.
-- Do not renumber any existing phase.
+- Phase blocks (active and ✅-completed alike) are separated from the `## Later Phases (Not Yet Planned)` section by a `---` horizontal rule.
+- Insert the new block **immediately before the `---` that precedes `## Later Phases`** — after the last existing phase block, regardless of whether the trailing phase is active or completed. Phase numbers are sequential by number, not by status.
+- Separate the new block from the previous phase with a single blank line; match the existing file's spacing.
+- Do not renumber any existing phase. Do not strip `✅` markers from completed phases.
 - Do not edit the `## Later Phases (Not Yet Planned)` section or the trailing HTML comment.
 
 **Block format** — match existing phases exactly:

@@ -48,11 +48,16 @@ Then load context in parallel:
 
 ## Phase 1 — Pick a roadmap phase
 
-Parse active phases from `specs/roadmap.md` — the `## Phase N — <title>` blocks. Ignore the `Later Phases (Not Yet Planned)` section.
+Parse phases from `specs/roadmap.md` — the `## Phase N — <title>` blocks. Ignore the `Later Phases (Not Yet Planned)` section.
 
-For each phase extract: number, title, `**Goal:**`, `**Depends on:**`, `**Priority:**`.
+For each phase extract: number, title, `**Goal:**`, `**Depends on:**`, `**Priority:**`, and a `completed` flag set when the heading ends with ` ✅` (space + U+2705 checkmark). **Active phases** (no `✅`) are the candidate pool; **completed phases** (✅) are skipped from selection but used to resolve `Depends on:` references.
 
-A phase is a **candidate** when every name in its `Depends on:` list is no longer present in `specs/roadmap.md` (i.e. that dependency has shipped and been removed per the lifecycle rule). Phases with still-pending dependencies are valid to pick but must be flagged.
+**Parsing `**Depends on:**`** — the value is one or more comma-separated dependency references; trim each.
+
+- A reference of the form `none` (optionally followed by a parenthetical rationale, e.g. `none (self-contained broker change)`) means the phase has no dependency; produce an empty list and skip resolution.
+- For every other reference, strip any trailing ` (<rationale>)` parenthetical to recover the bare phase-title fragment, then resolve it case-insensitively against the headings parsed above via **substring match** (the fragment must appear inside one and only one heading). Substring matching handles short fragments like `Backend Unit Test Coverage` correctly even when the canonical heading is longer; if a fragment matches more than one heading, surface the ambiguity and stop.
+
+A phase is a **candidate** when it is active and every resolved dependency carries `✅` on its heading (i.e. that dependency has shipped per the lifecycle rule). Active phases with still-pending dependencies (resolved phases whose heading lacks `✅`) are valid to pick but must be flagged. A reference that resolves to no phase at all — and is not the `none` form above — is a malformed roadmap; surface the mismatch and stop.
 
 **If `$ARGUMENTS` identifies exactly one phase**, jump straight to showing that phase's full block and confirm with the user before continuing.
 
@@ -180,7 +185,7 @@ Numbered task groups. Granularity per the user's Question 2 answer.
 
 - Tasks are plain numbered items, **not checkboxes**. One concrete change each (file / function / test / route / migration / CLI command).
 - **The last group is always `Verify`**, listing the concrete checks that confirm the whole plan succeeded: command + expected result (e.g. `pdm run test tests/broker` exits 0; `curl localhost:8900/…` returns 200 with JSON containing `{ … }`).
-- **Include the roadmap-deletion task** as a concrete numbered task in the final non-Verify group (typically a docs/lifecycle group). Roadmap deletion is a phase-specific markdown edit that ships with the work, not generic meta-workflow — `/sdd-implement-spec` halts on plans that omit it. Pair it with a `grep`-style assertion in the Verify group that confirms the entry is gone.
+- **Include the roadmap-completion task** as a concrete numbered task in the final non-Verify group (typically a docs/lifecycle group). The task says to append ` ✅` — a single space followed by the U+2705 checkmark — to the `## Phase N — <Title>` heading in `specs/roadmap.md` and leave the rest of the block untouched, per the lifecycle rule in `specs/roadmap.md`. The leading space is load-bearing: the Verify assertion `grep -F`s for the exact ` ✅` suffix, so a heading rendered as `Title✅` (no space) silently fails the gate. Phase-completion marking is a phase-specific markdown edit that ships with the work, not generic meta-workflow — `/sdd-implement-spec` halts on plans that omit it. Pair it with an assertion in the Verify group that confirms the heading now ends with ` ✅` (e.g. `grep -F "## Phase <N> — <Title> ✅" specs/roadmap.md` exits 0).
 - **Do not include meta-workflow** in the plan (test-suite runs belong in `Verify`; squash/commit/PR creation are governed by `.claude/rules/git-workflow.md` and `.claude/rules/conventional-commits.md` — no need to repeat per phase).
 
 Do not pad. If three groups plus `Verify` cover the work, that is correct.

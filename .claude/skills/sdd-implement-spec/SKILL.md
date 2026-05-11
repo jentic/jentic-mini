@@ -1,6 +1,6 @@
 ---
 name: sdd-implement-spec
-description: Implement an existing feature spec end-to-end — pick an unprocessed feature spec (one whose `## Phase N — ...` block is still in `specs/roadmap.md`), cut a feature branch, walk `plan.md` task groups in order with one primary atomic Conventional-Commits commit per group (plus optional small fix-up commits during verification or pre-push review), run `plan.md`'s Verify group plus every check in `validation.md`, then run a pre-push review pairing the built-in `/review` skill with three parallel deep-review subagents (spec-adherence, code-quality, risk-and-robustness) before pushing and opening the PR. The spec is read-only during implementation; if it is wrong or incomplete, the skill stops and surfaces the gap rather than patching the spec mid-flight. Reports implementation, review, and verification results at the end. When `$ARGUMENTS` is empty, enumerates unprocessed specs via AskUserQuestion.
+description: Implement an existing feature spec end-to-end — pick an unprocessed feature spec (one whose `## Phase N — ...` heading in `specs/roadmap.md` does not yet carry the `✅` lifecycle marker), cut a feature branch, walk `plan.md` task groups in order with one primary atomic Conventional-Commits commit per group (plus optional small fix-up commits during verification or pre-push review), run `plan.md`'s Verify group plus every check in `validation.md`, then run a pre-push review pairing the built-in `/review` skill with three parallel deep-review subagents (spec-adherence, code-quality, risk-and-robustness) before pushing and opening the PR. The spec is read-only during implementation; if it is wrong or incomplete, the skill stops and surfaces the gap rather than patching the spec mid-flight. Reports implementation, review, and verification results at the end. When `$ARGUMENTS` is empty, enumerates unprocessed specs via AskUserQuestion.
 argument-hint: "[phase-number | slug-fragment | spec-dir-path] (optional)"
 ---
 
@@ -8,7 +8,7 @@ argument-hint: "[phase-number | slug-fragment | spec-dir-path] (optional)"
 
 You are operating within a Spec-Driven Development (SDD) workflow. See `.claude/rules/sdd-constitution.md`.
 
-This skill takes one **unprocessed feature spec** (a `specs/YYYY-MM-DD-<slug>/` directory whose `## Phase N — ...` block is still in `specs/roadmap.md`) and drives the work end-to-end: cuts the feature branch, walks `plan.md` task groups, runs the verification gates, commits atomically per group, runs a pre-push review (built-in `/review` plus three parallel deep-review subagents), pushes, opens a PR, and reports back on implementation, review, and verification.
+This skill takes one **unprocessed feature spec** (a `specs/YYYY-MM-DD-<slug>/` directory whose `## Phase N — ...` heading in `specs/roadmap.md` does not yet carry the `✅` lifecycle marker) and drives the work end-to-end: cuts the feature branch, walks `plan.md` task groups, runs the verification gates, commits atomically per group, runs a pre-push review (built-in `/review` plus three parallel deep-review subagents), pushes, opens a PR, and reports back on implementation, review, and verification.
 
 The skill **drives** implementation — it is not merely scaffolding around it. The actual code changes happen in the main loop guided by `plan.md`. The spec itself is read-only.
 
@@ -26,7 +26,7 @@ Argument in `$ARGUMENTS` (optional):
 - **The spec is read-only during implementation.** Do not edit `specs/<dir>/requirements.md`, `plan.md`, or `validation.md`. If the spec is wrong, incomplete, or contradicts current code, stop and surface the gap; the user owns spec edits and may re-run the skill after revising.
 - **`plan.md` is the source of truth for ordering and scope.** Walk groups sequentially. Each non-Verify group produces one primary atomic commit; verification (Phase 7) may add small fix-up commits if a check fails. Tasks within a group can interleave as needed for the change to make sense.
 - **`validation.md` is the source of truth for done.** Every numbered check must pass before opening the PR. If a check fails and cannot be fixed without changing the spec, stop and surface it.
-- **Roadmap entry deletion is part of `plan.md`.** The convention is for `plan.md` to include "Delete the Phase N entry from `specs/roadmap.md`" as a numbered task in its final docs/lifecycle group; respect it. If `plan.md` does not include the deletion, surface the gap before starting — do not improvise it.
+- **Roadmap completion marking is part of `plan.md`.** The convention is for `plan.md` to include "Append `✅` to the `## Phase N — <Title>` heading in `specs/roadmap.md`" as a numbered task in its final docs/lifecycle group; respect it. If `plan.md` does not include the completion-marking task, surface the gap before starting — do not improvise it.
 - **Conventional Commits + DCO sign-off.** Per `.claude/rules/conventional-commits.md` and `.claude/rules/git-workflow.md`. Every commit `git commit -s`; header ≤ 69 chars; type+scope reflect the group's primary subject; lowercase imperative description, no trailing period.
 - **Atomic, surgical commits.** Per `.claude/rules/git-workflow.md` and `.claude/rules/karpathy-guidelines.md`: one logical change per commit (applies equally to primary group commits and Phase 7 verification fix-ups), touch only what the change requires, do not improve adjacent code.
 - **No destructive git.** No `--force`, no `reset --hard`, no `--no-verify`. If a pre-commit hook rejects the commit, no commit was created — fix the underlying issue, restage, and retry the same `git commit` (don't add a duplicate). The "never amend" rule applies *after* a commit already exists and you discover a problem; in that case add a fix-up commit on top instead of amending.
@@ -59,9 +59,9 @@ A spec is **unprocessed** when:
 
 1. `specs/YYYY-MM-DD-<slug>/` exists with `requirements.md`, `plan.md`, and `validation.md` present
 2. Its `# Phase <N> Requirements — ...` H1 names a phase number
-3. `## Phase <N> — ...` is still present in `specs/roadmap.md`
+3. The matching `## Phase <N> — ...` heading in `specs/roadmap.md` does **not** end with `✅` (lifecycle: shipped phases keep their block but get `✅` appended to the heading)
 
-**`$ARGUMENTS` is matched only against unprocessed specs.** If a fragment or path resolves to a spec dir whose phase is no longer in `specs/roadmap.md` (already shipped), surface it explicitly ("`<dir>` matched but Phase <N> has already shipped — no longer in roadmap") and stop. Do not silently fall back to fresh enumeration.
+**`$ARGUMENTS` is matched only against unprocessed specs.** If a fragment or path resolves to a spec dir whose phase heading in `specs/roadmap.md` already carries `✅`, surface it explicitly ("`<dir>` matched but Phase <N> has already shipped — heading marked `✅` in roadmap") and stop. If a fragment or path resolves to a spec dir whose phase is missing from `specs/roadmap.md` altogether, surface that separately ("`<dir>` matched but Phase <N> has no heading in roadmap — roadmap may be malformed") and stop. Do not silently fall back to fresh enumeration.
 
 **If `$ARGUMENTS` resolves to exactly one unprocessed spec**, show it (phase number + title + dir + one-line goal from roadmap) and ask the user to confirm before continuing.
 
@@ -83,7 +83,7 @@ The `AskUserQuestion` call uses `header: "Spec"` (max 12 chars, per the schema) 
 
 **Freeform write-in handling.** Every `AskUserQuestion` call gets an automatic freeform "Other" option. If the user types a phase number or slug there (whether in the multi-match, the 2–4-spec, or the 5+-spec branch above), treat the freeform value as a fresh `$ARGUMENTS` and re-run the matching rules at the top of this phase. If it still doesn't resolve to exactly one unprocessed spec, ask again.
 
-If the chosen phase has unsatisfied dependencies (per `Depends on:` in `specs/roadmap.md` — any named phase still present in the active section means it has not shipped), warn with the specific dependencies and ask the user to confirm before continuing.
+If the chosen phase has unsatisfied dependencies (per `Depends on:` in `specs/roadmap.md` — any named phase whose heading does NOT yet carry `✅` is unshipped), warn with the specific dependencies and ask the user to confirm before continuing.
 
 **Spec age check.** Run `git log -1 --format=%ai -- specs/<dir>` for the chosen spec. If the spec was last touched more than ~14 days ago, warn the user that `plan.md`'s file/line references may have drifted from current `main` and ask whether to proceed, refresh the spec first, or abort. Heuristic only — never block on age alone.
 
@@ -100,7 +100,7 @@ Parse `plan.md`:
 - Extract `## Group <N> — <Title>` blocks in order
 - Extract numbered tasks under each (sequential numbering across all groups, per the scaffolding convention)
 - Identify the final group as the Verify group. Per `sdd-new-spec`'s template the last group is always named `Verify` and contains command-style verification tasks (no code changes). If a future spec uses a different name but the content is still command-style, treat it as Verify. If the final group contains code-change tasks the spec is malformed against the SDD convention — stop and report; do not improvise alternative control flow for Phases 6 and 7.
-- Locate the **roadmap-deletion task** — a numbered task in the final docs/lifecycle group whose body says to delete the phase block from `specs/roadmap.md`
+- Locate the **roadmap-completion task** — a numbered task in the final docs/lifecycle group whose body says to append ` ✅` (a single space followed by the U+2705 checkmark) to the `## Phase N — <Title>` heading in `specs/roadmap.md`. The space matters: Verify assertions `grep -F` for the exact ` ✅` suffix, so `Title✅` (no space) would silently fail.
 
 Parse `validation.md`:
 
@@ -108,7 +108,7 @@ Parse `validation.md`:
 - Each subsection contains either a fenced command + expectation, or a structural assertion (file contents, presence of a row, etc.)
 - Note the trailing `## Not Required` section — surfaced in the PR body's "Out of scope" subsection so reviewers see what's deliberately deferred
 
-If parsing fails (no groups, no validation checks, missing roadmap-deletion task in `plan.md`, malformed structure), stop and report what couldn't be parsed. Do not improvise around a malformed spec.
+If parsing fails (no groups, no validation checks, missing roadmap-completion task in `plan.md`, malformed structure), stop and report what couldn't be parsed. Do not improvise around a malformed spec.
 
 ## Phase 3 — Derive branch name and check idempotence
 
@@ -168,7 +168,7 @@ If implementation hits an obstacle mid-group, decide first whether it's a **genu
 - Last successful commit SHA on the branch
 - Recommended next step (typically: revise `plan.md`, fix locally outside the spec, or abort and re-plan)
 
-The roadmap-deletion task identified in Phase 2 lives inside one of the groups (typically the final docs/lifecycle group, before Verify). Implement it as part of that group's commit — do not split it into its own commit unless the spec instructs otherwise.
+The roadmap-completion task identified in Phase 2 lives inside one of the groups (typically the final docs/lifecycle group, before Verify). Implement it as part of that group's commit — do not split it into its own commit unless the spec instructs otherwise. The change is mechanical: append ` ✅` (space, then `✅`) to the `## Phase N — <Title>` heading in `specs/roadmap.md`; leave the rest of the block in place.
 
 ## Phase 7 — Run plan.md Verify group + validation.md
 
@@ -223,7 +223,7 @@ The shared question for every perspective: *from this lens, is anything in the d
 
 `<finding-type>: <one-line summary> — <file:line if applicable> — <suggested fix, or "surface to user">`
 
-**Perspective 1 — Spec adherence.** Inputs: `specs/<dir>/requirements.md`, `plan.md`, `validation.md`, the commit list, the diff. Look for: groups/tasks in `plan.md` not visible in any commit; commits introducing work outside the spec's scope; deviations from `plan.md`'s prescribed file/line targets without surfacing; the roadmap-deletion task missing from its expected group commit. Finding-types: `missing-task`, `extra-scope`, `silent-deviation`, `roadmap-deletion-missing`.
+**Perspective 1 — Spec adherence.** Inputs: `specs/<dir>/requirements.md`, `plan.md`, `validation.md`, the commit list, the diff. Look for: groups/tasks in `plan.md` not visible in any commit; commits introducing work outside the spec's scope; deviations from `plan.md`'s prescribed file/line targets without surfacing; the roadmap-completion task missing from its expected group commit (the diff should show ` ✅` appended to the `## Phase N — <Title>` heading in `specs/roadmap.md`). Finding-types: `missing-task`, `extra-scope`, `silent-deviation`, `roadmap-completion-missing`.
 
 **Perspective 2 — Code quality and simplicity.** Inputs: the diff, the commit list, `.claude/rules/karpathy-guidelines.md`, `.claude/rules/git-workflow.md`, `.claude/rules/conventional-commits.md`. Look for: speculative features the spec doesn't require; abstractions for single-use code; error handling for impossible scenarios; "improvements" to adjacent code beyond the change scope; comments explaining WHAT instead of WHY (especially comments referencing the current task / fix / caller); non-atomic commits; CC type/scope that misrepresents the commit's content. Finding-types: `bloat`, `abstraction`, `adjacent-edit`, `dead-comment`, `commit-shape`.
 
@@ -282,7 +282,7 @@ Spec: `specs/<date>-<slug>/`
 
 ### What changed
 
-- <one bullet per non-Verify group — short noun phrase, e.g. "Config plumbing for `JENTIC_ROOT_PATH`". The group whose commit performs the roadmap-deletion task should mention it inline (e.g. "Docs + roadmap entry retired per lifecycle"); do not add a separate trailing bullet for the deletion.>
+- <one bullet per non-Verify group — short noun phrase, e.g. "Config plumbing for `JENTIC_ROOT_PATH`". The group whose commit performs the roadmap-completion task should mention it inline (e.g. "Docs + roadmap entry marked ✅ per lifecycle"); do not add a separate trailing bullet for the marker.>
 
 ## Validation
 
@@ -325,7 +325,7 @@ Return to the user in this shape:
   - `validation.md`: each numbered check + pass/fail
 - **Pre-push review outcome**: one of `clean` (no findings), `findings addressed` (had findings, applied fixes — list their SHAs and what they addressed), or `proceeded over blocker` (had blockers, user accepted as-is — include the one-liner). Suggestions or nits the user declined to apply get one short bullet each as optional follow-ups, not regressions. If `/review` couldn't run (tool error), say so on this line instead.
 - **Deviations from `plan.md`** (if any): tasks that were split, merged, or required follow-up fixes; spec gaps surfaced (without patching them)
-- **Next step**: human review on the PR. The spec dir stays as history per the lifecycle rule; the roadmap entry was removed by the relevant commit in this PR.
+- **Next step**: human review on the PR. The spec dir stays as history per the lifecycle rule; the roadmap entry was marked `✅` by the relevant commit in this PR.
 
 If the run halted before completion, replace the post-completion sections with:
 

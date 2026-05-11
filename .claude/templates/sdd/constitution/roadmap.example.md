@@ -9,6 +9,8 @@ notes: Template example for constitution roadmap
 
 # Roadmap
 
+**Phases marked ✅ have shipped; everything else is planned.**
+
 Phases are intentionally small — each one must be a **shippable, independently reviewable, and testable slice of work**.
 
 Start from the repository’s current state. Do not plan from scratch unless the project is actually empty.
@@ -25,6 +27,12 @@ use (e.g. a known trust/security issue). Items required for a later readiness ba
 intended use do not need `(blocker)` — state the forward-looking rationale in the phase body and
 use the appropriate normal priority. Only `(blocker)` implies a release gate for today's bar;
 other levels express relative queue position.
+
+**Lifecycle:** when a phase ships, append ` ✅` (a single space followed by the U+2705 checkmark)
+to its `## Phase N — Title` heading and leave the rest of the block in place — do not delete or
+renumber. The leading space is load-bearing — completion-verify steps `grep -F` for the exact
+` ✅` suffix. Phase numbers are stable identifiers; completed phases stay in the file as
+history. New work takes the next number after the largest existing phase.
 
 ## Phase 1 — [FOUNDATION_PHASE_NAME]
 

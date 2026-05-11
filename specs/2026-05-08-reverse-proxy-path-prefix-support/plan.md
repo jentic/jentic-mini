@@ -74,7 +74,7 @@
 21. Add a `JENTIC_ROOT_PATH` row to the `README.md` "Configuration" table. Description: "Path prefix to mount the app under, e.g. `/jentic`. Pair with `JENTIC_PUBLIC_BASE_URL` (which must include the prefix) for OAuth issuer correctness. If unset, falls back to `X-Forwarded-Prefix` per request."
 22. Add `JENTIC_ROOT_PATH` to the "Key environment variables" list in `.claude/CLAUDE.md` for agent-context completeness.
 23. Add a "Mounting under a path prefix" subsection to `docs/deploy/digitalocean/README.md` after the existing Caddy reverse-proxy snippet, showing a `handle_path /jentic/* { reverse_proxy localhost:8900 }` variant alongside the matching `JENTIC_ROOT_PATH=/jentic` and `JENTIC_PUBLIC_BASE_URL=https://example.com/jentic` env line.
-24. Delete the Phase 25 entry from `specs/roadmap.md` (the `## Phase 25 — Reverse-Proxy Path Prefix Support` block + its trailing blank line). Per the lifecycle rule in `specs/roadmap.md`, do NOT renumber surrounding phases — phase numbers are stable identifiers.
+24. Append ` ✅` to the `## Phase 25 — Reverse-Proxy Path Prefix Support` heading in `specs/roadmap.md` per the lifecycle rule in `specs/roadmap.md` — leave the rest of the Phase 25 block in place; do NOT delete or renumber any phase.
 
 ## Group 7 — Verify
 

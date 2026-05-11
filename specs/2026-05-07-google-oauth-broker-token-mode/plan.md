@@ -51,14 +51,14 @@
 32. Create `tests/test_admin_api_keys.py`. Cover: human-session caller mints a key (200, plaintext `tk_` returned in body); agent-key caller rejected with 403 (build-human-only-error path); the minted key authenticates a subsequent `X-Jentic-API-Key` request to a public endpoint.
 33. Run `tests/test_oauth_broker_lifecycle.py` and `tests/test_oauth_broker_default_user.py` unchanged — both must pass (Pipedream regression gate).
 
-## Group 7 — Documentation + OpenAPI sync + roadmap deletion
+## Group 7 — Documentation + OpenAPI sync + roadmap completion mark
 
 34. Update `docs/oauth-broker.md`. Add a "Token-mode brokers" section documenting `GoogleOAuthBroker`, the seven new columns, `auth_type='broker_oauth'`, the `POST /oauth-brokers/{id}/exchange-code` endpoint, the multi-instance `redirect_uri` strategy (single fleet-wide URI + control-plane forward), and the `has_scopes()` Protocol addition. Reword the existing "Migration Path: Pipedream → Jentic OAuth" section so it describes a broker-by-broker swap rather than wholesale replacement.
 35. Update `specs/tech-stack.md` line 68 — replace the "Pipedream is the only first-class implementation today" sentence so it describes Pipedream (proxy-mode) and Google (token-mode) as the current first-class brokers in `src/brokers/`.
 36. Update `CLAUDE.md` "OAuth brokers (`src/brokers/`)" section to mention `google.py` (token-mode, `oauth2.googleapis.com`) alongside `pipedream.py` (proxy-mode).
 37. Update `docs/auth.md:51-66` — record `POST /admin/api-keys` as a human-session-only privileged operation; record `POST /oauth-brokers/{broker_id}/exchange-code` boundary (admin OR human-session OR has-toolkit).
 38. Regenerate `ui/openapi.json` and the generated TypeScript client. Commands (run with the dev server up): `curl http://localhost:8900/openapi.json | python3 -m json.tool > ui/openapi.json` then `cd ui && npx openapi-typescript-codegen --input openapi.json --output src/api/generated --client fetch --useOptions`. Commit both regenerated artefacts.
-39. Delete the Phase 24 entry (lines 321-337 of the current `specs/roadmap.md`) per the lifecycle rule at `specs/roadmap.md:35-37` — do NOT renumber the remaining phases.
+39. Append ` ✅` to the `## Phase 24 — Google OAuth Broker (Token Mode)` heading in `specs/roadmap.md` per the lifecycle rule in `specs/roadmap.md` — leave the rest of the Phase 24 block in place; do NOT delete or renumber any phase.
 
 ## Group 8 — Verify
 
@@ -67,4 +67,4 @@
 42. `pdm run test -- tests/test_openapi_contract.py::test_ui_openapi_matches_served_spec -v` exits 0 (proves `ui/openapi.json` was regenerated to match the served `/openapi.json`).
 43. `npm --prefix ui run lint` and `npx --prefix ui tsc --noEmit` exit 0 (proves the regenerated client compiles cleanly).
 44. With the dev server up, `curl -sS -X POST http://localhost:8900/oauth-brokers -H "Content-Type: application/json" -b cookies.txt -d '{"id":"google","type":"google","config":{"client_id":"<id>","client_secret":"<sec>","redirect_uri":"<uri>"}}'` returns HTTP 200 with a JSON body containing `"id":"google"` and `"type":"google"`.
-45. `grep -nE '^## Phase 24' specs/roadmap.md` returns no matches (the Phase 24 entry has been removed per task 39).
+45. `grep -F "## Phase 24 — Google OAuth Broker (Token Mode) ✅" specs/roadmap.md` exits 0 (the Phase 24 heading carries the ✅ completion marker per task 39); the rest of the Phase 24 block remains in place.

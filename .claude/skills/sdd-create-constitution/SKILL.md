@@ -150,6 +150,7 @@ Write `specs/mission.md`, `specs/tech-stack.md`, `specs/roadmap.md` using the te
 - Include `Depends on:` between phases when ordering matters
 - Keep phases small (hours to days, not weeks); split if a phase feels too large
 - Use `Priority:` values per the template — `High`, `Medium–High` (with the en-dash U+2013, not a hyphen), `Medium`. Apply `(blocker)` only when the phase fixes a current trust/security gap that makes the system unsafe for its intended use **today**; forward-looking production work uses normal priority and states the rationale in the phase body.
+- Include a **Lifecycle** paragraph near the top of the file describing the completion-marker convention: when a phase ships, append ` ✅` (a single space followed by the U+2705 checkmark) to its `## Phase N — Title` heading and leave the rest of the block in place (do not delete or renumber). The leading space is load-bearing — completion-verify steps `grep -F` for the exact ` ✅` suffix. Phase numbers are stable identifiers; completed phases stay in the file as history. New work takes the next number after the largest existing phase. Pair this with a one-line intro at the top: "Phases marked `✅` have shipped; everything else is planned."
 
 ## Phase 6 — Report back
 
