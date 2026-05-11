@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Outlet, useLocation } from 'react-router-dom';
+import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import {
 	BookOpen,
 	Bot,
@@ -19,6 +19,7 @@ import { JenticLogo } from '@/components/ui/Logo';
 import { ErrorBoundary } from '@/components/ui/ErrorBoundary';
 import { Button } from '@/components/ui/Button';
 import { AppLink } from '@/components/ui/AppLink';
+import { apiUrl } from '@/api/client';
 import { useAuth } from '@/hooks/useAuth';
 import { usePendingRequests } from '@/hooks/usePendingRequests';
 import { useUpdateCheck } from '@/hooks/useUpdateCheck';
@@ -155,7 +156,7 @@ function SidebarContents({ onClose }: { onClose?: () => void }) {
 					</AppLink>
 				)}
 				<AppLink
-					href="/docs"
+					href={apiUrl('/docs')}
 					external
 					className="text-foreground hover:bg-muted hover:text-primary flex items-center gap-3 rounded-md px-4 py-2 text-sm transition-all duration-150"
 					aria-label="API (opens in a new tab)"
@@ -187,12 +188,15 @@ export function Layout() {
 	const { data: pendingRequests } = usePendingRequests();
 	const queryClient = useQueryClient();
 	const location = useLocation();
+	const navigate = useNavigate();
 
 	const logoutMutation = useMutation({
 		mutationFn: () => UserService.logoutUserLogoutPost(),
 		onSuccess: () => {
 			queryClient.clear();
-			window.location.href = '/login';
+			// navigate() respects React Router basename so the redirect lands on
+			// /foo/login under a prefix mount; window.location.href='/login' bypasses it.
+			navigate('/login');
 		},
 	});
 

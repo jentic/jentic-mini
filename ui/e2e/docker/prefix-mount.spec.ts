@@ -27,11 +27,17 @@ test.describe('Reverse-proxy prefix mount', () => {
 		// same-origin XHR / fetch is a regression. We exclude 401s on /user/me
 		// — that endpoint is intentionally returned as a logged-out signal
 		// before auth, not an error.
+		// Capture same-origin fetch/XHR failures. Intentionally NOT filtered to
+		// PREFIX_BASE: the bug this test guards against is the SPA issuing requests
+		// WITHOUT the prefix (e.g. /health instead of /foo/health), so those
+		// failing URLs would NOT start with PREFIX_BASE and would be silently
+		// dropped by such a filter. Filter to same origin only to exclude CDN.
+		const origin = new URL(PREFIX_BASE).origin;
 		const failures: { url: string; status: number }[] = [];
 		page.on('response', (resp) => {
 			const url = resp.url();
 			const status = resp.status();
-			if (!url.startsWith(PREFIX_BASE)) return;
+			if (!url.startsWith(origin)) return;
 			if (status < 400) return;
 			const req = resp.request();
 			if (!['fetch', 'xhr'].includes(req.resourceType())) return;

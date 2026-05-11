@@ -686,8 +686,15 @@ def custom_openapi():
         tags=app.openapi_tags,  # controls section order in Swagger UI
     )
 
-    # Add servers (HTTPS first)
-    schema["servers"] = app.servers
+    # Add servers (HTTPS first). When mounted under a path prefix, prepend a
+    # simple prefix-relative entry so Swagger UI "Try it out" and code-generators
+    # (openapi-ts, openapi-generator, Postman) use the correct base path.
+    schema["servers"] = (
+        [{"url": JENTIC_ROOT_PATH, "description": "This instance (path-prefix mount)"}]
+        + app.servers
+        if JENTIC_ROOT_PATH
+        else app.servers
+    )
 
     # Add contact and license
     schema["info"]["contact"] = app.contact
