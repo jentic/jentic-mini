@@ -57,6 +57,20 @@ def test_inject_base_href_no_base_tag_returns_unchanged():
         "/foo#frag",  # fragment
         "/foo/../bar",  # parent traversal
         "//",  # double slash
+        # Hostile chars covered by the allowlist — each would otherwise reach
+        # an HTML attribute, inline JS string, or Set-Cookie attribute sink.
+        '/foo"',  # double quote → JS-string / HTML-attr break-out
+        "/foo'",  # single quote
+        "/foo<script>",  # angle brackets → tag injection
+        "/foo>bar",
+        "/foo;Domain=evil.com",  # semicolon → cookie attribute injection
+        "/foo,bar",
+        "/foo\\bar",  # backslash
+        "/foo\x00bar",  # NUL
+        "/foo\x01bar",  # C0 control
+        "/foo\x7fbar",  # DEL
+        "/foo%20bar",  # percent-encoded — keep semantic chars out
+        "/foo:bar",  # colon — defense vs. "looks like a URL scheme"
     ],
 )
 def test_normalise_root_path_invalid(value):

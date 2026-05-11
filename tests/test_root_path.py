@@ -195,10 +195,57 @@ def test_mode_c_login_cookie_path_prefixed(admin_client, static_fixtures):
 # ── Hostile X-Forwarded-Prefix is silently ignored ──────────────────────────
 
 
+_HOSTILE_PREFIXES = (
+    # Structural (kept from pre-allowlist era).
+    "/foo bar",
+    "/foo?x=1",
+    "/foo/../bar",
+    "//",
+    "no-leading-slash",
+    # Sink-reaching chars closed by the allowlist (PR #364 review).
+    '/foo";alert(1);"',  # /docs inline-JS break-out
+    "/foo<script>",  # HTML tag injection
+    "/foo;Domain=evil.com",  # Set-Cookie attribute injection
+    "/foo;SameSite=None",  # SameSite downgrade
+    "/foo,bar",
+    "/foo\x00bar",
+)
+
+
 def test_hostile_forwarded_prefix_is_ignored(client, static_fixtures):
     """Invalid X-Forwarded-Prefix values must not crash; treated as no mount."""
-    for bad in ("/foo bar", "/foo?x=1", "/foo/../bar", "//", "no-leading-slash"):
+    for bad in _HOSTILE_PREFIXES:
         resp = client.get("/", headers={"Accept": "text/html", "X-Forwarded-Prefix": bad})
         assert resp.status_code == 200
         # Body has unprefixed base since the bad header was rejected.
         assert b'href="/"' in resp.content
+
+
+def test_hostile_forwarded_prefix_does_not_reach_docs(client, static_fixtures):
+    """Validator-rejected prefixes must not appear in the /docs HTML / inline JS."""
+    for bad in _HOSTILE_PREFIXES:
+        resp = client.get("/docs", headers={"X-Forwarded-Prefix": bad})
+        assert resp.status_code == 200
+        # The most weaponisable sink is the inline-JS string; assert it's clean.
+        assert b'url: "/openapi.json"' in resp.content
+        # The full hostile prefix must not appear anywhere in the response.
+        # `/foo` substring is allowed (it's a legitimate path token); the
+        # exploit needs the *trailing* attacker chars, so check the full value.
+        assert bad.encode("latin-1") not in resp.content
+
+
+def test_hostile_forwarded_prefix_does_not_reach_set_cookie(admin_client, static_fixtures):
+    """Validator-rejected prefixes must not appear in the Set-Cookie Path attribute."""
+    for bad in _HOSTILE_PREFIXES:
+        resp = admin_client.post(
+            "/user/login",
+            json={"username": "testadmin", "password": "testpassword123"},
+            headers={"X-Forwarded-Prefix": bad},
+        )
+        assert resp.status_code == 200
+        cookie_header = resp.headers.get("set-cookie", "")
+        # Rejected prefix → cookie scoped to "/" (no mount), one Path attribute.
+        assert cookie_header.count("Path=") == 1
+        assert "Path=/;" in cookie_header or cookie_header.endswith("Path=/")
+        assert "Domain=" not in cookie_header
+        assert "SameSite=strict" in cookie_header
