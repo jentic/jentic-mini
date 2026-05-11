@@ -32,10 +32,12 @@ phase with `/sdd-new-spec <N>`.
 (`requirements.md`, `plan.md`, `validation.md`) and open it as a review PR. The skill touches only
 the spec files; implementation follows in a separate PR once the spec is approved.
 
-**Lifecycle:** when a phase ships, append `✅` to its `## Phase N — Title` heading and leave the
-rest of the block in place — do not delete or renumber. Phase numbers are stable identifiers;
-completed phases stay in the file as history. New work takes the next number after the largest
-existing phase.
+**Lifecycle:** when a phase ships, append ` ✅` (a single space followed by the U+2705 checkmark)
+to its `## Phase N — Title` heading and leave the rest of the block in place — do not delete or
+renumber. The space is load-bearing: completion-verify steps `grep -F "## Phase N — Title ✅"`
+for the exact suffix, so `Title✅` (no space) silently fails. Phase numbers are stable
+identifiers; completed phases stay in the file as history. New work takes the next number after
+the largest existing phase.
 
 ---
 

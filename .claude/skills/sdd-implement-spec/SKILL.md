@@ -100,7 +100,7 @@ Parse `plan.md`:
 - Extract `## Group <N> — <Title>` blocks in order
 - Extract numbered tasks under each (sequential numbering across all groups, per the scaffolding convention)
 - Identify the final group as the Verify group. Per `sdd-new-spec`'s template the last group is always named `Verify` and contains command-style verification tasks (no code changes). If a future spec uses a different name but the content is still command-style, treat it as Verify. If the final group contains code-change tasks the spec is malformed against the SDD convention — stop and report; do not improvise alternative control flow for Phases 6 and 7.
-- Locate the **roadmap-completion task** — a numbered task in the final docs/lifecycle group whose body says to append `✅` to the `## Phase N — <Title>` heading in `specs/roadmap.md`.
+- Locate the **roadmap-completion task** — a numbered task in the final docs/lifecycle group whose body says to append ` ✅` (a single space followed by the U+2705 checkmark) to the `## Phase N — <Title>` heading in `specs/roadmap.md`. The space matters: Verify assertions `grep -F` for the exact ` ✅` suffix, so `Title✅` (no space) would silently fail.
 
 Parse `validation.md`:
 
