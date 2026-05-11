@@ -20,7 +20,10 @@ def route_path(scope) -> str:
     if not root_path or not path.startswith(root_path):
         return path
     if path == root_path:
-        return ""
+        # Bare mount root (e.g. GET /foo with root_path=/foo) → treat as "/"
+        # so _is_public("/") matches and the SPA handler renders. Matches
+        # Starlette's get_route_path return for the same case.
+        return "/"
     if path[len(root_path)] == "/":
         return path[len(root_path) :]
     return path

@@ -124,6 +124,17 @@ def test_mode_b_spa_fallback_for_credentials(client, app_with_prefix, static_fix
     assert b'href="/foo/"' in resp.content
 
 
+def test_mode_b_bare_mount_root_serves_spa(client, app_with_prefix, static_fixtures):
+    """GET /foo (no trailing slash) renders the SPA — regression from #365.
+
+    Pre-fix, route_path returned '' for path==root_path, _is_public('') was
+    False, and the bare mount URL returned 401. Now it returns '/'.
+    """
+    resp = client.get("/foo", headers={"Accept": "text/html"})
+    assert resp.status_code == 200
+    assert b'href="/foo/"' in resp.content
+
+
 def test_mode_b_login_cookie_path_prefixed(admin_client, app_with_prefix, static_fixtures):
     """Login Set-Cookie carries Path=/foo (cookie scoped to the mount)."""
     resp = admin_client.post(
