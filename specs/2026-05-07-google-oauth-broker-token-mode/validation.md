@@ -57,13 +57,13 @@ The diff must include all of the following changes:
 - `CLAUDE.md` — "OAuth brokers (`src/brokers/`)" section mentions `google.py` alongside `pipedream.py`.
 - `docs/auth.md` — `POST /admin/api-keys` listed under human-session-only privileged operations; `POST /oauth-brokers/{broker_id}/exchange-code` boundary recorded (admin OR human-session OR has-toolkit).
 
-### 7. Phase 24 entry removed from the roadmap
+### 7. Phase 24 heading marked complete in the roadmap
 
 ```
-grep -nE '^## Phase 24' specs/roadmap.md
+grep -F "## Phase 24 — Google OAuth Broker (Token Mode) ✅" specs/roadmap.md
 ```
 
-No matches. Per the lifecycle rule at `specs/roadmap.md:35-37`, the Phase 24 block must be deleted (not renumbered) when this phase ships. Surrounding phase numbers (23, 25, …) stay as they are.
+Exits 0 with a single matching line. Per the lifecycle rule in `specs/roadmap.md`, the Phase 24 heading carries the `✅` completion marker when this phase ships; the rest of the block stays in place as history, and no surrounding phase is renumbered.
 
 ### 8. Live broker-create smoke
 

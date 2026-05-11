@@ -123,13 +123,13 @@ In order: exit 0; exit 0; `200`; exit 0; exit 0 (proves the cookie `Path` reads 
 
 `.claude/CLAUDE.md` must include a bullet for `JENTIC_ROOT_PATH` in the "Key environment variables" section so future agent context loads see it.
 
-### 14. `specs/roadmap.md` no longer contains the Phase 25 entry
+### 14. Phase 25 heading marked complete in `specs/roadmap.md`
 
 ```
-grep -nE '^## Phase 25 — Reverse-Proxy Path Prefix Support' specs/roadmap.md
+grep -F "## Phase 25 — Reverse-Proxy Path Prefix Support ✅" specs/roadmap.md
 ```
 
-Returns no matches. Surrounding phases (24, 26+ if any) remain renumbered exactly as they are today; per `specs/roadmap.md` lifecycle rule the gap at 25 is preserved.
+Exits 0 with a single matching line. Per the lifecycle rule in `specs/roadmap.md`, the Phase 25 heading carries the `✅` completion marker when this phase ships; the rest of the block stays in place as history, and no surrounding phase is renumbered.
 
 ## Not Required
 
