@@ -258,6 +258,27 @@ def test_forwarded_prefix_disabled_by_env(client, static_fixtures, monkeypatch):
     assert b'href="/foo/"' not in resp.content
 
 
+def test_forwarded_prefix_disabled_still_honours_pinned_root_path(
+    client, app_with_prefix, static_fixtures, monkeypatch
+):
+    """opt-out + JENTIC_ROOT_PATH=/foo: mount stays at /foo, header is ignored.
+
+    This is the realistic direct-exposure config — operator pins the mount
+    via env and disables the header fallback so attacker-supplied
+    X-Forwarded-Prefix can't steer cookie path / self-links.
+    """
+    monkeypatch.setattr("src.main.JENTIC_TRUST_FORWARDED_PREFIX", False)
+    resp = client.get(
+        "/foo/",
+        headers={"Accept": "text/html", "X-Forwarded-Prefix": "/attacker-chosen"},
+    )
+    assert resp.status_code == 200
+    # Mount is pinned to /foo from the env.
+    assert b'href="/foo/"' in resp.content
+    # Attacker's header is ignored — /attacker-chosen does not appear anywhere.
+    assert b"attacker-chosen" not in resp.content
+
+
 def test_hostile_forwarded_prefix_does_not_reach_set_cookie(admin_client, static_fixtures):
     """Validator-rejected prefixes must not appear in the Set-Cookie Path attribute."""
     for bad in _HOSTILE_PREFIXES:

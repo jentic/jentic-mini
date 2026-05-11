@@ -1,6 +1,9 @@
 """Unit tests for the path-prefix helpers — pure functions, no app fixture."""
 
+import importlib
+
 import pytest
+import src.config
 from src.config import normalise_root_path
 from src.main import _inject_base_href  # noqa: PLC2701
 from src.utils import build_absolute_url
@@ -90,6 +93,22 @@ def test_normalise_root_path_invalid(value):
 )
 def test_normalise_root_path_valid(value, expected):
     assert normalise_root_path(value) == expected
+
+
+# ── JENTIC_TRUST_FORWARDED_PREFIX strict parsing ────────────────────────────
+
+
+@pytest.mark.parametrize("value", ["flase", "maybe", "yepp", "x", "tru", "fals"])
+def test_trust_forwarded_prefix_strict_rejects_typos(value, monkeypatch):
+    """Strict parser: typo'd values raise at import time instead of silently
+    evaluating to truthy. Reload src.config to re-evaluate the module-level
+    parse with the patched env value."""
+    monkeypatch.setenv("JENTIC_TRUST_FORWARDED_PREFIX", value)
+    with pytest.raises(RuntimeError, match="JENTIC_TRUST_FORWARDED_PREFIX"):
+        importlib.reload(src.config)
+    # Restore module state for other tests.
+    monkeypatch.delenv("JENTIC_TRUST_FORWARDED_PREFIX")
+    importlib.reload(src.config)
 
 
 # ── build_absolute_url ───────────────────────────────────────────────────────
