@@ -15,6 +15,7 @@ Password reset is CLI-only:
 import logging
 import uuid
 from typing import Annotated
+from urllib.parse import urlparse
 
 import bcrypt
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
@@ -203,9 +204,21 @@ async def login(
     token = make_jwt(state["jwt_secret"])
 
     if redirect_to:
-        # Prevent open redirect — only allow relative paths
-        if not redirect_to.startswith("/") or redirect_to.startswith("//"):
+        # Prevent open redirect — only allow same-origin relative paths.
+        # Browsers normalize '\' to '/' per WHATWG URL spec, so '/\evil.com'
+        # would be interpreted as protocol-relative '//evil.com'. Normalize
+        # first, then reject anything with a scheme, host, or leading '//'.
+        candidate = redirect_to.replace("\\", "/")
+        parsed = urlparse(candidate)
+        if (
+            not candidate.startswith("/")
+            or candidate.startswith("//")
+            or parsed.scheme
+            or parsed.netloc
+        ):
             redirect_to = "/"
+        else:
+            redirect_to = candidate
         redir = RedirectResponse(url=redirect_to, status_code=303)
         redir.set_cookie(
             "jentic_session",
