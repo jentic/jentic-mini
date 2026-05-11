@@ -16,7 +16,7 @@ See @DEVELOPMENT.md for prerequisites, installation, and running the server.
 - `JENTIC_VAULT_KEY` — Fernet key for credentials vault (auto-generated from `data/vault.key` if unset)
 - `JENTIC_PUBLIC_HOSTNAME` — public hostname for self-links and workflow dispatch
 - `JENTIC_ROOT_PATH` — path prefix when Mini is mounted under a reverse proxy (e.g. `/jentic`); falls back to the per-request `X-Forwarded-Prefix` header when unset
-- `JENTIC_TRUST_FORWARDED_PREFIX` — whether the `X-Forwarded-Prefix` fallback is honoured (default `true`); set to `false` on direct-exposure deploys to pin the mount path
+- `JENTIC_TRUST_FORWARDED_PREFIX` — whether the `X-Forwarded-Prefix` fallback is honoured (default `true`); set to `false` on direct-exposure deploys to ignore the header fallback (pair with `JENTIC_ROOT_PATH` to pin a specific mount)
 - `DB_PATH` — SQLite database path (default: `/app/data/jentic-mini.db`)
 - `LOG_LEVEL` — `debug | info | warning | error`
 - `JENTIC_HOST_PATH` — project root path for Docker mounts (defaults to `.`)
