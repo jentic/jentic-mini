@@ -29,6 +29,13 @@ def test_login_no_redirect_returns_json(admin_client):
     assert resp.json()["username"] == "testadmin"
 
 
+def test_login_empty_redirect_to_returns_json(admin_client):
+    """An empty redirect_to is falsy and must skip the redirect branch entirely."""
+    resp = _post_login(admin_client, "")
+    assert resp.status_code == 200
+    assert resp.json()["username"] == "testadmin"
+
+
 def test_login_safe_relative_path_passes_through(admin_client):
     resp = _post_login(admin_client, "/dashboard")
     assert resp.status_code == 303
@@ -74,3 +81,32 @@ def test_login_hostile_redirect_to_neutralized(admin_client, hostile):
     assert resp.headers["location"] == "/", (
         f"expected '/' for hostile input {hostile!r}, got {resp.headers['location']!r}"
     )
+
+
+@pytest.mark.parametrize(
+    "ctrl_input",
+    [
+        "/\r\n//evil.com",
+        "/\r//evil.com",
+        "/\n//evil.com",
+        "/\t//evil.com",
+    ],
+)
+def test_login_redirect_to_control_chars_cannot_smuggle_into_location(admin_client, ctrl_input):
+    """Defense-in-depth: even if the guard accepts an input with control chars
+    (because it starts with a single '/'), the emitted Location header must
+    not contain literal CR/LF/tab and must not redirect cross-origin.
+
+    Today this is enforced by Starlette's RedirectResponse percent-encoding
+    via quote(). This test locks that contract in so a future regression that
+    let raw control chars through would fail loudly.
+    """
+    resp = _post_login(admin_client, ctrl_input)
+    assert resp.status_code == 303
+    location = resp.headers["location"]
+    assert "\r" not in location, f"literal CR in Location {location!r}"
+    assert "\n" not in location, f"literal LF in Location {location!r}"
+    assert "\t" not in location, f"literal TAB in Location {location!r}"
+    # Must stay same-origin: not protocol-relative, not schemed.
+    assert not location.startswith("//"), f"protocol-relative Location {location!r}"
+    assert "://" not in location, f"schemed Location {location!r}"
