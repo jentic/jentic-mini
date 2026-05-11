@@ -219,7 +219,9 @@ _HOSTILE_PREFIXES = (
     "/foo;Domain=evil.com",  # Set-Cookie attribute injection
     "/foo;SameSite=None",  # SameSite downgrade
     "/foo,bar",
-    "/foo\x00bar",
+    # NUL byte excluded here: ASGI transports reject control characters before
+    # the header reaches the app, making the integration case non-actionable.
+    # It remains in test_root_path_unit.py to cover normalise_root_path itself.
 )
 
 

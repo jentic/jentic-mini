@@ -111,10 +111,15 @@ def test_normalise_root_path_valid(value, expected):
     ],
 )
 def test_public_base_url_root_path_match_is_ok(base_url, root_path, monkeypatch):
-
     monkeypatch.setenv("JENTIC_PUBLIC_BASE_URL", base_url)
     monkeypatch.setenv("JENTIC_ROOT_PATH", root_path)
-    importlib.reload(src.config)  # should not raise
+    try:
+        importlib.reload(src.config)  # should not raise
+    finally:
+        # Always restore to default so later tests don't see stale constants.
+        monkeypatch.delenv("JENTIC_PUBLIC_BASE_URL", raising=False)
+        monkeypatch.delenv("JENTIC_ROOT_PATH", raising=False)
+        importlib.reload(src.config)
 
 
 @pytest.mark.parametrize(
@@ -126,18 +131,25 @@ def test_public_base_url_root_path_match_is_ok(base_url, root_path, monkeypatch)
     ],
 )
 def test_public_base_url_root_path_mismatch_raises(base_url, root_path, monkeypatch):
-
     monkeypatch.setenv("JENTIC_PUBLIC_BASE_URL", base_url)
     monkeypatch.setenv("JENTIC_ROOT_PATH", root_path)
-    with pytest.raises(RuntimeError, match="JENTIC_PUBLIC_BASE_URL"):
+    try:
+        with pytest.raises(RuntimeError, match="JENTIC_PUBLIC_BASE_URL"):
+            importlib.reload(src.config)
+    finally:
+        monkeypatch.delenv("JENTIC_PUBLIC_BASE_URL", raising=False)
+        monkeypatch.delenv("JENTIC_ROOT_PATH", raising=False)
         importlib.reload(src.config)
 
 
 def test_public_base_url_unset_skips_check(monkeypatch):
-
     monkeypatch.delenv("JENTIC_PUBLIC_BASE_URL", raising=False)
     monkeypatch.setenv("JENTIC_ROOT_PATH", "/foo")
-    importlib.reload(src.config)  # should not raise even with root_path set
+    try:
+        importlib.reload(src.config)  # should not raise even with root_path set
+    finally:
+        monkeypatch.delenv("JENTIC_ROOT_PATH", raising=False)
+        importlib.reload(src.config)
 
 
 # ── build_absolute_url ───────────────────────────────────────────────────────
