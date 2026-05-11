@@ -2,6 +2,8 @@
 Jentic Mini — main.py
 """
 
+import html as _html
+import json
 import logging
 import os
 import re
@@ -91,6 +93,12 @@ class ForwardedPrefixMiddleware:
        the FastAPI constructor.
     2. ``X-Forwarded-Prefix`` header — read per request when the env var is
        unset; invalid values are silently ignored (treated as no mount).
+
+    The header is accepted from any client, which is correct when Mini sits
+    behind a reverse proxy that strips inbound ``X-Forwarded-*`` from clients
+    before setting its own. Direct-internet exposure is the at-risk posture;
+    a future peer-IP-gated trust boundary will scope every proxy header
+    (this one plus ``X-Auth-Email``) to a single CIDR allowlist.
 
     Path stripping is intentionally left to Starlette's routing machinery
     (``get_route_path``) so ``Mount`` / ``StaticFiles`` cooperation stays
@@ -243,9 +251,11 @@ app.middleware("http")(negotiate_middleware)
 STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
 
 
-# Tolerant regex: matches <base ...> with any href, with-or-without self-close,
-# with-or-without extra spaces. Substitutes only the first occurrence.
-_BASE_TAG_RE = re.compile(rb'<base\s+href="[^"]*"\s*/?\s*>')
+# Matches any <base ...> tag regardless of the number of attributes.
+# Using href="..." as the anchor would silently become a no-op if Vite ever
+# adds a second attribute (e.g. crossorigin). The \s after 'base' prevents
+# matching <basefont>. Substitutes only the first occurrence.
+_BASE_TAG_RE = re.compile(rb"<base\s[^>]*>")
 
 
 def _inject_base_href(html: bytes, root_path: str) -> bytes:
@@ -259,7 +269,8 @@ def _inject_base_href(html: bytes, root_path: str) -> bytes:
     """
     if not root_path:
         return html
-    return _BASE_TAG_RE.sub(f'<base href="{root_path}/" />'.encode(), html, count=1)
+    safe = _html.escape(root_path, quote=True)
+    return _BASE_TAG_RE.sub(f'<base href="{safe}/" />'.encode(), html, count=1)
 
 
 def _render_index(request: Request) -> HTMLResponse:
@@ -462,6 +473,12 @@ async def root(request: Request):
 @app.get("/docs", include_in_schema=False)
 async def swagger_ui(request: Request):
     rp = request.scope.get("root_path", "")
+    # Defense-in-depth: HTML-escape rp for attribute contexts, JSON-encode for
+    # the inline JS string. The validator already restricts root_path to
+    # [A-Za-z0-9._~-] segments so these calls are no-ops today; they decouple
+    # each sink's safety from the validator should the character set widen.
+    rp_attr = _html.escape(rp, quote=True)
+    rp_js_url = json.dumps(f"{rp}/openapi.json")
     # Custom Swagger UI with persistAuthorization + auth banner. Every absolute
     # path the browser resolves (CSS / JS asset URLs, the login link, the
     # OpenAPI URL) is prefixed with the active root_path so the page works
@@ -472,7 +489,7 @@ async def swagger_ui(request: Request):
   <title>Jentic — Swagger UI</title>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <link rel="stylesheet" type="text/css" href="{rp}/static/swagger-ui.css" >
+  <link rel="stylesheet" type="text/css" href="{rp_attr}/static/swagger-ui.css" >
   <style>
     .auth-banner {{
       background: #1a1a2e; border-left: 4px solid #667eea;
@@ -488,15 +505,15 @@ async def swagger_ui(request: Request):
   🔑 <strong>Authentication.</strong>
   <strong>Agents (toolkit):</strong> <em>JenticApiKey</em> — your <code>tk_xxx</code> in <code>X-Jentic-API-Key</code>.
   <strong>Agents (OAuth):</strong> <em>AgentOauthAccessToken</em> — <code>Authorization: Bearer</code> with <code>at_…</code>; <em>AgentOauthRegistrationToken</em> — <code>Authorization: Bearer</code> with <code>rat_…</code> where applicable.
-  <strong>Humans:</strong> <em>HumanLogin</em> (username + password) — or <a href="{rp}/login" style="color:#a5b4fc">log in here</a> for a browser session.
+  <strong>Humans:</strong> <em>HumanLogin</em> (username + password) — or <a href="{rp_attr}/login" style="color:#a5b4fc">log in here</a> for a browser session.
   OAuth agents: <code>GET /.well-known/oauth-authorization-server</code> then <code>POST /register</code>. Toolkit keys are issued from the UI.
 </div>
 <div id="swagger-ui"></div>
-<script src="{rp}/static/swagger-ui-bundle.js"> </script>
+<script src="{rp_attr}/static/swagger-ui-bundle.js"> </script>
 <script>
   window.onload = function() {{
     SwaggerUIBundle({{
-      url: "{rp}/openapi.json",
+      url: {rp_js_url},
       dom_id: '#swagger-ui',
       presets: [ SwaggerUIBundle.presets.apis, SwaggerUIBundle.SwaggerUIStandalonePreset ],
       layout: "BaseLayout",
@@ -513,7 +530,7 @@ async def swagger_ui(request: Request):
 
 @app.get("/redoc", include_in_schema=False)
 async def redoc(request: Request):
-    rp = request.scope.get("root_path", "")
+    rp = _html.escape(request.scope.get("root_path", ""), quote=True)
     return get_redoc_html(
         openapi_url=f"{rp}/openapi.json",
         title="Jentic — Redoc",
@@ -671,8 +688,19 @@ def custom_openapi():
         tags=app.openapi_tags,  # controls section order in Swagger UI
     )
 
-    # Add servers (HTTPS first)
-    schema["servers"] = app.servers
+    # Add servers. When JENTIC_ROOT_PATH is set, prepend a prefix-relative entry
+    # so Swagger UI "Try it out" and code-generators use the correct base path.
+    # Note: the schema is cached after the first call (app.openapi_schema), so
+    # this entry reflects the *static* JENTIC_ROOT_PATH only. Mode C deployments
+    # (X-Forwarded-Prefix per request, JENTIC_ROOT_PATH unset) will always see
+    # app.servers here — Swagger UI "Try it out" may not work under a Mode C
+    # prefix mount. Set JENTIC_ROOT_PATH for full Swagger UI compatibility.
+    schema["servers"] = (
+        [{"url": JENTIC_ROOT_PATH, "description": "This instance (path-prefix mount)"}]
+        + app.servers
+        if JENTIC_ROOT_PATH
+        else app.servers
+    )
 
     # Add contact and license
     schema["info"]["contact"] = app.contact

@@ -1,7 +1,9 @@
 """Centralised configuration constants for Jentic Mini."""
 
 import os
+import re
 from pathlib import Path
+from urllib.parse import urlparse
 
 
 # ── Version ───────────────────────────────────────────────────────────────────
@@ -28,28 +30,33 @@ JENTIC_PUBLIC_HOSTNAME = os.getenv("JENTIC_PUBLIC_HOSTNAME") or "localhost"
 # the SPA bundle, hand-rolled docs, and self-links resolve under the prefix; if
 # unset, the per-request X-Forwarded-Prefix header is honoured. Pair with
 # JENTIC_PUBLIC_BASE_URL (which must include the prefix) when mounting.
+
+# Allowlist: one or more "/segment" pairs, each segment is alnum + [-._~]. This
+# is the chokepoint that closes the XSS / cookie-injection / stored-URL classes
+# from PR #364 review — every char that's dangerous in HTML attributes, inline
+# JS strings, or Set-Cookie attribute serialisation (<, >, ", ', ;, ,, \, NUL,
+# C0/C1 controls) is rejected here before the value reaches any sink.
+_ROOT_PATH_RE = re.compile(r"^(?:/[A-Za-z0-9._~-]+)+/?$")
+
+
 def normalise_root_path(value: str) -> str:
     """Normalise and validate a path-prefix value.
 
-    Empty string and "/" both mean "no mount" → "". Other values must start
-    with "/" and contain no whitespace, "?", "#", "..", or consecutive "//".
-    A single trailing slash is stripped ("/foo/" → "/foo"); "/foo" is returned
-    unchanged. Validation runs against the raw value so "//" surfaces here
-    rather than collapsing silently.
+    Empty string and "/" both mean "no mount" → "". Other values must match
+    ``^(?:/[A-Za-z0-9._~-]+)+/?$``. A single trailing slash is stripped
+    ("/foo/" → "/foo"); "/foo" is returned unchanged.
     """
     if value in ("", "/"):
         return ""
-    if (
-        not value.startswith("/")
-        or any(ch.isspace() or ch in "?#" for ch in value)
-        or ".." in value
-        or "//" in value
-    ):
+    # Regex catches metacharacters; segment check catches "." / ".." traversal,
+    # which would otherwise match [A-Za-z0-9._~-]+ as a regular segment.
+    if not _ROOT_PATH_RE.fullmatch(value) or any(s in (".", "..") for s in value.split("/") if s):
         raise RuntimeError(
-            "JENTIC_ROOT_PATH must start with '/' and contain no whitespace, "
-            "query, fragment, '..', or '//'"
+            "JENTIC_ROOT_PATH must be /-separated segments of [A-Za-z0-9._~-]+ "
+            "(no whitespace, query, fragment, '..', '//', or HTML/JS/cookie "
+            "metacharacters)"
         )
-    return value[:-1] if value.endswith("/") and len(value) > 1 else value
+    return value[:-1] if value.endswith("/") else value
 
 
 JENTIC_ROOT_PATH = normalise_root_path(os.getenv("JENTIC_ROOT_PATH", ""))
@@ -67,6 +74,19 @@ JENTIC_ROOT_PATH = normalise_root_path(os.getenv("JENTIC_ROOT_PATH", ""))
 # behaviour). Operators on internet-facing deployments are strongly
 # encouraged to set this to a fully-qualified URL.
 JENTIC_PUBLIC_BASE_URL = (os.getenv("JENTIC_PUBLIC_BASE_URL") or "").rstrip("/")
+
+# Fail-fast when the two path-prefix sources disagree. If an operator sets
+# JENTIC_PUBLIC_BASE_URL=https://example.com/foo alongside JENTIC_ROOT_PATH=/bar,
+# stored URLs (approve_url, OAuth callbacks) embed /foo while request-derived
+# URLs embed /bar — silently broken tokens, 404 OAuth callbacks, failed agent
+# assertions. Same pattern as the AGENT_NONCE_WINDOW invariant below.
+if JENTIC_PUBLIC_BASE_URL:
+    _pub_path = urlparse(JENTIC_PUBLIC_BASE_URL).path.rstrip("/")
+    if _pub_path != JENTIC_ROOT_PATH.rstrip("/"):
+        raise RuntimeError(
+            f"JENTIC_PUBLIC_BASE_URL path ({_pub_path!r}) disagrees with "
+            f"JENTIC_ROOT_PATH ({JENTIC_ROOT_PATH!r}); both must use the same prefix"
+        )
 
 # ── Toolkit defaults ──────────────────────────────────────────────────────────
 DEFAULT_TOOLKIT_ID = "default"

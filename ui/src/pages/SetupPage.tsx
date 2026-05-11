@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Label } from '@/components/ui/Label';
 import { ErrorAlert } from '@/components/ui/ErrorAlert';
+import { apiUrl } from '@/api/client';
 
 type HealthPayload = {
 	status: string;
@@ -26,7 +27,7 @@ export default function SetupPage() {
 	const { data: health } = useQuery({
 		queryKey: ['health'],
 		queryFn: () =>
-			fetch('/health', { credentials: 'include' }).then((r) =>
+			fetch(apiUrl('/health'), { credentials: 'include' }).then((r) =>
 				r.json(),
 			) as Promise<HealthPayload>,
 	});

@@ -32,7 +32,7 @@ from src.brokers.pipedream import PipedreamOAuthBroker, api_host_to_pd_slug, bro
 from src.db import get_db
 from src.oauth_broker import registry as oauth_broker_registry
 from src.openapi_helpers import agent_hints
-from src.utils import build_absolute_url
+from src.utils import build_absolute_url, build_canonical_url
 from src.validators import NormModel, validate_relative_redirect
 
 
@@ -590,7 +590,7 @@ async def create_connect_link(broker_id: BrokerIdPath, body: ConnectLinkRequest,
     callback_path = (
         f"/oauth-brokers/{broker_id}/connect-callback?{urllib.parse.urlencode(callback_params)}"
     )
-    success_redirect_uri = build_absolute_url(request, callback_path)
+    success_redirect_uri = build_canonical_url(request, callback_path)
 
     try:
         result = await live_broker.create_connect_token(
@@ -1164,7 +1164,7 @@ async def reconnect_account_link(
     callback_path = (
         f"/oauth-brokers/{broker_id}/connect-callback?{urllib.parse.urlencode(callback_params)}"
     )
-    success_redirect_uri = build_absolute_url(request, callback_path)
+    success_redirect_uri = build_canonical_url(request, callback_path)
 
     try:
         result = await live_broker.create_connect_token(

@@ -34,7 +34,7 @@ from src.auth import require_human_session
 from src.db import get_db
 from src.models import AccessRequestOut, PermissionRule
 from src.routers.toolkits import write_credential_permissions
-from src.utils import build_absolute_url
+from src.utils import build_canonical_url
 from src.validators import NormModel
 
 
@@ -179,7 +179,7 @@ async def create_access_request(
 
     req_id = "areq_" + str(uuid.uuid4())[:8]
 
-    approve_url = build_absolute_url(request, f"/approve/{toolkit_id}/{req_id}")
+    approve_url = build_canonical_url(request, f"/approve/{toolkit_id}/{req_id}")
 
     # Store payload as the flat fields relevant to this request type
     payload_dict = {

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { CheckCircle, XCircle, AlertTriangle, Clock, LogIn } from 'lucide-react';
 import { api } from '@/api/client';
@@ -33,6 +33,10 @@ function extractErrorMessage(err: unknown): string {
 export default function ApprovalPage() {
 	const { toolkit_id, req_id } = useParams<{ toolkit_id: string; req_id: string }>();
 	const navigate = useNavigate();
+	// useLocation().pathname is already relative to the React Router basename,
+	// so it never includes the mount prefix — navigate(next) won't double-prefix.
+	// window.location.pathname would include the prefix and cause /foo/foo/... 404s.
+	const location = useLocation();
 	const [processing, setProcessing] = useState(false);
 	const [result, setResult] = useState<'approved' | 'denied' | null>(null);
 
@@ -91,7 +95,7 @@ export default function ApprovalPage() {
 
 	// ── Not logged in ─────────────────────────────────────────────────────────
 	if (!isLoggedIn) {
-		const loginUrl = `/login?next=${encodeURIComponent(window.location.pathname)}`;
+		const loginUrl = `/login?next=${encodeURIComponent(location.pathname + location.search)}`;
 		return (
 			<div className="bg-background flex min-h-screen flex-col">
 				<div className="border-border border-b px-6 py-4">

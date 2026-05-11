@@ -7,6 +7,7 @@ import { LoadingState } from '@/components/ui/LoadingState';
 import { ErrorAlert } from '@/components/ui/ErrorAlert';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { parseApiError } from '@/lib/apiError';
+import { apiUrl } from '@/api/client';
 
 const DEFAULT_TOOLKIT_ID = 'default';
 
@@ -83,7 +84,7 @@ export default function AgentsPage() {
 	const activeAgentsQuery = useQuery({
 		queryKey: ['agents', 'list', 'active'],
 		queryFn: async () => {
-			const r = await fetch('/agents?view=active', { credentials: 'include' });
+			const r = await fetch(apiUrl('/agents?view=active'), { credentials: 'include' });
 			if (!r.ok) throw new Error(`Failed to load agents (${r.status})`);
 			return r.json() as Promise<{ agents: AgentRow[] }>;
 		},
@@ -92,7 +93,7 @@ export default function AgentsPage() {
 	const declinedAgentsQuery = useQuery({
 		queryKey: ['agents', 'list', 'declined'],
 		queryFn: async () => {
-			const r = await fetch('/agents?view=declined', { credentials: 'include' });
+			const r = await fetch(apiUrl('/agents?view=declined'), { credentials: 'include' });
 			if (!r.ok) throw new Error(`Failed to load declined (${r.status})`);
 			return r.json() as Promise<{ agents: AgentRow[] }>;
 		},
@@ -101,7 +102,7 @@ export default function AgentsPage() {
 	const removedAgentsQuery = useQuery({
 		queryKey: ['agents', 'list', 'removed'],
 		queryFn: async () => {
-			const r = await fetch('/agents?view=removed', { credentials: 'include' });
+			const r = await fetch(apiUrl('/agents?view=removed'), { credentials: 'include' });
 			if (!r.ok) throw new Error(`Failed to load removed (${r.status})`);
 			return r.json() as Promise<{ agents: AgentRow[] }>;
 		},
@@ -112,7 +113,7 @@ export default function AgentsPage() {
 		queryFn: async () => {
 			const aid = selectedAgentId;
 			if (!aid) throw new Error('Missing agent');
-			const r = await fetch(`/agents/${encodeURIComponent(aid)}`, {
+			const r = await fetch(apiUrl(`/agents/${encodeURIComponent(aid)}`), {
 				credentials: 'include',
 			});
 			if (!r.ok) throw await parseApiError(r);
@@ -126,7 +127,7 @@ export default function AgentsPage() {
 		queryFn: async () => {
 			const aid = selectedAgentId;
 			if (!aid) throw new Error('Missing agent');
-			const r = await fetch(`/agents/${encodeURIComponent(aid)}/grants`, {
+			const r = await fetch(apiUrl(`/agents/${encodeURIComponent(aid)}/grants`), {
 				credentials: 'include',
 			});
 			if (!r.ok) throw await parseApiError(r);
@@ -142,14 +143,14 @@ export default function AgentsPage() {
 		queryFn: async () => {
 			const aid = selectedAgentId;
 			if (!aid) throw new Error('Missing agent');
-			const gr = await fetch(`/agents/${encodeURIComponent(aid)}/grants`, {
+			const gr = await fetch(apiUrl(`/agents/${encodeURIComponent(aid)}/grants`), {
 				credentials: 'include',
 			});
 			if (!gr.ok) throw await parseApiError(gr);
 			const { grants } = (await gr.json()) as { grants: { toolkit_id: string }[] };
 			const toolkitResults = await Promise.all(
 				grants.map(async ({ toolkit_id }) => {
-					const tr = await fetch(`/toolkits/${encodeURIComponent(toolkit_id)}`, {
+					const tr = await fetch(apiUrl(`/toolkits/${encodeURIComponent(toolkit_id)}`), {
 						credentials: 'include',
 						headers: { Accept: 'application/json' },
 					});
@@ -187,7 +188,7 @@ export default function AgentsPage() {
 
 	const approveMutation = useMutation({
 		mutationFn: async (clientId: string) => {
-			const r = await fetch(`/agents/${encodeURIComponent(clientId)}/approve`, {
+			const r = await fetch(apiUrl(`/agents/${encodeURIComponent(clientId)}/approve`), {
 				method: 'POST',
 				credentials: 'include',
 			});
@@ -200,7 +201,7 @@ export default function AgentsPage() {
 
 	const denyMutation = useMutation({
 		mutationFn: async (clientId: string) => {
-			const r = await fetch(`/agents/${encodeURIComponent(clientId)}/deny`, {
+			const r = await fetch(apiUrl(`/agents/${encodeURIComponent(clientId)}/deny`), {
 				method: 'POST',
 				credentials: 'include',
 			});
@@ -214,7 +215,7 @@ export default function AgentsPage() {
 
 	const disableMutation = useMutation({
 		mutationFn: async (clientId: string) => {
-			const r = await fetch(`/agents/${encodeURIComponent(clientId)}/disable`, {
+			const r = await fetch(apiUrl(`/agents/${encodeURIComponent(clientId)}/disable`), {
 				method: 'POST',
 				credentials: 'include',
 			});
@@ -229,7 +230,7 @@ export default function AgentsPage() {
 
 	const enableMutation = useMutation({
 		mutationFn: async (clientId: string) => {
-			const r = await fetch(`/agents/${encodeURIComponent(clientId)}/enable`, {
+			const r = await fetch(apiUrl(`/agents/${encodeURIComponent(clientId)}/enable`), {
 				method: 'POST',
 				credentials: 'include',
 			});
@@ -243,7 +244,7 @@ export default function AgentsPage() {
 
 	const deregisterMutation = useMutation({
 		mutationFn: async (clientId: string) => {
-			const r = await fetch(`/agents/${encodeURIComponent(clientId)}`, {
+			const r = await fetch(apiUrl(`/agents/${encodeURIComponent(clientId)}`), {
 				method: 'DELETE',
 				credentials: 'include',
 			});
@@ -260,7 +261,7 @@ export default function AgentsPage() {
 	const toolkitsForGrantQuery = useQuery({
 		queryKey: ['toolkits'],
 		queryFn: async () => {
-			const r = await fetch('/toolkits', { credentials: 'include' });
+			const r = await fetch(apiUrl('/toolkits'), { credentials: 'include' });
 			if (!r.ok) throw await parseApiError(r);
 			return r.json() as Promise<ToolkitRow[]>;
 		},
@@ -272,7 +273,7 @@ export default function AgentsPage() {
 		queryFn: async () => {
 			const gid = grantAgentId;
 			if (!gid) throw new Error('Missing agent');
-			const r = await fetch(`/agents/${encodeURIComponent(gid)}/grants`, {
+			const r = await fetch(apiUrl(`/agents/${encodeURIComponent(gid)}/grants`), {
 				credentials: 'include',
 			});
 			if (!r.ok) throw await parseApiError(r);
@@ -302,7 +303,7 @@ export default function AgentsPage() {
 
 	const saveGrantsMutation = useMutation({
 		mutationFn: async ({ clientId, desired }: { clientId: string; desired: Set<string> }) => {
-			const r = await fetch(`/agents/${encodeURIComponent(clientId)}/grants`, {
+			const r = await fetch(apiUrl(`/agents/${encodeURIComponent(clientId)}/grants`), {
 				method: 'PUT',
 				credentials: 'include',
 				headers: { 'Content-Type': 'application/json' },

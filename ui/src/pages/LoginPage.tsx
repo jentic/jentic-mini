@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Label } from '@/components/ui/Label';
 import { ErrorAlert } from '@/components/ui/ErrorAlert';
+import { apiUrl } from '@/api/client';
 
 export default function LoginPage() {
 	const [username, setUsername] = useState('');
@@ -17,7 +18,7 @@ export default function LoginPage() {
 
 	const loginMutation = useMutation({
 		mutationFn: async () => {
-			const res = await fetch('/user/login', {
+			const res = await fetch(apiUrl('/user/login'), {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
 				credentials: 'include',

@@ -4,7 +4,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Workflow, ExternalLink, Zap, AlertTriangle } from 'lucide-react';
 import { ArazzoUI } from '@jentic/arazzo-ui';
-import { api } from '@/api/client';
+import { api, apiUrl } from '@/api/client';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { BackButton } from '@/components/ui/BackButton';
@@ -62,7 +62,7 @@ function CatalogWorkflowFallback({
 		setImporting(true);
 		setError(null);
 		try {
-			const catalogRes = await fetch(`/catalog/${apiId}`, { credentials: 'include' });
+			const catalogRes = await fetch(apiUrl(`/catalog/${apiId}`), { credentials: 'include' });
 			if (!catalogRes.ok) {
 				const body = await catalogRes.json().catch(() => ({}));
 				throw new Error(body.detail || `Catalog lookup failed (${catalogRes.status})`);
@@ -71,7 +71,7 @@ function CatalogWorkflowFallback({
 			if (!catalogEntry.spec_url) {
 				throw new Error('No spec URL found for this API in the catalog');
 			}
-			const importRes = await fetch('/import', {
+			const importRes = await fetch(apiUrl('/import'), {
 				method: 'POST',
 				credentials: 'include',
 				headers: { 'Content-Type': 'application/json' },
@@ -161,7 +161,7 @@ export default function WorkflowDetailPage() {
 	const { data: arazzoDoc, isLoading: isLoadingArazzo } = useQuery({
 		queryKey: ['workflow-arazzo', slug],
 		queryFn: async () => {
-			const res = await fetch(`/workflows/${slug}`, {
+			const res = await fetch(apiUrl(`/workflows/${slug}`), {
 				headers: { Accept: 'application/vnd.oai.workflows+json' },
 				credentials: 'include',
 			});

@@ -73,7 +73,9 @@ export default function DashboardPage() {
 								</div>
 								{req.approve_url && (
 									<AppLink
-										href={req.approve_url.replace(window.location.origin, '')}
+										external
+										href={req.approve_url}
+										target="_self"
 										className="bg-warning text-background hover:bg-warning/80 ml-4 shrink-0 rounded-lg px-4 py-2 text-sm font-bold transition-colors"
 									>
 										Review →

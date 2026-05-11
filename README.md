@@ -106,6 +106,8 @@ Optional environment variables (set in `.env` or pass to `docker compose`):
 | `JENTIC_ROOT_PATH`       | _(unset)_      | Path prefix to mount the app under, e.g. `/jentic`. Pair with `JENTIC_PUBLIC_BASE_URL` (which must include the prefix) for OAuth issuer correctness. If unset, falls back to `X-Forwarded-Prefix` per request. |
 | `LOG_LEVEL`              | `info`         | `debug`, `info`, `warning`, `error`                                                                                                                                                                            |
 
+> **Deployment note — `X-Forwarded-Prefix` trust:** when `JENTIC_ROOT_PATH` is unset, the per-request `X-Forwarded-Prefix` header is honoured from any client. Deploy Mini behind a reverse proxy (Caddy, Traefik, nginx Ingress) configured to strip inbound `X-Forwarded-*` headers from clients before setting its own. On direct-internet exposure, a remote client can steer the cookie path and self-link prefix per request — a peer-IP CIDR gate covering all proxy headers is tracked in [#366](https://github.com/jentic/jentic-mini/issues/366).
+
 ### Authentication
 
 Two ways an agent can authenticate to Jentic Mini:

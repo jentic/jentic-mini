@@ -17,6 +17,33 @@ test.describe('Reverse-proxy prefix mount', () => {
 		expect(body).toContain('<base href="/foo/"');
 	});
 
+	test('no failed XHR during initial SPA render at the prefix', async ({ page }) => {
+		// Regression guard: SPA fetches must include the mount prefix.
+		// Intentionally NOT filtered to PREFIX_BASE — the bug is the SPA issuing
+		// /health instead of /foo/health, so those URLs would NOT start with
+		// PREFIX_BASE and would be silently dropped. Same-origin filter only.
+		const origin = new URL(PREFIX_BASE).origin;
+		const failures: { url: string; status: number }[] = [];
+		page.on('response', (resp) => {
+			const url = resp.url();
+			const status = resp.status();
+			if (!url.startsWith(origin)) return;
+			if (status < 400) return;
+			const req = resp.request();
+			if (!['fetch', 'xhr'].includes(req.resourceType())) return;
+			// /user/me intentionally 401s when logged out (used as a probe).
+			if (status === 401 && url.endsWith('/user/me')) return;
+			failures.push({ url, status });
+		});
+
+		await page.goto(`${PREFIX_BASE}/`);
+		// Wait for any setup/login UI to settle — that's the end of the
+		// initial render's XHR storm.
+		await page.waitForLoadState('networkidle');
+
+		expect(failures, `unexpected failed XHRs: ${JSON.stringify(failures)}`).toEqual([]);
+	});
+
 	test('navigates to credentials and survives a reload', async ({ page }) => {
 		// 1. Bootstrap auth state — fresh container needs admin creation;
 		//    a reused container needs login. Both paths leave us logged in.

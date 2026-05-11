@@ -8,19 +8,23 @@ from src.config import JENTIC_PUBLIC_BASE_URL, JENTIC_PUBLIC_HOSTNAME
 def route_path(scope) -> str:
     """Return ``scope["path"]`` with ``scope["root_path"]`` stripped if applicable.
 
-    Mirrors Starlette's internal ``get_route_path`` so middleware that compares
-    against unprefixed constants (``_SPA_PATHS``, ``_is_public``) keeps working
-    when Mini is mounted under a path prefix. Path stripping is left to
-    Starlette's routing machinery for ``Mount`` / ``StaticFiles`` cooperation;
-    custom middleware call this helper to read the same view of the path that
-    decorator-style routes see.
+    Mirrors Starlette's ``get_route_path`` so middleware that compares against
+    unprefixed constants (``_SPA_PATHS``, ``_is_public``) keeps working under a
+    path prefix. Returns ``"/"`` (not ``""``) when ``path == root_path`` — same
+    as Starlette — so the bare mount root (``GET /foo`` with ``root_path=/foo``)
+    passes the ``_is_public("/")`` check and renders the SPA. Path stripping is
+    otherwise left to Starlette's routing machinery for ``Mount`` / ``StaticFiles``
+    cooperation; custom middleware call this helper for the unprefixed view.
     """
     path = scope.get("path", "")
     root_path = scope.get("root_path", "")
     if not root_path or not path.startswith(root_path):
         return path
     if path == root_path:
-        return ""
+        # Bare mount root (e.g. GET /foo with root_path=/foo) → treat as "/"
+        # so _is_public("/") matches and the SPA handler renders. Matches
+        # Starlette's get_route_path return for the same case.
+        return "/"
     if path[len(root_path)] == "/":
         return path[len(root_path) :]
     return path

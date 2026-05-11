@@ -20,7 +20,7 @@ from fastapi import APIRouter, HTTPException, Request
 
 from src.auth import default_allowed_ips
 from src.db import DEFAULT_TOOLKIT_ID, get_db, set_setting, setup_state
-from src.utils import build_absolute_url
+from src.utils import build_canonical_url
 
 
 router = APIRouter(tags=["user"])
@@ -96,7 +96,7 @@ async def generate_default_key(request: Request):
 
     setup = await setup_state()
     if not setup["account_created"]:
-        setup_url = build_absolute_url(request, "/user/create")
+        setup_url = build_canonical_url(request, "/user/create")
         next_step = f"Tell your user to visit {setup_url} to create their admin account."
     else:
         next_step = "Key ready. Use it as X-Jentic-API-Key on all agent requests."
