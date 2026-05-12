@@ -351,7 +351,10 @@ async def me(request: Request):
         username = getattr(request.state, "username", None)
         if username is None:
             async with get_db() as db:
-                async with db.execute("SELECT username FROM users LIMIT 1") as cur:
+                async with db.execute(
+                    "SELECT username FROM users WHERE password_hash IS NOT NULL "
+                    "ORDER BY created_at ASC LIMIT 1"
+                ) as cur:
                     row = await cur.fetchone()
             username = row[0] if row else "unknown"
         return {"logged_in": True, "username": username}
