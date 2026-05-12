@@ -412,6 +412,22 @@ The API currently accepts access requests with empty `rules`, no `reason`, rules
 - Update `AGENTS.md` and any agent-facing examples to show a well-formed request
 - Close #324; cross-reference #325
 
+## Phase 28 — Trusted-Proxy Forwarded Identity Authentication
+
+**Goal:** Allow humans to authenticate via a CIDR-gated trusted-proxy identity header alongside JWT cookies, and gate `X-Forwarded-Prefix` on the same CIDR check.
+**Depends on:** none (self-contained — extends `src/auth.py` and `ForwardedPrefixMiddleware`)
+**Priority:** High (unblocks self-hosted SSO / reverse-proxy identity deploys; closes the residual `X-Forwarded-Prefix` trust gap accepted under PR #369 pending this phase)
+
+The two-actor invariant is preserved (humans gain a third auth path; agents and the `X-Jentic-API-Key` boundary are untouched). The CIDR check against the immediate ASGI-scope peer IP is the entire security boundary — `X-Forwarded-For` is never consulted. See #366 for the full design including just-in-time user provisioning and the prefix-gating rationale.
+
+- Add `JENTIC_TRUSTED_PROXY_HEADER` + `JENTIC_TRUSTED_PROXY_NETS` env vars; both required to activate (either unset preserves today's behaviour)
+- Extend `src/auth.py` with a CIDR-gated trusted-proxy resolution path after the JWT cookie; peer IP from ASGI scope only, never `X-Forwarded-For`
+- Alembic migration for just-in-time user provisioning (`users.created_via`, NULLable `users.password_hash`); `/user/login` rejects NULL-hash accounts
+- Gate `ForwardedPrefixMiddleware`'s trust of `X-Forwarded-Prefix` on the same `JENTIC_TRUSTED_PROXY_NETS` CIDR check
+- Integration tests covering the six acceptance criteria in the issue plus the prefix-gating; WARN-log untrusted-peer header rejections
+- Update `docs/auth.md` and `README.md`; remove PR #369's note pointing at this issue
+- Close #366; cross-reference #364, #365, PR #369
+
 ---
 
 ## Later Phases (Not Yet Planned)
