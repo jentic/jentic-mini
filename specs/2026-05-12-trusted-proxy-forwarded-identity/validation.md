@@ -2,7 +2,7 @@
 
 ## Definition of Done
 
-All of the following must be true before this branch is merged.
+All of the following must be true before the Phase 28 implementation PR is merged.
 
 ### 1. Trusted-proxy integration tests pass
 
@@ -17,7 +17,7 @@ Exit code 0. Every test mapped to the six acceptance criteria from #366 plus the
 3. **Env set + trusted peer + header absent** — a protected endpoint returns 401.
 4. **Env set + untrusted peer + header present** — 401; `caplog` records a WARN on logger `jentic.auth` whose message includes the peer IP and the rejected header.
 5. **Env set + trusted peer + spoofed `X-Forwarded-For`** — still authenticated (peer IP is the gate, not `X-Forwarded-For`).
-6. **JIT-provisioned account at `/user/login` and `/user/token`** — both return 401 with body `{"error": "invalid_credentials"}`; no 500.
+6. **JIT-provisioned account at `/user/login`** — returns 401 with body `{"detail": {"error": "invalid_credentials", "message": "Username or password incorrect."}}` (FastAPI `detail`-wrapped shape); **`/user/token`** — returns 401 with body `{"detail": {"error": "invalid_client", "error_description": "Username or password incorrect."}}` (existing OAuth error shape); no 500 on either endpoint.
 7. **Trusted peer + `X-Forwarded-Prefix: /foo`** — `scope["root_path"]` is `/foo`; routes resolve under the prefix.
 8. **Untrusted peer + `X-Forwarded-Prefix: /foo`** — `scope["root_path"]` stays unset; WARN recorded on `jentic.auth`.
 
