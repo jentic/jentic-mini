@@ -34,12 +34,25 @@ def upgrade() -> None:
         )
         batch_op.add_column(sa.Column("created_via", sa.Text(), nullable=True))
 
+    # Backfill existing accounts: any row with a password hash is a local account.
+    bind.execute(
+        text(
+            "UPDATE users SET created_via = 'local' "
+            "WHERE password_hash IS NOT NULL AND created_via IS NULL"
+        )
+    )
+
 
 def downgrade() -> None:
     bind = op.get_bind()
     cols = {row[1] for row in bind.execute(text("PRAGMA table_info(users)"))}
     if "created_via" not in cols:
         return
+
+    # JIT-provisioned rows have password_hash IS NULL; restoring NOT NULL would
+    # fail the table-recreate if any such rows exist.  Remove them first so the
+    # downgrade is safe (they cannot be meaningfully preserved without the column).
+    bind.execute(text("DELETE FROM users WHERE password_hash IS NULL"))
 
     with op.batch_alter_table("users") as batch_op:
         batch_op.drop_column("created_via")
