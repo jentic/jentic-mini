@@ -412,7 +412,7 @@ The API currently accepts access requests with empty `rules`, no `reason`, rules
 - Update `AGENTS.md` and any agent-facing examples to show a well-formed request
 - Close #324; cross-reference #325
 
-## Phase 28 — Trusted-Proxy Forwarded Identity Authentication
+## Phase 28 — Trusted-Proxy Forwarded Identity Authentication ✅
 
 **Goal:** Allow humans to authenticate via a CIDR-gated trusted-proxy identity header alongside JWT cookies, and gate `X-Forwarded-Prefix` on the same CIDR check.
 **Depends on:** none (self-contained — extends `src/auth.py` and `ForwardedPrefixMiddleware`)
