@@ -118,7 +118,7 @@ class ForwardedPrefixMiddleware:
             for key, value in scope.get("headers", []):
                 if key == b"x-forwarded-prefix":
                     if JENTIC_TRUSTED_PROXY_NETS:
-                        peer_ip = scope.get("client", ("", 0))[0]
+                        peer_ip = (scope.get("client") or ("", 0))[0]
                         if not is_proxy_trusted_peer(peer_ip):
                             logging.getLogger("jentic.auth").warning(
                                 "FORWARDED_PREFIX untrusted_peer=%s ignored", peer_ip
