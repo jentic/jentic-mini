@@ -34,6 +34,7 @@ import logging
 import os
 import re
 import time
+import uuid
 
 import aiosqlite
 from fastapi import HTTPException, Request
@@ -42,6 +43,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 
 from src.agent_identity_gate import verify_registration_access_token
 from src.agent_identity_util import hash_token
+from src.config import JENTIC_TRUSTED_PROXY_HEADER, JENTIC_TRUSTED_PROXY_NETS
 from src.db import DB_PATH, DEFAULT_TOOLKIT_ID, setup_state
 from src.utils import route_path
 
@@ -216,6 +218,29 @@ def is_trusted_ip(client_ip: str) -> bool:
     return False
 
 
+# ── Trusted-proxy CIDR helpers ────────────────────────────────────────────────
+
+
+def trusted_proxy_nets() -> list[str]:
+    """Parse JENTIC_TRUSTED_PROXY_NETS into a list of CIDR strings."""
+    return [s.strip() for s in JENTIC_TRUSTED_PROXY_NETS.split(",") if s.strip()]
+
+
+def is_proxy_trusted_peer(peer_ip: str) -> bool:
+    """Return True if peer_ip falls inside JENTIC_TRUSTED_PROXY_NETS."""
+    try:
+        addr = ipaddress.ip_address(peer_ip)
+    except ValueError:
+        return False
+    for cidr in trusted_proxy_nets():
+        try:
+            if addr in ipaddress.ip_network(cidr, strict=False):
+                return True
+        except ValueError:
+            continue
+    return False
+
+
 # ── JWT helpers ───────────────────────────────────────────────────────────────
 
 
@@ -324,6 +349,54 @@ async def _human_session_response(request: Request, call_next, jwt_token: str | 
     return response
 
 
+async def _trusted_proxy_response(request: Request, call_next):
+    """Trusted-proxy identity auth path.
+
+    Activated only when both JENTIC_TRUSTED_PROXY_HEADER and
+    JENTIC_TRUSTED_PROXY_NETS are non-empty. Returns None to hand off to the
+    next auth step when the feature is inactive or no trusted-peer+header
+    combination is present.
+
+    Peer IP is read from request.client.host (ASGI scope) only — never from
+    X-Forwarded-For, so the CIDR check cannot be spoofed by the agent.
+    """
+    if not JENTIC_TRUSTED_PROXY_HEADER or not JENTIC_TRUSTED_PROXY_NETS:
+        return None
+
+    peer_ip = request.client.host if request.client else ""
+    trusted = is_proxy_trusted_peer(peer_ip)
+    header_value = request.headers.get(JENTIC_TRUSTED_PROXY_HEADER, "").strip()
+
+    if not trusted:
+        if header_value:
+            # Log header name only — not its value — to avoid persisting identity tokens.
+            logger.warning(
+                "PROXY_AUTH untrusted_peer=%s header=%s ignored",
+                peer_ip,
+                JENTIC_TRUSTED_PROXY_HEADER,
+            )
+        return None
+
+    if not header_value:
+        return None
+
+    # JIT-provision the user; INSERT OR IGNORE handles concurrent first requests.
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        await db.execute(
+            "INSERT OR IGNORE INTO users (id, username, password_hash, created_via) "
+            "VALUES (?, ?, NULL, 'trusted_proxy')",
+            (str(uuid.uuid4()), header_value),
+        )
+        await db.commit()
+
+    request.state.is_human_session = True
+    request.state.is_admin = True
+    request.state.toolkit_id = DEFAULT_TOOLKIT_ID
+    request.state.username = header_value
+    return await call_next(request)
+
+
 class APIKeyMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         path = route_path(request.scope)
@@ -414,6 +487,11 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
         human_resp = await _human_session_response(request, call_next, jwt_token)
         if human_resp is not None:
             return human_resp
+
+        # ── 0a. Trusted-proxy forwarded identity ──────────────────────────────
+        proxy_resp = await _trusted_proxy_response(request, call_next)
+        if proxy_resp is not None:
+            return proxy_resp
 
         # ── 1. Check for agent key (X-Jentic-API-Key: tk_xxx) ─────────────────
         # Key check runs FIRST — even on trusted subnets. A request with a valid

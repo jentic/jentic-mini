@@ -340,10 +340,13 @@ async def me(request: Request):
     This endpoint accepts requests with or without authentication (open passthrough).
     """
     if getattr(request.state, "is_human_session", False):
-        async with get_db() as db:
-            async with db.execute("SELECT username FROM users LIMIT 1") as cur:
-                row = await cur.fetchone()
-        return {"logged_in": True, "username": row[0] if row else "unknown"}
+        username = getattr(request.state, "username", None)
+        if username is None:
+            async with get_db() as db:
+                async with db.execute("SELECT username FROM users LIMIT 1") as cur:
+                    row = await cur.fetchone()
+            username = row[0] if row else "unknown"
+        return {"logged_in": True, "username": username}
     elif getattr(request.state, "is_admin", False):
         # Trusted-subnet passthrough — admin access without an explicit session
         return {
