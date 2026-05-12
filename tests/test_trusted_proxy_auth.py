@@ -113,7 +113,7 @@ def test_untrusted_peer_with_header_is_401(untrusted_client, caplog):
     caplog.set_level(logging.WARNING)
     resp = untrusted_client.get("/toolkits", headers={PROXY_HEADER: PROXY_IDENTITY})
     assert resp.status_code == 401
-    warn_msgs = [r.message for r in caplog.records if r.levelno >= logging.WARNING]
+    warn_msgs = [r.getMessage() for r in caplog.records if r.levelno >= logging.WARNING]
     assert any(UNTRUSTED_IP in m for m in warn_msgs), f"No WARN with peer IP: {warn_msgs}"
     assert any(PROXY_HEADER in m for m in warn_msgs), f"No WARN with header name: {warn_msgs}"
 
@@ -174,5 +174,43 @@ def test_untrusted_peer_forwarded_prefix_ignored(untrusted_client, monkeypatch, 
     resp = untrusted_client.get("/", headers={"Accept": "text/html", "X-Forwarded-Prefix": "/foo"})
     assert resp.status_code == 200
     assert b'href="/foo/"' not in resp.content
-    warn_msgs = [r.message for r in caplog.records if r.levelno >= logging.WARNING]
+    warn_msgs = [r.getMessage() for r in caplog.records if r.levelno >= logging.WARNING]
     assert any("FORWARDED_PREFIX" in m for m in warn_msgs), f"No WARN: {warn_msgs}"
+
+
+# ── Additional: half-config inactive + tk_ key takes precedence ─────────────
+
+
+def test_only_header_env_set_path_inactive(app, monkeypatch):
+    """Only JENTIC_TRUSTED_PROXY_HEADER set — proxy path stays inactive."""
+    monkeypatch.setattr("src.auth.JENTIC_TRUSTED_PROXY_HEADER", PROXY_HEADER)
+    monkeypatch.setattr("src.auth.JENTIC_TRUSTED_PROXY_NETS", "")
+    with TestClient(app, raise_server_exceptions=False, client=(TRUSTED_IP, 50014)) as c:
+        resp = c.get("/toolkits", headers={PROXY_HEADER: PROXY_IDENTITY})
+    assert resp.status_code == 401
+
+
+def test_only_nets_env_set_path_inactive(app, monkeypatch):
+    """Only JENTIC_TRUSTED_PROXY_NETS set — proxy path stays inactive."""
+    monkeypatch.setattr("src.auth.JENTIC_TRUSTED_PROXY_HEADER", "")
+    monkeypatch.setattr("src.auth.JENTIC_TRUSTED_PROXY_NETS", PROXY_CIDR)
+    with TestClient(app, raise_server_exceptions=False, client=(TRUSTED_IP, 50015)) as c:
+        resp = c.get("/toolkits", headers={PROXY_HEADER: PROXY_IDENTITY})
+    assert resp.status_code == 401
+
+
+def test_tk_key_takes_precedence_over_proxy_header(app, proxy_env, agent_key):
+    """tk_ key must remain authoritative even when the proxy header is also present."""
+    with TestClient(app, raise_server_exceptions=False, client=(TRUSTED_IP, 50016)) as c:
+        resp = c.get(
+            "/user/me",
+            headers={
+                PROXY_HEADER: PROXY_IDENTITY,
+                "X-Jentic-API-Key": agent_key,
+            },
+        )
+    assert resp.status_code == 200
+    body = resp.json()
+    # A tk_ key produces agent_key=True, not a human session with is_admin.
+    assert body.get("logged_in") is False
+    assert body.get("agent_key") is True

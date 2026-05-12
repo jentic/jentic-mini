@@ -363,6 +363,11 @@ async def _trusted_proxy_response(request: Request, call_next):
     if not JENTIC_TRUSTED_PROXY_HEADER or not JENTIC_TRUSTED_PROXY_NETS:
         return None
 
+    # Agent keys are always authoritative over the proxy identity path.
+    # A tk_ key must not be silently upgraded to an admin human session.
+    if request.headers.get("X-Jentic-API-Key", "").startswith("tk_"):
+        return None
+
     peer_ip = request.client.host if request.client else ""
     trusted = is_proxy_trusted_peer(peer_ip)
     header_value = request.headers.get(JENTIC_TRUSTED_PROXY_HEADER, "").strip()
