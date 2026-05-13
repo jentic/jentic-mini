@@ -98,7 +98,7 @@ elif JENTIC_PUBLIC_HOSTNAME != "localhost":
     warnings.warn(
         "JENTIC_PUBLIC_HOSTNAME is set but JENTIC_PUBLIC_BASE_URL is not. "
         "Canonical URLs (OAuth callbacks, approve links) will use "
-        f"https://{JENTIC_PUBLIC_HOSTNAME}. "
+        f"https://{JENTIC_PUBLIC_HOSTNAME}{JENTIC_ROOT_PATH}. "
         "Set JENTIC_PUBLIC_BASE_URL for explicit control over scheme and path prefix.",
         UserWarning,
         stacklevel=2,
