@@ -12,8 +12,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 
-# Install PDM (via pip — avoids install-pdm.py Python version compatibility issues)
-RUN pip install --no-cache-dir pdm==2.25.5
+# Install PDM via pipx for isolated, reproducible installation
+RUN pip install --no-cache-dir pipx && pipx install pdm==2.26.9
+ENV PATH="/root/.local/bin:$PATH"
 
 COPY pyproject.toml pdm.lock ./
 # Install locked project deps, then upgrade bootstrap tooling inside the venv.
@@ -24,7 +25,7 @@ COPY pyproject.toml pdm.lock ./
 # against future CVEs and avoids manual-bump toil; Trivy gates regressions.
 # This clears transitive CVEs in wheel and the setuptools-vendored copies
 # of wheel / jaraco.context reported by Trivy against the final image.
-RUN pdm install --prod --no-editable --no-self --frozen-lockfile \
+RUN /root/.local/bin/pdm install --prod --no-editable --no-self --frozen-lockfile \
  && /app/.venv/bin/python -m ensurepip --upgrade \
  && /app/.venv/bin/python -m pip install --upgrade --no-cache-dir pip setuptools wheel
 
