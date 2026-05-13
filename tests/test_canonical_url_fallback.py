@@ -55,8 +55,8 @@ def test_base_url_wins_over_spoofed_host_header(monkeypatch):
 # ── Priority 2: JENTIC_PUBLIC_HOSTNAME fallback (non-localhost) ───────────────
 
 
-def test_hostname_fallback_ignores_internal_host(monkeypatch):
-    """Core regression: docker-DNS host must not bleed into the canonical URL."""
+def test_hostname_fallback_wins_over_spoofed_host_header(monkeypatch):
+    """Core regression: docker-DNS / spoofed host must not bleed into the canonical URL."""
     monkeypatch.setattr("src.utils.JENTIC_PUBLIC_BASE_URL", "")
     monkeypatch.setattr("src.utils.JENTIC_PUBLIC_HOSTNAME", "x.example.com")
     monkeypatch.setattr("src.utils.JENTIC_ROOT_PATH", "")

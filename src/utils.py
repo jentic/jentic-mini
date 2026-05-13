@@ -55,19 +55,26 @@ def build_absolute_url(request, path: str) -> str:
 
 
 def build_canonical_url(request, path: str) -> str:
-    """Build an absolute URL pinned to the operator-configured public base URL.
+    """Build an absolute URL pinned to operator-configured public base.
+
+    Unlike ``build_absolute_url``, this helper is intentionally immune to
+    Host:/X-Forwarded-Host: spoofing: an attacker who can set those headers
+    cannot redirect the OAuth issuer, token audience, or Pipedream callback
+    to a URL they control.  Tiers 1 and 2 both derive the base from static
+    config, not from the incoming request.
 
     Priority:
     1. ``JENTIC_PUBLIC_BASE_URL`` — fully-qualified canonical base (scheme + host + prefix).
     2. ``JENTIC_PUBLIC_HOSTNAME`` when non-default (not ``"localhost"``) — synthesises
-       ``https://<hostname><JENTIC_ROOT_PATH><path>``. Covers deployments that set the
-       hostname knob but not the full base-URL knob; assumes ``https`` which is correct
-       for any internet-facing host.
-    3. ``build_absolute_url`` — request-header-derived, correct for local dev where
+       ``https://<hostname><JENTIC_ROOT_PATH><path>``.  Uses the static
+       ``JENTIC_ROOT_PATH`` env var, not ``scope["root_path"]``, so the URL
+       stays deterministic even when ``X-Forwarded-Prefix`` varies per request.
+       Assumes ``https`` — correct for any internet-facing host.
+    3. ``build_absolute_url`` — request-header-derived; safe for local dev where
        ``JENTIC_PUBLIC_HOSTNAME`` is the default ``"localhost"``.
 
-    Used wherever a URL will be consumed outside this process (OAuth callbacks sent to
-    Pipedream, approve-links stored in the DB, agent-identity issuer/aud values).
+    Use this wherever a URL escapes the process: OAuth callbacks sent to
+    Pipedream, approve-links stored in the DB, agent-identity issuer/aud values.
     """
     if JENTIC_PUBLIC_BASE_URL:
         return f"{JENTIC_PUBLIC_BASE_URL}{path}"
