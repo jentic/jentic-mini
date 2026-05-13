@@ -109,7 +109,7 @@ async def create_user(body: UserCreate, request: Request, response: Response):
 
     # Auto-login — issue session cookie immediately
     jwt_secret = state["jwt_secret"]
-    token = make_jwt(jwt_secret)
+    token = make_jwt(jwt_secret, body.username.strip())
     response.set_cookie(
         "jentic_session",
         token,
@@ -205,7 +205,7 @@ async def login(
 
     audit_log.info("LOGIN_SUCCESS user=%s ip=%s", username.strip(), ip)
     state = await setup_state()
-    token = make_jwt(state["jwt_secret"])
+    token = make_jwt(state["jwt_secret"], row["username"])
 
     if redirect_to:
         safe_redirect = validate_relative_redirect(redirect_to)
@@ -292,7 +292,7 @@ async def token(form_data: OAuth2PasswordRequestForm = Depends()):
         )
 
     state = await setup_state()
-    access_token = make_jwt(state["jwt_secret"])
+    access_token = make_jwt(state["jwt_secret"], row["username"])
 
     return {
         "access_token": access_token,

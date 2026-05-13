@@ -244,9 +244,11 @@ def is_proxy_trusted_peer(peer_ip: str) -> bool:
 # ── JWT helpers ───────────────────────────────────────────────────────────────
 
 
-def make_jwt(secret: str) -> str:
+def make_jwt(secret: str, username: str) -> str:
     now = int(time.time())
     payload = {"sub": "human", "iat": now, "exp": now + JWT_TTL_SECONDS}
+    if username:
+        payload["username"] = username
     return _jwt.encode(payload, secret, algorithm=JWT_ALGORITHM)
 
 
@@ -334,10 +336,11 @@ async def _human_session_response(request: Request, call_next, jwt_token: str | 
     request.state.is_human_session = True
     request.state.is_admin = True
     request.state.toolkit_id = DEFAULT_TOOLKIT_ID
+    request.state.username = claims.get("username") or None
     response = await call_next(request)
     issued_at = claims.get("iat", 0)
     if time.time() - issued_at > JWT_REFRESH_AFTER:
-        new_token = make_jwt(state["jwt_secret"])
+        new_token = make_jwt(state["jwt_secret"], claims.get("username") or "")
         response.set_cookie(
             "jentic_session",
             new_token,
