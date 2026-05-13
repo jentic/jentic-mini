@@ -32,6 +32,7 @@ Argument in `$ARGUMENTS` (optional):
 - **No destructive git.** No `--force`, no `reset --hard`, no `--no-verify`. If a pre-commit hook rejects the commit, no commit was created — fix the underlying issue, restage, and retry the same `git commit` (don't add a duplicate). The "never amend" rule applies *after* a commit already exists and you discover a problem; in that case add a fix-up commit on top instead of amending.
 - **Stage explicit paths.** Never `git add -A` or `git add .` — name the files the group touched. After staging, verify `git diff --cached --name-only` lists only those paths.
 - **Ask the user when work surfaces a real decision.** During Phase 6 (implementation) and Phase 7 (verification), if a task surfaces a choice the spec doesn't lock down — multiple valid approaches a reasonable engineer would weigh, an adjacent change the spec didn't anticipate, drift between spec and code that has more than one reasonable resolution, ambiguous validation expectations — use `AskUserQuestion` to surface it inline rather than picking silently or halting outright. Halting is for genuine blockers; questions are for genuine choices. The user is the source of truth when the spec isn't.
+- **Track spec deviations and draft a retrospective.** Maintain a running list across Phases 6, 7, and 8 of any concrete divergence between what the spec said and what the implementation had to do. Sources of deviations: file/line targets in `plan.md` that drifted, scope the spec missed but the work required, validation checks that needed clarification, fix-up commits that revealed a gap. Each tracked item is one sentence naming the spec file (`requirements.md` / `plan.md` / `validation.md`), the section, and what changed in practice. Phase 9 emits this list in the PR body's `## Spec deviations` section; Phase 8.5 commits a `specs/<date>-<slug>/retrospective.draft.md` on the branch so the reviewer has a structured starting point. The draft is provisional — the reviewer promotes it to `retrospective.md` (edit + rename) or deletes it before merge. Root cause and lessons are left as placeholders; the human fills them in. See `.claude/rules/sdd-constitution.md` (post-implementation feedback loop).
 
 ## Phase 0 — Preflight
 
@@ -257,6 +258,27 @@ After fix-ups:
 
 `TaskUpdate` the `Pre-push review` task → `completed`.
 
+## Phase 8.5 — Draft retrospective (conditional)
+
+Skip this phase entirely if the deviation list is empty.
+
+If the deviation list is non-empty, write `specs/<date>-<slug>/retrospective.draft.md` and commit it before pushing. The draft gives the reviewer a structured starting point — they promote it to `retrospective.md` (edit + rename) or delete it before merge; nothing flows into `/sdd-distill-lessons` until a human confirms it.
+
+**File structure** — follow `.claude/templates/sdd/feature-spec/retrospective.example.md`:
+
+- H1: `# Phase <N> Retrospective Draft — <Phase Title>`
+- Opening note (blockquote): `> **DRAFT** — written by \`/sdd-implement-spec\` from tracked implementation deviations. Promote to \`retrospective.md\` (edit + rename) or delete before merge if nothing here is worth capturing.`
+- `## Deviations from the spec` — one bullet per item in the tracked deviation list (same content as the PR body's `## Spec deviations`).
+- `## Root cause` — leave the `[ONE_OR_TWO_SHORT_PARAGRAPHS …]` placeholder; do not speculate.
+- `## Lesson for future specs` — leave the `[LESSON_1 …]` placeholder; do not speculate.
+- `## Promotion candidate` — write `no — update if this lesson names a load-bearing invariant for \`specs/tech-stack.md\`.`
+
+**Commit:**
+
+- Stage only the draft file: `git add specs/<date>-<slug>/retrospective.draft.md`
+- Verify with `git diff --cached --name-only` (must list exactly that one path)
+- `git commit -s -m "docs(spec): draft retrospective for phase <N>"` (≤ 69 chars; body: one sentence — "Agent-generated draft from implementation deviations; reviewer should promote to retrospective.md or delete.")
+
 ## Phase 9 — Push and open the PR
 
 ```
@@ -296,6 +318,12 @@ All gates from `specs/<date>-<slug>/validation.md` passed:
 
 - <one bullet per item under `## Not Required` in `validation.md` — short paraphrase, not a verbatim copy>
 
+## Spec deviations
+
+- <one bullet per tracked deviation — name the spec file + section + what changed in practice. Plain past-tense sentences, e.g. "`plan.md` Group 3 referenced `src/foo.py` but the function had already moved to `src/bar.py`; implemented against the current path.">
+
+A `specs/<date>-<slug>/retrospective.draft.md` has been committed on this branch as a structured starting point — promote it to `retrospective.md` (edit + rename) or delete before merge. Once merged, `/sdd-distill-lessons` can roll confirmed retrospectives into `specs/lessons.md` so future specs absorb the lesson. See `.claude/rules/sdd-constitution.md` (post-implementation feedback loop).
+
 ## Test plan
 
 - [ ] CI green
@@ -307,6 +335,7 @@ Refs: `specs/<date>-<slug>/`
 
 PR body rules:
 
+- `## Spec deviations` is included **only** when the deviation list maintained through Phases 6–8 is non-empty; omit the heading entirely otherwise.
 - `Closes #<issue>` is included **only** when the user provided an issue number in Phase 3 — the implementation PR for a phase typically fully resolves its tracking issue. If no issue was given, omit the line entirely (do not write `Closes #` with no number).
 - `Refs:` always points at the spec dir.
 - **No `🤖 Generated with [Claude Code]` trailer.** Sibling SDD skills (`sdd-new-spec`, `sdd-new-phase`) follow the same convention — the PR is the final step of an SDD workflow whose spec was reviewed and merged separately, so the "generated by Claude" framing doesn't fit. Do not add it back.
@@ -324,7 +353,7 @@ Return to the user in this shape:
   - `plan.md` Verify group: each command + pass/fail
   - `validation.md`: each numbered check + pass/fail
 - **Pre-push review outcome**: one of `clean` (no findings), `findings addressed` (had findings, applied fixes — list their SHAs and what they addressed), or `proceeded over blocker` (had blockers, user accepted as-is — include the one-liner). Suggestions or nits the user declined to apply get one short bullet each as optional follow-ups, not regressions. If `/review` couldn't run (tool error), say so on this line instead.
-- **Deviations from `plan.md`** (if any): tasks that were split, merged, or required follow-up fixes; spec gaps surfaced (without patching them)
+- **Deviations from the spec** (if any): the same running list emitted in the PR body's `## Spec deviations` section — tasks that were split or merged, file/line targets that drifted, validation checks that needed clarification, fix-up commits that revealed gaps. Each item is one sentence naming the spec file (`requirements.md` / `plan.md` / `validation.md`), the section, and what changed in practice. If deviations existed, also note that `specs/<date>-<slug>/retrospective.draft.md` was committed on the branch — the reviewer should promote it to `retrospective.md` (edit + rename) or delete before merge.
 - **Next step**: human review on the PR. The spec dir stays as history per the lifecycle rule; the roadmap entry was marked `✅` by the relevant commit in this PR.
 
 If the run halted before completion, replace the post-completion sections with:

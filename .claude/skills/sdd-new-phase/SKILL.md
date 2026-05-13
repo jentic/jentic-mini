@@ -34,9 +34,12 @@ Load in parallel:
 - @specs/mission.md
 - @specs/tech-stack.md
 - @specs/roadmap.md
+- @specs/lessons.md
 - @.claude/rules/sdd-constitution.md
 
 No git state checks — this skill doesn't touch git.
+
+After loading, scan `specs/lessons.md` for any lessons that apply to the proposed phase. Carry the relevant ones into Phase 2 (use them to shape `AskUserQuestion` options where appropriate) and Phase 4 (apply them when writing the phase body). Mention in Phase 6 which lessons influenced the entry. The lessons file is operational, not load-bearing: a lesson that does not apply to this phase is fine to skip — do not force-fit guidance.
 
 ## Phase 1 — Parse roadmap, propose phase identity
 
