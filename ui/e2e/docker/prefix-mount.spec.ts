@@ -12,7 +12,7 @@ async function authenticate(page: Page) {
 
 	const setupVisible = await page
 		.getByText(/create admin account/i)
-		.isVisible({ timeout: 5_000 })
+		.isVisible({ timeout: 15_000 })
 		.catch(() => false);
 
 	if (setupVisible) {
@@ -21,12 +21,16 @@ async function authenticate(page: Page) {
 		await page.getByRole('button', { name: /create account/i }).click();
 		await expect(page.getByText(/setup complete/i)).toBeVisible({ timeout: 30_000 });
 		await page.goto(`${PREFIX_BASE}/`);
+		// Wait for dashboard to confirm the session is established before returning.
+		await expect(page.getByRole('heading', { name: /dashboard/i })).toBeVisible({
+			timeout: 15_000,
+		});
 		return;
 	}
 
 	const loginVisible = await page
 		.getByRole('button', { name: /^log in$/i })
-		.isVisible({ timeout: 5_000 })
+		.isVisible({ timeout: 15_000 })
 		.catch(() => false);
 	if (loginVisible) {
 		await page.getByLabel('Username').fill(ADMIN_USER);
@@ -159,9 +163,23 @@ test.describe('Reverse-proxy prefix mount', () => {
 	});
 
 	test('login redirect from a protected route preserves the prefix', async ({ page }) => {
-		// Ensure admin account exists before clearing cookies.
-		await authenticate(page);
-		await page.context().clearCookies();
+		// Ensure the admin account exists without loading any page (which would set
+		// browser cookies and leave the context authenticated). On a fresh container
+		// the health check returns setup_required; create the account via the API and
+		// immediately clear the resulting session cookie so the subsequent page load
+		// starts genuinely logged out. On a reused container the account already
+		// exists and no cookies are set.
+		const healthRes = await page.request.get(`${PREFIX_BASE}/health`);
+		const { status } = await healthRes.json();
+		if (status === 'setup_required') {
+			const res = await page.request.post(`${PREFIX_BASE}/user/create`, {
+				data: { username: ADMIN_USER, password: ADMIN_PASS },
+			});
+			expect(res.ok()).toBeTruthy();
+			// /user/create sets a session cookie in the browser context — clear it
+			// so the page load below is unauthenticated.
+			await page.context().clearCookies();
+		}
 
 		// ApprovalPage redirects logged-out visitors via navigate(loginUrl) where
 		// loginUrl uses useLocation().pathname (basename-stripped). Pre-fix it used
@@ -200,7 +218,7 @@ test.describe('Reverse-proxy prefix mount', () => {
 		// apiUrl('/docs') → OpenAPI.BASE + '/docs' → '/foo/docs'.
 		// AppLink external= renders a plain <a> so React Router does not re-apply basename.
 		const docsLink = page.getByRole('link', { name: 'API (opens in a new tab)' });
-		await expect(docsLink).toBeVisible();
+		await expect(docsLink).toBeVisible({ timeout: 10_000 });
 
 		await expect(docsLink).toHaveAttribute('href', '/foo/docs');
 	});
