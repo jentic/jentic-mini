@@ -140,13 +140,16 @@ test.describe('Reverse-proxy prefix mount', () => {
 		// Reload the dashboard so usePendingRequests re-fetches the new request.
 		await page.goto(`${PREFIX_BASE}/`);
 
-		const reviewLink = page.getByRole('link', { name: /review/i });
+		// Scope to the specific request so local re-runs (reuseExistingServer) with
+		// accumulated pending requests don't hit a strict-mode multi-match violation.
+		const reviewLink = page.locator(`a[href*="/foo/approve/${toolkitId}/${reqId}"]`);
 		await expect(reviewLink).toBeVisible({ timeout: 15_000 });
 
 		const href = await reviewLink.getAttribute('href');
 		expect(href).toBeTruthy();
+		// Regression: build_canonical_url (server-side) must bake in the prefix once.
+		// A double-prefix (/foo/foo/approve/...) would mean the root path was applied twice.
 		expect(href!).toContain(`/foo/approve/${toolkitId}/${reqId}`);
-		// Regression: AppLink without external= re-applied basename → /foo/foo/approve/...
 		expect(href!).not.toContain('/foo/foo/');
 	});
 
