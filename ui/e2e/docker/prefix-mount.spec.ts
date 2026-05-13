@@ -163,7 +163,7 @@ test.describe('Reverse-proxy prefix mount', () => {
 			const res = await page.request.post(`${PREFIX_BASE}/user/create`, {
 				data: { username: ADMIN_USER, password: ADMIN_PASS },
 			});
-			expect(res.ok()).toBeTruthy();
+			expect(res.ok(), `POST /user/create failed: ${res.status()}`).toBeTruthy();
 			await page.context().clearCookies();
 		}
 
