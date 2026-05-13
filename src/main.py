@@ -98,12 +98,11 @@ class ForwardedPrefixMiddleware:
     1. ``JENTIC_ROOT_PATH`` env var — already on ``scope["root_path"]`` from
        the FastAPI constructor.
     2. ``X-Forwarded-Prefix`` header — read per request when the env var is
-       unset. When both ``JENTIC_TRUSTED_PROXY_NETS`` and
-       ``JENTIC_TRUSTED_PROXY_HEADER`` are set the header is only accepted
-       from peers inside the CIDR allowlist; requests from outside are
-       ignored with a warning. When either env var is unset the header is
-       accepted unconditionally (preserves behaviour for deployments that
-       have not yet configured a trusted-proxy CIDR).
+       unset. When ``JENTIC_TRUSTED_PROXY_NETS`` is set the header is only
+       accepted from peers inside the CIDR allowlist; requests from outside
+       are ignored with a warning. When ``JENTIC_TRUSTED_PROXY_NETS`` is
+       unset the header is accepted unconditionally (preserves behaviour for
+       deployments that have not yet configured a trusted-proxy CIDR).
        Invalid values are silently ignored (treated as no mount).
 
     Path stripping is intentionally left to Starlette's routing machinery
@@ -125,7 +124,7 @@ class ForwardedPrefixMiddleware:
         if not scope.get("root_path"):
             for key, value in scope.get("headers", []):
                 if key == b"x-forwarded-prefix":
-                    if JENTIC_TRUSTED_PROXY_NETS and JENTIC_TRUSTED_PROXY_HEADER:
+                    if JENTIC_TRUSTED_PROXY_NETS:
                         peer_ip = (scope.get("client") or ("", 0))[0]
                         if not is_proxy_trusted_peer(peer_ip):
                             logging.getLogger("jentic.auth").warning(
