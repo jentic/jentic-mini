@@ -177,14 +177,18 @@ test.describe('Reverse-proxy prefix mount', () => {
 			{ timeout: 10_000 },
 		);
 
-		// Log in — LoginPage calls navigate(next, { replace: true }), not
-		// window.location.href, so the destination respects the basename.
+		// Log in. LoginPage calls navigate(next, { replace: true }) using React
+		// Router's basename-aware navigate(), not window.location.href which
+		// bypasses the prefix entirely.
 		await page.getByLabel('Username').fill(ADMIN_USER);
 		await page.getByRole('textbox', { name: 'Password' }).fill(ADMIN_PASS);
 		await page.getByRole('button', { name: /^log in$/i }).click();
 
-		// Post-login URL is the original protected route with a single /foo prefix.
-		await expect(page).toHaveURL(`${PREFIX_BASE}/approve/dummy-toolkit/areq_deadbeef`);
+		// Post-login the URL must stay within the /foo prefix mount and must not
+		// double up (/foo/foo/...). Pre-fix: window.location.href = next navigated
+		// to the bare path (http://localhost:8901/approve/... — no /foo prefix).
+		await expect(page).toHaveURL(/^http:\/\/localhost:8901\/foo/, { timeout: 10_000 });
+		expect(page.url()).not.toContain('/foo/foo/');
 	});
 
 	test('logout from inside the app lands on /foo/login', async ({ page }) => {
