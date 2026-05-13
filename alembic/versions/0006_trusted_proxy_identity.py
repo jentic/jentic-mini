@@ -24,8 +24,7 @@ def upgrade() -> None:
     if "created_via" in cols:
         return
 
-    # SQLite requires a table-recreate to drop the NOT NULL constraint on
-    # password_hash; batch_alter_table handles this transparently.
+    # SQLite does not support ALTER COLUMN natively; batch_alter_table works around this.
     with op.batch_alter_table("users") as batch_op:
         batch_op.alter_column(
             "password_hash",
@@ -34,7 +33,7 @@ def upgrade() -> None:
         )
         batch_op.add_column(sa.Column("created_via", sa.Text(), nullable=True))
 
-    # Backfill existing accounts: any row with a password hash is a local account.
+    # Any row with a password hash predates JIT provisioning and is a local account.
     bind.execute(
         text(
             "UPDATE users SET created_via = 'local' "
