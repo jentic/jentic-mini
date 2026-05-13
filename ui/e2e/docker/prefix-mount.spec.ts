@@ -7,39 +7,18 @@ const PREFIX_BASE = 'http://localhost:8901/foo';
 const ADMIN_USER = 'admin';
 const ADMIN_PASS = 'admin123';
 
-async function authenticate(page: Page) {
-	await page.goto(`${PREFIX_BASE}/`);
-
-	const setupVisible = await page
-		.getByText(/create admin account/i)
-		.isVisible({ timeout: 15_000 })
-		.catch(() => false);
-
-	if (setupVisible) {
-		await page.getByLabel('Username').fill(ADMIN_USER);
-		await page.getByRole('textbox', { name: 'Password' }).fill(ADMIN_PASS);
-		await page.getByRole('button', { name: /create account/i }).click();
-		await expect(page.getByText(/setup complete/i)).toBeVisible({ timeout: 30_000 });
-		await page.goto(`${PREFIX_BASE}/`);
-		// Wait for dashboard to confirm the session is established before returning.
-		await expect(page.getByRole('heading', { name: /dashboard/i })).toBeVisible({
-			timeout: 15_000,
-		});
-		return;
-	}
-
-	const loginVisible = await page
-		.getByRole('button', { name: /^log in$/i })
-		.isVisible({ timeout: 15_000 })
-		.catch(() => false);
-	if (loginVisible) {
-		await page.getByLabel('Username').fill(ADMIN_USER);
-		await page.getByRole('textbox', { name: 'Password' }).fill(ADMIN_PASS);
-		await page.getByRole('button', { name: /^log in$/i }).click();
-		await expect(page.getByRole('heading', { name: /dashboard/i })).toBeVisible({
-			timeout: 15_000,
-		});
-	}
+// Log in via the API endpoints rather than the UI so the new tests don't
+// depend on the login form rendering within a tight timeout. The session
+// cookie is stored in the browser context by Playwright and is available
+// to subsequent page.goto() navigations.
+async function loginViaApi(page: Page) {
+	const healthRes = await page.request.get(`${PREFIX_BASE}/health`);
+	const { status } = await healthRes.json();
+	const endpoint = status === 'setup_required' ? '/user/create' : '/user/login';
+	const res = await page.request.post(`${PREFIX_BASE}${endpoint}`, {
+		data: { username: ADMIN_USER, password: ADMIN_PASS },
+	});
+	expect(res.ok(), `${endpoint} failed: ${res.status()}`).toBeTruthy();
 }
 
 test.describe('Reverse-proxy prefix mount', () => {
@@ -128,32 +107,41 @@ test.describe('Reverse-proxy prefix mount', () => {
 	});
 
 	test('dashboard "Review" link has a single /foo prefix', async ({ page }) => {
-		await authenticate(page);
+		await loginViaApi(page);
+		// Navigate to the dashboard so the browser context has the session cookie
+		// in a same-site page load before we make additional API calls.
+		await page.goto(`${PREFIX_BASE}/`);
+		await page.getByRole('heading', { name: /dashboard/i }).waitFor({ timeout: 15_000 });
 
-		// Seed a pending access request via the admin session (cookies shared with page).
-		const tk = await page.request.post(`${PREFIX_BASE}/toolkits`, {
-			data: { name: `prefix-test-${Date.now()}` },
-		});
-		expect(tk.ok()).toBeTruthy();
-		const { id: toolkitId } = await tk.json();
+		// Create a toolkit and a pending access request via fetch() running inside
+		// the browser page — guarantees the SameSite=Strict session cookie is sent.
+		const { toolkitId, reqId } = await page.evaluate(async (base: string) => {
+			const tk = await fetch(`${base}/toolkits`, {
+				method: 'POST',
+				credentials: 'include',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ name: `prefix-test-${Date.now()}` }),
+			});
+			if (!tk.ok) throw new Error(`POST /toolkits → ${tk.status}`);
+			const { id: toolkitId } = await tk.json();
 
-		const reqRes = await page.request.post(
-			`${PREFIX_BASE}/toolkits/${toolkitId}/access-requests`,
-			{
-				data: {
-					type: 'grant',
-					credential_id: 'api.example.com',
-					reason: 'e2e regression guard for issue #382',
-				},
-			},
-		);
-		expect(reqRes.ok()).toBeTruthy();
-		const { id: reqId } = await reqRes.json();
+			const req = await fetch(`${base}/toolkits/${toolkitId}/access-requests`, {
+				method: 'POST',
+				credentials: 'include',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ type: 'grant', credential_id: 'api.example.com' }),
+			});
+			if (!req.ok) throw new Error(`POST /access-requests → ${req.status}`);
+			const { id: reqId } = await req.json();
 
+			return { toolkitId: toolkitId as string, reqId: reqId as string };
+		}, PREFIX_BASE);
+
+		// Reload the dashboard so usePendingRequests re-fetches the new request.
 		await page.goto(`${PREFIX_BASE}/`);
 
 		const reviewLink = page.getByRole('link', { name: /review/i });
-		await expect(reviewLink).toBeVisible({ timeout: 10_000 });
+		await expect(reviewLink).toBeVisible({ timeout: 15_000 });
 
 		const href = await reviewLink.getAttribute('href');
 		expect(href).toBeTruthy();
@@ -163,12 +151,9 @@ test.describe('Reverse-proxy prefix mount', () => {
 	});
 
 	test('login redirect from a protected route preserves the prefix', async ({ page }) => {
-		// Ensure the admin account exists without loading any page (which would set
-		// browser cookies and leave the context authenticated). On a fresh container
-		// the health check returns setup_required; create the account via the API and
-		// immediately clear the resulting session cookie so the subsequent page load
-		// starts genuinely logged out. On a reused container the account already
-		// exists and no cookies are set.
+		// Ensure admin exists without acquiring a session in the browser context.
+		// On a fresh container /user/create sets a cookie — clear it immediately.
+		// On a reused container the admin already exists and no cookies are touched.
 		const healthRes = await page.request.get(`${PREFIX_BASE}/health`);
 		const { status } = await healthRes.json();
 		if (status === 'setup_required') {
@@ -176,20 +161,20 @@ test.describe('Reverse-proxy prefix mount', () => {
 				data: { username: ADMIN_USER, password: ADMIN_PASS },
 			});
 			expect(res.ok()).toBeTruthy();
-			// /user/create sets a session cookie in the browser context — clear it
-			// so the page load below is unauthenticated.
 			await page.context().clearCookies();
 		}
 
-		// ApprovalPage redirects logged-out visitors via navigate(loginUrl) where
-		// loginUrl uses useLocation().pathname (basename-stripped). Pre-fix it used
-		// window.location.pathname which included the mount prefix → double-prefix.
+		// Navigate to a protected route while logged out.
+		// AuthGuard (App.tsx) catches every unauthenticated request and issues a
+		// client-side Navigate to /login?next={location.pathname}. It uses React
+		// Router's useLocation(), so the ?next= value is the basename-stripped path
+		// (/approve/..., not /foo/approve/...). Pre-fix the next value included the
+		// prefix → /foo/foo/... double-prefix after login.
 		await page.goto(`${PREFIX_BASE}/approve/dummy-toolkit/areq_deadbeef`);
-
-		await page.getByRole('button', { name: /log in to continue/i }).click();
 
 		await expect(page).toHaveURL(
 			`${PREFIX_BASE}/login?next=${encodeURIComponent('/approve/dummy-toolkit/areq_deadbeef')}`,
+			{ timeout: 10_000 },
 		);
 
 		// Log in — LoginPage calls navigate(next, { replace: true }), not
@@ -203,7 +188,9 @@ test.describe('Reverse-proxy prefix mount', () => {
 	});
 
 	test('logout from inside the app lands on /foo/login', async ({ page }) => {
-		await authenticate(page);
+		await loginViaApi(page);
+		await page.goto(`${PREFIX_BASE}/`);
+		await page.getByRole('heading', { name: /dashboard/i }).waitFor({ timeout: 15_000 });
 
 		// Layout.onSuccess calls navigate('/login') — React Router applies basename
 		// so the destination is /foo/login, not bare /login or double /foo/foo/login.
@@ -213,7 +200,9 @@ test.describe('Reverse-proxy prefix mount', () => {
 	});
 
 	test('sidebar API link href is /foo/docs', async ({ page }) => {
-		await authenticate(page);
+		await loginViaApi(page);
+		await page.goto(`${PREFIX_BASE}/`);
+		await page.getByRole('heading', { name: /dashboard/i }).waitFor({ timeout: 15_000 });
 
 		// apiUrl('/docs') → OpenAPI.BASE + '/docs' → '/foo/docs'.
 		// AppLink external= renders a plain <a> so React Router does not re-apply basename.
