@@ -22,7 +22,13 @@ from pydantic import BaseModel, Field
 
 from src.auth import APIKeyMiddleware, is_proxy_trusted_peer
 from src.brokers.pipedream import PipedreamOAuthBroker
-from src.config import APP_VERSION, JENTIC_ROOT_PATH, JENTIC_TRUSTED_PROXY_NETS, normalise_root_path
+from src.config import (
+    APP_VERSION,
+    JENTIC_ROOT_PATH,
+    JENTIC_TRUSTED_PROXY_HEADER,
+    JENTIC_TRUSTED_PROXY_NETS,
+    normalise_root_path,
+)
 from src.db import run_migrations, setup_state
 from src.negotiate import negotiate_middleware
 from src.oauth_broker import registry as oauth_broker_registry
@@ -92,10 +98,12 @@ class ForwardedPrefixMiddleware:
     1. ``JENTIC_ROOT_PATH`` env var — already on ``scope["root_path"]`` from
        the FastAPI constructor.
     2. ``X-Forwarded-Prefix`` header — read per request when the env var is
-       unset and the peer IP falls inside ``JENTIC_TRUSTED_PROXY_NETS``
-       (when set). When ``JENTIC_TRUSTED_PROXY_NETS`` is unset, the header
-       is accepted unconditionally (preserves pre-Phase-28 behaviour for
-       deployments that have not yet configured a CIDR allowlist).
+       unset. When both ``JENTIC_TRUSTED_PROXY_NETS`` and
+       ``JENTIC_TRUSTED_PROXY_HEADER`` are set the header is only accepted
+       from peers inside the CIDR allowlist; requests from outside are
+       ignored with a warning. When either env var is unset the header is
+       accepted unconditionally (preserves behaviour for deployments that
+       have not yet configured a trusted-proxy CIDR).
        Invalid values are silently ignored (treated as no mount).
 
     Path stripping is intentionally left to Starlette's routing machinery
@@ -117,7 +125,7 @@ class ForwardedPrefixMiddleware:
         if not scope.get("root_path"):
             for key, value in scope.get("headers", []):
                 if key == b"x-forwarded-prefix":
-                    if JENTIC_TRUSTED_PROXY_NETS:
+                    if JENTIC_TRUSTED_PROXY_NETS and JENTIC_TRUSTED_PROXY_HEADER:
                         peer_ip = (scope.get("client") or ("", 0))[0]
                         if not is_proxy_trusted_peer(peer_ip):
                             logging.getLogger("jentic.auth").warning(

@@ -36,6 +36,7 @@ def proxy_env(monkeypatch):
     """Activate trusted-proxy auth by patching module-level config vars."""
     monkeypatch.setattr("src.auth.JENTIC_TRUSTED_PROXY_HEADER", PROXY_HEADER)
     monkeypatch.setattr("src.auth.JENTIC_TRUSTED_PROXY_NETS", PROXY_CIDR)
+    monkeypatch.setattr("src.main.JENTIC_TRUSTED_PROXY_HEADER", PROXY_HEADER)
     monkeypatch.setattr("src.main.JENTIC_TRUSTED_PROXY_NETS", PROXY_CIDR)
 
 
