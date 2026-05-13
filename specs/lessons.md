@@ -12,4 +12,4 @@ This file is **not part of the constitution** (the constitution is mission + tec
 
 ## Lessons
 
-_(empty — add entries as retrospectives accumulate. Each entry: a short bullet phrased as actionable guidance, with the source retrospective(s) appended.)_
+_(no lessons captured yet)_

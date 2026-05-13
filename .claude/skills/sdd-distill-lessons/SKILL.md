@@ -1,6 +1,6 @@
 ---
 name: sdd-distill-lessons
-description: Distil per-spec retrospectives into specs/lessons.md so future spec authoring absorbs the learning. Reads specs/*/retrospective.md, groups recurring patterns, surfaces candidate lessons and tech-stack.md promotion candidates via AskUserQuestion, writes confirmed additions to specs/lessons.md, then invokes /review against the pending change before stopping. Never edits specs/tech-stack.md — promotion candidates are surfaced for the user to hand-promote. Never runs git, gh, or any commit/branch/PR commands.
+description: Distil per-spec retrospectives into specs/lessons.md so future spec authoring absorbs the learning. Reads specs/*/retrospective.md, groups recurring patterns, surfaces candidate lessons and tech-stack.md promotion candidates via AskUserQuestion, writes confirmed additions to specs/lessons.md, then invokes /review against the pending change before stopping.
 argument-hint: "(no arguments)"
 ---
 
@@ -48,10 +48,11 @@ Combine all extracted lesson bullets from all retrospectives. Group lessons that
 
 - Record the source retrospectives (one or more file paths)
 - Phrase the candidate as a single actionable bullet
-- Mark as a **promotion candidate** if **either** (a) two or more retrospectives surfaced this same lesson, **or** (b) any source retrospective marked `## Promotion candidate: yes`. Promotion is a strong signal — only flag when at least one of those criteria is met.
-- Skip candidates that already appear (substantively) in `specs/lessons.md`'s existing bullet list
+- Mark as a **promotion candidate** if **either** (a) two or more retrospectives surfaced this same lesson, **or** (b) any source retrospective marked `## Promotion candidate: yes`. This surfacing threshold is intentionally looser than the constitution's promotion bar (which requires recurrence **and** invariant status) — better to surface a borderline candidate than miss one; the human applies the conjunction when deciding whether to actually hand-promote.
 
-If after deduplication there are zero new candidates, stop with a one-line summary ("All retrospective lessons are already captured in `specs/lessons.md`; nothing to add.") — still report any **promotion candidates** identified (those can apply even when nothing new is being added to `lessons.md`, if a lesson already in `lessons.md` has now recurred across enough retros).
+This full grouped set is the basis for promotion-candidate detection (Phase 5). From it, derive a **new-candidate set** by filtering out any lesson already substantively present in `specs/lessons.md`'s existing bullet list. A lesson that is already captured can still qualify as a promotion candidate — being in `lessons.md` does not preclude promotion to `specs/tech-stack.md`.
+
+If the new-candidate set is empty, skip Phases 3 and 4 (no `AskUserQuestion`, no file edit) and go directly to Phase 5 with a one-line note ("All retrospective lessons are already captured in `specs/lessons.md`; nothing new to add."). Phase 5 still runs to report any promotion candidates from the full grouped set.
 
 ## Phase 3 — AskUserQuestion (MANDATORY, before any disk write)
 
@@ -74,7 +75,7 @@ For each lesson the user confirmed in Phase 3, append a bullet under the `## Les
 - <lesson text> — captured from `specs/<date>-<slug>/retrospective.md`[, `specs/<other-date>-<other-slug>/retrospective.md`]
 ```
 
-If `## Lessons` still contains the initialisation placeholder (`_(empty — …)_`), replace the placeholder with the new bullets. Otherwise, append after the existing bullets.
+If `## Lessons` still contains the initialisation placeholder (`_(no lessons captured yet)_`), replace the placeholder with the new bullets. Otherwise, append after the existing bullets.
 
 Do not edit any section of the file other than `## Lessons`. Do not touch `## Lifecycle` or the file's header.
 
