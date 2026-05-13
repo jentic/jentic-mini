@@ -2,6 +2,7 @@
 
 import os
 import re
+import warnings
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -93,6 +94,15 @@ if JENTIC_PUBLIC_BASE_URL:
             f"JENTIC_PUBLIC_BASE_URL path ({_pub_path!r}) disagrees with "
             f"JENTIC_ROOT_PATH ({JENTIC_ROOT_PATH!r}); both must use the same prefix"
         )
+elif JENTIC_PUBLIC_HOSTNAME != "localhost":
+    warnings.warn(
+        "JENTIC_PUBLIC_HOSTNAME is set but JENTIC_PUBLIC_BASE_URL is not. "
+        "Canonical URLs (OAuth callbacks, approve links) will use "
+        f"https://{JENTIC_PUBLIC_HOSTNAME}. "
+        "Set JENTIC_PUBLIC_BASE_URL for explicit control over scheme and path prefix.",
+        UserWarning,
+        stacklevel=1,
+    )
 
 # ── Toolkit defaults ──────────────────────────────────────────────────────────
 DEFAULT_TOOLKIT_ID = "default"

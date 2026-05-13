@@ -1,0 +1,114 @@
+"""Unit tests for the build_canonical_url hostname fallback.
+
+Regression for issue #378: when JENTIC_PUBLIC_BASE_URL is unset but
+JENTIC_PUBLIC_HOSTNAME is set to a non-localhost value, build_canonical_url
+must return a URL rooted at that hostname rather than deriving the host from
+the inbound request headers. This ensures agents calling over docker-internal
+DNS get a public success_redirect_uri that Pipedream can redirect browsers to.
+"""
+
+from __future__ import annotations
+
+import pytest
+from src.utils import build_canonical_url
+
+
+class _FakeURL:
+    scheme = "http"
+
+
+class _FakeRequest:
+    """Minimal request shape with an internal docker-DNS Host header."""
+
+    def __init__(self, host: str = "jentic-mini-handle:8900", root_path: str = ""):
+        self.headers = {"host": host}
+        self.scope = {"root_path": root_path}
+        self.url = _FakeURL()
+
+
+# ── Priority 1: JENTIC_PUBLIC_BASE_URL always wins ───────────────────────────
+
+
+def test_base_url_wins_over_internal_host(monkeypatch):
+    monkeypatch.setattr("src.utils.JENTIC_PUBLIC_BASE_URL", "https://x.example.com/jentic-mini")
+    monkeypatch.setattr("src.utils.JENTIC_PUBLIC_HOSTNAME", "x.example.com")
+    monkeypatch.setattr("src.utils.JENTIC_ROOT_PATH", "/jentic-mini")
+    req = _FakeRequest(host="jentic-mini-handle:8900")
+    assert (
+        build_canonical_url(req, "/oauth-brokers/pipedream/connect-callback?app=gmail")
+        == "https://x.example.com/jentic-mini/oauth-brokers/pipedream/connect-callback?app=gmail"
+    )
+
+
+def test_base_url_wins_over_spoofed_host_header(monkeypatch):
+    monkeypatch.setattr("src.utils.JENTIC_PUBLIC_BASE_URL", "https://canonical.example.com")
+    monkeypatch.setattr("src.utils.JENTIC_PUBLIC_HOSTNAME", "canonical.example.com")
+    monkeypatch.setattr("src.utils.JENTIC_ROOT_PATH", "")
+    req = _FakeRequest(host="attacker.example.com")
+    assert build_canonical_url(req, "/path") == "https://canonical.example.com/path"
+
+
+# ── Priority 2: JENTIC_PUBLIC_HOSTNAME fallback (non-localhost) ───────────────
+
+
+def test_hostname_fallback_ignores_internal_host(monkeypatch):
+    """Core regression: docker-DNS host must not bleed into the canonical URL."""
+    monkeypatch.setattr("src.utils.JENTIC_PUBLIC_BASE_URL", "")
+    monkeypatch.setattr("src.utils.JENTIC_PUBLIC_HOSTNAME", "x.example.com")
+    monkeypatch.setattr("src.utils.JENTIC_ROOT_PATH", "")
+    req = _FakeRequest(host="jentic-mini-handle:8900")
+    assert (
+        build_canonical_url(req, "/oauth-brokers/pipedream/connect-callback?app=gmail")
+        == "https://x.example.com/oauth-brokers/pipedream/connect-callback?app=gmail"
+    )
+
+
+def test_hostname_fallback_includes_root_path(monkeypatch):
+    monkeypatch.setattr("src.utils.JENTIC_PUBLIC_BASE_URL", "")
+    monkeypatch.setattr("src.utils.JENTIC_PUBLIC_HOSTNAME", "x.example.com")
+    monkeypatch.setattr("src.utils.JENTIC_ROOT_PATH", "/jentic-mini")
+    req = _FakeRequest(host="jentic-mini-handle:8900")
+    assert (
+        build_canonical_url(req, "/oauth-brokers/pipedream/connect-callback?app=gmail")
+        == "https://x.example.com/jentic-mini/oauth-brokers/pipedream/connect-callback?app=gmail"
+    )
+
+
+def test_hostname_fallback_uses_https(monkeypatch):
+    """Scheme must always be https when synthesised from JENTIC_PUBLIC_HOSTNAME."""
+    monkeypatch.setattr("src.utils.JENTIC_PUBLIC_BASE_URL", "")
+    monkeypatch.setattr("src.utils.JENTIC_PUBLIC_HOSTNAME", "prod.example.com")
+    monkeypatch.setattr("src.utils.JENTIC_ROOT_PATH", "")
+    req = _FakeRequest(host="internal:8900")
+    result = build_canonical_url(req, "/callback")
+    assert result.startswith("https://")
+
+
+# ── Priority 3: localhost dev fallback uses request headers ──────────────────
+
+
+def test_localhost_dev_uses_request_headers(monkeypatch):
+    """When JENTIC_PUBLIC_HOSTNAME is the default 'localhost', fall back to
+    the request-derived URL so local dev ergonomics are preserved."""
+    monkeypatch.setattr("src.utils.JENTIC_PUBLIC_BASE_URL", "")
+    monkeypatch.setattr("src.utils.JENTIC_PUBLIC_HOSTNAME", "localhost")
+    monkeypatch.setattr("src.utils.JENTIC_ROOT_PATH", "")
+    req = _FakeRequest(host="localhost:8900")
+    result = build_canonical_url(req, "/callback")
+    assert "localhost" in result
+    assert "internal" not in result
+
+
+@pytest.mark.parametrize(
+    "host_header,expected_prefix",
+    [
+        ("localhost:8900", "http://localhost:8900"),
+        ("127.0.0.1:8900", "http://127.0.0.1:8900"),
+    ],
+)
+def test_localhost_variants_fall_back_to_headers(monkeypatch, host_header, expected_prefix):
+    monkeypatch.setattr("src.utils.JENTIC_PUBLIC_BASE_URL", "")
+    monkeypatch.setattr("src.utils.JENTIC_PUBLIC_HOSTNAME", "localhost")
+    monkeypatch.setattr("src.utils.JENTIC_ROOT_PATH", "")
+    req = _FakeRequest(host=host_header)
+    assert build_canonical_url(req, "/path").startswith(expected_prefix)

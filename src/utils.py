@@ -2,7 +2,7 @@
 
 import re
 
-from src.config import JENTIC_PUBLIC_BASE_URL, JENTIC_PUBLIC_HOSTNAME
+from src.config import JENTIC_PUBLIC_BASE_URL, JENTIC_PUBLIC_HOSTNAME, JENTIC_ROOT_PATH
 
 
 def route_path(scope) -> str:
@@ -57,15 +57,22 @@ def build_absolute_url(request, path: str) -> str:
 def build_canonical_url(request, path: str) -> str:
     """Build an absolute URL pinned to the operator-configured public base URL.
 
-    Used by agent-identity routes (issuer, token aud, registration_client_uri)
-    so an attacker who can spoof Host:/X-Forwarded-Host: cannot mint or verify
-    assertions against an issuer that doesn't match the canonical deployment.
+    Priority:
+    1. ``JENTIC_PUBLIC_BASE_URL`` — fully-qualified canonical base (scheme + host + prefix).
+    2. ``JENTIC_PUBLIC_HOSTNAME`` when non-default (not ``"localhost"``) — synthesises
+       ``https://<hostname><JENTIC_ROOT_PATH><path>``. Covers deployments that set the
+       hostname knob but not the full base-URL knob; assumes ``https`` which is correct
+       for any internet-facing host.
+    3. ``build_absolute_url`` — request-header-derived, correct for local dev where
+       ``JENTIC_PUBLIC_HOSTNAME`` is the default ``"localhost"``.
 
-    Falls back to ``build_absolute_url`` when ``JENTIC_PUBLIC_BASE_URL`` is
-    unset, preserving the existing dev / on-localhost ergonomics.
+    Used wherever a URL will be consumed outside this process (OAuth callbacks sent to
+    Pipedream, approve-links stored in the DB, agent-identity issuer/aud values).
     """
     if JENTIC_PUBLIC_BASE_URL:
         return f"{JENTIC_PUBLIC_BASE_URL}{path}"
+    if JENTIC_PUBLIC_HOSTNAME and JENTIC_PUBLIC_HOSTNAME != "localhost":
+        return f"https://{JENTIC_PUBLIC_HOSTNAME}{JENTIC_ROOT_PATH}{path}"
     return build_absolute_url(request, path)
 
 
