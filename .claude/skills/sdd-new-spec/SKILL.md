@@ -41,10 +41,13 @@ Then load context in parallel:
 - @specs/mission.md
 - @specs/tech-stack.md
 - @specs/roadmap.md
+- @specs/lessons.md
 - @.claude/rules/git-workflow.md
 - @.claude/rules/conventional-commits.md
 - @.claude/rules/testing.md
 - @.claude/rules/karpathy-guidelines.md
+
+After loading, scan `specs/lessons.md` for any lessons that apply to the phase being scaffolded. Carry the relevant ones into Phase 4 (use them to shape `AskUserQuestion` options where appropriate) and Phase 6 (apply them when writing requirements / plan / validation content). Mention in Phase 9 which lessons influenced this scaffold. The lessons file is operational, not load-bearing: a lesson that does not apply to this phase is fine to skip — do not force-fit guidance.
 
 ## Phase 1 — Pick a roadmap phase
 
