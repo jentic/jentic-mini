@@ -8,12 +8,12 @@ RUN cd ui && npm ci --ignore-scripts && npm run build
 # Stage 2: Install Python dependencies
 FROM python:3.11-slim AS py-deps
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    gcc libffi-dev curl \
+    gcc libffi-dev \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 
-# Install PDM (recommended method, pinned version)
-RUN curl -sSL https://pdm-project.org/install-pdm.py | python3 - --version 2.25.5
+# Install PDM (via pip — avoids install-pdm.py Python version compatibility issues)
+RUN pip install --no-cache-dir pdm==2.25.5
 
 COPY pyproject.toml pdm.lock ./
 # Install locked project deps, then upgrade bootstrap tooling inside the venv.
@@ -24,7 +24,7 @@ COPY pyproject.toml pdm.lock ./
 # against future CVEs and avoids manual-bump toil; Trivy gates regressions.
 # This clears transitive CVEs in wheel and the setuptools-vendored copies
 # of wheel / jaraco.context reported by Trivy against the final image.
-RUN /root/.local/bin/pdm install --prod --no-editable --no-self --frozen-lockfile \
+RUN pdm install --prod --no-editable --no-self --frozen-lockfile \
  && /app/.venv/bin/python -m ensurepip --upgrade \
  && /app/.venv/bin/python -m pip install --upgrade --no-cache-dir pip setuptools wheel
 
