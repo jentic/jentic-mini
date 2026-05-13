@@ -6,14 +6,15 @@ RUN mkdir -p static
 RUN cd ui && npm ci --ignore-scripts && npm run build
 
 # Stage 2: Install Python dependencies
-FROM python:3.12-slim AS py-deps
+FROM python:3.11-slim AS py-deps
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    gcc libffi-dev curl \
+    gcc libffi-dev \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 
-# Install PDM (recommended method, pinned version)
-RUN curl -sSL https://pdm-project.org/install-pdm.py | python3 - --version 2.26.9
+# Install PDM via pipx for isolated, reproducible installation
+RUN pip install --no-cache-dir pipx && pipx install pdm==2.26.9
+ENV PATH="/root/.local/bin:$PATH"
 
 COPY pyproject.toml pdm.lock ./
 # Install locked project deps, then upgrade bootstrap tooling inside the venv.
@@ -29,11 +30,13 @@ RUN /root/.local/bin/pdm install --prod --no-editable --no-self --frozen-lockfil
  && /app/.venv/bin/python -m pip install --upgrade --no-cache-dir pip setuptools wheel
 
 # Stage 3: Runtime
-FROM python:3.12-slim
+FROM python:3.11-slim
 
 # Upgrade the base image's system-wide pip / setuptools / wheel to clear
-# transitive CVEs reported by Trivy. These are bootstrap-only, not imported
-# by the app; unpinned --upgrade is self-healing against future CVEs.
+# transitive CVEs Trivy reports against /usr/local/lib/python3.11/site-packages
+# (wheel CVE-2026-24049, setuptools-vendored jaraco.context CVE-2026-23949).
+# These are bootstrap-only, not imported by the app; unpinned --upgrade is
+# self-healing against future CVEs.
 RUN python -m pip install --upgrade --no-cache-dir pip setuptools wheel
 
 ARG APP_VERSION=0.13.0
