@@ -42,11 +42,11 @@ Set both env vars to activate:
 | `JENTIC_TRUSTED_PROXY_HEADER` | Header name the reverse proxy sets to the authenticated username (e.g. `X-Remote-User`). |
 | `JENTIC_TRUSTED_PROXY_NETS` | Comma-separated CIDR allowlist of trusted reverse-proxy IPs (e.g. `10.0.0.0/8,172.16.0.0/12`). |
 
-Either unset → trusted-proxy path is inactive; behaviour is identical to before Phase 28.
+Either unset → trusted-proxy path is inactive; the only human auth paths are `POST /user/login` (password) and `POST /user/token` (OAuth2 password grant).
 
-**Security boundary:** the CIDR check is against the immediate ASGI-scope peer IP (`request.client.host`) only — `X-Forwarded-For` is never consulted. A client outside the CIDR cannot spoof the identity header; only the trusted reverse proxy sits inside the CIDR and may set it.
+**Security boundary:** the CIDR check is against the immediate ASGI-scope peer IP (`request.client.host`) only — `X-Forwarded-For` is never consulted. Requests from outside the CIDR are ignored before any database interaction: no account is created and no session is granted, regardless of what the identity header contains. Only the trusted reverse proxy sits inside the CIDR and may set the header.
 
-**Just-in-time provisioning:** on first request from a new identity, an `INSERT OR IGNORE INTO users` creates the account with `password_hash = NULL` and `created_via = 'trusted_proxy'`. Concurrent first requests are safe (INSERT OR IGNORE). JIT accounts cannot log in via `POST /user/login` or `POST /user/token` — those endpoints return `401 {"error": "invalid_credentials"}` or `{"error": "invalid_client"}` for any account with a NULL password hash, preventing account enumeration.
+**Just-in-time provisioning:** on first request from a new identity, an `INSERT OR IGNORE INTO users` creates the account with `password_hash = NULL` and `created_via = 'trusted_proxy'`. Concurrent first requests are safe (INSERT OR IGNORE). The provisioned session carries full admin rights (`is_admin = True`) — every identity the reverse proxy forwards is trusted as an administrator. JIT accounts cannot log in via `POST /user/login` or `POST /user/token` — those endpoints return `401 {"error": "invalid_credentials"}` or `{"error": "invalid_client"}` for any account with a NULL password hash, preventing account enumeration.
 
 **Deployment example (Tailscale / oauth2-proxy):** set `JENTIC_TRUSTED_PROXY_NETS=100.64.0.0/10` (Tailscale overlay range) and `JENTIC_TRUSTED_PROXY_HEADER=X-Remote-User`. Tailscale's overlay network guarantees the peer IP is within that CIDR; oauth2-proxy forwards the authenticated identity in the header.
 
