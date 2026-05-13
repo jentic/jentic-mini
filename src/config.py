@@ -23,6 +23,12 @@ WORKFLOWS_DIR = DATA_DIR / "workflows"
 # ── Public hostname ───────────────────────────────────────────────────────────
 JENTIC_PUBLIC_HOSTNAME = os.getenv("JENTIC_PUBLIC_HOSTNAME") or "localhost"
 
+# ── Trusted-proxy forwarded identity ─────────────────────────────────────────
+# Both vars must be non-empty to activate the trusted-proxy auth path.
+# Either unset → today's JWT-cookie / agent-key behaviour is preserved.
+JENTIC_TRUSTED_PROXY_HEADER = os.getenv("JENTIC_TRUSTED_PROXY_HEADER", "")
+JENTIC_TRUSTED_PROXY_NETS = os.getenv("JENTIC_TRUSTED_PROXY_NETS", "")
+
 
 # ── Reverse-proxy path prefix ─────────────────────────────────────────────────
 # Optional path at which Mini is mounted behind a reverse proxy (Caddy, Traefik,

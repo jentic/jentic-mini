@@ -22,11 +22,33 @@ Adding a secret env var on top creates a credential that can be leaked without a
 
 ## Human Authentication
 
+Three paths exist for human authentication, evaluated in order:
+1. **JWT cookie** — `jentic_session` httpOnly cookie issued by `POST /user/login`.
+2. **Trusted-proxy forwarded identity** — operator-configured CIDR gate + identity header (see below).
+3. Rejection (401).
+
 ### Account model
 
-Single root account — no multi-user, no roles. One human owns the instance.
+Accounts are provisioned two ways: manually via `POST /user/create` (local accounts with a bcrypt password), or just-in-time by the trusted-proxy path (proxy-provisioned accounts with no password). Multiple accounts can exist once trusted-proxy provisioning is active.
 
-**Account creation is one-time.** `POST /user/create` returns `410 Gone` after the first call.
+**Local account creation is one-time.** `POST /user/create` returns `410 Gone` after the first call.
+
+### Trusted-Proxy Forwarded Identity
+
+Set both env vars to activate:
+
+| Env var | Purpose |
+|---|---|
+| `JENTIC_TRUSTED_PROXY_HEADER` | Header name the reverse proxy sets to the authenticated username (e.g. `X-Remote-User`). |
+| `JENTIC_TRUSTED_PROXY_NETS` | Comma-separated CIDR allowlist of trusted reverse-proxy IPs (e.g. `10.0.0.0/8,172.16.0.0/12`). |
+
+Either unset → trusted-proxy path is inactive; the only human auth paths are `POST /user/login` (password) and `POST /user/token` (OAuth2 password grant).
+
+**Security boundary:** the CIDR check is against the immediate ASGI-scope peer IP (`request.client.host`) only — `X-Forwarded-For` is never consulted. Requests from outside the CIDR are ignored before any database interaction: no account is created and no session is granted, regardless of what the identity header contains. Only the trusted reverse proxy sits inside the CIDR and may set the header.
+
+**Just-in-time provisioning:** on first request from a new identity, an `INSERT OR IGNORE INTO users` creates the account with `password_hash = NULL` and `created_via = 'trusted_proxy'`. Concurrent first requests are safe (INSERT OR IGNORE). The provisioned session carries full admin rights (`is_admin = True`) — every identity the reverse proxy forwards is trusted as an administrator. JIT accounts cannot log in via `POST /user/login` or `POST /user/token` — those endpoints return `401 {"error": "invalid_credentials"}` or `{"error": "invalid_client"}` for any account with a NULL password hash, preventing account enumeration.
+
+**Deployment example (Tailscale / oauth2-proxy):** set `JENTIC_TRUSTED_PROXY_NETS=100.64.0.0/10` (Tailscale overlay range) and `JENTIC_TRUSTED_PROXY_HEADER=X-Remote-User`. Tailscale's overlay network guarantees the peer IP is within that CIDR; oauth2-proxy forwards the authenticated identity in the header.
 
 ### Endpoints
 
@@ -279,13 +301,14 @@ Mitigated by per-key IP restriction (CIDR allowlist on `toolkit_keys` row). Reco
 
 ### `users`
 
-Single root account.
+One row per human identity. Local accounts have a bcrypt `password_hash`; proxy-provisioned accounts have `password_hash = NULL`.
 
 | Column | Type | Notes |
 |---|---|---|
 | `id` | TEXT PK | UUID |
 | `username` | TEXT UNIQUE | |
-| `password_hash` | TEXT | bcrypt |
+| `password_hash` | TEXT \| NULL | bcrypt for local accounts; NULL for JIT proxy-provisioned accounts |
+| `created_via` | TEXT \| NULL | `'local'` for `POST /user/create`; `'trusted_proxy'` for JIT provisioning |
 | `created_at` | TIMESTAMP | |
 
 ### `settings`

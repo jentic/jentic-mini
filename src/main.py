@@ -20,9 +20,15 @@ from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from src.auth import APIKeyMiddleware
+from src.auth import APIKeyMiddleware, is_proxy_trusted_peer
 from src.brokers.pipedream import PipedreamOAuthBroker
-from src.config import APP_VERSION, JENTIC_ROOT_PATH, normalise_root_path
+from src.config import (
+    APP_VERSION,
+    JENTIC_ROOT_PATH,
+    JENTIC_TRUSTED_PROXY_HEADER,
+    JENTIC_TRUSTED_PROXY_NETS,
+    normalise_root_path,
+)
 from src.db import run_migrations, setup_state
 from src.negotiate import negotiate_middleware
 from src.oauth_broker import registry as oauth_broker_registry
@@ -92,13 +98,12 @@ class ForwardedPrefixMiddleware:
     1. ``JENTIC_ROOT_PATH`` env var — already on ``scope["root_path"]`` from
        the FastAPI constructor.
     2. ``X-Forwarded-Prefix`` header — read per request when the env var is
-       unset; invalid values are silently ignored (treated as no mount).
-
-    The header is accepted from any client, which is correct when Mini sits
-    behind a reverse proxy that strips inbound ``X-Forwarded-*`` from clients
-    before setting its own. Direct-internet exposure is the at-risk posture;
-    a future peer-IP-gated trust boundary will scope every proxy header
-    (this one plus ``X-Auth-Email``) to a single CIDR allowlist.
+       unset. When ``JENTIC_TRUSTED_PROXY_NETS`` is set the header is only
+       accepted from peers inside the CIDR allowlist; requests from outside
+       are ignored with a warning. When ``JENTIC_TRUSTED_PROXY_NETS`` is
+       unset the header is accepted unconditionally (preserves behaviour for
+       deployments that have not yet configured a trusted-proxy CIDR).
+       Invalid values are silently ignored (treated as no mount).
 
     Path stripping is intentionally left to Starlette's routing machinery
     (``get_route_path``) so ``Mount`` / ``StaticFiles`` cooperation stays
@@ -119,6 +124,13 @@ class ForwardedPrefixMiddleware:
         if not scope.get("root_path"):
             for key, value in scope.get("headers", []):
                 if key == b"x-forwarded-prefix":
+                    if JENTIC_TRUSTED_PROXY_NETS:
+                        peer_ip = (scope.get("client") or ("", 0))[0]
+                        if not is_proxy_trusted_peer(peer_ip):
+                            logging.getLogger("jentic.auth").warning(
+                                "FORWARDED_PREFIX untrusted_peer=%s ignored", peer_ip
+                            )
+                            break
                     try:
                         scope["root_path"] = normalise_root_path(value.decode("latin-1"))
                     except RuntimeError:
@@ -373,7 +385,9 @@ async def health(request: Request) -> HealthOut:
     # for the same caller, not a security claim.
     issuer = build_canonical_url(request, "").rstrip("/")
 
-    if not state["account_created"]:
+    # Trusted-proxy mode: skip local account setup — users are provisioned JIT by the proxy.
+    proxy_active = bool(JENTIC_TRUSTED_PROXY_HEADER and JENTIC_TRUSTED_PROXY_NETS)
+    if not state["account_created"] and not proxy_active:
         return {
             "status": "setup_required",
             "account_created": False,

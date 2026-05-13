@@ -100,7 +100,7 @@ async def create_user(body: UserCreate, request: Request, response: Response):
 
     async with get_db() as db:
         await db.execute(
-            "INSERT INTO users (id, username, password_hash) VALUES (?, ?, ?)",
+            "INSERT INTO users (id, username, password_hash, created_via) VALUES (?, ?, ?, 'local')",
             (user_id, body.username.strip(), pw_hash),
         )
         await db.commit()
@@ -109,7 +109,7 @@ async def create_user(body: UserCreate, request: Request, response: Response):
 
     # Auto-login — issue session cookie immediately
     jwt_secret = state["jwt_secret"]
-    token = make_jwt(jwt_secret)
+    token = make_jwt(jwt_secret, body.username.strip())
     response.set_cookie(
         "jentic_session",
         token,
@@ -189,7 +189,11 @@ async def login(
             row = await cur.fetchone()
 
     ip = client_ip(request)
-    if not row or not bcrypt.checkpw(password.encode(), row["password_hash"].encode()):
+    if (
+        not row
+        or row["password_hash"] is None
+        or not bcrypt.checkpw(password.encode(), row["password_hash"].encode())
+    ):
         audit_log.warning("LOGIN_FAILED user=%s ip=%s", username.strip(), ip)
         raise HTTPException(
             401,
@@ -201,7 +205,7 @@ async def login(
 
     audit_log.info("LOGIN_SUCCESS user=%s ip=%s", username.strip(), ip)
     state = await setup_state()
-    token = make_jwt(state["jwt_secret"])
+    token = make_jwt(state["jwt_secret"], row["username"])
 
     if redirect_to:
         safe_redirect = validate_relative_redirect(redirect_to)
@@ -273,7 +277,11 @@ async def token(form_data: OAuth2PasswordRequestForm = Depends()):
         ) as cur:
             row = await cur.fetchone()
 
-    if not row or not bcrypt.checkpw(password.encode(), row["password_hash"].encode()):
+    if (
+        not row
+        or row["password_hash"] is None
+        or not bcrypt.checkpw(password.encode(), row["password_hash"].encode())
+    ):
         raise HTTPException(
             401,
             detail={
@@ -284,7 +292,7 @@ async def token(form_data: OAuth2PasswordRequestForm = Depends()):
         )
 
     state = await setup_state()
-    access_token = make_jwt(state["jwt_secret"])
+    access_token = make_jwt(state["jwt_secret"], row["username"])
 
     return {
         "access_token": access_token,
@@ -340,10 +348,16 @@ async def me(request: Request):
     This endpoint accepts requests with or without authentication (open passthrough).
     """
     if getattr(request.state, "is_human_session", False):
-        async with get_db() as db:
-            async with db.execute("SELECT username FROM users LIMIT 1") as cur:
-                row = await cur.fetchone()
-        return {"logged_in": True, "username": row[0] if row else "unknown"}
+        username = getattr(request.state, "username", None)
+        if username is None:
+            async with get_db() as db:
+                async with db.execute(
+                    "SELECT username FROM users WHERE password_hash IS NOT NULL "
+                    "ORDER BY created_at ASC LIMIT 1"
+                ) as cur:
+                    row = await cur.fetchone()
+            username = row[0] if row else "unknown"
+        return {"logged_in": True, "username": username}
     elif getattr(request.state, "is_admin", False):
         # Trusted-subnet passthrough — admin access without an explicit session
         return {
