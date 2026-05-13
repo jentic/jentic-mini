@@ -40,6 +40,18 @@ def normalise_public_hostname(value: str) -> str:
     return result or "localhost"
 
 
+_LOOPBACK_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
+
+
+def is_loopback_hostname(host_with_port: str) -> bool:
+    """Return True when *host_with_port* refers to a loopback address.
+
+    Accepts bare hostnames and host:port strings; strips the port via
+    urlparse so ``localhost:8900`` and ``[::1]:8900`` are handled correctly.
+    """
+    return urlparse(f"//{host_with_port}").hostname in _LOOPBACK_HOSTS
+
+
 def normalise_root_path(value: str) -> str:
     """Normalise and validate a path-prefix value.
 
@@ -137,7 +149,7 @@ if JENTIC_PUBLIC_BASE_URL:
             f"JENTIC_PUBLIC_BASE_URL path ({_pub_path!r}) disagrees with "
             f"JENTIC_ROOT_PATH ({JENTIC_ROOT_PATH!r}); both must use the same prefix"
         )
-elif JENTIC_PUBLIC_HOSTNAME.split(":")[0] != "localhost":
+elif not is_loopback_hostname(JENTIC_PUBLIC_HOSTNAME):
     warnings.warn(
         "JENTIC_PUBLIC_HOSTNAME is set but JENTIC_PUBLIC_BASE_URL is not. "
         "Canonical URLs (OAuth callbacks, approve links) will use "

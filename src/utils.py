@@ -2,7 +2,12 @@
 
 import re
 
-from src.config import JENTIC_PUBLIC_BASE_URL, JENTIC_PUBLIC_HOSTNAME, JENTIC_ROOT_PATH
+from src.config import (
+    JENTIC_PUBLIC_BASE_URL,
+    JENTIC_PUBLIC_HOSTNAME,
+    JENTIC_ROOT_PATH,
+    is_loopback_hostname,
+)
 
 
 def route_path(scope) -> str:
@@ -65,20 +70,20 @@ def build_canonical_url(request, path: str) -> str:
 
     Priority:
     1. ``JENTIC_PUBLIC_BASE_URL`` — fully-qualified canonical base (scheme + host + prefix).
-    2. ``JENTIC_PUBLIC_HOSTNAME`` when non-default (not ``"localhost"``) — synthesises
+    2. ``JENTIC_PUBLIC_HOSTNAME`` when non-loopback — synthesises
        ``https://<hostname><JENTIC_ROOT_PATH><path>``.  Uses the static
        ``JENTIC_ROOT_PATH`` env var, not ``scope["root_path"]``, so the URL
        stays deterministic even when ``X-Forwarded-Prefix`` varies per request.
        Assumes ``https`` — correct for any internet-facing host.
     3. ``build_absolute_url`` — request-header-derived; safe for local dev where
-       ``JENTIC_PUBLIC_HOSTNAME`` is the default ``"localhost"``.
+       ``JENTIC_PUBLIC_HOSTNAME`` is a loopback address (localhost, 127.0.0.1, ::1).
 
     Use this wherever a URL escapes the process: OAuth callbacks sent to
     Pipedream, approve-links stored in the DB, agent-identity issuer/aud values.
     """
     if JENTIC_PUBLIC_BASE_URL:
         return f"{JENTIC_PUBLIC_BASE_URL}{path}"
-    if JENTIC_PUBLIC_HOSTNAME.split(":")[0] != "localhost":
+    if not is_loopback_hostname(JENTIC_PUBLIC_HOSTNAME):
         return f"https://{JENTIC_PUBLIC_HOSTNAME}{JENTIC_ROOT_PATH}{path}"
     return build_absolute_url(request, path)
 
