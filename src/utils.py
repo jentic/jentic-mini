@@ -71,7 +71,7 @@ def build_canonical_url(request, path: str) -> str:
     """
     if JENTIC_PUBLIC_BASE_URL:
         return f"{JENTIC_PUBLIC_BASE_URL}{path}"
-    if JENTIC_PUBLIC_HOSTNAME and JENTIC_PUBLIC_HOSTNAME != "localhost":
+    if JENTIC_PUBLIC_HOSTNAME != "localhost":
         return f"https://{JENTIC_PUBLIC_HOSTNAME}{JENTIC_ROOT_PATH}{path}"
     return build_absolute_url(request, path)
 

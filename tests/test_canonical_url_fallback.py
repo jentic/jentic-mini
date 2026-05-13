@@ -9,7 +9,11 @@ DNS get a public success_redirect_uri that Pipedream can redirect browsers to.
 
 from __future__ import annotations
 
+import importlib
+import warnings
+
 import pytest
+import src.config
 from src.utils import build_canonical_url
 
 
@@ -112,3 +116,41 @@ def test_localhost_variants_fall_back_to_headers(monkeypatch, host_header, expec
     monkeypatch.setattr("src.utils.JENTIC_ROOT_PATH", "")
     req = _FakeRequest(host=host_header)
     assert build_canonical_url(req, "/path").startswith(expected_prefix)
+
+
+# ── Startup warning for _HOSTNAME-only deployments ───────────────────────────
+
+
+def test_startup_warning_emitted_when_hostname_set_without_base_url(monkeypatch):
+    """config.py must emit a UserWarning when JENTIC_PUBLIC_HOSTNAME is non-default
+    but JENTIC_PUBLIC_BASE_URL is unset, so operators know canonical URLs assume https."""
+    monkeypatch.setenv("JENTIC_PUBLIC_HOSTNAME", "prod.example.com")
+    monkeypatch.delenv("JENTIC_PUBLIC_BASE_URL", raising=False)
+    monkeypatch.delenv("JENTIC_ROOT_PATH", raising=False)
+    # always filter so Python doesn't deduplicate across test runs in the same process
+    with warnings.catch_warnings():
+        warnings.simplefilter("always")
+        with pytest.warns(UserWarning, match="JENTIC_PUBLIC_BASE_URL"):
+            importlib.reload(src.config)
+    importlib.reload(src.config)  # restore defaults
+
+
+def test_no_warning_when_base_url_set(monkeypatch):
+    """No UserWarning emitted when JENTIC_PUBLIC_BASE_URL is explicitly set."""
+    monkeypatch.setenv("JENTIC_PUBLIC_BASE_URL", "https://prod.example.com")
+    monkeypatch.setenv("JENTIC_PUBLIC_HOSTNAME", "prod.example.com")
+    monkeypatch.delenv("JENTIC_ROOT_PATH", raising=False)
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", UserWarning)
+        importlib.reload(src.config)  # should not raise
+    importlib.reload(src.config)  # restore defaults
+
+
+def test_no_warning_for_localhost(monkeypatch):
+    """No UserWarning emitted when JENTIC_PUBLIC_HOSTNAME is the default 'localhost'."""
+    monkeypatch.delenv("JENTIC_PUBLIC_HOSTNAME", raising=False)
+    monkeypatch.delenv("JENTIC_PUBLIC_BASE_URL", raising=False)
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", UserWarning)
+        importlib.reload(src.config)  # should not raise
+    importlib.reload(src.config)  # restore defaults

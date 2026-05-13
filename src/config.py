@@ -101,7 +101,7 @@ elif JENTIC_PUBLIC_HOSTNAME != "localhost":
         f"https://{JENTIC_PUBLIC_HOSTNAME}. "
         "Set JENTIC_PUBLIC_BASE_URL for explicit control over scheme and path prefix.",
         UserWarning,
-        stacklevel=1,
+        stacklevel=2,
     )
 
 # ── Toolkit defaults ──────────────────────────────────────────────────────────
