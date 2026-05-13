@@ -50,8 +50,12 @@ class _FakeRequest:
         # Path silently dropped — hostname is not a URL.
         ("example.com/some/path", "example.com"),
         ("https://example.com/some/path", "example.com"),
-        # Empty / unset — defaults to localhost.
+        # Empty / unset / whitespace-only — defaults to localhost.
         ("", "localhost"),
+        ("   ", "localhost"),
+        # Whitespace stripped before parsing.
+        ("  example.com  ", "example.com"),
+        ("  https://example.com  ", "example.com"),
         # localhost passthrough.
         ("localhost", "localhost"),
         ("localhost:8900", "localhost:8900"),
@@ -149,6 +153,17 @@ def test_localhost_variants_fall_back_to_headers(monkeypatch, host_header, expec
     assert build_canonical_url(req, "/path").startswith(expected_prefix)
 
 
+def test_localhost_with_port_falls_back_to_headers(monkeypatch):
+    """JENTIC_PUBLIC_HOSTNAME=localhost:8900 must not produce an https canonical URL."""
+    monkeypatch.setattr("src.utils.JENTIC_PUBLIC_BASE_URL", "")
+    monkeypatch.setattr("src.utils.JENTIC_PUBLIC_HOSTNAME", "localhost:8900")
+    monkeypatch.setattr("src.utils.JENTIC_ROOT_PATH", "")
+    req = _FakeRequest(host="localhost:8900")
+    result = build_canonical_url(req, "/callback")
+    assert not result.startswith("https://")
+    assert "localhost" in result
+
+
 # ── Startup warning for _HOSTNAME-only deployments ───────────────────────────
 
 
@@ -158,12 +173,15 @@ def test_startup_warning_emitted_when_hostname_set_without_base_url(monkeypatch)
     monkeypatch.setenv("JENTIC_PUBLIC_HOSTNAME", "prod.example.com")
     monkeypatch.delenv("JENTIC_PUBLIC_BASE_URL", raising=False)
     monkeypatch.delenv("JENTIC_ROOT_PATH", raising=False)
-    # always filter so Python doesn't deduplicate across test runs in the same process
-    with warnings.catch_warnings():
-        warnings.simplefilter("always")
-        with pytest.warns(UserWarning, match="JENTIC_PUBLIC_BASE_URL"):
-            importlib.reload(src.config)
-    importlib.reload(src.config)  # restore defaults
+    try:
+        # always filter so Python doesn't deduplicate across test runs in the same process
+        with warnings.catch_warnings():
+            warnings.simplefilter("always")
+            with pytest.warns(UserWarning, match="JENTIC_PUBLIC_BASE_URL"):
+                importlib.reload(src.config)
+    finally:
+        monkeypatch.delenv("JENTIC_PUBLIC_HOSTNAME", raising=False)
+        importlib.reload(src.config)
 
 
 def test_no_warning_when_base_url_set(monkeypatch):
@@ -171,17 +189,23 @@ def test_no_warning_when_base_url_set(monkeypatch):
     monkeypatch.setenv("JENTIC_PUBLIC_BASE_URL", "https://prod.example.com")
     monkeypatch.setenv("JENTIC_PUBLIC_HOSTNAME", "prod.example.com")
     monkeypatch.delenv("JENTIC_ROOT_PATH", raising=False)
-    with warnings.catch_warnings():
-        warnings.simplefilter("error", UserWarning)
-        importlib.reload(src.config)  # should not raise
-    importlib.reload(src.config)  # restore defaults
+    try:
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", UserWarning)
+            importlib.reload(src.config)  # should not raise
+    finally:
+        monkeypatch.delenv("JENTIC_PUBLIC_BASE_URL", raising=False)
+        monkeypatch.delenv("JENTIC_PUBLIC_HOSTNAME", raising=False)
+        importlib.reload(src.config)
 
 
 def test_no_warning_for_localhost(monkeypatch):
     """No UserWarning emitted when JENTIC_PUBLIC_HOSTNAME is the default 'localhost'."""
     monkeypatch.delenv("JENTIC_PUBLIC_HOSTNAME", raising=False)
     monkeypatch.delenv("JENTIC_PUBLIC_BASE_URL", raising=False)
-    with warnings.catch_warnings():
-        warnings.simplefilter("error", UserWarning)
-        importlib.reload(src.config)  # should not raise
-    importlib.reload(src.config)  # restore defaults
+    try:
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", UserWarning)
+            importlib.reload(src.config)  # should not raise
+    finally:
+        importlib.reload(src.config)

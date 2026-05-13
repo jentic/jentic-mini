@@ -26,15 +26,18 @@ def normalise_public_hostname(value: str) -> str:
     Paths are silently stripped — ``JENTIC_PUBLIC_HOSTNAME`` is a host,
     not a URL; any path component is meaningless here.
     """
+    value = value.strip()
     if not value:
         return "localhost"
     if "://" in value:
         # Scheme-prefixed URL: https://example.com[:port][/path] → netloc only.
-        return urlparse(value).netloc
-    # Bare host[:port][/path]: prefix "//" so urlparse populates netloc correctly.
-    # Without this, urlparse("example.com:8900") treats "example.com" as the
-    # scheme and "8900" as the path, losing the hostname entirely.
-    return urlparse(f"//{value}").netloc
+        result = urlparse(value).netloc
+    else:
+        # Bare host[:port][/path]: prefix "//" so urlparse populates netloc correctly.
+        # Without this, urlparse("example.com:8900") treats "example.com" as the
+        # scheme and "8900" as the path, losing the hostname entirely.
+        result = urlparse(f"//{value}").netloc
+    return result or "localhost"
 
 
 def normalise_root_path(value: str) -> str:
@@ -134,7 +137,7 @@ if JENTIC_PUBLIC_BASE_URL:
             f"JENTIC_PUBLIC_BASE_URL path ({_pub_path!r}) disagrees with "
             f"JENTIC_ROOT_PATH ({JENTIC_ROOT_PATH!r}); both must use the same prefix"
         )
-elif JENTIC_PUBLIC_HOSTNAME != "localhost":
+elif JENTIC_PUBLIC_HOSTNAME.split(":")[0] != "localhost":
     warnings.warn(
         "JENTIC_PUBLIC_HOSTNAME is set but JENTIC_PUBLIC_BASE_URL is not. "
         "Canonical URLs (OAuth callbacks, approve links) will use "
