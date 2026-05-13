@@ -200,6 +200,45 @@ def test_only_nets_env_set_path_inactive(app, monkeypatch):
     assert resp.status_code == 401
 
 
+# ── 9. Health endpoint skips setup_required when trusted-proxy is configured ──
+
+
+def test_health_ok_when_proxy_configured_without_local_account(client, admin_client, monkeypatch):
+    """Health returns ok when trusted-proxy is active even if no local account exists."""
+    with sqlite3.connect(DB_PATH) as db:
+        db.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('account_created', '0')")
+    try:
+        monkeypatch.setattr("src.main.JENTIC_TRUSTED_PROXY_HEADER", PROXY_HEADER)
+        monkeypatch.setattr("src.main.JENTIC_TRUSTED_PROXY_NETS", PROXY_CIDR)
+        resp = client.get("/health")
+        assert resp.status_code == 200
+        assert resp.json()["status"] == "ok"
+    finally:
+        with sqlite3.connect(DB_PATH) as db:
+            db.execute(
+                "INSERT OR REPLACE INTO settings (key, value) VALUES ('account_created', '1')"
+            )
+
+
+def test_health_setup_required_without_proxy_and_no_local_account(
+    client, admin_client, monkeypatch
+):
+    """Health returns setup_required when no local account and proxy not configured."""
+    with sqlite3.connect(DB_PATH) as db:
+        db.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('account_created', '0')")
+    try:
+        monkeypatch.setattr("src.main.JENTIC_TRUSTED_PROXY_HEADER", "")
+        monkeypatch.setattr("src.main.JENTIC_TRUSTED_PROXY_NETS", "")
+        resp = client.get("/health")
+        assert resp.status_code == 200
+        assert resp.json()["status"] == "setup_required"
+    finally:
+        with sqlite3.connect(DB_PATH) as db:
+            db.execute(
+                "INSERT OR REPLACE INTO settings (key, value) VALUES ('account_created', '1')"
+            )
+
+
 def test_tk_key_takes_precedence_over_proxy_header(app, proxy_env, agent_key):
     """tk_ key must remain authoritative even when the proxy header is also present."""
     with TestClient(app, raise_server_exceptions=False, client=(TRUSTED_IP, 50016)) as c:

@@ -386,7 +386,9 @@ async def health(request: Request) -> HealthOut:
     # for the same caller, not a security claim.
     issuer = build_canonical_url(request, "").rstrip("/")
 
-    if not state["account_created"]:
+    # Trusted-proxy mode: skip local account setup — users are provisioned JIT by the proxy.
+    proxy_active = bool(JENTIC_TRUSTED_PROXY_HEADER and JENTIC_TRUSTED_PROXY_NETS)
+    if not state["account_created"] and not proxy_active:
         return {
             "status": "setup_required",
             "account_created": False,
