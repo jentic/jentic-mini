@@ -14,6 +14,7 @@ import warnings
 
 import pytest
 import src.config
+from src.config import normalise_public_hostname
 from src.utils import build_canonical_url
 
 
@@ -28,6 +29,36 @@ class _FakeRequest:
         self.headers = {"host": host}
         self.scope = {"root_path": root_path}
         self.url = _FakeURL()
+
+
+# ── normalise_public_hostname ─────────────────────────────────────────────────
+
+
+@pytest.mark.parametrize(
+    "raw,expected",
+    [
+        # Bare hostname — most common operator input.
+        ("example.com", "example.com"),
+        ("example.com:8900", "example.com:8900"),
+        # Scheme accidentally included — strip it.
+        ("https://example.com", "example.com"),
+        ("http://example.com", "example.com"),
+        ("https://example.com:8900", "example.com:8900"),
+        # Trailing slash — strip it.
+        ("example.com/", "example.com"),
+        ("https://example.com/", "example.com"),
+        # Path silently dropped — hostname is not a URL.
+        ("example.com/some/path", "example.com"),
+        ("https://example.com/some/path", "example.com"),
+        # Empty / unset — defaults to localhost.
+        ("", "localhost"),
+        # localhost passthrough.
+        ("localhost", "localhost"),
+        ("localhost:8900", "localhost:8900"),
+    ],
+)
+def test_normalise_public_hostname(raw, expected):
+    assert normalise_public_hostname(raw) == expected
 
 
 # ── Priority 1: JENTIC_PUBLIC_BASE_URL always wins ───────────────────────────

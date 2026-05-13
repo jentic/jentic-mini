@@ -22,7 +22,29 @@ SPECS_DIR = DATA_DIR / "specs"
 WORKFLOWS_DIR = DATA_DIR / "workflows"
 
 # ── Public hostname ───────────────────────────────────────────────────────────
-JENTIC_PUBLIC_HOSTNAME = os.getenv("JENTIC_PUBLIC_HOSTNAME") or "localhost"
+
+
+def normalise_public_hostname(value: str) -> str:
+    """Extract a bare ``host[:port]`` from whatever the operator typed.
+
+    Accepts a bare hostname (``example.com``), a scheme-prefixed URL
+    (``https://example.com``), or either with a trailing slash or path.
+    Port is preserved (``example.com:8900`` → ``example.com:8900``).
+    Paths are silently stripped — ``JENTIC_PUBLIC_HOSTNAME`` is a host,
+    not a URL; any path component is meaningless here.
+    """
+    if not value:
+        return "localhost"
+    if "://" in value:
+        # Scheme-prefixed URL: https://example.com[:port][/path] → netloc only.
+        return urlparse(value).netloc
+    # Bare host[:port][/path]: prefix "//" so urlparse populates netloc correctly.
+    # Without this, urlparse("example.com:8900") treats "example.com" as the
+    # scheme and "8900" as the path, losing the hostname entirely.
+    return urlparse(f"//{value}").netloc
+
+
+JENTIC_PUBLIC_HOSTNAME = normalise_public_hostname(os.getenv("JENTIC_PUBLIC_HOSTNAME") or "")
 
 # ── Trusted-proxy forwarded identity ─────────────────────────────────────────
 # Both vars must be non-empty to activate the trusted-proxy auth path.
