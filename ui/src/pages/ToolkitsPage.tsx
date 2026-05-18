@@ -13,6 +13,7 @@ import { Textarea } from '@/components/ui/Textarea';
 import { Label } from '@/components/ui/Label';
 import { ErrorAlert } from '@/components/ui/ErrorAlert';
 import { LoadingState } from '@/components/ui/LoadingState';
+import { PageShell } from '@/components/layout/PageShell';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { PageHeader } from '@/components/ui/PageHeader';
 
@@ -140,7 +141,7 @@ export default function ToolkitsPage({ createNew = false }: ToolkitsPageProps) {
 	);
 
 	return (
-		<div className="space-y-6">
+		<PageShell>
 			<PageHeader
 				category="Management"
 				title="Toolkits"
@@ -238,6 +239,6 @@ export default function ToolkitsPage({ createNew = false }: ToolkitsPageProps) {
 					navigate(`/toolkits/${id}`);
 				}}
 			/>
-		</div>
+		</PageShell>
 	);
 }

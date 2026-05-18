@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/Button';
 import { LoadingState } from '@/components/ui/LoadingState';
 import { Card, CardHeader, CardBody } from '@/components/ui/Card';
 import { ErrorAlert } from '@/components/ui/ErrorAlert';
+import { PageShell } from '@/components/layout/PageShell';
 import { formatTimestamp } from '@/lib/time';
 
 export default function TraceDetailPage() {
@@ -37,7 +38,7 @@ export default function TraceDetailPage() {
 		);
 
 	return (
-		<div className="max-w-4xl space-y-6">
+		<PageShell width="reading">
 			<BackButton to="/traces" label="Back to Traces" />
 
 			<div>
@@ -205,6 +206,6 @@ export default function TraceDetailPage() {
 					</CardBody>
 				</Card>
 			)}
-		</div>
+		</PageShell>
 	);
 }

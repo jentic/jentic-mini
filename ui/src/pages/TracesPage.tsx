@@ -11,6 +11,7 @@ import { LoadingState } from '@/components/ui/LoadingState';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { ErrorAlert } from '@/components/ui/ErrorAlert';
 import { Pagination } from '@/components/ui/Pagination';
+import { PageShell } from '@/components/layout/PageShell';
 import { timeAgo } from '@/lib/time';
 
 export default function TracesPage() {
@@ -34,7 +35,7 @@ export default function TracesPage() {
 	const totalPages = Math.ceil(total / 20);
 
 	return (
-		<div className="max-w-6xl space-y-5">
+		<PageShell spacing="space-y-5">
 			<PageHeader category="Observability" title="Execution Traces" />
 
 			{(toolkit || workflow) && (
@@ -174,6 +175,6 @@ export default function TracesPage() {
 					)}
 				</>
 			)}
-		</div>
+		</PageShell>
 	);
 }

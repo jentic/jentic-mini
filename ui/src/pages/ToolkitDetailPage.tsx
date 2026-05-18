@@ -32,6 +32,7 @@ import { OneTimeKeyDisplay } from '@/components/ui/OneTimeKeyDisplay';
 import { ConfirmInline } from '@/components/ui/ConfirmInline';
 import { Badge } from '@/components/ui/Badge';
 import { PermissionRuleEditor } from '@/components/ui/PermissionRuleEditor';
+import { PageShell } from '@/components/layout/PageShell';
 
 function CredentialPermissionEditor({
 	toolkitId,
@@ -372,7 +373,7 @@ export default function ToolkitDetailPage() {
 	const credentials = Array.isArray(toolkit.credentials) ? toolkit.credentials : [];
 
 	return (
-		<div className="max-w-5xl space-y-6">
+		<PageShell width="reading">
 			<BackButton to="/toolkits" label="Back to Toolkits" />
 
 			<div className="flex flex-wrap items-start justify-between gap-4">
@@ -784,6 +785,6 @@ export default function ToolkitDetailPage() {
 			{showRequestAccess && (
 				<RequestAccessDialog toolkitId={id!} onClose={() => setShowRequestAccess(false)} />
 			)}
-		</div>
+		</PageShell>
 	);
 }

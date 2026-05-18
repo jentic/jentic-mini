@@ -10,6 +10,7 @@ import { Input } from '@/components/ui/Input';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { AppLink } from '@/components/ui/AppLink';
+import { PageShell } from '@/components/layout/PageShell';
 
 function parseCapabilityId(id: string) {
 	// FORMAT: METHOD/host/path  e.g. GET/api.stripe.com/v1/customers
@@ -400,7 +401,7 @@ export default function SearchPage() {
 	const showEmpty = query.trim().length > 1 && !isFetching && !hasResults;
 
 	return (
-		<div className="max-w-4xl space-y-6">
+		<PageShell>
 			<PageHeader
 				category="Discovery"
 				title="Search"
@@ -529,6 +530,6 @@ export default function SearchPage() {
 					}
 				/>
 			)}
-		</div>
+		</PageShell>
 	);
 }

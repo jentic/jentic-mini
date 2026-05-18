@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/Button';
 import { BackButton } from '@/components/ui/BackButton';
 import { AppLink } from '@/components/ui/AppLink';
 import { LoadingState } from '@/components/ui/LoadingState';
+import { PageShell } from '@/components/layout/PageShell';
 import '@jentic/arazzo-ui/styles.css';
 
 class ArazzoErrorBoundary extends Component<
@@ -98,7 +99,7 @@ function CatalogWorkflowFallback({
 	};
 
 	return (
-		<div className="max-w-4xl space-y-6">
+		<PageShell width="reading">
 			<BackButton to="/workflows" label="Back to Workflows" />
 			<div className="bg-muted border-border space-y-4 rounded-xl border p-6">
 				<div className="flex items-start gap-3">
@@ -138,7 +139,7 @@ function CatalogWorkflowFallback({
 					</AppLink>
 				</div>
 			</div>
-		</div>
+		</PageShell>
 	);
 }
 
@@ -171,18 +172,25 @@ export default function WorkflowDetailPage() {
 		enabled: !!slug && !!workflow,
 	});
 
-	if (isLoading) return <LoadingState message="Loading workflow..." />;
+	if (isLoading)
+		return (
+			<PageShell>
+				<LoadingState message="Loading workflow..." />
+			</PageShell>
+		);
 
 	const is404 = (error as any)?.status === 404;
 	if (error && !is404) {
 		return (
-			<div className="py-16 text-center">
-				<AlertTriangle className="text-danger mx-auto mb-3 h-8 w-8" />
-				<p className="text-foreground text-sm font-medium">Failed to load workflow</p>
-				<p className="text-muted-foreground mt-1 text-xs">
-					{(error as any)?.message || 'Unknown error'}
-				</p>
-			</div>
+			<PageShell>
+				<div className="py-16 text-center">
+					<AlertTriangle className="text-danger mx-auto mb-3 h-8 w-8" />
+					<p className="text-foreground text-sm font-medium">Failed to load workflow</p>
+					<p className="text-muted-foreground mt-1 text-xs">
+						{(error as any)?.message || 'Unknown error'}
+					</p>
+				</div>
+			</PageShell>
 		);
 	}
 
@@ -193,7 +201,7 @@ export default function WorkflowDetailPage() {
 	const showDescription = workflow.description && workflow.description !== workflow.name;
 
 	return (
-		<div className="max-w-full space-y-4">
+		<PageShell spacing="space-y-4">
 			<BackButton to="/workflows" label="Back to Workflows" />
 
 			<div className="space-y-3">
@@ -260,6 +268,6 @@ export default function WorkflowDetailPage() {
 					Failed to load workflow visualization.
 				</div>
 			)}
-		</div>
+		</PageShell>
 	);
 }

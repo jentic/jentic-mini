@@ -14,6 +14,7 @@ import { Textarea } from '@/components/ui/Textarea';
 import { Label } from '@/components/ui/Label';
 import { ErrorAlert } from '@/components/ui/ErrorAlert';
 import { LoadingState } from '@/components/ui/LoadingState';
+import { PageShell } from '@/components/layout/PageShell';
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -1024,7 +1025,7 @@ export default function CredentialFormPage() {
 	};
 
 	return (
-		<div className="max-w-2xl space-y-6">
+		<PageShell width="form">
 			<BackButton to="/credentials" label="Back to Credentials" />
 
 			<PageHeader
@@ -1078,6 +1079,6 @@ export default function CredentialFormPage() {
 					/>
 				)}
 			</div>
-		</div>
+		</PageShell>
 	);
 }

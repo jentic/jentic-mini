@@ -10,6 +10,7 @@ import { LoadingState } from '@/components/ui/LoadingState';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { ErrorAlert } from '@/components/ui/ErrorAlert';
 import { Pagination } from '@/components/ui/Pagination';
+import { PageShell } from '@/components/layout/PageShell';
 import { timeAgo } from '@/lib/time';
 import { statusVariant } from '@/lib/status';
 
@@ -39,7 +40,7 @@ export default function JobsPage() {
 	const totalPages = Math.ceil(total / 20);
 
 	return (
-		<div className="max-w-6xl space-y-5">
+		<PageShell spacing="space-y-5">
 			<PageHeader category="Observability" title="Background Jobs" />
 
 			<div className="flex flex-wrap items-center gap-2">
@@ -172,6 +173,6 @@ export default function JobsPage() {
 					)}
 				</>
 			)}
-		</div>
+		</PageShell>
 	);
 }
