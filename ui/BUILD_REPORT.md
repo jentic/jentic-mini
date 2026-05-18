@@ -4,44 +4,31 @@
 
 ### 1. **New Pages Built** ✅
 
-#### SearchPage (`/search`)
+#### DiscoverPage (`/catalog`) — unified Discover surface
 
-- Full-text search with BM25 over local operations, workflows, and public catalog
-- Debounced search input (400ms)
-- Result cards with:
-    - Type badge (operation/workflow)
-    - Source badge (local/catalog) with icons
-    - HTTP method badge (for operations)
-    - Relevance score (percentage)
-    - Capability ID with copy button
-- Expandable inline detail panel per result:
-    - Full parameter schema (name, type, required, description)
-    - Authentication requirements
-    - Links to API docs and trace history
-- Example query chips for empty state
-- Load more pagination (10/20/50 results)
-- Clean empty state with link to catalog
+Replaces the former `SearchPage` and `CatalogPage` with a single search-first page. `/search` redirects to `/catalog` preserving `?q=`.
 
-#### CatalogPage (`/catalog`)
+**Two modes in one page:**
 
-**Two tabs:**
+- **Browse mode** (`?q=` empty) — paginated union of `/apis` (local + catalog) and `/workflows`. Filter chips control which sources/types appear.
+- **Search mode** (`?q=<query>`) — BM25 results from `GET /search`. All entity types visible; operation chip enabled only in this mode.
 
-1. **Your APIs (registered)**:
-    - Lists all locally registered APIs
-    - Expandable operation list per API (first 50, with truncation notice)
-    - Operation cards show method badge, summary, path
-    - Link to search for each API
-    - Pagination (20 per page)
-    - Filter by name/ID
+**URL-persisted filter chips:**
 
-2. **Public Catalog**:
-    - Browse Jentic public API catalog (jentic/jentic-public-apis)
-    - Filter: All | Registered | Unregistered
-    - Import button for unregistered APIs (routes to credential form)
-    - Refresh button (pulls fresh manifest from GitHub)
-    - Manifest age display
-    - Empty state with sync button
-    - GitHub links for each entry
+| Param | Values | Default |
+|-------|--------|---------|
+| `?source` | `local`, `catalog` | `local,catalog` |
+| `?type` | `api`, `workflow`, `operation` | `api,workflow,operation` |
+
+**Shared discovery components** (`components/discovery/`):
+
+- `DiscoveryCard` — polymorphic row for `api | workflow | operation`; expands into one of the three panels below
+- `DiscoveryFilterChips` — chip group writing `?source` and `?type` params
+- `InspectPanel` — full parameter + auth detail for local operations
+- `CatalogPanel` — import CTA for catalog APIs (uses `useImportCatalogApi` hook)
+- `OperationsPanel` — inline ops list for expanded local API rows
+
+**Import hook (`hooks/useImportCatalogApi.ts`):** Single source of truth for the two-step import (`GET /catalog/:id` → `POST /import`); exposes `{ importApi, isImporting, importedIds, error }`.
 
 #### WorkflowDetailPage (`/workflows/:slug`)
 
@@ -212,8 +199,7 @@ Import for `InspectService` added.
 
 ### Fully Covered ✅
 
-- Search (`/search`)
-- Catalog browsing (`/catalog` + `/catalog/{api_id}`)
+- Discover surface (`/catalog`) — browse + BM25 search (replaces former `/search` and `/catalog`)
 - Workflows list + detail (`/workflows`, `/workflows/:slug`)
 - Toolkits CRUD + keys + credentials + permissions + access requests
 - Credentials CRUD + vault management
@@ -301,7 +287,7 @@ Both gaps are expected — overlays and notes are advanced admin features, not c
 
 All requested features complete:
 
-- ✅ SearchPage and CatalogPage fully built
+- ✅ Unified DiscoverPage replacing SearchPage and CatalogPage
 - ✅ All static → dynamic text issues fixed
 - ✅ Permission request dialogs working with easy URLs
 - ✅ API coverage gaps reviewed (none critical)

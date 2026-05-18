@@ -116,10 +116,10 @@ export default function DashboardPage() {
 				</h2>
 				<div className="grid grid-cols-2 gap-3 md:grid-cols-4">
 					{[
-						{ href: '/search', label: 'Search Catalog' },
+						{ href: '/catalog', label: 'Discover APIs' },
 						{ href: '/credentials', label: 'Add Credential' },
 						{ href: '/toolkits', label: 'Create Toolkit' },
-						{ href: '/catalog', label: 'Import an API' },
+						{ href: '/workflows', label: 'Browse Workflows' },
 					].map((action) => (
 						<AppLink
 							key={action.href}

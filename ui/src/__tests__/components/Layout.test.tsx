@@ -43,8 +43,7 @@ describe('Layout', () => {
 		await user.click(moreButtons[0]);
 
 		const text = document.body.textContent ?? '';
-		expect(text).toContain('Search');
-		expect(text).toContain('API Catalog');
+		expect(text).toContain('Discover');
 		expect(text).toContain('Workflows');
 		expect(text).toContain('Credentials');
 	});

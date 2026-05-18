@@ -139,6 +139,35 @@ export default function MyPage() {
 
 Auth-only routes (`LoginPage`, `SetupPage`, `ApprovalPage`) are mounted outside `Layout` and render their own centred card — they do **not** use `PageShell`. Never reach for a one-off `<div className="max-w-Nxl space-y-N">` on a new page; pick a `PageShell` variant instead.
 
+### Discover surface (`/catalog`)
+
+`/catalog` is the unified API and workflow discovery surface (formerly split across `/catalog` and `/search`). Any link that previously pointed to `/search` now 404s—use `/catalog` instead. `/search` redirects automatically with query string preserved.
+
+**Two modes, one page (`pages/DiscoverPage.tsx`):**
+
+| Mode | Triggered by | Data sources |
+|------|-------------|--------------|
+| Browse | empty `?q=` | `/apis`, `/catalog`, `/workflows` |
+| Search | non-empty `?q=` | `GET /search?q=` (BM25) |
+
+**URL contract** — filter state lives entirely in the URL so links can deep-target a slice:
+
+- `?q=<query>` — enters search mode
+- `?source=local,catalog` — comma-separated source filters (default: both)
+- `?type=api,workflow,operation` — comma-separated type filters (default: all three; `operation` is disabled in browse mode since there's no `/operations` list endpoint)
+
+**Shared primitives in `components/discovery/`:**
+
+| File | Purpose |
+|------|---------|
+| `DiscoveryCard.tsx` | Polymorphic row for `api \| workflow \| operation` entities |
+| `DiscoveryFilterChips.tsx` | Chip group that reads/writes `?source` and `?type` |
+| `InspectPanel.tsx` | Expanded panel for local operations (calls `GET /inspect/:id`) |
+| `CatalogPanel.tsx` | Expanded panel for catalog APIs — import button |
+| `OperationsPanel.tsx` | Inline operations list for expanded local API rows |
+
+**Import hook (`hooks/useImportCatalogApi.ts`):** Single shared two-step import flow (resolve spec URL via `GET /catalog/:id`, then `POST /import`). Use this hook everywhere an import button appears; do not inline the fetch logic.
+
 ### UI Component Library
 Shadcn-style owned components in `ui/src/components/ui/`.
 

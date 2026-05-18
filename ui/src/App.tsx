@@ -1,11 +1,10 @@
-import { createBrowserRouter, RouterProvider, Navigate } from 'react-router-dom';
+import { createBrowserRouter, RouterProvider, Navigate, useLocation } from 'react-router-dom';
 import { Layout } from '@/components/layout/Layout';
 import { AuthGuard } from '@/components/AuthGuard';
 import SetupPage from '@/pages/SetupPage';
 import LoginPage from '@/pages/LoginPage';
 import DashboardPage from '@/pages/DashboardPage';
-import SearchPage from '@/pages/SearchPage';
-import CatalogPage from '@/pages/CatalogPage';
+import DiscoverPage from '@/pages/DiscoverPage';
 import ToolkitsPage from '@/pages/ToolkitsPage';
 import ToolkitDetailPage from '@/pages/ToolkitDetailPage';
 import CredentialsPage from '@/pages/CredentialsPage';
@@ -24,6 +23,15 @@ import AgentsPage from '@/pages/AgentsPage';
 // configures via JENTIC_ROOT_PATH / X-Forwarded-Prefix.
 const basename = new URL(document.baseURI).pathname.replace(/\/$/, '') || undefined;
 
+/**
+ * Redirect /search → /catalog, preserving the query string so that
+ * bookmarks like /search?q=stripe keep working.
+ */
+function SearchRedirect() {
+	const { search } = useLocation();
+	return <Navigate to={`/catalog${search}`} replace />;
+}
+
 const router = createBrowserRouter(
 	[
 		{
@@ -37,8 +45,9 @@ const router = createBrowserRouter(
 					element: <Layout />,
 					children: [
 						{ path: '/', element: <DashboardPage /> },
-						{ path: '/search', element: <SearchPage /> },
-						{ path: '/catalog', element: <CatalogPage /> },
+						// /search now redirects to /catalog (Discover surface) preserving ?q=
+						{ path: '/search', element: <SearchRedirect /> },
+						{ path: '/catalog', element: <DiscoverPage /> },
 						{ path: '/workflows', element: <WorkflowsPage /> },
 						{ path: '/workflows/:slug', element: <WorkflowDetailPage /> },
 						{ path: '/toolkits', element: <ToolkitsPage /> },
