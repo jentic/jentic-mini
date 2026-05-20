@@ -20,3 +20,4 @@ node_modules
 *.db
 .hypothesis/
 __pypackages__/
+.venv/

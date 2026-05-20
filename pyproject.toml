@@ -58,7 +58,7 @@ lines-after-imports = 2
 
 [tool.poe.tasks.lint]
 sequence = [
-  { shell = "ruff check ${GITHUB_ACTIONS:+--output-format=github}" },
+  { cmd = "ruff check" },
   { cmd = "ruff format --check --diff" },
 ]
 
