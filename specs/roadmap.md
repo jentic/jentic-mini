@@ -428,6 +428,28 @@ The two-actor invariant is preserved (humans gain a third auth path; agents and 
 - Update `docs/auth.md` and `README.md`; remove PR #369's note pointing at this issue
 - Close #366; cross-reference #364, #365, PR #369
 
+## Phase 29 — Migrate Python Packaging from PDM to uv
+
+**Goal:** Replace PDM with uv across the project's Python tooling so Dependabot resumes opening version-bump PRs against `pyproject.toml`.
+**Depends on:** none (self-contained — Python tooling only)
+**Priority:** High (Python deps silently un-bumped since the PDM migration; transitive CVEs land without notice)
+
+Dependabot's pip parser short-circuits when it sees `pdm.lock` alongside PEP 621 fields — every Python dep has been silently un-bumped for ~4 weeks, and the PDM-side fix in dependabot-core ([PR #12435](https://github.com/dependabot/dependabot-core/pull/12435)) was abandoned by its author on 2026-05-19. uv's Dependabot ecosystem reads `[project.dependencies]` + `[dependency-groups]` and updates `uv.lock` atomically in the same PR, so the migration unblocks Python bumps without reintroducing a lock-sync workflow.
+
+- Add `poethepoet` to `[dependency-groups] dev` and replace `[tool.pdm.scripts]` with `[tool.poe.tasks]` blocks for `lint`, `lint:fix`, and `test` — mirrors the convention in [jentic-openapi-tools](https://github.com/jentic/jentic-openapi-tools/blob/main/pyproject.toml) so task invocation is `uv run poe <task>` across the org
+- Swap `[build-system]` from `pdm-backend` to `uv_build` (uv's first-party PEP 517 backend, also used in `jentic-openapi-tools`) — `jentic-mini` is Docker-distributed only, so the `[build-system]` block is for `uv sync` / `uv build` consistency, not PyPI publication
+- Delete `pdm.lock`; generate and commit `uv.lock` via `uv lock`
+- Replace `pdm-project/setup-pdm@v4` with `astral-sh/setup-uv` across all CI workflows; update `ci-backend.yml`'s `paths:` filter from `pdm.lock` to `uv.lock` so Python CI gating still triggers on lock changes
+- Replace every `pdm install` / `pdm run …` invocation with `uv sync` / `uv run poe …` across CI workflows and any dev scripts
+- Update `Dockerfile` to install uv, drop the PDM + pipx + ensurepip bootstrap layers, and use `uv sync --frozen --no-install-project` (or equivalent) for dependency installation
+- Update `.github/dependabot.yml`: change the Python `/` directory entry from `package-ecosystem: pip` to `package-ecosystem: uv`
+- Update `DEVELOPMENT.md`: replace every PDM command with the `uv run poe …` equivalent; remove the PDM install prerequisite; document poe task discovery (`uv run poe`)
+- Update `.claude/rules/worktrees.md`: remove the `PDM_IGNORE_ACTIVE_VENV=1` invariant (uv always uses the project-local `.venv` so the env-var dance disappears) and rewrite the host-mode launch example for `uv sync` + `uv run uvicorn …`
+- Update `.claude/rules/testing.md`: replace `pdm run test …` references with `uv run poe test …`
+- Update `specs/tech-stack.md`: change `Python packaging | PDM` to `uv` in the Core Stack table; rewrite the formatting/linting prose to reference `[tool.poe.tasks]` instead of `[tool.pdm.scripts]`; remove other PDM mentions
+- Verify backend tests pass under `uv run poe test`; verify the Docker image build and `ci-docker.yml` end-to-end suite still pass
+- Post-merge: confirm the first dependabot Python PR opens against `pyproject.toml` and flows through `dependabot-merge.yml` cleanly
+
 ---
 
 ## Later Phases (Not Yet Planned)
