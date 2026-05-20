@@ -32,6 +32,7 @@ jobs:
         with:
           context: .
           load: true
+          pull: true
           tags: jentic-mini:security-scan
           cache-from: type=gha
           cache-to: type=gha,mode=max
