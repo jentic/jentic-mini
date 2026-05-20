@@ -72,9 +72,3 @@ sequence = [
 cmd = "pytest -v ${target} --tb=short"
 args = [{name = "target", default = "tests", positional = true}]
 env = { PYTHONPATH = "." }
-
-[tool.pdm.scripts]
-lint.composite = ["ruff check", "ruff format --check --diff"]
-"lint:fix".composite = ["ruff check --fix", "ruff format"]
-test.cmd = "pytest -v {args:tests} --tb=short"
-test.env = { PYTHONPATH = "." }
