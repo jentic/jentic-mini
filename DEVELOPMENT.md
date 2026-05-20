@@ -3,10 +3,11 @@
 ## Prerequisites
 
 - **Python 3.11+**
-- **PDM** (Python dependency manager):
+- **uv** (Python package manager):
   ```bash
-  curl -sSL https://pdm-project.org/install-pdm.py | python3 -
+  curl -LsSf https://astral.sh/uv/install.sh | sh      # Linux / macOS
   ```
+  Windows: `powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"`
 - **Node.js 24+** and **npm** (for the UI)
 - **Docker** and **Docker Compose** (for running the server)
 - **GitHub CLI** (`gh`) — https://cli.github.com/
@@ -20,12 +21,13 @@ git clone https://github.com/jentic/jentic-mini.git
 cd jentic-mini
 ```
 
-### 2. Create virtual environment and install dependencies
+### 2. Install dependencies
 
 ```bash
-pdm venv create
-pdm install --dev
+uv sync
 ```
+
+uv creates the project-local `.venv` automatically and installs all runtime and dev dependencies.
 
 ### 3. Install UI dependencies
 
@@ -82,13 +84,14 @@ If you use Claude Code, this repo expects the `skill-creator` plugin (listed und
 ### Backend
 
 ```bash
-pdm run test                                       # all tests
-pdm run test -- tests/test_auth_boundary.py -v     # specific file
-pdm run test -- -k "policy and not deny"           # -k name filter
-pdm run test -- --cov=src --cov-report=html        # with coverage
+uv run poe test                                         # all tests
+uv run poe test tests/test_auth_boundary.py             # specific file
+uv run poe test tests/test_auth_boundary.py -- -v       # with extra flags
+uv run poe test tests -- -k "policy and not deny"       # -k name filter
+uv run poe test tests -- --cov=src --cov-report=html    # with coverage
 ```
 
-Arguments after `--` are forwarded to pytest; if you pass a test target, it replaces the default `tests` directory.
+The first positional argument is the test target (default: `tests`); pass extra pytest flags after `--`.
 
 ### UI
 
@@ -105,8 +108,9 @@ npm run test:e2e:docker  # Docker E2E (real backend)
 ### Backend
 
 ```bash
-pdm run lint          # Ruff check + format check
-pdm run lint:fix      # Auto-fix
+uv run poe lint       # Ruff check + format check
+uv run poe lint:fix   # Auto-fix
+uv run poe            # List all available tasks
 ```
 
 ### UI
