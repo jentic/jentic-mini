@@ -32,7 +32,7 @@ and `Dockerfile`.
 | Frontend framework | React |
 | Frontend build | Vite |
 | UI styling | TailwindCSS 4 (via `@tailwindcss/vite` plugin — no PostCSS, no JS config) |
-| Python packaging | PDM |
+| Python packaging | uv |
 | Container | Docker multi-stage (Node UI build → Python slim runtime) |
 | Compose layout | `compose.yml` (base), `compose.dev.yml` (Vite dev server), `compose.ci.yml` (CI overrides) |
 
@@ -89,7 +89,7 @@ Core modules live in `src/` and routers in `src/routers/`; see `CLAUDE.md` and
 
 - **Local development:** `docker compose -f compose.yml -f compose.dev.yml up` starts the backend with hot reload (Python source volume-mounted) and a Vite dev server on port 5173 with HMR. Alternatively, Vite can run on the host with `cd ui && npm run dev`.
 - **Build / release:** `cd ui && npm run build` produces the static bundle into `static/` at the project root (gitignored). `docker compose up -d --build` rebuilds the full image. Releases use `semantic-release` for git tags + GitHub Releases + Docker publish CI.
-- **Formatting / linting (Python):** `ruff` (check + format) configured in `pyproject.toml` with `target-version = "py311"`. PDM scripts: `lint`, `lint:fix`.
+- **Formatting / linting (Python):** `ruff` (check + format) configured in `pyproject.toml` with `target-version = "py311"`. Poe tasks (`[tool.poe.tasks]`): `lint`, `lint:fix`, `test`.
 - **Formatting / linting (TypeScript):** ESLint 9 (flat config) + Prettier 3; lint-staged via husky on pre-commit.
 - **Type checking:** TypeScript strict mode (frontend); Python has no static type checking configured (no mypy or pyright in dev deps).
 - **CI/CD:** GitHub Actions in `.github/workflows/` cover backend, UI, Docker image build, Docker security scanning, CodeQL, `semantic-release`, and Dependabot automation. CI per area is path-filtered.
