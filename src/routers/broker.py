@@ -51,7 +51,8 @@ from fastapi import APIRouter, HTTPException, Path, Request, Response
 from jentic.apitools.openapi.common.uri import is_http_https_url
 
 import src.vault as vault
-from src.config import JENTIC_PUBLIC_HOSTNAME
+from src.barrikade_client import BarrikadeClient
+from src.config import BARRIKADE_EGRESS_ENABLED, BARRIKADE_URL, JENTIC_PUBLIC_HOSTNAME
 from src.db import DEFAULT_TOOLKIT_ID, get_db
 from src.oauth_broker import registry
 from src.openapi_helpers import agent_hints
@@ -1077,9 +1078,91 @@ async def broker(request: Request, target: str):
     if request.url.query:
         upstream_url += f"?{request.url.query}"
 
+    body_bytes = await request.body()
+
+    # ── Egress Security Check with Barrikade ──────────────────────────────────
+    if BARRIKADE_EGRESS_ENABLED and BARRIKADE_URL:
+        # 1. Scan query parameters
+        if request.query_params:
+            query_text = " ".join(v for v in request.query_params.values() if v)
+            if query_text.strip():
+                res = await BarrikadeClient.scan_text(query_text)
+                if not res.get("is_safe", True):
+                    await _write_trace(
+                        "policy_denied", 403, "Blocked by Barrikade egress security layer"
+                    )
+                    return Response(
+                        content=json.dumps(
+                            {
+                                "error": "security_violation",
+                                "message": "The outbound request query parameters were blocked by the Barrikade egress security layer.",
+                                "verdict": res.get("final_verdict"),
+                                "decision_layer": res.get("decision_layer"),
+                                "confidence_score": res.get("confidence_score"),
+                            }
+                        ),
+                        status_code=403,
+                        media_type="application/json",
+                        headers={
+                            "X-Jentic-Error": "true",
+                            "X-Jentic-Execution-Id": execution_id,
+                            **_cred_headers,
+                        },
+                    )
+
+        # 2. Scan request body (for POST, PUT, PATCH, DELETE)
+        if request.method in ("POST", "PUT", "PATCH", "DELETE") and body_bytes:
+            text_to_scan = ""
+            try:
+                # Parse JSON payload recursively to extract only values (ignoring syntax)
+                payload = json.loads(body_bytes)
+                if isinstance(payload, (dict, list)):
+                    str_values = []
+
+                    def extract_strings(item):
+                        if isinstance(item, dict):
+                            for v in item.values():
+                                extract_strings(v)
+                        elif isinstance(item, list):
+                            for v in item:
+                                extract_strings(v)
+                        elif isinstance(item, str):
+                            str_values.append(item)
+
+                    extract_strings(payload)
+                    text_to_scan = "\n".join(str_values)
+                else:
+                    text_to_scan = body_bytes.decode("utf-8", errors="replace")
+            except Exception:
+                text_to_scan = body_bytes.decode("utf-8", errors="replace")
+
+            if text_to_scan.strip():
+                res = await BarrikadeClient.scan_text(text_to_scan)
+                if not res.get("is_safe", True):
+                    await _write_trace(
+                        "policy_denied", 403, "Blocked by Barrikade egress security layer"
+                    )
+                    return Response(
+                        content=json.dumps(
+                            {
+                                "error": "security_violation",
+                                "message": "The outbound request body was blocked by the Barrikade egress security layer.",
+                                "verdict": res.get("final_verdict"),
+                                "decision_layer": res.get("decision_layer"),
+                                "confidence_score": res.get("confidence_score"),
+                            }
+                        ),
+                        status_code=403,
+                        media_type="application/json",
+                        headers={
+                            "X-Jentic-Error": "true",
+                            "X-Jentic-Execution-Id": execution_id,
+                            **_cred_headers,
+                        },
+                    )
+
     # ── Simulate: return what would be sent ──────────────────────────────────
     if is_simulate:
-        body_bytes = await request.body()
         forward_headers = {k: v for k, v in request.headers.items() if k.lower() not in _HOP_BY_HOP}
         forward_headers.update(inject_headers)
         would_send = {
@@ -1119,9 +1202,6 @@ async def broker(request: Request, target: str):
         forward_headers.pop("authorization", None)
     # Inject credentials (replaces any auth header)
     forward_headers.update(inject_headers)
-
-    # ── Forward request ───────────────────────────────────────────────────────
-    body_bytes = await request.body()
 
     # ── Prefer: wait=0 → async broker call ───────────────────────────────────
     if prefer_wait is not None and prefer_wait == 0.0:

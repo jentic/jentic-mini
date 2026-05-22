@@ -134,6 +134,15 @@ AGENT_REGISTRATION_TOKEN_TTL = _int_env("AGENT_REGISTRATION_TOKEN_TTL", 900)
 AGENT_ASSERTION_MAX_AGE = _int_env("AGENT_ASSERTION_MAX_AGE", 300)
 AGENT_NONCE_WINDOW = _int_env("AGENT_NONCE_WINDOW", 600)
 
+# Barrikade Security Integration Config
+BARRIKADE_URL = os.getenv("BARRIKADE_URL", "").rstrip("/")
+BARRIKADE_INGRESS_ENABLED = (
+    os.getenv("BARRIKADE_INGRESS_ENABLED", "false").strip().lower() == "true"
+)
+BARRIKADE_EGRESS_ENABLED = os.getenv("BARRIKADE_EGRESS_ENABLED", "false").strip().lower() == "true"
+BARRIKADE_TIMEOUT_MS = _int_env("BARRIKADE_TIMEOUT_MS", 1000)
+BARRIKADE_FAIL_OPEN = os.getenv("BARRIKADE_FAIL_OPEN", "true").strip().lower() == "true"
+
 
 # ── Invariant checks ──────────────────────────────────────────────────────────
 

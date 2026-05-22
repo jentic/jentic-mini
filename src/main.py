@@ -16,14 +16,18 @@ import httpx
 from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.openapi.docs import get_redoc_html
 from fastapi.openapi.utils import get_openapi
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
+from starlette.middleware.base import BaseHTTPMiddleware
 
 from src.auth import APIKeyMiddleware, is_proxy_trusted_peer
+from src.barrikade_client import BarrikadeClient
 from src.brokers.pipedream import PipedreamOAuthBroker
 from src.config import (
     APP_VERSION,
+    BARRIKADE_INGRESS_ENABLED,
+    BARRIKADE_URL,
     JENTIC_ROOT_PATH,
     JENTIC_TRUSTED_PROXY_HEADER,
     JENTIC_TRUSTED_PROXY_NETS,
@@ -183,6 +187,95 @@ _TAGS_METADATA = [
     },
 ]
 
+
+# ── Barrikade Ingress Security Middleware ────────────────────────────────────
+class BarrikadeIngressMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        if not BARRIKADE_INGRESS_ENABLED or not BARRIKADE_URL:
+            return await call_next(request)
+
+        path = request.scope.get("path", "")
+        method = request.method
+
+        # Normalize path
+        normalized_path = path.lstrip("/")
+        first_segment = normalized_path.split("/")[0] if normalized_path else ""
+
+        # Identify if target is search, workflow execution, or broker
+        is_search = path == "/search"
+        is_workflow = path.startswith("/workflows/") and method == "POST"
+        is_broker = "." in first_segment
+
+        if is_search or is_workflow or is_broker:
+            # 1. Scan query parameters for GET/POST/etc.
+            if request.query_params:
+                query_text = " ".join(v for v in request.query_params.values() if v)
+                if query_text.strip():
+                    res = await BarrikadeClient.scan_text(query_text)
+                    if not res.get("is_safe", True):
+                        return JSONResponse(
+                            status_code=403,
+                            content={
+                                "error": "security_violation",
+                                "message": "The request query was blocked by the Barrikade security layer.",
+                                "verdict": res.get("final_verdict"),
+                                "decision_layer": res.get("decision_layer"),
+                                "confidence_score": res.get("confidence_score"),
+                            },
+                        )
+
+            # 2. Scan request body for POST/PUT/PATCH/DELETE
+            if method in ("POST", "PUT", "PATCH", "DELETE"):
+                body_bytes = await request.body()
+
+                # Recycle Starlette request body stream so route handlers can read it
+                async def receive():
+                    return {"type": "http.request", "body": body_bytes, "more_body": False}
+
+                request._receive = receive
+
+                if body_bytes:
+                    text_to_scan = ""
+                    try:
+                        # Parse JSON payload recursively to extract only values (ignoring syntax)
+                        payload = json.loads(body_bytes)
+                        if isinstance(payload, (dict, list)):
+                            str_values = []
+
+                            def extract_strings(item):
+                                if isinstance(item, dict):
+                                    for v in item.values():
+                                        extract_strings(v)
+                                elif isinstance(item, list):
+                                    for v in item:
+                                        extract_strings(v)
+                                elif isinstance(item, str):
+                                    str_values.append(item)
+
+                            extract_strings(payload)
+                            text_to_scan = "\n".join(str_values)
+                        else:
+                            text_to_scan = body_bytes.decode("utf-8", errors="replace")
+                    except Exception:
+                        text_to_scan = body_bytes.decode("utf-8", errors="replace")
+
+                    if text_to_scan.strip():
+                        res = await BarrikadeClient.scan_text(text_to_scan)
+                        if not res.get("is_safe", True):
+                            return JSONResponse(
+                                status_code=403,
+                                content={
+                                    "error": "security_violation",
+                                    "message": "The request body was blocked by the Barrikade security layer.",
+                                    "verdict": res.get("final_verdict"),
+                                    "decision_layer": res.get("decision_layer"),
+                                    "confidence_score": res.get("confidence_score"),
+                                },
+                            )
+
+        return await call_next(request)
+
+
 app = FastAPI(
     title="Jentic Mini",
     root_path=JENTIC_ROOT_PATH,
@@ -256,6 +349,7 @@ app = FastAPI(
     license_info={"name": "Apache 2.0", "identifier": "Apache-2.0"},
 )
 
+app.add_middleware(BarrikadeIngressMiddleware)
 app.add_middleware(APIKeyMiddleware)
 app.middleware("http")(negotiate_middleware)
 
