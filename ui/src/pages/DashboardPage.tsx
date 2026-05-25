@@ -119,7 +119,7 @@ export default function DashboardPage() {
 						{ href: '/catalog', label: 'Discover APIs' },
 						{ href: '/credentials', label: 'Add Credential' },
 						{ href: '/toolkits', label: 'Create Toolkit' },
-						{ href: '/workflows', label: 'Browse Workflows' },
+						{ href: '/workspace', label: 'Open Workspace' },
 					].map((action) => (
 						<AppLink
 							key={action.href}
