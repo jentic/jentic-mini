@@ -15,7 +15,14 @@ export default defineConfig({
 		},
 	},
 	optimizeDeps: {
-		include: ['@jentic/arazzo-ui', 'react-dom/client'],
+		include: [
+			'@jentic/arazzo-ui',
+			'react-dom/client',
+			'react-markdown',
+			'remark-gfm',
+			'rehype-raw',
+			'rehype-sanitize',
+		],
 	},
 	test: {
 		browser: {

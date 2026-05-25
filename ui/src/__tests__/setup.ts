@@ -1,4 +1,5 @@
 import '@testing-library/jest-dom/vitest';
+import { cleanup } from '@testing-library/react';
 import { worker } from './mocks/browser';
 // Import client to ensure OpenAPI.BASE is set to '' before any tests run
 import '@/api/client';
@@ -8,6 +9,7 @@ beforeAll(async () => {
 });
 
 afterEach(() => {
+	cleanup();
 	worker.resetHandlers();
 	window.localStorage.clear();
 	window.sessionStorage.clear();

@@ -95,7 +95,7 @@ describe('DashboardPage', () => {
 		expect(screen.getByText('Discover APIs')).toBeInTheDocument();
 		expect(screen.getByText('Add Credential')).toBeInTheDocument();
 		expect(screen.getByText('Create Toolkit')).toBeInTheDocument();
-		expect(screen.getByText('Browse Workflows')).toBeInTheDocument();
+		expect(screen.getByText('Open Workspace')).toBeInTheDocument();
 	});
 
 	it('has no accessibility violations', async () => {

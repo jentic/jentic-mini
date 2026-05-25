@@ -8,19 +8,31 @@ function renderDiscover(route = '/catalog') {
 	return renderWithProviders(<DiscoveryView />, { route, path: '/catalog' });
 }
 
+function renderDirectoryDiscover(route = '/discover') {
+	// `/discover` hard-codes `forcedSource="directory"`, which is what
+	// trims the segmented control to APIs-only and suppresses workflow
+	// cards from the search results. Tests covering that branch must
+	// render with `forcedSource` rather than the default
+	// (which keeps every option visible — closer to `/catalog`).
+	return renderWithProviders(<DiscoveryView forcedSource="directory" />, {
+		route,
+		path: '/discover',
+	});
+}
+
 describe('DiscoveryView', () => {
 	// ── Heading + base chrome ────────────────────────────────────────────────
 
-	it('renders the sticky toolbar and filter bar with default Type segments', async () => {
+	it('renders the sticky toolbar and source filter bar (no Type segments)', async () => {
 		renderDiscover();
 		expect(await screen.findByTestId('discover-toolbar')).toBeInTheDocument();
 		expect(screen.getByTestId('discovery-filter-bar')).toBeInTheDocument();
 		expect(screen.getByRole('textbox', { name: /search/i })).toBeInTheDocument();
-		// Browse mode segments are just APIs + Workflows (no All, no Endpoints,
-		// no Importable — importable was removed entirely from the UI vocab).
+		// May 2026 IA simplification removed the Type segmented control
+		// entirely. Only the Source segment remains in the filter bar.
 		const filterBar = screen.getByTestId('discovery-filter-bar');
-		expect(within(filterBar).getByRole('button', { name: 'APIs' })).toBeInTheDocument();
-		expect(within(filterBar).getByRole('button', { name: 'Workflows' })).toBeInTheDocument();
+		expect(within(filterBar).queryByRole('button', { name: /^apis$/i })).toBeNull();
+		expect(within(filterBar).queryByRole('button', { name: /^workflows$/i })).toBeNull();
 		expect(within(filterBar).queryByRole('button', { name: /^endpoints$/i })).toBeNull();
 		expect(within(filterBar).queryByRole('button', { name: /^importable$/i })).toBeNull();
 	});
@@ -53,23 +65,6 @@ describe('DiscoveryView', () => {
 		expect(screen.getByText('github.com')).toBeInTheDocument();
 		// Workflow query should NOT have fired in default browse mode.
 		expect(screen.queryByText(/no workflows to show/i)).toBeNull();
-	});
-
-	it('switches to workflows when the Workflows Type segment is picked', async () => {
-		const user = userEvent.setup();
-		worker.use(
-			http.get('/apis', () => HttpResponse.json({ data: [], total: 0, page: 1 })),
-			http.get('/workflows', () =>
-				HttpResponse.json([{ id: 'wf-1', name: 'My Workflow', description: 'does stuff' }]),
-			),
-		);
-
-		renderDiscover();
-		await screen.findByTestId('discover-toolbar');
-
-		await user.click(screen.getByRole('button', { name: 'Workflows' }));
-
-		await waitFor(() => expect(screen.getByText('My Workflow')).toBeInTheDocument());
 	});
 
 	it('Workspace source narrows to the workspace slice (uses /apis?source=local)', async () => {
@@ -105,7 +100,7 @@ describe('DiscoveryView', () => {
 
 	// ── Search mode ──────────────────────────────────────────────────────────
 
-	it('groups search results into Endpoints / Workflows / APIs sections', async () => {
+	it('renders blended search results in a single grid (no type sections)', async () => {
 		const user = userEvent.setup();
 		worker.use(
 			http.get('/search', () =>
@@ -140,11 +135,14 @@ describe('DiscoveryView', () => {
 		const input = screen.getByRole('textbox', { name: /search/i });
 		await user.type(input, 'stripe');
 
+		// All three rows render in the same flat grid — no per-type
+		// section wrappers since the May 2026 IA simplification.
 		await waitFor(() => {
-			expect(screen.getByTestId('search-section-endpoint')).toBeInTheDocument();
+			expect(screen.getByTestId('search-results-grid')).toBeInTheDocument();
 		});
-		expect(screen.getByTestId('search-section-workflow')).toBeInTheDocument();
-		expect(screen.getByTestId('search-section-api')).toBeInTheDocument();
+		expect(screen.queryByTestId('search-section-endpoint')).toBeNull();
+		expect(screen.queryByTestId('search-section-workflow')).toBeNull();
+		expect(screen.queryByTestId('search-section-api')).toBeNull();
 		expect(screen.getByText('List customers')).toBeInTheDocument();
 		expect(screen.getByText('Stripe Checkout Flow')).toBeInTheDocument();
 		expect(screen.getByText('plaid.com')).toBeInTheDocument();
@@ -180,12 +178,15 @@ describe('DiscoveryView', () => {
 		expect(within(card).queryByText(/available to import/i)).toBeNull();
 	});
 
-	it('catalog_workflow_source search results render as WorkflowCards (not ApiCards)', async () => {
-		// Regression for May 2026 screenshot review: searching "openai" showed
-		// a `catalog_workflow_source` row at the bottom rendered with the API
-		// card chrome ("API" + "Directory" pills) even though the summary text
-		// clearly described workflows. Map it to type=workflow instead so the
-		// chrome matches the content.
+	it('legacy catalog_workflow_source rows fall back to a directory API card with "+ workflows"', async () => {
+		// Backwards-compat: the backend used to emit `catalog_workflow_source`
+		// rows as a parallel signal that a vendor ships Arazzo workflows.
+		// Those rows have been collapsed into a `has_workflows: true` flag on
+		// the corresponding `catalog_api` row. Older deployments / cached
+		// responses may still surface the legacy type — `searchResultToEntity`
+		// maps them defensively to a directory API entity with the
+		// "+ workflows" chip so the UI never ends up with a phantom workflow
+		// card pointing at no concrete workflow.
 		const user = userEvent.setup();
 		worker.use(
 			http.get('/search', () =>
@@ -207,97 +208,156 @@ describe('DiscoveryView', () => {
 		renderDiscover();
 		await user.type(screen.getByRole('textbox', { name: /search/i }), 'openai');
 
-		const card = await screen.findByTestId('discovery-card-workflow');
+		const card = await screen.findByTestId('discovery-card-api');
 		expect(card).toBeInTheDocument();
-		// Workflow chrome shows the "Workflow" pill — NOT the "API" pill.
-		expect(within(card).getByText('Workflow')).toBeInTheDocument();
-		expect(within(card).queryByText('API')).toBeNull();
-		// No API card should be created for this row.
-		expect(screen.queryByTestId('discovery-card-api')).toBeNull();
+		// Directory API chrome with the workflow-availability chip. The
+		// redundant "API" pill was dropped in May 2026 (every card on
+		// this grid is already an API — see ApiCard footer comment).
+		expect(within(card).getByText('+ workflows')).toBeInTheDocument();
+		// No workflow card should be created for this legacy row.
+		expect(screen.queryByTestId('discovery-card-workflow')).toBeNull();
 	});
 
-	it('Type=Endpoints narrows search to only the endpoint section', async () => {
+	// ── Directory-forced (`/discover`) mode ─────────────────────────────────
+
+	it('directory mode hides the filter bar entirely (no source / type segments)', async () => {
+		// `/discover` is the directory-only surface. The Type segmented
+		// control was removed in May 2026; the Source segment is also
+		// hidden because the page hard-codes its source axis. With both
+		// axes gone there's no filter UI to render — the bar collapses
+		// entirely rather than presenting a non-functional widget.
+		renderDirectoryDiscover();
+		await screen.findByTestId('discover-toolbar');
+		expect(screen.queryByTestId('discovery-filter-bar')).toBeNull();
+	});
+
+	it('directory mode search also hides the filter bar', async () => {
 		const user = userEvent.setup();
-		// Server-side narrowing post-P5: when ?type=endpoint is passed the
-		// backend filters out workflow rows itself. We simulate that here so
-		// the test reflects production wire behaviour rather than the now-
-		// removed client-side filter.
-		worker.use(
-			http.get('/search', ({ request }) => {
-				const typeParam = new URL(request.url).searchParams.get('type');
-				const all = [
-					{
-						id: 'GET/api.stripe.com/v1/charges',
-						type: 'operation',
-						source: 'local',
-						summary: 'List charges',
-						score: 0.88,
-					},
-					{
-						id: 'wf-stripe-checkout',
-						type: 'workflow',
-						source: 'local',
-						summary: 'Stripe Checkout Flow',
-						score: 0.7,
-					},
-				];
-				const filtered =
-					typeParam === 'endpoint'
-						? all.filter((r) => r.type === 'operation')
-						: typeParam === 'workflow'
-							? all.filter((r) => r.type === 'workflow')
-							: all;
-				return HttpResponse.json(filtered);
-			}),
-		);
+		worker.use(http.get('/search', () => HttpResponse.json([])));
 
-		renderDiscover();
-		const input = screen.getByRole('textbox', { name: /search/i });
-		await user.type(input, 'stripe');
+		renderDirectoryDiscover();
+		await user.type(screen.getByRole('textbox', { name: /search/i }), 'plaid');
 
-		await waitFor(() => expect(screen.getByText('List charges')).toBeInTheDocument());
-		expect(screen.getByText('Stripe Checkout Flow')).toBeInTheDocument();
-
-		const filterBar = screen.getByTestId('discovery-filter-bar');
-		await user.click(within(filterBar).getByRole('button', { name: 'Endpoints' }));
-
-		await waitFor(() => {
-			expect(screen.queryByText('Stripe Checkout Flow')).not.toBeInTheDocument();
-		});
-		expect(screen.getByText('List charges')).toBeInTheDocument();
+		await screen.findByTestId('discover-toolbar');
+		// Same as browse mode — no filter bar in directory-forced
+		// surfaces after the May 2026 simplification.
+		expect(screen.queryByTestId('discovery-filter-bar')).toBeNull();
 	});
 
-	// ── Backward-compat ──────────────────────────────────────────────────────
-
-	it('treats legacy ?type=operation as Endpoints in search mode', async () => {
+	it('directory mode search drops workflow rows even when the BE returns them', async () => {
+		// Defense-in-depth: stale React Query caches or older clients can
+		// still produce workflow rows in a directory-mode response. The
+		// page must never render them — its hidden chips are gone, and
+		// the user has no way to filter them out.
 		const user = userEvent.setup();
 		worker.use(
 			http.get('/search', () =>
 				HttpResponse.json([
 					{
-						id: 'GET/api.stripe.com/v1/charges',
-						type: 'operation',
+						id: 'plaid.com',
+						type: 'catalog_api',
+						source: 'catalog',
+						api_id: 'plaid.com',
+						summary: 'plaid.com — available in Jentic public catalog',
+						has_workflows: true,
+						score: 0,
+					},
+					{
+						id: 'wf-leaked',
+						type: 'workflow',
 						source: 'local',
-						summary: 'List charges',
-						score: 0.88,
+						summary: 'Leaked workspace workflow that should not show on /discover',
+						score: 0.5,
 					},
 				]),
 			),
 		);
 
-		renderDiscover('/catalog?type=operation');
-		const input = screen.getByRole('textbox', { name: /search/i });
-		await user.type(input, 'stripe');
+		renderDirectoryDiscover();
+		await user.type(screen.getByRole('textbox', { name: /search/i }), 'plaid');
 
-		await waitFor(() => expect(screen.getByText('List charges')).toBeInTheDocument());
-		// Endpoints segment should be the active one — proven by the fact that
-		// the result is shown under the endpoint section despite the legacy URL.
-		expect(screen.getByTestId('search-section-endpoint')).toBeInTheDocument();
+		await waitFor(() => expect(screen.getByText('plaid.com')).toBeInTheDocument());
+		// API card present, with the workflow chip surfacing has_workflows.
+		expect(screen.getByText('+ workflows')).toBeInTheDocument();
+		// Workflow row from the response is suppressed — neither the
+		// section header nor the leaked summary should be rendered.
+		expect(screen.queryByTestId('search-section-workflow')).toBeNull();
+		expect(
+			screen.queryByText('Leaked workspace workflow that should not show on /discover'),
+		).toBeNull();
+	});
+
+	it('directory mode rewrites stale ?type=workflow URLs to drop the param', async () => {
+		// Deep links to `/discover?type=workflow` from before the
+		// collapse should not render with a hidden filter active. The
+		// `useEffect` URL-fixup in `DiscoveryView` strips the param so
+		// the page renders identically to `/discover`.
+		worker.use(http.get('/apis', () => HttpResponse.json({ data: [], total: 0, page: 1 })));
+
+		renderDirectoryDiscover('/discover?type=workflow');
+		await screen.findByTestId('discover-toolbar');
+
+		// `?type=workflow` should be rewritten away — the URL test
+		// utility lets us read the current location through a
+		// `data-testid` mirror, but the simplest assertion is that the
+		// browse view falls back to APIs (no workflow query fires).
+		await waitFor(() => {
+			expect(window.location.search).not.toContain('type=workflow');
+		});
+	});
+
+	it('directory browse renders the "+ workflows" chip when /apis sets has_workflows', async () => {
+		// Regression: previously the chip only surfaced on search-result
+		// cards because only the `/search` payload carried
+		// `has_workflows`. `/apis` now folds the workflow manifest into
+		// its catalog rows the same way `/search`'s blender does, so the
+		// directory browse grid can advertise workflow availability
+		// before the user opens the API detail sheet. Without this,
+		// the section inside the sheet was a hidden treasure — there
+		// was nothing on the card to hint it existed.
+		worker.use(
+			http.get('/apis', () =>
+				HttpResponse.json({
+					data: [
+						{
+							id: 'plaid.com',
+							name: 'plaid.com',
+							source: 'catalog',
+							has_credentials: false,
+							has_workflows: true,
+						},
+						{
+							id: 'github.com',
+							name: 'github.com',
+							source: 'catalog',
+							has_credentials: false,
+							has_workflows: false,
+						},
+					],
+					total: 2,
+					page: 1,
+				}),
+			),
+		);
+
+		renderDirectoryDiscover();
+		await screen.findByTestId('discover-toolbar');
+
+		// Plaid carries the chip; GitHub does not. Scope the assertions
+		// to the cards themselves so a stray "+ workflows" string in
+		// chrome elsewhere wouldn't pass the check.
+		const cards = await screen.findAllByTestId('discovery-card-api');
+		const plaidCard = cards.find((c) => within(c).queryByText('plaid.com'));
+		const githubCard = cards.find((c) => within(c).queryByText('github.com'));
+		expect(plaidCard).toBeDefined();
+		expect(githubCard).toBeDefined();
+		expect(within(plaidCard!).getByText('+ workflows')).toBeInTheDocument();
+		expect(within(githubCard!).queryByText('+ workflows')).toBeNull();
 	});
 
 	// ── P2: search relevance feedback ────────────────────────────────────────
 
-	it('renders match_snippet with highlighted spans + matched_on badge for hits', async () => {
+	it('renders match_snippet with highlighted spans for search hits', async () => {
 		const user = userEvent.setup();
 		worker.use(
 			http.get('/search', () =>
@@ -326,13 +386,13 @@ describe('DiscoveryView', () => {
 		expect(marks).toHaveLength(1);
 		expect(marks[0].textContent).toBe('customer');
 
-		// Provenance badge surfaces the field that hit (summary in this case).
-		expect(screen.getByTestId('discovery-card-matched-on')).toHaveTextContent(
-			/matched on summary/i,
-		);
+		// May 2026 IA simplification: the "matched on summary" provenance
+		// badge has been removed (it was decorative — clicking it didn't
+		// do anything). The snippet itself is the signal now.
+		expect(screen.queryByTestId('discovery-card-matched-on')).toBeNull();
 	});
 
-	it('omits the matched_on badge when only the description fallback hits', async () => {
+	it('omits the match snippet when there is only a description fallback hit', async () => {
 		const user = userEvent.setup();
 		worker.use(
 			http.get('/search', () =>
@@ -356,7 +416,8 @@ describe('DiscoveryView', () => {
 		await user.type(screen.getByRole('textbox', { name: /search/i }), 'charges');
 
 		await screen.findByText('List charges');
-		// Both helpers are intentionally suppressed in this case.
+		// Snippet not rendered when null. `matched_on` provenance badge
+		// has been removed entirely so it's not asserted here either.
 		expect(screen.queryByTestId('discovery-card-match-snippet')).toBeNull();
 		expect(screen.queryByTestId('discovery-card-matched-on')).toBeNull();
 	});
@@ -383,7 +444,7 @@ describe('DiscoveryView', () => {
 
 	// ── Directory card inline actions ────────────────────────────────────────
 
-	it('Directory API card exposes Add credential + View on GitHub inline (independent of sheet)', async () => {
+	it('Directory API card exposes Import to workspace + View on GitHub inline (independent of sheet)', async () => {
 		worker.use(
 			http.get('/apis', () =>
 				HttpResponse.json({
@@ -407,13 +468,13 @@ describe('DiscoveryView', () => {
 
 		const card = await screen.findByTestId('discovery-card-api');
 
-		// Inline primary action: add credential. Links are <a> not <button>, so
-		// they don't trip the card's click handler (verified by the next test).
-		const addCred = within(card).getByRole('link', { name: /add credential/i });
-		expect(addCred).toHaveAttribute(
-			'href',
-			expect.stringContaining('/credentials/new?api_id=plaid.com'),
-		);
+		// Inline primary action: import to workspace. Now a <button> that
+		// fires `POST /import` directly (no credential-form indirection)
+		// — see useImportCatalogApi. The card-level click handler is
+		// guarded with stopPropagation so the button doesn't ALSO open
+		// the sheet (verified by the next test).
+		const importBtn = within(card).getByRole('button', { name: /^import$/i });
+		expect(importBtn).toHaveAttribute('data-testid', 'discovery-card-import');
 
 		const gh = within(card).getByRole('link', { name: /view plaid\.com on github/i });
 		expect(gh).toHaveAttribute(
@@ -422,7 +483,14 @@ describe('DiscoveryView', () => {
 		);
 	});
 
-	it('Directory API card gets a synthetic description so heights match workspace cards', async () => {
+	it('Directory API card omits a synthetic description (catalog manifest has none)', async () => {
+		// May 2026: the adapter used to fabricate "Available in the Jentic
+		// public catalog. Add a credential…" so card heights matched
+		// workspace cards. Every directory card got the *same* string,
+		// which read like real metadata when it wasn't. Now the
+		// description column is empty for catalog rows; the differentiation
+		// lives in the chip row + action buttons. See
+		// `apiToEntity` in DiscoveryView.tsx.
 		worker.use(
 			http.get('/apis', () =>
 				HttpResponse.json({
@@ -431,7 +499,6 @@ describe('DiscoveryView', () => {
 							id: 'plaid.com',
 							name: 'plaid.com',
 							source: 'catalog',
-							// No `description` field — the adapter must synthesize one.
 						},
 					],
 					total: 1,
@@ -443,7 +510,8 @@ describe('DiscoveryView', () => {
 		renderDiscover();
 
 		const card = await screen.findByTestId('discovery-card-api');
-		expect(within(card).getByText(/add a credential to import/i)).toBeInTheDocument();
+		expect(within(card).queryByText(/add a credential to import/i)).toBeNull();
+		expect(within(card).queryByText(/available in the jentic public catalog/i)).toBeNull();
 	});
 
 	// ── API Detail Sheet (Phase 1) ───────────────────────────────────────────
@@ -796,12 +864,13 @@ describe('DiscoveryView', () => {
 		expect(within(inspect).getByText('fields')).toBeInTheDocument();
 		expect(within(inspect).getByText('required')).toBeInTheDocument();
 		expect(within(inspect).getByText('plaidClientAuth')).toBeInTheDocument();
-		// `Add credential` CTA replaces the upstream link as the forward action.
-		const addCred = within(inspect).getByText(/add credential/i);
-		expect(addCred.closest('a')).toHaveAttribute(
-			'href',
-			expect.stringContaining('/credentials/new?api_id=plaid.com'),
-		);
+		// `Import to workspace` CTA replaces the upstream link as the forward
+		// action (renamed from "Add credential" — see DiscoveryCard May
+		// 2026). Now a <button> wired directly to `POST /import` rather
+		// than a deep-link to the credential form, since "import" and
+		// "set up credentials" are distinct intents.
+		const importBtn = within(inspect).getByRole('button', { name: /import to workspace/i });
+		expect(importBtn).toHaveAttribute('data-testid', 'sheet-directory-inspect-import');
 		// Critical: a single preview fetch served both the row list AND the
 		// inspect view. Two would mean the React-Query cache key drifted.
 		expect(previewCalled).toBe(1);
@@ -937,27 +1006,40 @@ describe('DiscoveryView', () => {
 		);
 	});
 
-	it('clicking inline "Add credential" on a directory card does NOT open the sheet', async () => {
+	it('clicking inline "Import" on a directory card does NOT open the sheet', async () => {
 		const user = userEvent.setup();
+		// Stub the import flow so the mutation resolves cleanly. The
+		// shape mirrors `POST /import`'s contract (`{results: [...]}`).
+		// Without `getCatalogEntry` stubbed we'd hit the fallback path
+		// because the test's catalog row has no `spec_url` field.
 		worker.use(
 			http.get('/apis', () =>
 				HttpResponse.json({
-					data: [{ id: 'plaid.com', name: 'plaid.com', source: 'catalog' }],
+					data: [
+						{
+							id: 'plaid.com',
+							name: 'plaid.com',
+							source: 'catalog',
+							spec_url: 'https://example.com/plaid.json',
+						},
+					],
 					total: 1,
 					page: 1,
 				}),
+			),
+			http.post('/import', () =>
+				HttpResponse.json({ results: [{ status: 'success', api_id: 'plaid.com' }] }),
 			),
 		);
 
 		renderDiscover();
 
 		const card = await screen.findByTestId('discovery-card-api');
-		const addCred = within(card).getByRole('link', { name: /add credential/i });
+		const importBtn = within(card).getByRole('button', { name: /^import$/i });
 
-		// Use a non-bubbling click so React Router doesn't actually navigate
-		// the test harness — we only care about whether the parent button's
-		// click handler runs (it must NOT, thanks to stopPropagation).
-		await user.click(addCred);
+		// The CTA must `stopPropagation` so the card's outer onClick
+		// (which opens the sheet) does NOT also fire.
+		await user.click(importBtn);
 
 		// Sheet must not have opened. (No URL assertion — MemoryRouter
 		// state isn't reflected in window.location.)
@@ -1067,7 +1149,7 @@ describe('DiscoveryView', () => {
 		expect(within(inspect).getByText('/v1/customers')).toBeInTheDocument();
 	});
 
-	it('normalizes the now-removed ?type=importable to "all"', async () => {
+	it('strips the legacy ?type=importable URL param and still renders results', async () => {
 		const user = userEvent.setup();
 		worker.use(
 			http.get('/search', () =>
@@ -1086,9 +1168,14 @@ describe('DiscoveryView', () => {
 		renderDiscover('/catalog?type=importable');
 		await user.type(screen.getByRole('textbox', { name: /search/i }), 'stripe');
 
-		// "All" is the active segment (the legacy value collapses to All), so
-		// the endpoint result is visible.
+		// `?type=` was removed entirely in the May 2026 simplification —
+		// the URL fixup `useEffect` strips it. The endpoint result is
+		// unaffected and still visible because there's no longer any
+		// type filter that could exclude it.
 		await waitFor(() => expect(screen.getByText('List charges')).toBeInTheDocument());
+		await waitFor(() => {
+			expect(window.location.search).not.toContain('type=');
+		});
 	});
 
 	// ── P9-fe: virtualise + load-more in sheet ────────────────────────────────
@@ -1525,47 +1612,10 @@ describe('DiscoveryView', () => {
 		});
 	});
 
-	// ── P6 — Density toggle (grid vs list) ────────────────────────────────
-
-	it('clicking the list-density button switches BrowseResults to list rows', async () => {
-		const user = userEvent.setup();
-		// Make sure no leftover URL/localStorage view from previous tests.
-		window.localStorage.removeItem('discover.view.v1');
-		worker.use(
-			http.get('/apis', () =>
-				HttpResponse.json({
-					data: [{ id: 'stripe.com', name: 'Stripe', source: 'local' }],
-					total: 1,
-					page: 1,
-				}),
-			),
-		);
-		renderDiscover();
-		const grid = await screen.findByTestId('browse-grid');
-		expect(grid.getAttribute('data-density')).not.toBe('list');
-
-		await user.click(screen.getByTestId('density-list'));
-		const grid2 = screen.getByTestId('browse-grid');
-		expect(grid2.getAttribute('data-density')).toBe('list');
-		const card = screen.getByTestId('discovery-card-api');
-		expect(card.getAttribute('data-density')).toBe('list');
-	});
-
-	it('?view=list on initial load renders list rows', async () => {
-		worker.use(
-			http.get('/apis', () =>
-				HttpResponse.json({
-					data: [{ id: 'github.com', name: 'GitHub', source: 'local' }],
-					total: 1,
-					page: 1,
-				}),
-			),
-		);
-		window.localStorage.removeItem('discover.view.v1');
-		renderDiscover('/catalog?view=list');
-		const grid = await screen.findByTestId('browse-grid');
-		expect(grid.getAttribute('data-density')).toBe('list');
-	});
+	// ── P6 — Density toggle (removed in May 2026) ─────────────────────────
+	// The list/grid density toggle was removed entirely; only the grid
+	// remains. Tests that exercised the toggle and the `?view=list` URL
+	// param have been deleted.
 
 	// ── P7 — Keyboard ergonomics ──────────────────────────────────────────
 
@@ -1635,5 +1685,108 @@ describe('DiscoveryView', () => {
 		});
 		expect(liveToasts[0].title).toMatch(/credential added/i);
 		expect(liveToasts[0].variant).toBe('success');
+	});
+});
+
+// ── Sectioned mode (used by /workspace) ──────────────────────────────────────
+//
+// The same DiscoveryView component, mounted with `mode="sectioned"`, must
+// render two parallel sections (workspace + catalog) in browse mode and
+// collapse to a single search feed in search mode.
+
+describe('DiscoveryView (sectioned)', () => {
+	function renderSectioned(route = '/workspace') {
+		return renderWithProviders(<DiscoveryView mode="sectioned" />, {
+			route,
+			path: '/workspace',
+		});
+	}
+
+	it('renders both section headers in browse mode and hides the Source segment', async () => {
+		worker.use(http.get('/apis', () => HttpResponse.json({ data: [], total: 0, page: 1 })));
+		renderSectioned();
+
+		expect(await screen.findByTestId('discovery-section-your-workspace')).toBeInTheDocument();
+		expect(screen.getByTestId('discovery-section-from-the-catalog')).toBeInTheDocument();
+		const filterBar = screen.getByTestId('discovery-filter-bar');
+		// Sectioned mode hides the source segment.
+		expect(within(filterBar).queryByRole('button', { name: /my workspace/i })).toBeNull();
+		expect(within(filterBar).queryByRole('button', { name: /public directory/i })).toBeNull();
+	});
+
+	it('issues two parallel /apis requests, one per section, with distinct source params', async () => {
+		const seenSources: (string | null)[] = [];
+		worker.use(
+			http.get('/apis', ({ request }) => {
+				const url = new URL(request.url);
+				seenSources.push(url.searchParams.get('source'));
+				return HttpResponse.json({ data: [], total: 0, page: 1 });
+			}),
+		);
+		renderSectioned();
+		await screen.findByTestId('discovery-section-your-workspace');
+		await waitFor(() => {
+			expect(seenSources).toContain('local');
+			expect(seenSources).toContain('catalog');
+		});
+	});
+
+	it('routes "Browse all in Discover" to /discover', async () => {
+		worker.use(http.get('/apis', () => HttpResponse.json({ data: [], total: 0, page: 1 })));
+		renderSectioned();
+		const link = await screen.findByTestId('browse-all-discover');
+		expect(link).toHaveAttribute('href', '/discover');
+	});
+
+	it('shows an inline cold-start notice in the workspace section when empty (and keeps the catalog section visible)', async () => {
+		worker.use(
+			http.get('/apis', ({ request }) => {
+				const url = new URL(request.url);
+				const source = url.searchParams.get('source');
+				if (source === 'local') {
+					return HttpResponse.json({ data: [], total: 0, page: 1 });
+				}
+				return HttpResponse.json({
+					data: [{ id: 'github.com', name: 'GitHub', source: 'catalog' }],
+					total: 1,
+					page: 1,
+				});
+			}),
+		);
+		renderSectioned();
+		// Inline cold-start in the workspace section.
+		expect(
+			await screen.findByTestId('discover-empty-cold-start-sectioned'),
+		).toBeInTheDocument();
+		// Catalog section still rendering its row.
+		const catalogSection = screen.getByTestId('discovery-section-from-the-catalog');
+		expect(await within(catalogSection).findByText('GitHub')).toBeInTheDocument();
+	});
+
+	it('collapses to a single search feed when ?q is non-empty', async () => {
+		const user = userEvent.setup();
+		worker.use(
+			http.get('/apis', () => HttpResponse.json({ data: [], total: 0, page: 1 })),
+			http.get('/search', () =>
+				HttpResponse.json([
+					{
+						id: 'stripe.com',
+						type: 'catalog_api',
+						api_id: 'stripe.com',
+						source: 'catalog',
+						matched_on: ['name'],
+					},
+				]),
+			),
+		);
+		renderSectioned();
+		await screen.findByTestId('discovery-section-your-workspace');
+
+		await user.type(screen.getByLabelText(/search apis/i), 'stripe');
+		await waitFor(() => {
+			expect(screen.queryByTestId('discovery-section-your-workspace')).toBeNull();
+		});
+		expect(screen.queryByTestId('discovery-section-from-the-catalog')).toBeNull();
+		expect(await screen.findByTestId('sectioned-search-note')).toBeInTheDocument();
 	});
 });

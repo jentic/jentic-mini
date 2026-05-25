@@ -3,10 +3,10 @@ import { screen, renderWithProviders } from '../test-utils';
 import { worker } from '../mocks/browser';
 import WorkflowDetailPage from '@/pages/WorkflowDetailPage';
 
-function renderWorkflow(slug = 'test~api') {
+function renderWorkflow(slug = 'test~api', searchParams = '') {
 	return renderWithProviders(<WorkflowDetailPage />, {
-		route: `/workflows/${slug}`,
-		path: '/workflows/:slug',
+		route: `/workspace/workflows/${slug}${searchParams}`,
+		path: '/workspace/workflows/:slug',
 	});
 }
 
@@ -40,9 +40,48 @@ describe('WorkflowDetailPage', () => {
 
 		renderWorkflow();
 
-		expect(await screen.findByText('Test Workflow')).toBeInTheDocument();
+		expect(await screen.findByRole('heading', { name: 'Test Workflow' })).toBeInTheDocument();
+		// Description renders in the PageHeader subtitle. The "About" card
+		// is gone so it should appear exactly once.
 		expect(screen.getByText('A test workflow')).toBeInTheDocument();
-		expect(screen.getByText('test~api')).toBeInTheDocument();
+		// Slug now sits next to the segmented toggle as a quiet caption,
+		// not in the meta strip and not as a header eyebrow.
+		expect(screen.getByTestId('workflow-slug')).toHaveTextContent('test~api');
+		// Meta strip is the compact ribbon under the header. It owns
+		// Operations / APIs / Last run; the source pill was dropped
+		// because GET /workflows/{slug} doesn't carry a `source` field
+		// and catalog workflows hit the catalog fallback before getting
+		// here, so the pill was always "Local" decoration.
+		expect(screen.getByTestId('workflow-meta-strip')).toBeInTheDocument();
+		expect(screen.queryByTestId('workflow-meta-slug')).not.toBeInTheDocument();
+		expect(screen.queryByTestId('workflow-meta-source')).not.toBeInTheDocument();
+		// BackButton lives below the PageHeader, not inside it. The
+		// PageHeader primitive itself stays invariant across pages.
+		expect(screen.getByRole('link', { name: /Back to Workspace/ })).toBeInTheDocument();
+		expect(screen.queryByTestId('page-header-back')).not.toBeInTheDocument();
+		// Default tab is Overview — Operations section should be visible.
+		expect(screen.getByTestId('workflow-overview')).toBeInTheDocument();
+		expect(screen.getByTestId('workflow-overview-steps')).toBeInTheDocument();
+	});
+
+	it('honours ?view=docs deep link by skipping Overview', async () => {
+		worker.use(
+			http.get('/workflows/:slug', () =>
+				HttpResponse.json({
+					slug: 'test~api',
+					name: 'Test Workflow',
+					source: 'local',
+					steps: [],
+					involved_apis: [],
+				}),
+			),
+		);
+
+		renderWorkflow('test~api', '?view=docs');
+
+		await screen.findByRole('heading', { name: 'Test Workflow' });
+		// Overview body must not render when ?view=docs is set.
+		expect(screen.queryByTestId('workflow-overview')).not.toBeInTheDocument();
 	});
 
 	it('renders catalog fallback when workflow not found (404 skips retry)', async () => {
@@ -50,8 +89,10 @@ describe('WorkflowDetailPage', () => {
 
 		renderWorkflow();
 
-		expect(await screen.findByText(/test\/api/)).toBeInTheDocument();
-		expect(screen.getByText(/available in the Jentic public catalog/)).toBeInTheDocument();
+		// Catalog fallback now uses the same PageHeader skeleton; the
+		// title is the api id derived from the slug.
+		expect(await screen.findByRole('heading', { name: /test\/api/ })).toBeInTheDocument();
+		expect(screen.getByTestId('workflow-catalog-import')).toBeInTheDocument();
 	});
 
 	it('renders error state for non-404 failures', async () => {
