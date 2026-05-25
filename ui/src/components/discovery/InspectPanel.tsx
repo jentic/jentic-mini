@@ -1,15 +1,49 @@
-import { Loader2, ExternalLink, X } from 'lucide-react';
+/**
+ * Inspect view for a workspace (registered) operation.
+ *
+ * Fetches `GET /inspect/{capability_id}` and feeds the normalized
+ * result into `OperationInspectContent` — the same renderer used by
+ * `DirectoryInspectPanel`. Splitting fetch + normalization from
+ * rendering is how we guarantee the two surfaces stay visually
+ * identical as the design iterates.
+ *
+ * Historical note: a previous version of this file rendered parameters
+ * directly off `detail.parameters` (treating it as an array via
+ * `.slice(...)`) and auth off `detail.auth_instructions`. Both fields
+ * were wrong — the server returns parameters as a dict keyed by
+ * location (`{query, path, body, ...}`) and auth as `detail.auth`.
+ * The result was that workspace ops silently showed neither
+ * parameters nor auth. The two normalizers below
+ * (`flattenInspectParameters`, `normalizeWorkspaceAuth`) translate
+ * the actual server shape into the shared `InspectParam[]` and
+ * `InspectAuthEntry[]` types.
+ *
+ * `variant` controls the outer chrome:
+ *  - `'sheet'` (used inside `ApiDetailSheet`): no wrapping border / X
+ *    close button — the sheet provides its own back+close header.
+ *  - `'inline'` (default, used in `DiscoveryCard` endpoint expansion):
+ *    wraps the content with a `border-t bg-background/50` strip and a
+ *    self-contained X close button.
+ */
+import { Loader2, X } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
-import { AppLink } from '@/components/ui/AppLink';
+import {
+	OperationInspectContent,
+	flattenInspectParameters,
+	normalizeWorkspaceAuth,
+} from './OperationInspect';
 import { Button } from '@/components/ui/Button';
 import { api } from '@/api/client';
+import { parseCapabilityId } from '@/lib/capabilityId';
 
 export function InspectPanel({
 	capabilityId,
 	onClose,
+	variant = 'inline',
 }: {
 	capabilityId: string;
 	onClose: () => void;
+	variant?: 'sheet' | 'inline';
 }) {
 	const {
 		data: detail,
@@ -35,104 +69,63 @@ export function InspectPanel({
 			</div>
 		);
 
-	const params: any[] = detail.parameters ?? [];
-	const auth: any[] = detail.auth_instructions ?? [];
+	// The capability id (`METHOD/host/path`) is the authoritative source
+	// for method + path — the response also returns `detail.method` but
+	// not a separate `path` field (the `url` field bundles host+path).
+	// Parsing the id is cheaper and works even when host resolution drifts.
+	const parsed = parseCapabilityId(capabilityId);
+	const method = (detail as { method?: string }).method ?? parsed?.method;
+	const path = parsed?.path;
+	const apiContextName =
+		(detail as { api?: { name?: string } }).api?.name ??
+		(detail as { api_context?: { name?: string } }).api_context?.name;
 
+	const parameters = flattenInspectParameters(
+		(detail as { parameters?: Parameters<typeof flattenInspectParameters>[0] }).parameters,
+	);
+	const auth = normalizeWorkspaceAuth(
+		(detail as { auth?: Parameters<typeof normalizeWorkspaceAuth>[0] }).auth,
+	);
+
+	const content = (
+		<OperationInspectContent
+			method={method}
+			path={path}
+			summary={detail.summary ?? undefined}
+			description={detail.description ?? undefined}
+			parameters={parameters}
+			auth={auth}
+			testId="inspect-panel"
+		/>
+	);
+
+	// `'sheet'` variant: parent (`ApiDetailSheet`) already supplies a back
+	// button and close X in its own header — render bare content.
+	if (variant === 'sheet') {
+		return content;
+	}
+
+	// `'inline'` variant: this panel is embedded directly into a
+	// `DiscoveryCard` (endpoint search result expansion) with no
+	// surrounding chrome. Provide a thin top border, subtle background,
+	// and an inline close affordance so the user can collapse the expansion.
 	return (
-		<div className="border-border bg-background/50 space-y-4 border-t p-5">
-			<div className="flex items-start justify-between gap-2">
-				<div className="space-y-1">
-					{detail.api_context?.name && (
-						<p className="text-muted-foreground font-mono text-xs">
-							{detail.api_context.name}
-						</p>
-					)}
-					{detail.summary && (
-						<p className="text-foreground text-sm font-medium">{detail.summary}</p>
-					)}
-				</div>
-				<Button variant="ghost" size="icon" onClick={onClose} className="shrink-0">
+		<div className="border-border bg-background/50 border-t">
+			<div className="flex items-start justify-between gap-2 px-5 pt-3">
+				{apiContextName && (
+					<p className="text-muted-foreground font-mono text-xs">{apiContextName}</p>
+				)}
+				<Button
+					variant="ghost"
+					size="icon"
+					onClick={onClose}
+					className="-mt-1 shrink-0"
+					aria-label="Close inspect panel"
+				>
 					<X className="h-4 w-4" />
 				</Button>
 			</div>
-
-			{detail.description && (
-				<p className="text-muted-foreground text-sm leading-relaxed">
-					{detail.description}
-				</p>
-			)}
-
-			{params.length > 0 && (
-				<div>
-					<p className="text-muted-foreground mb-2 font-mono text-xs tracking-wider uppercase">
-						Parameters
-					</p>
-					<div className="space-y-1.5">
-						{params.slice(0, 8).map((p: any) => (
-							<div key={p.name ?? p.in} className="flex items-baseline gap-2 text-sm">
-								<code className="text-accent-teal shrink-0 font-mono text-xs">
-									{p.name}
-								</code>
-								{p.required && (
-									<span className="text-danger font-mono text-[10px]">
-										required
-									</span>
-								)}
-								{p.in && (
-									<span className="text-muted-foreground text-[10px]">
-										in {p.in}
-									</span>
-								)}
-								{p.description && (
-									<span className="text-muted-foreground truncate text-xs">
-										{p.description}
-									</span>
-								)}
-							</div>
-						))}
-						{params.length > 8 && (
-							<p className="text-muted-foreground text-xs">
-								+ {params.length - 8} more parameters
-							</p>
-						)}
-					</div>
-				</div>
-			)}
-
-			{auth.length > 0 && (
-				<div>
-					<p className="text-muted-foreground mb-2 font-mono text-xs tracking-wider uppercase">
-						Authentication
-					</p>
-					<div className="space-y-1">
-						{auth.map((a: any) => (
-							<div key={a.header ?? a.scheme ?? a.type} className="text-muted-foreground text-sm">
-								<span className="text-accent-yellow font-mono text-xs">
-									{a.header || a.scheme || a.type}
-								</span>
-								{a.description && <span className="ml-2">{a.description}</span>}
-							</div>
-						))}
-					</div>
-				</div>
-			)}
-
-			<div className="border-border flex items-center gap-3 border-t pt-2">
-				{detail._links?.upstream && (
-					<AppLink
-						href={detail._links.upstream}
-						className="text-primary hover:text-primary/80 inline-flex items-center gap-1 text-xs"
-					>
-						<ExternalLink className="h-3 w-3" /> API
-					</AppLink>
-				)}
-				<AppLink
-					href={`/traces?capability=${encodeURIComponent(capabilityId)}`}
-					className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1 text-xs"
-				>
-					View traces
-				</AppLink>
-			</div>
+			{content}
 		</div>
 	);
 }
