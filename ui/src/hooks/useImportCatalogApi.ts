@@ -1,84 +1,133 @@
-import { useCallback, useState } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
-import { apiUrl } from '@/api/client';
+/**
+ * useImportCatalogApi
+ *
+ * Imports a directory (catalog) API into the local workspace via
+ * `POST /import` — *without* forcing the user through the credential
+ * form. The previous "Import to workspace" CTA opened
+ * `/credentials/new?api_id=…` which conflated two distinct user
+ * intents:
+ *
+ *   1. "Make this API available locally so I can browse its operations
+ *      and decide what to do with it."  → just import.
+ *   2. "Make this API runnable end-to-end against my account."        → import + credential.
+ *
+ * The button is labelled "Import to workspace", so it should do (1).
+ * Credentials can be added afterwards from Workspace.
+ *
+ * Mechanics:
+ *   - Prefer the `spec_url` already on the entity (server-side change
+ *     surfaces it on `/apis` and `/search` catalog rows for free).
+ *   - Fall back to `GET /catalog/{api_id}` for older cached entities
+ *     that pre-date the spec_url field — keeps the hook safe to call
+ *     during a deploy window where stale React Query payloads are still
+ *     in memory.
+ *   - On success, emit `credentialImported` so the existing toast +
+ *     query-invalidation pipeline in `DiscoveryView` /
+ *     `WorkspaceView` reacts (the event channel is misnamed; rename
+ *     tracked in #437). Workflows that ship with the API are
+ *     auto-imported by the backend; we don't fan out a second mutation.
+ *
+ * Returns a stable `import` function plus loading flag so the calling
+ * component can disable its button while the request is in flight.
+ */
 
-export interface ImportResult {
-	/** IDs that have been successfully imported in this session. */
-	importedIds: Set<string>;
-	/** Whether an import is currently in-flight. */
-	isImporting: boolean;
-	/** Error message from the last failed import, or null. */
-	error: string | null;
-	/** Trigger the two-step catalog → import flow for an API ID. */
-	importApi: (apiId: string) => Promise<void>;
+import { useCallback } from 'react';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { api } from '@/api/client';
+import { emitCredentialImported } from '@/lib/events/credentialImported';
+import { toast } from '@/components/ui/toastStore';
+
+export interface ImportCatalogApiArgs {
+	apiId: string;
+	/** When known (from the catalog/search row) skips the
+	 *  `getCatalogEntry` round-trip. */
+	specUrl?: string;
 }
 
-/**
- * Encapsulates the two-step API import flow that previously existed as
- * duplicated `handleImport` functions in both `SearchPage` and `CatalogPage`:
- *
- *  1. GET /catalog/:apiId  →  resolve `spec_url`
- *  2. POST /import         →  import the spec into the local registry
- *
- * On success all three query caches are invalidated (`['catalog']`, `['apis']`,
- * `['search']`) so dependent lists refresh automatically.
- */
-export function useImportCatalogApi(): ImportResult {
+interface UseImportCatalogApiResult {
+	importApi: (args: ImportCatalogApiArgs) => Promise<void>;
+	isImporting: boolean;
+	pendingApiId: string | null;
+}
+
+export function useImportCatalogApi(): UseImportCatalogApiResult {
 	const queryClient = useQueryClient();
-	const [isImporting, setIsImporting] = useState(false);
-	const [error, setError] = useState<string | null>(null);
-	const [importedIds, setImportedIds] = useState<Set<string>>(new Set());
+
+	const mutation = useMutation({
+		mutationFn: async ({ apiId, specUrl }: ImportCatalogApiArgs) => {
+			let resolvedSpecUrl = specUrl;
+			if (!resolvedSpecUrl) {
+				const entry = (await api.getCatalogEntry(apiId)) as {
+					spec_url?: string | null;
+					spec_error?: string | null;
+				};
+				if (entry.spec_error) {
+					throw new Error(entry.spec_error);
+				}
+				if (!entry.spec_url) {
+					throw new Error(
+						`Couldn't locate an OpenAPI spec for ${apiId} in the public catalog.`,
+					);
+				}
+				resolvedSpecUrl = entry.spec_url;
+			}
+
+			const res = (await api.importSpec([
+				{ type: 'url', url: resolvedSpecUrl, force_api_id: apiId },
+			])) as {
+				results?: Array<{
+					status?: string;
+					error?: string;
+					api_id?: string;
+				}>;
+			};
+			const result = res.results?.[0];
+			if (!result || result.status !== 'success') {
+				throw new Error(result?.error ?? `Import failed for ${apiId}.`);
+			}
+			return result.api_id ?? apiId;
+		},
+		onSuccess: (importedId, variables) => {
+			const apiId = importedId || variables.apiId;
+			// Invalidate the surfaces that show registration state. The
+			// `credentialImported` listeners (DiscoveryView /
+			// WorkspaceView) do their own broader invalidation when the
+			// event fires, so we keep this set small to avoid duplicate
+			// network traffic on the same tab.
+			queryClient.invalidateQueries({ queryKey: ['apis'] });
+			queryClient.invalidateQueries({ queryKey: ['catalog'] });
+			queryClient.invalidateQueries({ queryKey: ['apis', 'discover'] });
+
+			// Re-uses the existing cross-tab event so the rest of the
+			// UX (toast in DiscoveryView, "Open in Workspace" deep link,
+			// etc.) just works. The event name is historical — see
+			// `src/lib/events/credentialImported.ts` and #437.
+			emitCredentialImported({ api_id: apiId });
+		},
+		onError: (err: unknown, variables) => {
+			toast({
+				title: 'Import failed',
+				description:
+					err instanceof Error
+						? err.message
+						: `Couldn't import ${variables.apiId} from the public catalog.`,
+				variant: 'error',
+			});
+		},
+	});
 
 	const importApi = useCallback(
-		async (apiId: string) => {
-			setIsImporting(true);
-			setError(null);
-			try {
-				// Step 1: resolve the spec URL from the catalog entry.
-				const catalogRes = await fetch(apiUrl(`/catalog/${apiId}`), {
-					credentials: 'include',
-				});
-				if (!catalogRes.ok) {
-					const body = await catalogRes.json().catch(() => ({}));
-					throw new Error(body.detail || `Catalog lookup failed (${catalogRes.status})`);
-				}
-				const catalogEntry = await catalogRes.json();
-				if (!catalogEntry.spec_url) {
-					throw new Error('No spec URL found for this API in the catalog');
-				}
-
-				// Step 2: import the spec.
-				const importRes = await fetch(apiUrl('/import'), {
-					method: 'POST',
-					credentials: 'include',
-					headers: { 'Content-Type': 'application/json' },
-					body: JSON.stringify({
-						sources: [{ type: 'url', url: catalogEntry.spec_url, force_api_id: apiId }],
-					}),
-				});
-				if (!importRes.ok) {
-					const body = await importRes.json().catch(() => ({}));
-					throw new Error(body.detail || `Import failed (${importRes.status})`);
-				}
-				const importResult = await importRes.json();
-				if (importResult.failed > 0) {
-					const err = importResult.results?.[0]?.error || 'Unknown error';
-					throw new Error(`Import failed: ${err}`);
-				}
-
-				setImportedIds((prev) => new Set(prev).add(apiId));
-				// Invalidate all caches that reflect registration state.
-				queryClient.invalidateQueries({ queryKey: ['catalog'] });
-				queryClient.invalidateQueries({ queryKey: ['apis'] });
-				queryClient.invalidateQueries({ queryKey: ['search'] });
-			} catch (e: any) {
-				setError(e.message);
-			} finally {
-				setIsImporting(false);
-			}
+		async (args: ImportCatalogApiArgs) => {
+			await mutation.mutateAsync(args);
 		},
-		[queryClient],
+		[mutation],
 	);
 
-	return { importApi, isImporting, error, importedIds };
+	return {
+		importApi,
+		isImporting: mutation.isPending,
+		pendingApiId: mutation.isPending
+			? ((mutation.variables as ImportCatalogApiArgs | undefined)?.apiId ?? null)
+			: null,
+	};
 }
