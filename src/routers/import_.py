@@ -117,7 +117,7 @@ def _load_doc(source: ImportSource) -> tuple[dict, str | None]:
             else json.loads(raw)
         )
         # Save locally
-        fname = source.filename or _url_to_filename(source.url)
+        fname = source.filename or _url_to_filename(source.url, api_id=source.force_api_id)
         dest = SPECS_DIR / fname if not _is_arazzo(doc) else WORKFLOWS_DIR / fname
         dest.write_text(
             json.dumps(doc, ensure_ascii=False)
@@ -148,12 +148,20 @@ def _is_arazzo(doc: dict) -> bool:
     return "arazzo" in doc
 
 
-def _url_to_filename(url: str) -> str:
-    # e.g. https://api.example.com/openapi.json -> api_example_com_openapi.json
+def _url_to_filename(url: str, api_id: str | None = None) -> str:
+    """Derive a unique local filename for a downloaded spec.
+
+    When `api_id` is provided (catalog imports), prefix with the sanitised
+    api_id so different APIs never collide even if the URL stems differ only
+    beyond the 80-char window.
+    """
+    if api_id:
+        safe_id = re.sub(r"[^a-zA-Z0-9._-]", "_", api_id)
+        return f"{safe_id}_openapi.json"
     clean = re.sub(r"^https?://", "", url)
     clean = re.sub(r"[^a-zA-Z0-9._-]", "_", clean)
     clean = re.sub(r"_+", "_", clean).strip("_")
-    return clean[:80] + ".json"
+    return clean[:120] + ".json"
 
 
 # ── OpenAPI registration ──────────────────────────────────────────────────────

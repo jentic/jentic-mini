@@ -906,6 +906,40 @@ print(json.dumps(out, default=str))
     )
 
 
+@router.delete(
+    "/workflows/{slug}",
+    status_code=204,
+    summary="Delete a workflow from the workspace",
+    tags=["catalog"],
+)
+async def delete_workflow(
+    slug: Annotated[str, Path(description="Workflow slug to delete")],
+):
+    """Permanently delete a workflow and its Arazzo file from the workspace."""
+    async with get_db() as db:
+        async with db.execute(
+            "SELECT arazzo_path FROM workflows WHERE slug=?", (slug,)
+        ) as cur:
+            row = await cur.fetchone()
+        if not row:
+            raise HTTPException(404, "Workflow not found")
+        arazzo_path = row[0]
+
+        await db.execute("DELETE FROM workflows WHERE slug=?", (slug,))
+        await db.commit()
+
+    if arazzo_path:
+        try:
+            pathlib.Path(arazzo_path).unlink(missing_ok=True)
+        except OSError:
+            pass
+
+    # Rebuild BM25 index (no per-entry removal supported)
+    from src.routers.apis import rebuild_index  # noqa: PLC0415
+
+    await rebuild_index()
+
+
 @router.post(
     "/workflows/{slug}", summary="Execute workflow", tags=["execute"], include_in_schema=False
 )
