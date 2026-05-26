@@ -326,5 +326,9 @@ All requested features complete:
 - ✅ Permission request dialogs working with easy URLs
 - ✅ API coverage gaps reviewed (none critical)
 - ✅ Build passing with zero errors
+- ✅ Workspace page with full CRUD lifecycle, cascade delete with impact info, keyboard shortcuts, mobile responsive cards, expandable descriptions, stats strip, and credential re-link on re-import
+- ✅ Operations filtering works across full dataset (batch-fetched) when filter/tag is active
+- ✅ Post-import/delete state sync across pages (Discover → Workspace, cross-tab)
+- ✅ Navbar active-tab animation fixed for scroll scenarios
 
-The UI is now feature-complete for all core user journeys. Permission management, credential binding, search, catalog import, and approval flows all work end-to-end.
+The UI is now feature-complete for all core user journeys. Permission management, credential binding, search, catalog import, workspace management, and approval flows all work end-to-end.

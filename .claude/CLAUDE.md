@@ -253,15 +253,52 @@ A synthetic description is set in `apiToEntity()` for directory APIs so card hei
 
 **Import hook (`hooks/useImportCatalogApi.ts`):** Single shared two-step import flow (resolve spec URL via `GET /catalog/:id`, then `POST /import`). Use this hook everywhere an import button appears; do not inline the fetch logic.
 
+### Workspace page (`/workspace`)
+
+The Workspace page shows everything the user has imported into their local jentic-mini instance. It's the "home base" for managing APIs, workflows, credentials, and toolkits.
+
+**Route structure:**
+- `/workspace` — main view with API and workflow tiles, stats strip, search/filter
+- `/workspace/apis/:apiId` — API detail page (operations, credentials, toolkit bindings, workflows)
+- `/workspace/workflows/:slug` — Workflow detail page (steps, input schema, metadata)
+
+**Components (`components/workspace/`):**
+| File | Purpose |
+|------|---------|
+| `WorkspaceView.tsx` | Main view: stats strip + search + API/workflow tile grids |
+| `WorkspaceTile.tsx` | Card component for API and workflow items (imported date, counts) |
+| `WorkspaceSearch.tsx` | Auto-focused filter input with keyboard shortcut (`/`) |
+| `WorkspaceStatsStrip.tsx` | Compact stats bar (APIs, workflows, credentials, last activity) |
+| `ApiDetailView.tsx` | Full API detail: operations list, credentials, toolkit bindings |
+| `ImportSourceDialog.tsx` | Import dialog supporting URL, file upload, and paste |
+| `WorkspaceAddButton.tsx` | "+" button that opens ImportSourceDialog |
+
+**Key behaviors:**
+- **Operations filtering**: When a filter/tag is active, automatically fetches all operations (in 200-item batches) so filtering searches the full set, not just loaded pages. When no filter is active, normal paginated "Load more" UX applies.
+- **Delete with cascade info**: `ConfirmDeleteDialog` shows affected workflows (will-delete vs will-affect), credentials, and toolkits with their linked credential names. Only shows toolkits that actually bind credentials for the target API (fetches each toolkit's `bound_apis`).
+- **Credential preservation**: Non-cascade API deletion keeps `credentials.api_id` intact. When the same API is re-imported (same derived ID), credentials auto-relink without user action. Cascade delete (`?cascade=true`) removes credentials AND their toolkit bindings.
+- **Post-import freshness**: `useImportCatalogApi` and `useCredentialImportedSync` both invalidate `['workspace']` and `['workspace-stats']` query keys so workspace data is fresh regardless of which page the import was triggered from.
+- **Keyboard shortcuts**: Same pattern as Discover — `/` to focus filter, arrow navigation via `useRovingGridFocus`, `Enter` to open, `Esc` to go back, `Cmd+/` for help.
+
+**Backend endpoints used:**
+- `GET /apis?source=local` — list imported APIs
+- `GET /apis/{id}/operations?offset=&limit=` — paginated operations
+- `GET /workflows?source=local` — list imported workflows
+- `GET /credentials?api_id=` — credentials for an API
+- `GET /toolkits` + `GET /toolkits/{id}` — toolkit bindings
+- `DELETE /apis/{id}` / `DELETE /apis/{id}?cascade=true` — soft/hard delete
+- `DELETE /workflows/{slug}` — remove workflow
+
 ### UI Component Library
 Shadcn-style owned components in `ui/src/components/ui/`.
 
 - **Primitives**: `Button`, `Input`, `Label`, `Textarea`, `Select`, `SegmentedToggle`, `SheetPrimitive` — extend native HTML props, support error states and accessibility. `SegmentedToggle<V>` is a faithful port of `@jentic/frontend-ui`'s component (animated sliding indicator via `framer-motion`'s shared `layoutId`); reach for it before falling back to chips or `<select>` for short, mutually-exclusive option sets. Each instance needs a unique `layoutId` prop — `framer-motion` uses it to scope the shared-element animation. `SheetPrimitive` is also a faithful port of the same library (focus trap, Escape, body scroll-lock via `overscroll-behavior: contain`, portaled to `document.body`) — one local deviation: `onAfterClose` is read through a ref so inline-closure parents don't reset the 300ms exit timer on every render. When either upstream component updates, keep these files 1:1 with the source.
-- **Layout**: `Dialog` (native `<dialog>`, zero deps), `EmptyState`, `PageHeader`, `ErrorAlert`, `LoadingState`, `BackButton`, `CopyButton`
-- **Overlays**: `Menu` — exports `useDismissable` (outside-click + Escape), `MenuPanel`, `MenuSeparator`, `menuItemClass`. Use these for any new dropdown / popover / sheet rather than re-rolling refs and effect listeners.
+- **Layout**: `Dialog` (native `<dialog>`, zero deps), `EmptyState`, `PageHeader` (expandable subtitle via ResizeObserver), `ErrorAlert`, `LoadingState`, `BackButton`, `CopyButton`, `KeyboardShortcutsBar` (fixed bottom strip showing available shortcuts), `PageHelp` (⌘/ toggle overlay)
+- **Forms**: `Checkbox` (polished styled checkbox with label, cursor-pointer, user-select-none)
+- **Overlays**: `Menu` — exports `useDismissable` (outside-click + Escape), `MenuPanel`, `MenuSeparator`, `menuItemClass`. `ConfirmDeleteDialog` — reusable deletion confirmation with cascade impact display (affected workflows, credentials, toolkits). Use these for any new dropdown / popover / sheet rather than re-rolling refs and effect listeners.
 - **Data**: `DataTable` (generic typed columns), `Pagination`
-- **Shared hooks**: `useCopyToClipboard` in `ui/src/hooks/`
-- **Shared utilities**: `timeAgo`, `formatTimestamp`, `statusVariant`, `statusColor` in `ui/src/lib/`
+- **Shared hooks**: `useCopyToClipboard`, `useRovingGridFocus` (arrow-key grid navigation), `useScrollRestore` in `ui/src/hooks/`
+- **Shared utilities**: `timeAgo`, `formatTimestamp`, `statusVariant`, `statusColor`, `isTypingTarget` (keyboard guard) in `ui/src/lib/`
 - **Barrel export**: `ui/src/components/ui/index.ts`
 
 ### Generated API client
