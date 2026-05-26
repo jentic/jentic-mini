@@ -304,6 +304,11 @@ export const api = {
 			headers: { 'Content-Type': 'application/json' },
 		}),
 	deleteCredential: (cid: string) => fetchJson<any>(`/credentials/${cid}`, { method: 'DELETE' }),
+	deleteApi: (apiId: string, opts?: { cascade?: boolean }) =>
+		fetchJson<void>(`/apis/${apiId}${opts?.cascade ? '?cascade=true' : ''}`, {
+			method: 'DELETE',
+		}),
+	deleteWorkflow: (slug: string) => fetchJson<void>(`/workflows/${slug}`, { method: 'DELETE' }),
 	search: (
 		q: string,
 		n = 10,

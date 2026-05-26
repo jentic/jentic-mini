@@ -72,8 +72,14 @@ export function useImportCatalogApi(): UseImportCatalogApiResult {
 				resolvedSpecUrl = entry.spec_url;
 			}
 
+			const safeId = apiId.replace(/\//g, '_');
 			const res = (await api.importSpec([
-				{ type: 'url', url: resolvedSpecUrl, force_api_id: apiId },
+				{
+					type: 'url',
+					url: resolvedSpecUrl,
+					force_api_id: apiId,
+					filename: `${safeId}_openapi.json`,
+				},
 			])) as {
 				results?: Array<{
 					status?: string;
