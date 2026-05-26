@@ -1,4 +1,4 @@
-import { Activity, GitBranch, ListTree } from 'lucide-react';
+import { Activity, ListTree, Workflow } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/api/client';
 import { timeAgo } from '@/lib/time';
@@ -64,7 +64,7 @@ export function WorkflowMetaStrip({ slug, stepsCount, involvedApis }: WorkflowMe
 				testId="workflow-meta-steps"
 			/>
 			<MetaItem
-				icon={<GitBranch size={13} aria-hidden="true" />}
+				icon={<Workflow size={13} aria-hidden="true" />}
 				label="APIs"
 				value={involvedApis.length.toLocaleString()}
 				testId="workflow-meta-apis-count"

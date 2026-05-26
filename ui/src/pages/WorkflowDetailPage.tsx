@@ -1,14 +1,24 @@
-import { Component, lazy, Suspense, useState } from 'react';
+import { Component, lazy, Suspense, useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlertTriangle, ChevronRight, ExternalLink, Hash, Workflow, Zap } from 'lucide-react';
+import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
+import {
+	AlertTriangle,
+	ChevronRight,
+	ExternalLink,
+	Hash,
+	Trash2,
+	Workflow,
+	Zap,
+} from 'lucide-react';
 import { api, apiUrl } from '@/api/client';
 import { Badge, MethodBadge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { BackButton } from '@/components/ui/BackButton';
+import { ConfirmDeleteDialog } from '@/components/ui/ConfirmDeleteDialog';
 import { CopyButton } from '@/components/ui/CopyButton';
 import { AppLink } from '@/components/ui/AppLink';
+import { KeyboardShortcutsBar, MOD_KEY } from '@/components/ui/KeyboardShortcutsBar';
 import { LoadingState } from '@/components/ui/LoadingState';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { PageHelp } from '@/components/ui/PageHelp';
@@ -16,6 +26,8 @@ import { SegmentedToggle } from '@/components/ui/SegmentedToggle';
 import { PageShell } from '@/components/layout/PageShell';
 import { VendorIcon } from '@/components/discovery/VendorIcon';
 import { WorkflowMetaStrip } from '@/components/workflows/WorkflowMetaStrip';
+import { useScrollRestore } from '@/hooks/useScrollRestore';
+import { isTypingTarget } from '@/lib/keyboard';
 import '@jentic/arazzo-ui/styles.css';
 
 // Arazzo embeds its own runtime. Code-split it so the page shell paints
@@ -116,11 +128,15 @@ const HELP = (
 			},
 		]}
 		links={[
-			{ href: 'https://www.openapis.org/arazzo', label: 'What is Arazzo?' },
+			{ href: 'https://www.openapis.org/arazzo-specification', label: 'What is Arazzo?' },
 			{
 				href: 'https://github.com/jentic/jentic-public-apis/tree/main/workflows',
 				label: 'Browse the catalog on GitHub',
 			},
+		]}
+		shortcuts={[
+			{ keys: ['Esc'], label: 'Go back to workspace' },
+			{ keys: [MOD_KEY, '/'], chord: true, label: 'Show this help' },
 		]}
 	/>
 );
@@ -128,7 +144,40 @@ const HELP = (
 export default function WorkflowDetailPage() {
 	const { slug } = useParams<{ slug: string }>();
 	const navigate = useNavigate();
+	const queryClient = useQueryClient();
 	const [searchParams, setSearchParams] = useSearchParams();
+	useScrollRestore();
+
+	const [deleteOpen, setDeleteOpen] = useState(false);
+
+	useEffect(() => {
+		function onKeyDown(e: KeyboardEvent) {
+			if (e.metaKey || e.ctrlKey || e.altKey) return;
+			if (isTypingTarget(e.target)) return;
+			if (e.key === 'Escape' && !deleteOpen && !document.querySelector('dialog[open]')) {
+				e.preventDefault();
+				navigate('/workspace');
+			}
+		}
+		document.addEventListener('keydown', onKeyDown);
+		return () => document.removeEventListener('keydown', onKeyDown);
+	}, [navigate, deleteOpen]);
+
+	const deleteMutation = useMutation({
+		mutationFn: () => api.deleteWorkflow(slug!),
+		onSuccess: async () => {
+			await Promise.all([
+				queryClient.invalidateQueries({ queryKey: ['workflows'] }),
+				queryClient.invalidateQueries({ queryKey: ['workspace'] }),
+				queryClient.invalidateQueries({ queryKey: ['workspace-stats'] }),
+				queryClient.invalidateQueries({ queryKey: ['apis'] }),
+			]);
+			navigate('/workspace');
+		},
+		onError: () => {
+			// Keep dialog open — the loading state resets automatically
+		},
+	});
 
 	const tab = ((): DetailTab => {
 		const v = searchParams.get('view');
@@ -204,58 +253,97 @@ export default function WorkflowDetailPage() {
 
 	const steps: any[] = workflow.steps ?? [];
 	const involvedApis: string[] = workflow.involved_apis ?? [];
-	const showDescription = workflow.description && workflow.description !== workflow.name;
+	const resolvedTitle = workflow.name ?? workflow.slug;
+	const showDescription =
+		workflow.description &&
+		workflow.description !== workflow.name &&
+		workflow.description !== workflow.slug;
 
 	return (
-		<PageShell width="wide">
-			<PageHeader
-				title={workflow.name ?? workflow.slug}
-				subtitle={showDescription ? workflow.description : undefined}
-				actions={HELP}
-			/>
-
-			<BackButton to="/workspace" label="Back to Workspace" />
-
-			<WorkflowMetaStrip slug={slug!} stepsCount={steps.length} involvedApis={involvedApis} />
-
-			<div className="flex flex-wrap items-center justify-between gap-3">
-				<SlugChip slug={workflow.slug} />
-				<SegmentedToggle
-					layoutId="workflow-detail-view"
-					value={tab}
-					onChange={setTab}
-					options={TAB_OPTIONS}
+		<>
+			<PageShell width="wide">
+				<PageHeader
+					title={resolvedTitle}
+					subtitle={showDescription ? workflow.description : undefined}
+					icon={
+						<div className="bg-accent-teal/10 flex h-10 w-10 items-center justify-center rounded-lg">
+							<Workflow className="text-accent-teal h-5 w-5" />
+						</div>
+					}
+					actions={
+						<div className="flex items-center gap-2">
+							<Button variant="danger" size="sm" onClick={() => setDeleteOpen(true)}>
+								<Trash2 className="h-3.5 w-3.5" />
+							</Button>
+							{HELP}
+						</div>
+					}
 				/>
-			</div>
 
-			{tab === 'overview' ? (
-				<OverviewBody steps={steps} involvedApis={involvedApis} />
-			) : isLoadingArazzo ? (
-				<LoadingState message="Loading workflow visualization..." />
-			) : arazzoDoc ? (
-				<ArazzoErrorBoundary slug={slug}>
-					<div
-						className="border-border bg-muted overflow-hidden rounded-xl border"
-						style={{ height: 'min(75vh, 800px)' }}
-						data-testid="workflow-arazzo-frame"
-					>
-						<Suspense
-							fallback={<LoadingState message="Loading workflow visualization..." />}
-						>
-							<ArazzoUI
-								document={arazzoDoc}
-								view={tab as ArazzoView}
-								onViewChange={(v: ArazzoView) => setTab(v)}
-							/>
-						</Suspense>
-					</div>
-				</ArazzoErrorBoundary>
-			) : (
-				<div className="text-muted-foreground py-16 text-center">
-					Failed to load workflow visualization.
+				<BackButton to="/workspace" label="Back to Workspace" />
+
+				<WorkflowMetaStrip
+					slug={slug!}
+					stepsCount={steps.length}
+					involvedApis={involvedApis}
+				/>
+
+				<div className="flex flex-wrap items-center justify-between gap-3">
+					<SlugChip slug={workflow.slug} />
+					<SegmentedToggle
+						layoutId="workflow-detail-view"
+						value={tab}
+						onChange={setTab}
+						options={TAB_OPTIONS}
+					/>
 				</div>
-			)}
-		</PageShell>
+
+				{tab === 'overview' ? (
+					<OverviewBody steps={steps} involvedApis={involvedApis} />
+				) : isLoadingArazzo ? (
+					<LoadingState message="Loading workflow visualization..." />
+				) : arazzoDoc ? (
+					<ArazzoErrorBoundary slug={slug}>
+						<div
+							className="border-border bg-muted overflow-hidden rounded-xl border"
+							style={{ height: 'min(75vh, 800px)' }}
+							data-testid="workflow-arazzo-frame"
+						>
+							<Suspense
+								fallback={
+									<LoadingState message="Loading workflow visualization..." />
+								}
+							>
+								<ArazzoUI
+									document={arazzoDoc}
+									view={tab as ArazzoView}
+									onViewChange={(v: ArazzoView) => setTab(v)}
+								/>
+							</Suspense>
+						</div>
+					</ArazzoErrorBoundary>
+				) : (
+					<div className="text-muted-foreground py-16 text-center">
+						Failed to load workflow visualization.
+					</div>
+				)}
+
+				<ConfirmDeleteDialog
+					target={slug ? { kind: 'workflow', slug, name: workflow.name ?? slug } : null}
+					open={deleteOpen}
+					onClose={() => setDeleteOpen(false)}
+					onConfirm={() => deleteMutation.mutate()}
+					loading={deleteMutation.isPending}
+				/>
+			</PageShell>
+
+			<KeyboardShortcutsBar
+				shortcuts={[
+					{ keys: ['Esc'], label: 'back' },
+					{ keys: [MOD_KEY, '/'], chord: true, label: 'help' },
+				]}
+			/>
+		</>
 	);
 }
 

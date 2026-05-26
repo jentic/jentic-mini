@@ -57,7 +57,7 @@ describe('WorkflowDetailPage', () => {
 		expect(screen.queryByTestId('workflow-meta-source')).not.toBeInTheDocument();
 		// BackButton lives below the PageHeader, not inside it. The
 		// PageHeader primitive itself stays invariant across pages.
-		expect(screen.getByRole('link', { name: /Back to Workspace/ })).toBeInTheDocument();
+		expect(screen.getByTestId('back-button')).toBeInTheDocument();
 		expect(screen.queryByTestId('page-header-back')).not.toBeInTheDocument();
 		// Default tab is Overview — Operations section should be visible.
 		expect(screen.getByTestId('workflow-overview')).toBeInTheDocument();
