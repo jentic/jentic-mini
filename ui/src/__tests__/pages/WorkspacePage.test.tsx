@@ -60,6 +60,7 @@ describe('WorkspacePage', () => {
 							description: 'Payments API',
 							source: 'local',
 							has_credentials: true,
+							credential_count: 1,
 						},
 						{
 							id: 'github.com',
@@ -80,10 +81,12 @@ describe('WorkspacePage', () => {
 		const grid = await within(apisSection).findByTestId('workspace-grid-apis');
 		const tiles = within(grid).getAllByTestId('workspace-tile-api');
 		expect(tiles).toHaveLength(2);
-		// Card meta reflects credential state — the workspace identity, not
-		// a catalog "Available / Importable" pill.
-		expect(within(tiles[0]).getByTestId('workspace-tile-creds-ok')).toBeInTheDocument();
-		expect(within(tiles[1]).getByTestId('workspace-tile-creds-missing')).toBeInTheDocument();
+		// Card meta reflects credential state — stripe has credentials,
+		// github does not.
+		const stripeTile = tiles.find((t) => t.dataset.tileId === 'stripe.com')!;
+		const githubTile = tiles.find((t) => t.dataset.tileId === 'github.com')!;
+		expect(within(stripeTile).getByText(/1 credential/)).toBeInTheDocument();
+		expect(within(githubTile).getByText(/No credential/)).toBeInTheDocument();
 	});
 
 	it('renders the Workflows section with an empty CTA when there are no workflows yet', async () => {
@@ -172,7 +175,7 @@ describe('WorkspacePage', () => {
 		expect(within(pile).getByText(/^\+2$/)).toBeInTheDocument();
 	});
 
-	it('surfaces "Used by N toolkits" on API tiles whose credential is bound to a toolkit', async () => {
+	it('surfaces toolkit count on API tiles whose credential is bound to a toolkit', async () => {
 		worker.use(
 			http.get('/apis', () =>
 				HttpResponse.json({
@@ -224,13 +227,10 @@ describe('WorkspacePage', () => {
 		const githubTile = tiles.find((t) => t.dataset.tileId === 'github.com')!;
 
 		await waitFor(() => {
-			expect(within(stripeTile).getByTestId('workspace-tile-toolkits')).toHaveTextContent(
-				/used by 2 toolkits/i,
-			);
+			expect(within(stripeTile).getByText(/2 toolkits/i)).toBeInTheDocument();
 		});
-		// Tiles whose API isn't bound to any toolkit don't get the badge —
-		// otherwise it'd be noise on every catalog import.
-		expect(within(githubTile).queryByTestId('workspace-tile-toolkits')).toBeNull();
+		// Tiles whose API isn't bound to any toolkit don't show a toolkit count.
+		expect(within(githubTile).queryByText(/toolkit/i)).toBeNull();
 	});
 
 	it('filters the visible tiles in-memory as the user types', async () => {
@@ -257,9 +257,7 @@ describe('WorkspacePage', () => {
 		await waitFor(() => {
 			expect(screen.getAllByTestId('workspace-tile-api')).toHaveLength(1);
 		});
-		expect(screen.getByTestId('workspace-search-results-label')).toHaveTextContent(
-			/1 of 2 match "strip"/i,
-		);
+		expect(screen.getByText(/1 of 2 match "strip"/i)).toBeInTheDocument();
 	});
 
 	it('exposes the page-help dialog via the "?" key', async () => {

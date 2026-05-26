@@ -1,5 +1,5 @@
 import { http, HttpResponse } from 'msw';
-import { screen, renderWithProviders, userEvent, within, waitFor } from '../test-utils';
+import { screen, renderWithProviders, userEvent, waitFor } from '../test-utils';
 import { worker } from '../mocks/browser';
 import DiscoverPage from '@/pages/DiscoverPage';
 
@@ -14,11 +14,10 @@ describe('DiscoverPage (shell)', () => {
 
 		expect(await screen.findByRole('heading', { name: /discover/i })).toBeInTheDocument();
 		expect(screen.getByTestId('discover-toolbar')).toBeInTheDocument();
-		const filterBar = screen.getByTestId('discovery-filter-bar');
-		// Forced source ⇒ source segment is gone, type segment stays.
-		expect(within(filterBar).queryByRole('button', { name: /my workspace/i })).toBeNull();
-		expect(within(filterBar).queryByRole('button', { name: /public directory/i })).toBeNull();
-		expect(within(filterBar).getByRole('button', { name: 'APIs' })).toBeInTheDocument();
+		// Forced source hides the entire filter bar — with both the Type
+		// segment removed (May 2026 simplification) and the Source segment
+		// suppressed, there's nothing left to render.
+		expect(screen.queryByTestId('discovery-filter-bar')).toBeNull();
 	});
 
 	it('uses /apis?source=catalog so workspace items never bleed into the directory view', async () => {

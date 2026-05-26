@@ -44,7 +44,7 @@ describe('Layout', () => {
 
 		const text = document.body.textContent ?? '';
 		expect(text).toContain('Discover');
-		expect(text).toContain('Workflows');
+		expect(text).toContain('Workspace');
 		expect(text).toContain('Credentials');
 	});
 
