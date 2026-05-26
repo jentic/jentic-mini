@@ -132,13 +132,14 @@ export function Dialog({
 			onCancel={handleCancel}
 			onClick={handleBackdropClick}
 			className={cn(
-				'bg-muted border-border m-auto max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] rounded-xl border p-0 shadow-xl backdrop:bg-black/60 sm:w-full',
+				'bg-card border-border m-auto max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] rounded-xl border p-0 shadow-xl backdrop:bg-black/60 sm:w-full',
+				'overscroll-contain',
 				sizeClasses[size],
 				className,
 			)}
 		>
-			<div className="flex flex-col">
-				<div className="border-border flex items-center justify-between border-b px-5 py-4">
+			<div className="flex max-h-[calc(100dvh-2rem)] flex-col">
+				<div className="border-border flex shrink-0 items-center justify-between border-b px-5 py-4">
 					<h2 id={titleId} className="text-foreground text-lg font-semibold">
 						{title}
 					</h2>
@@ -146,9 +147,9 @@ export function Dialog({
 						<X className="h-5 w-5" />
 					</Button>
 				</div>
-				<div className="px-5 py-4">{children}</div>
+				<div className="overflow-y-auto px-5 py-4">{children}</div>
 				{footer && (
-					<div className="border-border flex items-center justify-end gap-2 border-t px-5 py-4">
+					<div className="border-border flex shrink-0 items-center justify-end gap-2 border-t px-5 py-4">
 						{footer}
 					</div>
 				)}

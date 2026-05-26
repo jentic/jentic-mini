@@ -11,10 +11,11 @@ type SearchInputProps = Omit<React.ComponentProps<'input'>, 'size' | 'type' | 'o
 	onClear?: () => void;
 	size?: SearchInputSize;
 	loading?: boolean;
+	icon?: React.ReactNode;
 };
 
 export const SearchInput = React.forwardRef<HTMLInputElement, SearchInputProps>(
-	({ value, onValueChange, onClear, size = 'md', loading, className, ...props }, ref) => {
+	({ value, onValueChange, onClear, size = 'md', loading, icon, className, ...props }, ref) => {
 		const handleChange = useCallback(
 			(e: React.ChangeEvent<HTMLInputElement>) => {
 				onValueChange(e.target.value);
@@ -47,7 +48,7 @@ export const SearchInput = React.forwardRef<HTMLInputElement, SearchInputProps>(
 					onChange={handleChange}
 					onKeyDown={handleKeyDown}
 					size={size}
-					startIcon={<Search className="h-3.5 w-3.5" />}
+					startIcon={icon ?? <Search className="h-3.5 w-3.5" />}
 					className={cn(
 						value && 'pr-8',
 						'[&::-webkit-search-cancel-button]:hidden [&::-webkit-search-decoration]:hidden',

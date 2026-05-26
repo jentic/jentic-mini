@@ -1,11 +1,14 @@
-import type { ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { motion } from 'framer-motion';
+import { Button } from '@/components/ui/Button';
 import { cn } from '@/lib/utils';
 
 interface PageHeaderProps {
 	title: string;
 	/** Short sentence beneath the title. */
 	subtitle?: string;
+	/** Optional icon/avatar rendered to the left of the title. */
+	icon?: ReactNode;
 	/** Right-aligned slot for buttons / controls. */
 	actions?: ReactNode;
 	/**
@@ -37,17 +40,57 @@ interface PageHeaderProps {
 export function PageHeader({
 	title,
 	subtitle,
+	icon,
 	actions,
 	animated = true,
 	className,
 }: PageHeaderProps) {
+	const [expanded, setExpanded] = useState(false);
+	const [clamped, setClamped] = useState(false);
+	const subtitleRef = useRef<HTMLParagraphElement | null>(null);
+
+	useEffect(() => {
+		const el = subtitleRef.current;
+		if (!el) return;
+		const check = () => setClamped(el.scrollHeight > el.clientHeight);
+		check();
+		const ro = new ResizeObserver(check);
+		ro.observe(el);
+		return () => ro.disconnect();
+	}, [subtitle, expanded]);
+
 	const content = (
-		<div className="flex items-start justify-between gap-4">
-			<div className="min-w-0 flex-1">
-				<h1 className="text-foreground text-xl font-semibold tracking-tight md:text-2xl">
-					{title}
-				</h1>
-				{subtitle && <p className="text-muted-foreground mt-0.5 text-sm">{subtitle}</p>}
+		<div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
+			<div className="flex min-w-0 basis-full items-start gap-3 sm:flex-1 sm:basis-0">
+				{icon && <div className="shrink-0">{icon}</div>}
+				<div className="min-w-0 flex-1">
+					<h1 className="text-foreground text-xl font-semibold tracking-tight md:text-2xl">
+						{title}
+					</h1>
+					{subtitle && (
+						<div className="mt-0.5">
+							<p
+								ref={subtitleRef}
+								className={cn(
+									'text-muted-foreground text-sm',
+									!expanded && 'line-clamp-2',
+								)}
+							>
+								{subtitle}
+							</p>
+							{(clamped || expanded) && (
+								<Button
+									variant="ghost"
+									size="sm"
+									onClick={() => setExpanded((v) => !v)}
+									className="text-muted-foreground hover:text-foreground mt-0.5 h-auto px-0 py-0 text-xs font-medium"
+								>
+									{expanded ? 'Show less' : 'Show more'}
+								</Button>
+							)}
+						</div>
+					)}
+				</div>
 			</div>
 			{actions && <div className="flex shrink-0 items-center gap-2">{actions}</div>}
 		</div>
