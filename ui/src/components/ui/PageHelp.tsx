@@ -61,10 +61,9 @@ export interface PageHelpProps {
 	 */
 	triggerClassName?: string;
 	/**
-	 * When true (default) bind a global `?` keypress to open this help
-	 * surface, mirroring the convention from GitHub, GitLab, Linear,
-	 * etc. Set to `false` if a page already binds `?` to something
-	 * else.
+	 * When true (default) bind a global `⌘ /` (Ctrl+/ on non-Mac)
+	 * keypress to open this help surface. Set to `false` if a page
+	 * already binds that combo to something else.
 	 */
 	bindShortcut?: boolean;
 }
@@ -111,24 +110,19 @@ export function PageHelp({
 	useEffect(() => {
 		if (!bindShortcut) return;
 		const handler = (e: KeyboardEvent) => {
-			// Match GitHub/Linear: `?` (which is Shift+/ on most
-			// layouts). Bail if the user is in a text field — opening
-			// help while they're typing would steal focus and feel
-			// hostile.
-			if (e.key !== '?') return;
-			const target = e.target as HTMLElement | null;
-			if (!target) return;
-			const tag = target.tagName;
-			if (
-				tag === 'INPUT' ||
-				tag === 'TEXTAREA' ||
-				tag === 'SELECT' ||
-				target.isContentEditable
-			) {
-				return;
+			if (e.key === '/' && (e.metaKey || e.ctrlKey)) {
+				const el = e.target;
+				if (
+					el instanceof HTMLElement &&
+					(el.tagName === 'INPUT' ||
+						el.tagName === 'TEXTAREA' ||
+						el.tagName === 'SELECT' ||
+						el.isContentEditable)
+				)
+					return;
+				e.preventDefault();
+				setOpen(true);
 			}
-			e.preventDefault();
-			setOpen(true);
 		};
 		window.addEventListener('keydown', handler);
 		return () => window.removeEventListener('keydown', handler);
@@ -192,13 +186,19 @@ export function PageHelp({
 										<span className="text-muted-foreground">{s.label}</span>
 										<span className="flex shrink-0 items-center gap-1">
 											{s.keys.map((k, idx) => (
-												<Kbd
+												<span
 													key={`${s.label}-${idx}-${k}`}
-													size="md"
-													variant="solid"
+													className="flex items-center gap-1"
 												>
-													{k}
-												</Kbd>
+													{s.chord && idx > 0 && (
+														<span className="text-muted-foreground/50 text-xs">
+															+
+														</span>
+													)}
+													<Kbd size="md" variant="solid">
+														{k}
+													</Kbd>
+												</span>
 											))}
 											{s.altKeys && (
 												<>

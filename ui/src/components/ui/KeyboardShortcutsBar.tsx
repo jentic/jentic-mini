@@ -2,21 +2,38 @@ import type { ReactNode } from 'react';
 import { Kbd } from '@/components/ui/Kbd';
 import { cn } from '@/lib/utils';
 
+const isMac = (() => {
+	if (typeof navigator === 'undefined') return false;
+	const nav = navigator as Navigator & {
+		userAgentData?: { platform: string };
+	};
+	if (nav.userAgentData?.platform) {
+		return nav.userAgentData.platform === 'macOS';
+	}
+	return /Mac|iPhone|iPad|iPod/.test(navigator.userAgent ?? '');
+})();
+
+/** Platform-aware modifier key label: `⌘` on Mac, `Ctrl` elsewhere. */
+export const MOD_KEY = isMac ? '⌘' : 'Ctrl';
+
 export interface KeyboardShortcut {
 	/**
 	 * Keys that make up the shortcut. Multiple entries are rendered as
-	 * separate pills with no separator between them, matching the
-	 * convention in `jentic-webapp` where `["↑","↓","←","→"]` reads as
-	 * "any of these arrow keys".
+	 * separate pills — by default with no separator (reads as "any of
+	 * these keys", e.g. `["↑","↓","←","→"]`).
 	 *
-	 * For chord shortcuts (e.g. `Cmd+K`) pass `["⌘", "K"]`. We don't
-	 * try to render the visual `+` glyph between them — keeping it
-	 * minimal makes the bar easier to scan and avoids ambiguity with
-	 * the literal `+` key.
+	 * For chord shortcuts (e.g. `Cmd+/`) set `chord: true` so the keys
+	 * render with a `+` between pills.
 	 */
 	keys: string[];
 	/** Plain-language description of what the shortcut does. */
 	label: string;
+	/**
+	 * When true, keys are rendered as a chord with `+` between pills
+	 * (e.g. ⌘ + /). When false/omitted, keys render side-by-side as
+	 * alternatives (e.g. ↑ ↓ ← →).
+	 */
+	chord?: boolean;
 	/**
 	 * Optional secondary trigger. Some shortcuts have synonyms (e.g. a
 	 * help dialog opened by `?` and `Shift+/`). Pass them as a
@@ -54,9 +71,15 @@ function ShortcutItem({ shortcut }: { shortcut: KeyboardShortcut }) {
 		<div className="flex items-center gap-1.5">
 			<span className="flex items-center gap-0.5">
 				{shortcut.keys.map((k, idx) => (
-					<Kbd key={`${shortcut.label}-${idx}-${k}`} variant="solid">
-						{k}
-					</Kbd>
+					<span
+						key={`${shortcut.label}-${idx}-${k}`}
+						className="flex items-center gap-0.5"
+					>
+						{shortcut.chord && idx > 0 && (
+							<span className="text-muted-foreground/50 text-[10px]">+</span>
+						)}
+						<Kbd variant="solid">{k}</Kbd>
+					</span>
 				))}
 				{shortcut.altKeys && (
 					<>
