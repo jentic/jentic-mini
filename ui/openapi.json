@@ -1129,6 +1129,59 @@
           ]
         },
         "security": []
+      },
+      "delete": {
+        "tags": [
+          "catalog"
+        ],
+        "summary": "Remove an API from the workspace",
+        "description": "Remove an API and its single-API workflows from the workspace.\n\nBy default credentials are preserved (api_id reference cleared) so they\ncan be re-used if the API is re-imported later. Pass `cascade=true` to\nalso delete all credentials and their toolkit bindings.",
+        "operationId": "delete_api_apis__api_id__delete",
+        "parameters": [
+          {
+            "name": "api_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "API id to delete, e.g. api.elevenlabs.io",
+              "title": "Api Id"
+            },
+            "description": "API id to delete, e.g. api.elevenlabs.io"
+          },
+          {
+            "name": "cascade",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "If true, also delete credentials bound to this API",
+              "default": false,
+              "title": "Cascade"
+            },
+            "description": "If true, also delete credentials bound to this API"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HumanLogin": []
+          }
+        ]
       }
     },
     "/apis/{api_id}/openapi.json": {
@@ -5796,6 +5849,53 @@
           ]
         },
         "security": []
+      },
+      "delete": {
+        "tags": [
+          "catalog"
+        ],
+        "summary": "Delete a workflow from the workspace",
+        "description": "Permanently delete a workflow and its Arazzo file from the workspace.",
+        "operationId": "delete_workflow_workflows__slug__delete",
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Workflow slug to delete",
+              "title": "Slug"
+            },
+            "description": "Workflow slug to delete"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "JenticApiKey": []
+          },
+          {
+            "AgentOauthAccessToken": []
+          },
+          {
+            "HumanLogin": []
+          }
+        ]
       }
     },
     "/{target}": {
