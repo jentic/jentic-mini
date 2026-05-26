@@ -108,21 +108,26 @@ function ApiDetailSheetContent({
 	onSelectWf,
 	onSelectApi,
 }: ContentProps) {
-	// Resolve source: trust initialEntity if present, otherwise ask the server
+	// Resolve source: trust initialEntity if present, otherwise ask the server.
+	// ALWAYS query when the initial source is 'directory' — after import the
+	// initialEntity prop may be stale (parent list hasn't re-rendered yet).
+	const shouldResolve = !initialEntity?.source || initialEntity.source === 'directory';
 	const { data: resolvedApi } = useQuery({
 		queryKey: ['sheet-resolve-source', apiId],
 		queryFn: () => api.listApis(1, 1, 'local', apiId),
-		enabled: !initialEntity?.source,
-		staleTime: 30_000,
+		enabled: shouldResolve,
+		staleTime: 10_000,
 	});
 
-	const source: 'workspace' | 'directory' = initialEntity?.source
-		? initialEntity.source
-		: (resolvedApi as any)?.total > 0
-			? 'workspace'
-			: 'directory';
+	const source: 'workspace' | 'directory' = (() => {
+		if (shouldResolve && resolvedApi) {
+			return (resolvedApi as any)?.total > 0 ? 'workspace' : 'directory';
+		}
+		if (initialEntity?.source === 'workspace') return 'workspace';
+		return 'directory';
+	})();
 
-	const sourceResolving = !initialEntity?.source && !resolvedApi;
+	const sourceResolving = shouldResolve && !resolvedApi;
 
 	if (inspectedOp) {
 		const isDirectory = isDirectoryOpKey(inspectedOp);

@@ -22,6 +22,7 @@ export function useCredentialImportedSync(opts: { onImported: (apiId: string) =>
 			queryClient.invalidateQueries({ queryKey: ['apis'] });
 			queryClient.invalidateQueries({ queryKey: ['catalog'] });
 			queryClient.invalidateQueries({ queryKey: ['search'] });
+			queryClient.invalidateQueries({ queryKey: ['sheet-resolve-source', evt.api_id] });
 
 			opts.onImported(evt.api_id);
 

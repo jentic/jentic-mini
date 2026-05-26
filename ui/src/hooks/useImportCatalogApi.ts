@@ -95,14 +95,10 @@ export function useImportCatalogApi(): UseImportCatalogApiResult {
 		},
 		onSuccess: (importedId, variables) => {
 			const apiId = importedId || variables.apiId;
-			// Invalidate the surfaces that show registration state. The
-			// `credentialImported` listeners (DiscoveryView /
-			// WorkspaceView) do their own broader invalidation when the
-			// event fires, so we keep this set small to avoid duplicate
-			// network traffic on the same tab.
 			queryClient.invalidateQueries({ queryKey: ['apis'] });
 			queryClient.invalidateQueries({ queryKey: ['catalog'] });
 			queryClient.invalidateQueries({ queryKey: ['apis', 'discover'] });
+			queryClient.invalidateQueries({ queryKey: ['sheet-resolve-source'] });
 
 			// Re-uses the existing cross-tab event so the rest of the
 			// UX (toast in DiscoveryView, "Open in Workspace" deep link,
