@@ -93,12 +93,12 @@ def test_soft_delete_api_default(admin_client):
 
 
 def test_soft_credential_survives(admin_client):
-    """After soft delete, credential still exists but api_id is cleared."""
+    """After soft delete, credential still exists with api_id preserved."""
     resp = admin_client.get("/credentials")
     assert resp.status_code == 200
     cred = next((c for c in resp.json() if c.get("label") == "soft-cascade-cred"), None)
     assert cred is not None, "Credential should survive soft delete"
-    assert cred.get("api_id") is None or cred["api_id"] == ""
+    assert cred.get("api_id") == SOFT_API_ID, "api_id should be preserved for re-import"
 
 
 def test_soft_cleanup(admin_client):

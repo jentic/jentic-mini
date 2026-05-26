@@ -1109,9 +1109,10 @@ async def delete_api(
 ):
     """Remove an API and its single-API workflows from the workspace.
 
-    By default credentials are preserved (api_id reference cleared) so they
-    can be re-used if the API is re-imported later. Pass `cascade=true` to
-    also delete all credentials and their toolkit bindings.
+    By default credentials are preserved (api_id reference kept intact) so they
+    automatically re-link if the API is re-imported later. Toolkit bindings also
+    survive. Pass `cascade=true` to also delete all credentials and their
+    toolkit bindings for a clean slate.
     """
     from src.config import WORKFLOWS_DIR  # noqa: PLC0415
 
@@ -1145,9 +1146,7 @@ async def delete_api(
 
             # Delete the credentials themselves
             await db.execute("DELETE FROM credentials WHERE api_id=?", (api_id,))
-        else:
-            # Preserve credentials but clear api_id reference
-            await db.execute("UPDATE credentials SET api_id=NULL WHERE api_id=?", (api_id,))
+        # Non-cascade: credentials keep their api_id so they auto-link on re-import
 
         # CASCADE handles: operations, api_overlays, api_broker_apps
         await db.execute("DELETE FROM apis WHERE id=?", (api_id,))

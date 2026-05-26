@@ -243,14 +243,14 @@ def test_api_detail_404_after_delete(admin_client):
 
 
 def test_credential_survives_api_delete(admin_client):
-    """Credentials are preserved after API deletion (api_id nulled)."""
+    """Credentials are preserved after API deletion (api_id kept for re-import)."""
     resp = admin_client.get("/credentials")
     assert resp.status_code == 200
     creds = resp.json()
     cred = next((c for c in creds if c.get("label") == "lifecycle-test-cred"), None)
     assert cred is not None, "Credential should survive API deletion"
-    assert cred.get("api_id") is None or cred["api_id"] == "", (
-        f"Credential api_id should be cleared, got: {cred.get('api_id')}"
+    assert cred.get("api_id") == API_ID, (
+        f"Credential api_id should be preserved for re-import, got: {cred.get('api_id')}"
     )
 
 
