@@ -303,14 +303,12 @@ def test_apis_endpoint_carries_has_workflows_for_catalog_rows(
     assert seeded.get("source") == "catalog"
     assert seeded.get("has_workflows") is True
 
-    # Workspace (local) rows shouldn't gain the field. The router only
-    # sets it on catalog entries; assert by absence rather than `False`
-    # so a future migration that opts local rows in is caught.
+    # Local rows now also carry has_workflows (from workspace enrichment).
     local_rows = [r for r in rows if r.get("source") == "local"]
     assert local_rows, "expected at least one workspace API in /apis"
     for r in local_rows:
-        assert "has_workflows" not in r, (
-            f"local row unexpectedly carries has_workflows: {r}"
+        assert "has_workflows" in r, (
+            f"local row missing has_workflows field: {r}"
         )
 
 
