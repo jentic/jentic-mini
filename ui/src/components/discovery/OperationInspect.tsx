@@ -61,7 +61,7 @@ export function OperationInspectContent({
 					</div>
 				)}
 				{summary && <p className="text-foreground text-sm font-medium">{summary}</p>}
-				{description && (
+				{description && description !== summary && (
 					<p className="text-muted-foreground text-sm leading-relaxed">{description}</p>
 				)}
 			</div>

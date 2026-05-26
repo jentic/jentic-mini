@@ -1,6 +1,7 @@
 import { PageShell } from '@/components/layout/PageShell';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { PageHelp } from '@/components/ui/PageHelp';
+import { MOD_KEY } from '@/components/ui/KeyboardShortcutsBar';
 import { DiscoveryView } from '@/components/discovery';
 
 /**
@@ -73,7 +74,7 @@ export default function DiscoverPage() {
 							{ keys: ['↑', '↓', '←', '→'], label: 'Move focus between cards' },
 							{ keys: ['Home', 'End'], label: 'Jump to first / last card' },
 							{ keys: ['Enter'], label: 'Open the focused card' },
-							{ keys: ['?'], label: 'Show this help' },
+							{ keys: [MOD_KEY, '/'], chord: true, label: 'Show this help' },
 						]}
 					/>
 				}

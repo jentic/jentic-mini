@@ -8,7 +8,7 @@ import { DiscoverEmptyState } from './DiscoverEmptyState';
 import { serverSourceToUi, apiToEntity } from './adapters';
 import { api } from '@/api/client';
 import { Button } from '@/components/ui/Button';
-import { LoadingState } from '@/components/ui/LoadingState';
+import { Skeleton } from '@/components/ui/Skeleton';
 import { useInfiniteScroll } from '@/hooks/useInfiniteScroll';
 import { useRovingGridFocus } from '@/hooks/useRovingGridFocus';
 import { subscribeCredentialImported } from '@/lib/events/credentialImported';
@@ -157,7 +157,7 @@ export function BrowseResults({
 		onLoadMore: () => setPage((p) => p + 1),
 	});
 
-	if (isInitialLoading) return <LoadingState message="Loading…" />;
+	if (isInitialLoading) return <DiscoverGridSkeleton />;
 
 	if (entities.length === 0) {
 		if (query) {
@@ -264,6 +264,36 @@ export function BrowseResults({
 					Showing all {totalCount.toLocaleString()} APIs
 				</p>
 			)}
+		</div>
+	);
+}
+
+function DiscoverGridSkeleton() {
+	return (
+		<div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+			{Array.from({ length: 9 }).map((_, i) => (
+				<div
+					key={i}
+					className="border-border bg-card flex flex-col gap-3 rounded-xl border p-4"
+				>
+					<div className="flex items-center gap-3">
+						<Skeleton className="h-10 w-10 rounded-xl" />
+						<div className="flex-1 space-y-1.5">
+							<Skeleton className="h-4 w-28" />
+							<Skeleton className="h-3 w-44" />
+						</div>
+						<Skeleton className="h-5 w-16 rounded-full" />
+					</div>
+					<div className="space-y-1.5">
+						<Skeleton className="h-3 w-full" />
+						<Skeleton className="h-3 w-3/4" />
+					</div>
+					<div className="flex gap-2">
+						<Skeleton className="h-5 w-14 rounded-full" />
+						<Skeleton className="h-5 w-18 rounded-full" />
+					</div>
+				</div>
+			))}
 		</div>
 	);
 }

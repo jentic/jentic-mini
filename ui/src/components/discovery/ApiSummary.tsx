@@ -36,7 +36,10 @@ export function ApiSummary({
 
 	if (hasDesc) {
 		const truncated = desc.length > SUMMARY_TRUNCATE;
-		const visible = !truncated || expanded ? desc : desc.slice(0, SUMMARY_TRUNCATE).trimEnd();
+		const raw = desc.slice(0, SUMMARY_TRUNCATE);
+		const visible = !truncated || expanded
+			? desc
+			: (raw.includes(' ') ? raw.slice(0, raw.lastIndexOf(' ')) : raw).trimEnd();
 
 		return (
 			<div data-testid="api-summary">

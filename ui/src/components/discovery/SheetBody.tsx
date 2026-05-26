@@ -1,6 +1,6 @@
 import { useMemo, useState, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { ExternalLink, Loader2, Plus, Workflow } from 'lucide-react';
+import { ExternalLink, Loader2, Plus } from 'lucide-react';
 import { SectionTitle } from './SectionTitle';
 import { ApiSummary } from './ApiSummary';
 import {
@@ -16,6 +16,7 @@ import { MethodBadge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { AppLink } from '@/components/ui/AppLink';
 import { Skeleton } from '@/components/ui/Skeleton';
+import { WorkflowRow } from '@/components/ui/WorkflowRow';
 import { api } from '@/api/client';
 import { directoryOpKey } from '@/lib/directoryOpKey';
 import { useImportCatalogApi } from '@/hooks/useImportCatalogApi';
@@ -327,29 +328,13 @@ function SheetWorkflowsSection({
 						const label = wf.summary ?? wf.workflow_id;
 						const description = wf.description?.trim() ?? '';
 						return (
-							<li key={wf.slug}>
-								<button
-									type="button"
+							<li key={wf.slug} data-testid="sheet-wf-row">
+								<WorkflowRow
+									name={label}
+									description={description}
+									stepsCount={wf.steps_count}
 									onClick={() => onSelectWf(wf.slug)}
-									className="hover:bg-muted/50 flex w-full items-start gap-3 rounded-md px-2 py-2 text-left transition-colors"
-									data-testid="sheet-wf-row"
-								>
-									<Workflow className="mt-0.5 h-4 w-4 shrink-0 text-teal-400" />
-									<div className="min-w-0 flex-1">
-										<p className="text-foreground truncate text-sm font-medium">
-											{label}
-										</p>
-										{description && description !== label && (
-											<p className="text-muted-foreground line-clamp-2 text-xs leading-relaxed">
-												{description}
-											</p>
-										)}
-										<p className="text-muted-foreground/80 mt-0.5 text-[11px]">
-											{wf.steps_count} step
-											{wf.steps_count === 1 ? '' : 's'}
-										</p>
-									</div>
-								</button>
+								/>
 							</li>
 						);
 					})}
@@ -374,26 +359,12 @@ function SheetWorkflowsSection({
 			<SectionTitle count={allWorkflows.length}>Workflows</SectionTitle>
 			<ul className="divide-border/40 -mx-2 divide-y" data-testid="sheet-wf-list">
 				{allWorkflows.map((wf) => (
-					<li key={wf.slug}>
-						<button
-							type="button"
+					<li key={wf.slug} data-testid="sheet-wf-row">
+						<WorkflowRow
+							name={wf.name ?? wf.slug}
+							stepsCount={wf.steps_count}
 							onClick={() => onSelectWf(wf.slug)}
-							className="hover:bg-muted/50 flex w-full items-center gap-3 rounded-md px-2 py-2 text-left transition-colors"
-							data-testid="sheet-wf-row"
-						>
-							<Workflow className="h-4 w-4 shrink-0 text-teal-400" />
-							<div className="min-w-0 flex-1">
-								<p className="text-foreground truncate text-sm font-medium">
-									{wf.name ?? wf.slug}
-								</p>
-								{wf.steps_count != null && wf.steps_count > 0 && (
-									<p className="text-muted-foreground text-xs">
-										{wf.steps_count} step
-										{wf.steps_count === 1 ? '' : 's'}
-									</p>
-								)}
-							</div>
-						</button>
+						/>
 					</li>
 				))}
 			</ul>

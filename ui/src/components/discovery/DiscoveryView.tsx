@@ -12,7 +12,7 @@ import { RecentlyUsedStrip } from './RecentlyUsedStrip';
 import { pushRecent } from './recentInspectStore';
 import { api } from '@/api/client';
 import { AppLink } from '@/components/ui/AppLink';
-import { KeyboardShortcutsBar } from '@/components/ui/KeyboardShortcutsBar';
+import { KeyboardShortcutsBar, MOD_KEY } from '@/components/ui/KeyboardShortcutsBar';
 import { toast } from '@/components/ui/toastStore';
 import { useImportCatalogApi } from '@/hooks/useImportCatalogApi';
 import { useCredentialImportedSync } from '@/hooks/useCredentialImportedSync';
@@ -538,7 +538,7 @@ export function DiscoveryView({ forcedSource, mode = 'single' }: DiscoveryViewPr
 					{ keys: ['↑', '↓', '←', '→'], label: 'navigate' },
 					{ keys: ['Enter'], label: 'open' },
 					{ keys: ['Esc'], label: 'close' },
-					{ keys: ['?'], label: 'help' },
+					{ keys: [MOD_KEY, '/'], chord: true, label: 'help' },
 				]}
 			/>
 		</>
