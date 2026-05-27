@@ -4,16 +4,11 @@ import { screen, waitFor, renderWithProviders, userEvent } from '../../test-util
 import { worker } from '../../mocks/browser';
 import { DiscoveryView } from '@/components/discovery';
 
-function renderDiscover(route = '/catalog') {
-	return renderWithProviders(<DiscoveryView />, { route, path: '/catalog' });
-}
-
 function renderDirectoryDiscover(route = '/discover') {
-	// `/discover` hard-codes `forcedSource="directory"`, which is what
-	// trims the segmented control to APIs-only and suppresses workflow
-	// cards from the search results. Tests covering that branch must
-	// render with `forcedSource` rather than the default
-	// (which keeps every option visible — closer to `/catalog`).
+	// `/discover` hard-codes `forcedSource="directory"` — the only
+	// production single-mode mounting site for `DiscoveryView` after
+	// the May 2026 source-toggle deletion. Tests that previously used
+	// the toggle-bearing helper now drive this surface instead.
 	return renderWithProviders(<DiscoveryView forcedSource="directory" />, {
 		route,
 		path: '/discover',
@@ -23,80 +18,13 @@ function renderDirectoryDiscover(route = '/discover') {
 describe('DiscoveryView', () => {
 	// ── Heading + base chrome ────────────────────────────────────────────────
 
-	it('renders the sticky toolbar and source filter bar (no Type segments)', async () => {
-		renderDiscover();
+	it('renders the sticky toolbar (no source / type filter bar after the May 2026 simplification)', async () => {
+		renderDirectoryDiscover();
 		expect(await screen.findByTestId('discover-toolbar')).toBeInTheDocument();
-		expect(screen.getByTestId('discovery-filter-bar')).toBeInTheDocument();
 		expect(screen.getByRole('searchbox', { name: /search/i })).toBeInTheDocument();
-		// May 2026 IA simplification removed the Type segmented control
-		// entirely. Only the Source segment remains in the filter bar.
-		const filterBar = screen.getByTestId('discovery-filter-bar');
-		expect(within(filterBar).queryByRole('button', { name: /^apis$/i })).toBeNull();
-		expect(within(filterBar).queryByRole('button', { name: /^workflows$/i })).toBeNull();
-		expect(within(filterBar).queryByRole('button', { name: /^endpoints$/i })).toBeNull();
-		expect(within(filterBar).queryByRole('button', { name: /^importable$/i })).toBeNull();
 	});
 
 	// ── Browse mode (grid, APIs default) ─────────────────────────────────────
-
-	it('defaults to APIs in browse mode and lists workspace + directory together', async () => {
-		// `GET /apis` (no source param) returns the server-side blended list.
-		worker.use(
-			http.get('/apis', () =>
-				HttpResponse.json({
-					data: [
-						{
-							id: 'stripe-api',
-							name: 'Stripe',
-							source: 'local',
-							has_credentials: true,
-						},
-						{ id: 'github.com', name: 'github.com', source: 'catalog' },
-					],
-					total: 2,
-					page: 1,
-				}),
-			),
-		);
-
-		renderDiscover();
-
-		await waitFor(() => expect(screen.getByText('Stripe')).toBeInTheDocument());
-		expect(screen.getByText('github.com')).toBeInTheDocument();
-		// Workflow query should NOT have fired in default browse mode.
-		expect(screen.queryByText(/no workflows to show/i)).toBeNull();
-	});
-
-	it('Workspace source narrows to the workspace slice (uses /apis?source=local)', async () => {
-		const user = userEvent.setup();
-		let lastApisCall: URL | null = null;
-		worker.use(
-			http.get('/apis', ({ request }) => {
-				lastApisCall = new URL(request.url);
-				const source = lastApisCall.searchParams.get('source');
-				const data =
-					source === 'local'
-						? [{ id: 'stripe-api', name: 'Stripe', source: 'local' }]
-						: [
-								{ id: 'stripe-api', name: 'Stripe', source: 'local' },
-								{ id: 'github.com', name: 'github.com', source: 'catalog' },
-							];
-				return HttpResponse.json({ data, total: data.length, page: 1 });
-			}),
-		);
-
-		renderDiscover();
-		await waitFor(() => expect(screen.getByText('Stripe')).toBeInTheDocument());
-		expect(screen.getByText('github.com')).toBeInTheDocument();
-
-		await user.click(screen.getByRole('button', { name: /my workspace/i }));
-
-		await waitFor(() => {
-			expect(screen.queryByText('github.com')).not.toBeInTheDocument();
-		});
-		expect(lastApisCall).not.toBeNull();
-		expect((lastApisCall as unknown as URL).searchParams.get('source')).toBe('local');
-	});
 
 	// ── Search mode ──────────────────────────────────────────────────────────
 	// After the May 2026 IA simplification, "search" is just a server-side
@@ -111,16 +39,16 @@ describe('DiscoveryView', () => {
 				const url = new URL(request.url);
 				lastQ = url.searchParams.get('q');
 				const data = lastQ
-					? [{ id: 'stripe.com', name: 'Stripe', source: 'local' }]
+					? [{ id: 'stripe.com', name: 'Stripe', source: 'catalog' }]
 					: [
-							{ id: 'stripe.com', name: 'Stripe', source: 'local' },
+							{ id: 'stripe.com', name: 'Stripe', source: 'catalog' },
 							{ id: 'github.com', name: 'github.com', source: 'catalog' },
 						];
 				return HttpResponse.json({ data, total: data.length, page: 1 });
 			}),
 		);
 
-		renderDiscover();
+		renderDirectoryDiscover();
 		await waitFor(() => expect(screen.getByText('Stripe')).toBeInTheDocument());
 		expect(screen.getByText('github.com')).toBeInTheDocument();
 
@@ -153,7 +81,7 @@ describe('DiscoveryView', () => {
 			),
 		);
 
-		renderDiscover();
+		renderDirectoryDiscover();
 
 		const card = await screen.findByTestId('discovery-card-api');
 		expect(card).toBeInTheDocument();
@@ -179,7 +107,7 @@ describe('DiscoveryView', () => {
 			),
 		);
 
-		renderDiscover();
+		renderDirectoryDiscover();
 
 		const card = await screen.findByTestId('discovery-card-api');
 		expect(card).toBeInTheDocument();
@@ -188,30 +116,6 @@ describe('DiscoveryView', () => {
 	});
 
 	// ── Directory-forced (`/discover`) mode ─────────────────────────────────
-
-	it('directory mode hides the filter bar entirely (no source / type segments)', async () => {
-		// `/discover` is the directory-only surface. The Type segmented
-		// control was removed in May 2026; the Source segment is also
-		// hidden because the page hard-codes its source axis. With both
-		// axes gone there's no filter UI to render — the bar collapses
-		// entirely rather than presenting a non-functional widget.
-		renderDirectoryDiscover();
-		await screen.findByTestId('discover-toolbar');
-		expect(screen.queryByTestId('discovery-filter-bar')).toBeNull();
-	});
-
-	it('directory mode search also hides the filter bar', async () => {
-		const user = userEvent.setup();
-		worker.use(http.get('/apis', () => HttpResponse.json({ data: [], total: 0, page: 1 })));
-
-		renderDirectoryDiscover();
-		await user.type(screen.getByRole('searchbox', { name: /search/i }), 'plaid');
-
-		await screen.findByTestId('discover-toolbar');
-		// Same as browse mode — no filter bar in directory-forced
-		// surfaces after the May 2026 simplification.
-		expect(screen.queryByTestId('discovery-filter-bar')).toBeNull();
-	});
 
 	it('directory mode search filters via /apis query param (no workflow rows)', async () => {
 		const user = userEvent.setup();
@@ -343,7 +247,7 @@ describe('DiscoveryView', () => {
 			}),
 		);
 
-		renderDiscover();
+		renderDirectoryDiscover();
 		await waitFor(() => expect(screen.getByText('Stripe')).toBeInTheDocument());
 
 		await user.type(screen.getByRole('searchbox', { name: /search/i }), 'stripe');
@@ -351,26 +255,6 @@ describe('DiscoveryView', () => {
 		await waitFor(() => {
 			expect(screen.getByText(/1 result/)).toBeInTheDocument();
 		});
-	});
-
-	it('treats legacy ?source=local,catalog as "All"', async () => {
-		worker.use(
-			http.get('/apis', () =>
-				HttpResponse.json({
-					data: [
-						{ id: 'stripe-api', name: 'Stripe', source: 'local' },
-						{ id: 'github.com', name: 'github.com', source: 'catalog' },
-					],
-					total: 2,
-					page: 1,
-				}),
-			),
-		);
-
-		renderDiscover('/catalog?source=local,catalog');
-
-		await waitFor(() => expect(screen.getByText('Stripe')).toBeInTheDocument());
-		expect(screen.getByText('github.com')).toBeInTheDocument();
 	});
 
 	// ── Directory card inline actions ────────────────────────────────────────
@@ -395,7 +279,7 @@ describe('DiscoveryView', () => {
 			),
 		);
 
-		renderDiscover();
+		renderDirectoryDiscover();
 
 		const card = await screen.findByTestId('discovery-card-api');
 
@@ -438,7 +322,7 @@ describe('DiscoveryView', () => {
 			),
 		);
 
-		renderDiscover();
+		renderDirectoryDiscover();
 
 		const card = await screen.findByTestId('discovery-card-api');
 		expect(within(card).queryByText(/add a credential to import/i)).toBeNull();
@@ -499,7 +383,7 @@ describe('DiscoveryView', () => {
 			),
 		);
 
-		renderDiscover();
+		renderDirectoryDiscover();
 
 		const card = await screen.findByTestId('discovery-card-api');
 		await user.click(within(card).getByRole('button'));
@@ -561,7 +445,7 @@ describe('DiscoveryView', () => {
 			),
 		);
 
-		renderDiscover();
+		renderDirectoryDiscover();
 		const card = await screen.findByTestId('discovery-card-api');
 		await user.click(within(card).getByRole('button'));
 
@@ -602,7 +486,7 @@ describe('DiscoveryView', () => {
 		);
 
 		const user = userEvent.setup();
-		renderDiscover();
+		renderDirectoryDiscover();
 		const card = await screen.findByTestId('discovery-card-api');
 		await user.click(within(card).getByRole('button'));
 
@@ -639,7 +523,7 @@ describe('DiscoveryView', () => {
 		);
 
 		const user = userEvent.setup();
-		renderDiscover();
+		renderDirectoryDiscover();
 		const card = await screen.findByTestId('discovery-card-api');
 		await user.click(within(card).getByRole('button'));
 
@@ -683,7 +567,7 @@ describe('DiscoveryView', () => {
 		);
 
 		const user = userEvent.setup();
-		renderDiscover();
+		renderDirectoryDiscover();
 		const card = await screen.findByTestId('discovery-card-api');
 		await user.click(within(card).getByRole('button', { name: /openai/i }));
 
@@ -736,7 +620,7 @@ describe('DiscoveryView', () => {
 			}),
 		);
 
-		renderDiscover();
+		renderDirectoryDiscover();
 
 		const card = await screen.findByTestId('discovery-card-api');
 		await user.click(within(card).getByRole('button', { name: /plaid/i }));
@@ -821,7 +705,7 @@ describe('DiscoveryView', () => {
 			),
 		);
 
-		renderDiscover();
+		renderDirectoryDiscover();
 		const card = await screen.findByTestId('discovery-card-api');
 		await user.click(within(card).getByRole('button', { name: /plaid/i }));
 
@@ -883,7 +767,7 @@ describe('DiscoveryView', () => {
 			),
 		);
 
-		renderDiscover();
+		renderDirectoryDiscover();
 		const card = await screen.findByTestId('discovery-card-api');
 		await user.click(within(card).getByRole('button', { name: /plaid/i }));
 		const sheet = await screen.findByTestId('sheet-primitive');
@@ -936,7 +820,7 @@ describe('DiscoveryView', () => {
 			),
 		);
 
-		renderDiscover('/catalog?inspect=stripe.com');
+		renderDirectoryDiscover('/discover?inspect=stripe.com');
 
 		const sheet = await screen.findByTestId('sheet-primitive');
 		await waitFor(() => {
@@ -968,7 +852,7 @@ describe('DiscoveryView', () => {
 			),
 		);
 
-		renderDiscover();
+		renderDirectoryDiscover();
 
 		const card = await screen.findByTestId('discovery-card-api');
 		await user.click(within(card).getByRole('button'));
@@ -1015,7 +899,7 @@ describe('DiscoveryView', () => {
 			),
 		);
 
-		renderDiscover();
+		renderDirectoryDiscover();
 
 		const card = await screen.findByTestId('discovery-card-api');
 		const importBtn = within(card).getByRole('button', { name: /^import$/i });
@@ -1083,7 +967,7 @@ describe('DiscoveryView', () => {
 			),
 		);
 
-		renderDiscover();
+		renderDirectoryDiscover();
 		await user.click(
 			within(await screen.findByTestId('discovery-card-api')).getByRole('button'),
 		);
@@ -1117,7 +1001,7 @@ describe('DiscoveryView', () => {
 			),
 		);
 
-		renderDiscover('/catalog?type=importable');
+		renderDirectoryDiscover('/discover?type=importable');
 
 		// `?type=` was removed entirely in the May 2026 simplification —
 		// the URL fixup `useEffect` strips it. Results still render.
@@ -1171,7 +1055,7 @@ describe('DiscoveryView', () => {
 			}),
 		);
 
-		renderDiscover();
+		renderDirectoryDiscover();
 		const card = await screen.findByTestId('discovery-card-api');
 		await user.click(within(card).getByRole('button', { name: /big api/i }));
 
@@ -1275,7 +1159,7 @@ describe('DiscoveryView', () => {
 			),
 		);
 
-		renderDiscover();
+		renderDirectoryDiscover();
 		const card = await screen.findByTestId('discovery-card-api');
 		await user.click(within(card).getByRole('button', { name: /tagged api/i }));
 
@@ -1345,7 +1229,7 @@ describe('DiscoveryView', () => {
 			),
 		);
 
-		renderDiscover();
+		renderDirectoryDiscover();
 		const card = await screen.findByTestId('discovery-card-api');
 		await user.click(within(card).getByRole('button', { name: /haystack api/i }));
 
@@ -1391,7 +1275,7 @@ describe('DiscoveryView', () => {
 			),
 		);
 
-		renderDiscover();
+		renderDirectoryDiscover();
 		const card = await screen.findByTestId('discovery-card-api');
 		await user.click(within(card).getByRole('button', { name: /doc api/i }));
 
@@ -1457,7 +1341,7 @@ describe('DiscoveryView', () => {
 			),
 		);
 
-		renderDiscover();
+		renderDirectoryDiscover();
 		const card = await screen.findByTestId('discovery-card-api');
 		await user.click(within(card).getByRole('button'));
 
@@ -1496,7 +1380,7 @@ describe('DiscoveryView', () => {
 			),
 		);
 
-		renderDiscover();
+		renderDirectoryDiscover();
 		const card = await screen.findByTestId('discovery-card-api');
 		await user.click(within(card).getByRole('button', { name: /long api/i }));
 
@@ -1562,7 +1446,7 @@ describe('DiscoveryView', () => {
 			),
 		);
 
-		renderDiscover();
+		renderDirectoryDiscover();
 		// Open Stripe.
 		const stripeCard = await screen.findByText('Stripe');
 		await user.click(stripeCard.closest('button')!);
@@ -1613,7 +1497,7 @@ describe('DiscoveryView', () => {
 				}),
 			),
 		);
-		renderDiscover();
+		renderDirectoryDiscover();
 		await screen.findByText('Stripe');
 		// Focus on body, then press `/`.
 		document.body.focus();
@@ -1664,7 +1548,7 @@ describe('DiscoveryView', () => {
 				}),
 			),
 		);
-		renderDiscover('/catalog?inspect=stripe.com');
+		renderDirectoryDiscover('/discover?inspect=stripe.com');
 		await screen.findByTestId('sheet-primitive');
 
 		// Probe component to read the store via the hook.
@@ -1700,15 +1584,12 @@ describe('DiscoveryView (sectioned)', () => {
 		});
 	}
 
-	it('renders both section headers in browse mode and hides the Source segment', async () => {
+	it('renders both section headers in browse mode', async () => {
 		worker.use(http.get('/apis', () => HttpResponse.json({ data: [], total: 0, page: 1 })));
 		renderSectioned();
 
 		expect(await screen.findByTestId('discovery-section-your-workspace')).toBeInTheDocument();
 		expect(screen.getByTestId('discovery-section-from-the-catalog')).toBeInTheDocument();
-		// Sectioned mode hides the filter bar entirely — the source axis
-		// is implicit in the section layout.
-		expect(screen.queryByTestId('discovery-filter-bar')).toBeNull();
 	});
 
 	it('issues two parallel /apis requests, one per section, with distinct source params', async () => {

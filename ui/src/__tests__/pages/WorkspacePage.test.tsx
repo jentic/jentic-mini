@@ -27,7 +27,6 @@ describe('WorkspacePage', () => {
 		// it means we're back to reusing DiscoveryView and the surfaces are
 		// going to look the same again.
 		expect(screen.queryByTestId('discover-toolbar')).toBeNull();
-		expect(screen.queryByTestId('discovery-filter-bar')).toBeNull();
 	});
 
 	it('issues a /apis request scoped to source=local (the workspace, not the catalog)', async () => {

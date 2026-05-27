@@ -8,16 +8,12 @@ function renderDiscover(route = '/discover') {
 }
 
 describe('DiscoverPage (shell)', () => {
-	it('renders the Discover page header and mounts the discovery view with the source segment hidden', async () => {
+	it('renders the Discover page header and mounts the discovery view', async () => {
 		worker.use(http.get('/apis', () => HttpResponse.json({ data: [], total: 0, page: 1 })));
 		renderDiscover();
 
 		expect(await screen.findByRole('heading', { name: /discover/i })).toBeInTheDocument();
 		expect(screen.getByTestId('discover-toolbar')).toBeInTheDocument();
-		// Forced source hides the entire filter bar — with both the Type
-		// segment removed (May 2026 simplification) and the Source segment
-		// suppressed, there's nothing left to render.
-		expect(screen.queryByTestId('discovery-filter-bar')).toBeNull();
 	});
 
 	it('uses /apis?source=catalog so workspace items never bleed into the directory view', async () => {
