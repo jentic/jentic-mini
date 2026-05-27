@@ -284,10 +284,8 @@ describe('WorkspacePage', () => {
 			const kindGroup = within(dialog).getByTestId('import-source-kind');
 			const apiCard = within(kindGroup).getByRole('radio', { name: /api spec/i });
 			expect(apiCard).toHaveAttribute('aria-checked', 'true');
-			// And the primary CTA reflects the active kind.
-			expect(within(dialog).getByTestId('import-source-submit')).toHaveTextContent(
-				/import api/i,
-			);
+			// The submit button is in the Dialog footer (outside the inner content div).
+			expect(screen.getByTestId('import-source-submit')).toHaveTextContent(/import api/i);
 		});
 
 		it("opens the dialog from each section's empty-state CTA with the right kind pre-selected", async () => {
@@ -305,9 +303,9 @@ describe('WorkspacePage', () => {
 					name: /api spec/i,
 				}),
 			).toHaveAttribute('aria-checked', 'true');
-			// Close via the dialog's X (the footer no longer has a
-			// Cancel button — Esc / X are the only cancel paths).
-			await user.click(within(dialog).getByRole('button', { name: /close/i }));
+			// Close via the dialog's X button (rendered by the Dialog
+			// component outside the inner content div).
+			await user.click(screen.getByRole('button', { name: /close/i }));
 			await user.click(screen.getByTestId('workspace-empty-cta-workflow'));
 			dialog = await screen.findByTestId('import-source-dialog');
 			expect(
@@ -353,10 +351,10 @@ describe('WorkspacePage', () => {
 				within(dialog).getByTestId('import-source-url'),
 				'https://example.com/openapi.json',
 			);
-			await user.click(within(dialog).getByTestId('import-source-submit'));
+			await user.click(screen.getByTestId('import-source-submit'));
 
 			await waitFor(() => {
-				expect(screen.queryByTestId('import-source-dialog')).toBeNull();
+				expect(screen.getByTestId('import-source-submit')).not.toBeVisible();
 			});
 			expect(postBody).toEqual({
 				sources: [{ type: 'url', url: 'https://example.com/openapi.json' }],
@@ -389,7 +387,7 @@ describe('WorkspacePage', () => {
 				within(dialog).getByTestId('import-source-url'),
 				'https://example.com/openapi.json',
 			);
-			await user.click(within(dialog).getByTestId('import-source-submit'));
+			await user.click(screen.getByTestId('import-source-submit'));
 
 			expect(await screen.findByTestId('import-source-error')).toHaveTextContent(
 				/could not parse spec/i,

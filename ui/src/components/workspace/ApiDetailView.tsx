@@ -1,6 +1,16 @@
-import { useState, useMemo, useRef } from 'react';
+import { useState, useMemo, useRef, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Plus, Key, KeyRound, Layers, ChevronDown, Shield } from 'lucide-react';
+import {
+	Plus,
+	Key,
+	KeyRound,
+	Layers,
+	ChevronDown,
+	Shield,
+	Activity,
+	Zap,
+	Workflow,
+} from 'lucide-react';
 import { api } from '@/api/client';
 import { MethodBadge } from '@/components/ui/Badge';
 import { AppLink } from '@/components/ui/AppLink';
@@ -72,6 +82,21 @@ export function ApiDetailView({ apiId }: ApiDetailViewProps) {
 			return list.filter((w: any) => w.involved_apis?.includes(apiId) || w.api_id === apiId);
 		},
 	});
+
+	const lastActivityQuery = useQuery({
+		queryKey: ['api-last-activity', apiId],
+		queryFn: () => api.listTraces({ limit: 20 }),
+		staleTime: 15_000,
+	});
+	const lastActivityTs = (() => {
+		const traces = (
+			lastActivityQuery.data as
+				| { traces?: Array<{ operation_id?: string; created_at?: number }> }
+				| undefined
+		)?.traces;
+		const match = traces?.find((t) => t.operation_id?.includes(apiId));
+		return match?.created_at ?? null;
+	})();
 
 	const offset = (pages - 1) * OPS_PAGE_SIZE;
 
@@ -243,7 +268,7 @@ export function ApiDetailView({ apiId }: ApiDetailViewProps) {
 			/>
 
 			{/* Overview */}
-			<section className="border-border/50 rounded-lg border">
+			<section className="border-border/60 bg-muted/20 rounded-xl border">
 				{/* Servers */}
 				{servers.length > 0 && (
 					<div className="border-border/30 border-b px-4 py-3">
@@ -263,11 +288,32 @@ export function ApiDetailView({ apiId }: ApiDetailViewProps) {
 					</div>
 				)}
 				{/* Stats row */}
-				<div className="flex flex-wrap items-center gap-x-6 gap-y-2 px-4 py-3">
-					<StatItem label="Credentials" value={credentials.length} />
-					<StatItem label="Toolkits" value={boundToolkits.length} />
-					<StatItem label="Operations" value={apiData.operation_count ?? opsTotal} />
-					<StatItem label="Workflows" value={workflows?.length ?? 0} />
+				<div className="text-muted-foreground flex flex-wrap items-center gap-x-6 gap-y-3 px-4 py-3 text-xs">
+					<MetaItem
+						icon={<KeyRound size={13} aria-hidden="true" />}
+						label="Credentials"
+						value={String(credentials.length)}
+					/>
+					<MetaItem
+						icon={<Layers size={13} aria-hidden="true" />}
+						label="Toolkits"
+						value={String(boundToolkits.length)}
+					/>
+					<MetaItem
+						icon={<Zap size={13} aria-hidden="true" />}
+						label="Operations"
+						value={String(apiData.operation_count ?? opsTotal)}
+					/>
+					<MetaItem
+						icon={<Workflow size={13} aria-hidden="true" />}
+						label="Workflows"
+						value={String(workflows?.length ?? 0)}
+					/>
+					<MetaItem
+						icon={<Activity size={13} aria-hidden="true" />}
+						label="Last activity"
+						value={lastActivityTs ? timeAgo(lastActivityTs) : '—'}
+					/>
 					{createdAt && (
 						<span className="text-muted-foreground ml-auto text-xs">
 							Imported{' '}
@@ -601,12 +647,27 @@ function WorkflowsSection({
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function StatItem({ label, value }: { label: string; value: number }) {
+function MetaItem({
+	icon,
+	label,
+	value,
+	loading,
+}: {
+	icon: ReactNode;
+	label: string;
+	value: string;
+	loading?: boolean;
+}) {
 	return (
-		<div className="flex items-baseline gap-1.5">
-			<span className="text-foreground text-sm font-semibold tabular-nums">{value}</span>
-			<span className="text-muted-foreground text-xs">{label}</span>
-		</div>
+		<span className="inline-flex min-w-0 items-baseline gap-2">
+			<span className="text-muted-foreground/70 inline-flex shrink-0 items-center gap-1.5 self-center">
+				{icon}
+				<span className="text-[10px] tracking-wider uppercase">{label}</span>
+			</span>
+			<span className="text-foreground font-mono text-sm font-medium">
+				{loading ? '…' : value}
+			</span>
+		</span>
 	);
 }
 

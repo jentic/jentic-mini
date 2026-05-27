@@ -160,7 +160,9 @@ export const handlers = [
 		}),
 	),
 	http.post('/catalog/refresh', () => HttpResponse.json({ status: 'ok' })),
-	http.post('/import', () => HttpResponse.json({ id: 'import-1', status: 'ok' })),
+	http.post('/import', () =>
+		HttpResponse.json({ results: [{ status: 'success', api_id: 'imported-api' }] }),
+	),
 
 	// ── Approval ──────────────────────────────────────────────────
 	http.get('/toolkits/:id/access-requests/:reqId', ({ params }) =>

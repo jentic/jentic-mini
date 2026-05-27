@@ -33,9 +33,15 @@ export interface WorkflowMetaStripProps {
 	slug: string;
 	stepsCount: number;
 	involvedApis: string[];
+	createdAt?: number | null;
 }
 
-export function WorkflowMetaStrip({ slug, stepsCount, involvedApis }: WorkflowMetaStripProps) {
+export function WorkflowMetaStrip({
+	slug,
+	stepsCount,
+	involvedApis,
+	createdAt,
+}: WorkflowMetaStripProps) {
 	const lastRun = useQuery({
 		queryKey: ['workflow-meta', 'last-run', slug],
 		queryFn: () => api.listTraces({ limit: 20 }),
@@ -76,6 +82,14 @@ export function WorkflowMetaStrip({ slug, stepsCount, involvedApis }: WorkflowMe
 				loading={lastRun.isLoading}
 				testId="workflow-meta-last-run"
 			/>
+			{createdAt && (
+				<span className="text-muted-foreground ml-auto text-xs">
+					Imported{' '}
+					<time dateTime={new Date(createdAt * 1000).toISOString()}>
+						{timeAgo(createdAt)}
+					</time>
+				</span>
+			)}
 		</div>
 	);
 }

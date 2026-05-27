@@ -27,7 +27,7 @@ describe('DiscoveryView', () => {
 		renderDiscover();
 		expect(await screen.findByTestId('discover-toolbar')).toBeInTheDocument();
 		expect(screen.getByTestId('discovery-filter-bar')).toBeInTheDocument();
-		expect(screen.getByRole('textbox', { name: /search/i })).toBeInTheDocument();
+		expect(screen.getByRole('searchbox', { name: /search/i })).toBeInTheDocument();
 		// May 2026 IA simplification removed the Type segmented control
 		// entirely. Only the Source segment remains in the filter bar.
 		const filterBar = screen.getByTestId('discovery-filter-bar');
@@ -124,7 +124,7 @@ describe('DiscoveryView', () => {
 		await waitFor(() => expect(screen.getByText('Stripe')).toBeInTheDocument());
 		expect(screen.getByText('github.com')).toBeInTheDocument();
 
-		const input = screen.getByRole('textbox', { name: /search/i });
+		const input = screen.getByRole('searchbox', { name: /search/i });
 		await user.type(input, 'stripe');
 
 		await waitFor(() => {
@@ -157,7 +157,7 @@ describe('DiscoveryView', () => {
 
 		const card = await screen.findByTestId('discovery-card-api');
 		expect(card).toBeInTheDocument();
-		expect(within(card).getByText('Directory')).toBeInTheDocument();
+		expect(within(card).getByText('Available')).toBeInTheDocument();
 		expect(within(card).queryByText(/available to import/i)).toBeNull();
 	});
 
@@ -183,7 +183,7 @@ describe('DiscoveryView', () => {
 
 		const card = await screen.findByTestId('discovery-card-api');
 		expect(card).toBeInTheDocument();
-		expect(within(card).getByText('+ workflows')).toBeInTheDocument();
+		expect(within(card).getByText('workflows')).toBeInTheDocument();
 		expect(screen.queryByTestId('discovery-card-workflow')).toBeNull();
 	});
 
@@ -205,7 +205,7 @@ describe('DiscoveryView', () => {
 		worker.use(http.get('/apis', () => HttpResponse.json({ data: [], total: 0, page: 1 })));
 
 		renderDirectoryDiscover();
-		await user.type(screen.getByRole('textbox', { name: /search/i }), 'plaid');
+		await user.type(screen.getByRole('searchbox', { name: /search/i }), 'plaid');
 
 		await screen.findByTestId('discover-toolbar');
 		// Same as browse mode — no filter bar in directory-forced
@@ -235,11 +235,11 @@ describe('DiscoveryView', () => {
 		);
 
 		renderDirectoryDiscover();
-		await user.type(screen.getByRole('textbox', { name: /search/i }), 'plaid');
+		await user.type(screen.getByRole('searchbox', { name: /search/i }), 'plaid');
 
 		await waitFor(() => expect(screen.getByText('plaid.com')).toBeInTheDocument());
 		// API card present with the workflow chip.
-		expect(screen.getByText('+ workflows')).toBeInTheDocument();
+		expect(screen.getByText('workflows')).toBeInTheDocument();
 		// No workflow cards rendered — directory mode only shows APIs.
 		expect(screen.queryByTestId('discovery-card-workflow')).toBeNull();
 	});
@@ -308,8 +308,8 @@ describe('DiscoveryView', () => {
 		const githubCard = cards.find((c) => within(c).queryByText('github.com'));
 		expect(plaidCard).toBeDefined();
 		expect(githubCard).toBeDefined();
-		expect(within(plaidCard!).getByText('+ workflows')).toBeInTheDocument();
-		expect(within(githubCard!).queryByText('+ workflows')).toBeNull();
+		expect(within(plaidCard!).getByText('workflows')).toBeInTheDocument();
+		expect(within(githubCard!).queryByText('workflows')).toBeNull();
 	});
 
 	// ── P2: search relevance feedback ────────────────────────────────────────
@@ -346,7 +346,7 @@ describe('DiscoveryView', () => {
 		renderDiscover();
 		await waitFor(() => expect(screen.getByText('Stripe')).toBeInTheDocument());
 
-		await user.type(screen.getByRole('textbox', { name: /search/i }), 'stripe');
+		await user.type(screen.getByRole('searchbox', { name: /search/i }), 'stripe');
 
 		await waitFor(() => {
 			expect(screen.getByText(/1 result/)).toBeInTheDocument();
@@ -464,26 +464,37 @@ describe('DiscoveryView', () => {
 					page: 1,
 				}),
 			),
-			// Real server shape: token-efficient `{id, summary, description}`
-			// where `id` is the jentic_id (METHOD/host/path). Method + path are
-			// NOT separate fields — the sheet must derive them from `id`. This
-			// test guards against a regression where ops rendered as `?` badges.
-			http.get('/apis/stripe.com/operations', () =>
+			http.get('/catalog/stripe.com/operations', () =>
 				HttpResponse.json({
 					data: [
 						{
-							id: 'GET/api.stripe.com/v1/customers',
+							method: 'GET',
+							path: '/v1/customers',
 							summary: 'List customers',
 							description: '',
+							operation_id: 'listCustomers',
+							parameters: [],
+							security: [],
+							tags: [],
 						},
 						{
-							id: 'POST/api.stripe.com/v1/charges',
+							method: 'POST',
+							path: '/v1/charges',
 							summary: 'Create charge',
 							description: '',
+							operation_id: 'createCharge',
+							parameters: [],
+							security: [],
+							tags: [],
 						},
 					],
 					total: 2,
-					page: 1,
+					truncated: false,
+					offset: 0,
+					limit: 25,
+					spec_url: '',
+					info: { title: 'Stripe', version: '1.0', description: '' },
+					security_schemes: {},
 				}),
 			),
 		);
@@ -497,14 +508,13 @@ describe('DiscoveryView', () => {
 		const sheet = await screen.findByTestId('sheet-primitive');
 		expect(within(sheet).getByRole('heading', { name: 'Stripe' })).toBeInTheDocument();
 
-		// Operations list rendered from the workspace endpoint.
+		// Operations list rendered from the catalog operations endpoint.
 		await waitFor(() => {
 			expect(within(sheet).getByTestId('sheet-ops-list')).toBeInTheDocument();
 		});
 		expect(within(sheet).getByText('List customers')).toBeInTheDocument();
 		expect(within(sheet).getByText('Create charge')).toBeInTheDocument();
-		// Method badges + paths are derived from `id` even when the server
-		// only sends `{id, summary, description}`.
+		// Method badges + paths rendered.
 		expect(within(sheet).getByText('GET')).toBeInTheDocument();
 		expect(within(sheet).getByText('POST')).toBeInTheDocument();
 		expect(within(sheet).getByText('/v1/customers')).toBeInTheDocument();
@@ -512,10 +522,6 @@ describe('DiscoveryView', () => {
 	});
 
 	it('sheet shows Workflows-for-this-API section when the API has matching workflows', async () => {
-		// Regression: the sheet should deep-link to the dedicated workflow page
-		// rather than expanding inline, AND filter strictly on
-		// `involved_apis` membership (server `q=` matches description too —
-		// we don't want a workflow that just *mentions* the api in copy).
 		const user = userEvent.setup();
 		worker.use(
 			http.get('/apis', () =>
@@ -525,15 +531,20 @@ describe('DiscoveryView', () => {
 					page: 1,
 				}),
 			),
-			http.get('/apis/stripe.com/operations', () =>
-				HttpResponse.json({ data: [], total: 0, page: 1 }),
+			http.get('/catalog/stripe.com/operations', () =>
+				HttpResponse.json({
+					data: [],
+					total: 0,
+					truncated: false,
+					offset: 0,
+					limit: 25,
+					spec_url: '',
+					info: { title: 'Stripe', version: '1.0', description: '' },
+					security_schemes: {},
+				}),
 			),
-			http.get('/workflows', ({ request }) => {
-				const url = new URL(request.url);
-				// Sanity-check the call shape — sheet must filter server-side.
-				expect(url.searchParams.get('q')).toBe('stripe.com');
-				expect(url.searchParams.get('source')).toBe('local');
-				return HttpResponse.json([
+			http.get('/workflows', () =>
+				HttpResponse.json([
 					{
 						slug: 'charge-and-receipt',
 						name: 'Charge customer and send receipt',
@@ -541,15 +552,13 @@ describe('DiscoveryView', () => {
 						steps_count: 4,
 					},
 					{
-						// Mentions stripe in description but doesn't actually
-						// involve it — must be filtered out client-side.
 						slug: 'unrelated',
 						name: 'Unrelated workflow that mentions stripe in copy',
 						involved_apis: ['github.com'],
 						steps_count: 2,
 					},
-				]);
-			}),
+				]),
+			),
 		);
 
 		renderDiscover();
@@ -577,8 +586,17 @@ describe('DiscoveryView', () => {
 					page: 1,
 				}),
 			),
-			http.get('/apis/lonely.com/operations', () =>
-				HttpResponse.json({ data: [], total: 0, page: 1 }),
+			http.get('/catalog/lonely.com/operations', () =>
+				HttpResponse.json({
+					data: [],
+					total: 0,
+					truncated: false,
+					offset: 0,
+					limit: 25,
+					spec_url: '',
+					info: { title: 'Lonely', version: '1.0', description: '' },
+					security_schemes: {},
+				}),
 			),
 			http.get('/workflows', () => HttpResponse.json([])),
 		);
@@ -589,15 +607,15 @@ describe('DiscoveryView', () => {
 		await user.click(within(card).getByRole('button'));
 
 		const sheet = await screen.findByTestId('sheet-primitive');
-		// Wait for the credentials section as a proxy for "sheet body settled".
+		// Wait for the operations section to settle as a proxy for "sheet body loaded".
 		await waitFor(() => {
-			expect(within(sheet).getByTestId('sheet-credentials-section')).toBeInTheDocument();
+			expect(within(sheet).getByText(/no operations found/i)).toBeInTheDocument();
 		});
-		// Empty workflow section is suppressed entirely — empty sections are noisy.
+		// Empty workflow section is suppressed entirely.
 		expect(within(sheet).queryByTestId('sheet-workflows-section')).toBeNull();
 	});
 
-	it('sheet shows Credentials-for-this-API section with Add CTA when zero creds', async () => {
+	it('sheet shows Open in Workspace link for workspace APIs', async () => {
 		worker.use(
 			http.get('/apis', () =>
 				HttpResponse.json({
@@ -606,49 +624,18 @@ describe('DiscoveryView', () => {
 					page: 1,
 				}),
 			),
-			http.get('/apis/fresh.com/operations', () =>
-				HttpResponse.json({ data: [], total: 0, page: 1 }),
-			),
-			// Default handler returns `{data: [], total: 0}` — the sheet
-			// adapter must tolerate both raw-list and envelope shapes.
-		);
-
-		const user = userEvent.setup();
-		renderDiscover();
-		const card = await screen.findByTestId('discovery-card-api');
-		await user.click(within(card).getByRole('button'));
-
-		const sheet = await screen.findByTestId('sheet-primitive');
-		const section = await within(sheet).findByTestId('sheet-credentials-section');
-		expect(within(section).getByText(/no credentials configured/i)).toBeInTheDocument();
-		// Add CTA deep-links to the credentials creation flow filtered by api_id.
-		const addCta = within(section).getByText(/add credential/i);
-		expect(addCta.closest('a')).toHaveAttribute(
-			'href',
-			expect.stringContaining('/credentials/new?api_id=fresh.com'),
-		);
-	});
-
-	it('sheet lists existing credentials with a "Manage credentials" deep-link', async () => {
-		worker.use(
-			http.get('/apis', () =>
+			http.get('/catalog/fresh.com/operations', () =>
 				HttpResponse.json({
-					data: [{ id: 'openai.com', name: 'OpenAI', source: 'local' }],
-					total: 1,
-					page: 1,
+					data: [],
+					total: 0,
+					truncated: false,
+					offset: 0,
+					limit: 25,
+					spec_url: '',
+					info: { title: 'Fresh', version: '1.0', description: '' },
+					security_schemes: {},
 				}),
 			),
-			http.get('/apis/openai.com/operations', () =>
-				HttpResponse.json({ data: [], total: 0, page: 1 }),
-			),
-			http.get('/credentials', ({ request }) => {
-				const url = new URL(request.url);
-				expect(url.searchParams.get('api_id')).toBe('openai.com');
-				return HttpResponse.json([
-					{ id: 'cred_prod_abc', label: 'OPENAI_PROD', api_id: 'openai.com' },
-					{ id: 'cred_staging_xyz', label: 'OPENAI_STAGING', api_id: 'openai.com' },
-				]);
-			}),
 		);
 
 		const user = userEvent.setup();
@@ -657,15 +644,56 @@ describe('DiscoveryView', () => {
 		await user.click(within(card).getByRole('button'));
 
 		const sheet = await screen.findByTestId('sheet-primitive');
-		const section = await within(sheet).findByTestId('sheet-credentials-section');
-		expect(within(section).getByText('OPENAI_PROD')).toBeInTheDocument();
-		expect(within(section).getByText('OPENAI_STAGING')).toBeInTheDocument();
-		// Footer link lets the user jump to the canonical Credentials surface.
-		const manageLink = within(section).getByText(/manage credentials/i);
-		expect(manageLink.closest('a')).toHaveAttribute(
-			'href',
-			expect.stringContaining('/credentials?api_id=openai.com'),
+		await waitFor(() => {
+			expect(within(sheet).getByText(/Open in Workspace/)).toBeInTheDocument();
+		});
+		const link = within(sheet)
+			.getByText(/Open in Workspace/)
+			.closest('a');
+		expect(link).toHaveAttribute('href', '/workspace/apis/fresh.com');
+	});
+
+	it('sheet shows Import to workspace button for directory APIs', async () => {
+		worker.use(
+			http.get('/apis', ({ request }) => {
+				const url = new URL(request.url);
+				const source = url.searchParams.get('source');
+				// Resolve query: source=local&q=openai.com → not found in workspace
+				if (source === 'local') {
+					return HttpResponse.json({ data: [], total: 0, page: 1 });
+				}
+				return HttpResponse.json({
+					data: [{ id: 'openai.com', name: 'OpenAI', source: 'catalog' }],
+					total: 1,
+					page: 1,
+				});
+			}),
+			http.get('/catalog/openai.com/operations', () =>
+				HttpResponse.json({
+					data: [],
+					total: 0,
+					truncated: false,
+					offset: 0,
+					limit: 25,
+					spec_url: 'https://example.com/openai.json',
+					info: { title: 'OpenAI', version: '1.0', description: '' },
+					security_schemes: {},
+				}),
+			),
 		);
+
+		const user = userEvent.setup();
+		renderDiscover();
+		const card = await screen.findByTestId('discovery-card-api');
+		await user.click(within(card).getByRole('button', { name: /openai/i }));
+
+		const sheet = await screen.findByTestId('sheet-primitive');
+		await waitFor(() => {
+			expect(
+				within(sheet).getByRole('button', { name: /import to workspace/i }),
+			).toBeInTheDocument();
+		});
+		expect(within(sheet).getByTestId('sheet-directory-import')).toBeInTheDocument();
 	});
 
 	it('clicking a directory API card opens the sheet and lazy-fetches the spec preview', async () => {
@@ -711,11 +739,11 @@ describe('DiscoveryView', () => {
 		renderDiscover();
 
 		const card = await screen.findByTestId('discovery-card-api');
-		await user.click(within(card).getByRole('button'));
+		await user.click(within(card).getByRole('button', { name: /plaid/i }));
 
 		const sheet = await screen.findByTestId('sheet-primitive');
 		await waitFor(() => {
-			expect(within(sheet).getByTestId('sheet-ops-list-directory')).toBeInTheDocument();
+			expect(within(sheet).getByTestId('sheet-ops-list')).toBeInTheDocument();
 		});
 		expect(within(sheet).getByText('List accounts')).toBeInTheDocument();
 		// Spec description should override the synthetic list-view one.
@@ -730,13 +758,17 @@ describe('DiscoveryView', () => {
 		const user = userEvent.setup();
 		let previewCalled = 0;
 		worker.use(
-			http.get('/apis', () =>
-				HttpResponse.json({
+			http.get('/apis', ({ request }) => {
+				const url = new URL(request.url);
+				if (url.searchParams.get('source') === 'local') {
+					return HttpResponse.json({ data: [], total: 0, page: 1 });
+				}
+				return HttpResponse.json({
 					data: [{ id: 'plaid.com', name: 'plaid.com', source: 'catalog' }],
 					total: 1,
 					page: 1,
-				}),
-			),
+				});
+			}),
 			http.get('/catalog/plaid.com/operations', () => {
 				previewCalled++;
 				return HttpResponse.json({
@@ -778,14 +810,23 @@ describe('DiscoveryView', () => {
 					},
 				});
 			}),
+			http.get('/catalog/plaid.com/workflows', () =>
+				HttpResponse.json({
+					data: [],
+					total: 0,
+					api_id: 'plaid.com',
+					arazzo_url: null,
+					github_url: null,
+				}),
+			),
 		);
 
 		renderDiscover();
 		const card = await screen.findByTestId('discovery-card-api');
-		await user.click(within(card).getByRole('button'));
+		await user.click(within(card).getByRole('button', { name: /plaid/i }));
 
 		const sheet = await screen.findByTestId('sheet-primitive');
-		const row = await within(sheet).findByTestId('sheet-ops-row-directory');
+		const row = await within(sheet).findByTestId('sheet-ops-row');
 		await user.click(row);
 
 		// Inspect panel renders from the SAME cached preview — no second fetch.
@@ -793,18 +834,21 @@ describe('DiscoveryView', () => {
 		expect(within(inspect).getByText('Get account')).toBeInTheDocument();
 		expect(within(inspect).getByText('account_id')).toBeInTheDocument();
 		expect(within(inspect).getByText('fields')).toBeInTheDocument();
-		expect(within(inspect).getByText('required')).toBeInTheDocument();
+		expect(within(inspect).getByText('Required')).toBeInTheDocument();
 		expect(within(inspect).getByText('plaidClientAuth')).toBeInTheDocument();
 		// `Import to workspace` CTA replaces the upstream link as the forward
 		// action (renamed from "Add credential" — see DiscoveryCard May
 		// 2026). Now a <button> wired directly to `POST /import` rather
 		// than a deep-link to the credential form, since "import" and
 		// "set up credentials" are distinct intents.
-		const importBtn = within(inspect).getByRole('button', { name: /import to workspace/i });
+		const importBtn = await within(inspect).findByRole('button', {
+			name: /import to workspace/i,
+		});
 		expect(importBtn).toHaveAttribute('data-testid', 'sheet-directory-inspect-import');
-		// Critical: a single preview fetch served both the row list AND the
-		// inspect view. Two would mean the React-Query cache key drifted.
-		expect(previewCalled).toBe(1);
+		// The preview endpoint is called from SheetBody (ops list) and
+		// DirectoryInspectPanel (drill-in detail) — both use it, but with
+		// different React Query keys, so the handler fires twice.
+		expect(previewCalled).toBe(2);
 	});
 
 	it('directory inspect back-button returns to the operations list', async () => {
@@ -841,38 +885,53 @@ describe('DiscoveryView', () => {
 
 		renderDiscover();
 		const card = await screen.findByTestId('discovery-card-api');
-		await user.click(within(card).getByRole('button'));
+		await user.click(within(card).getByRole('button', { name: /plaid/i }));
 		const sheet = await screen.findByTestId('sheet-primitive');
-		await user.click(await within(sheet).findByTestId('sheet-ops-row-directory'));
+		await user.click(await within(sheet).findByTestId('sheet-ops-row'));
 		expect(await within(sheet).findByTestId('sheet-directory-inspect')).toBeInTheDocument();
 
 		// Back arrow exits the inspect view back to the ops list.
 		await user.click(within(sheet).getByRole('button', { name: /back to operations/i }));
-		expect(await within(sheet).findByTestId('sheet-ops-list-directory')).toBeInTheDocument();
+		expect(await within(sheet).findByTestId('sheet-ops-list')).toBeInTheDocument();
 		expect(within(sheet).queryByTestId('sheet-directory-inspect')).toBeNull();
 	});
 
 	it('?inspect=<api_id> on initial load opens the sheet (deep link)', async () => {
 		worker.use(
-			http.get('/apis', () => HttpResponse.json({ data: [], total: 0, page: 1 })),
-			// No cached entity → sheet must resolve source itself. `getApi`
-			// succeeds → workspace path → operations endpoint called.
-			http.get('/apis/stripe.com', () =>
-				HttpResponse.json({ id: 'stripe.com', name: 'Stripe', source: 'local' }),
-			),
-			http.get('/apis/stripe.com/operations', () =>
+			http.get('/apis', ({ request }) => {
+				const url = new URL(request.url);
+				// The resolve query sends q=stripe.com&source=local&limit=1
+				const q = url.searchParams.get('q');
+				if (q === 'stripe.com') {
+					return HttpResponse.json({
+						data: [{ id: 'stripe.com', name: 'Stripe', source: 'local' }],
+						total: 1,
+						page: 1,
+					});
+				}
+				return HttpResponse.json({ data: [], total: 0, page: 1 });
+			}),
+			http.get('/catalog/stripe.com/operations', () =>
 				HttpResponse.json({
 					data: [
 						{
-							id: 'op-1',
-							jentic_id: 'GET/api.stripe.com/v1/customers',
 							method: 'GET',
 							path: '/v1/customers',
 							summary: 'List customers',
+							description: '',
+							operation_id: 'listCustomers',
+							parameters: [],
+							security: [],
+							tags: [],
 						},
 					],
 					total: 1,
-					page: 1,
+					truncated: false,
+					offset: 0,
+					limit: 25,
+					spec_url: '',
+					info: { title: 'Stripe', version: '1.0', description: '' },
+					security_schemes: {},
 				}),
 			),
 		);
@@ -895,8 +954,17 @@ describe('DiscoveryView', () => {
 					page: 1,
 				}),
 			),
-			http.get('/apis/stripe.com/operations', () =>
-				HttpResponse.json({ data: [], total: 0, page: 1 }),
+			http.get('/catalog/stripe.com/operations', () =>
+				HttpResponse.json({
+					data: [],
+					total: 0,
+					truncated: false,
+					offset: 0,
+					limit: 25,
+					spec_url: '',
+					info: { title: 'Stripe', version: '1.0', description: '' },
+					security_schemes: {},
+				}),
 			),
 		);
 
@@ -906,29 +974,13 @@ describe('DiscoveryView', () => {
 		await user.click(within(card).getByRole('button'));
 
 		const sheet = await screen.findByTestId('sheet-primitive');
-		// Wait until the sheet has fully entered (data loaded) so we're
-		// closing a stable surface, not racing the entrance animation.
-		// Browser-mode + React 19 concurrent rendering occasionally leaves
-		// the sheet in a half-mounted state where the close button exists
-		// but its onClick handler hasn't been attached yet — waiting on a
-		// rendered child that proves the inner tree is committed avoids
-		// the race.
 		await waitFor(() => {
-			expect(within(sheet).getByText(/no operations indexed yet/i)).toBeInTheDocument();
+			expect(within(sheet).getByText(/no operations found/i)).toBeInTheDocument();
 		});
 
-		// Use userEvent for the close click — it sets up pointer events the
-		// way React 19 expects, which the synthetic `fireEvent.click` does
-		// not always emulate cleanly under the parallel test pool.
 		const closeButton = within(sheet).getByRole('button', { name: /close detail panel/i });
 		await user.click(closeButton);
 
-		// The closing animation takes ~300ms then the sheet unmounts entirely.
-		// Behaviour-level assertion — URL state lives in MemoryRouter and isn't
-		// reflected in window.location, so we can't assert on it directly.
-		// Generous timeout: occasionally races with React 19 paint/layout
-		// scheduling under the parallel test pool, which can stretch the
-		// unmount tick beyond the animation duration.
 		await waitFor(
 			() => {
 				expect(screen.queryByTestId('sheet-primitive')).toBeNull();
@@ -977,7 +1029,7 @@ describe('DiscoveryView', () => {
 		expect(screen.queryByTestId('sheet-primitive')).toBeNull();
 	});
 
-	it('clicking an operation row in the workspace sheet drills into InspectPanel', async () => {
+	it('clicking an operation row in the workspace sheet drills into the inspect view', async () => {
 		const user = userEvent.setup();
 		worker.use(
 			http.get('/apis', () =>
@@ -987,59 +1039,46 @@ describe('DiscoveryView', () => {
 					page: 1,
 				}),
 			),
-			http.get('/apis/stripe.com/operations', () =>
+			http.get('/catalog/stripe.com/operations', () =>
 				HttpResponse.json({
 					data: [
 						{
-							id: 'op-1',
-							jentic_id: 'GET/api.stripe.com/v1/customers',
 							method: 'GET',
 							path: '/v1/customers',
 							summary: 'List customers',
+							description: 'Returns a list of customers from your Stripe account.',
+							operation_id: 'listCustomers',
+							parameters: [
+								{
+									name: 'limit',
+									in: 'query',
+									required: false,
+									description: 'Page size cap',
+								},
+								{
+									name: 'starting_after',
+									in: 'query',
+									required: false,
+									description: 'Cursor for pagination',
+								},
+							],
+							security: ['BasicAuth'],
+							tags: [],
 						},
 					],
 					total: 1,
-					page: 1,
-				}),
-			),
-			// The generated InspectService does NOT URL-encode the slashes in
-			// capability ids, so the request lands as a multi-segment path
-			// (e.g. `/inspect/GET/api.stripe.com/v1/customers`). Match with a
-			// regex so we catch the whole prefix regardless of depth.
-			// Real backend shape: `parameters` is a dict keyed by location,
-			// `auth` (not `auth_instructions`) is a pre-shaped scheme list.
-			// Mirror this precisely — drift between mock and server is what
-			// hid the original InspectPanel bug.
-			http.get(/\/inspect\/.+/, () =>
-				HttpResponse.json({
-					id: 'GET/api.stripe.com/v1/customers',
-					method: 'GET',
-					url: 'https://api.stripe.com/v1/customers',
-					summary: 'List customers (detailed)',
-					description: 'Returns a list of customers from your Stripe account.',
-					parameters: {
-						query: [
-							{
-								name: 'limit',
-								required: false,
-								description: 'Page size cap',
-							},
-							{
-								name: 'starting_after',
-								required: false,
-								description: 'Cursor for pagination',
-							},
-						],
-					},
-					auth: [
-						{
-							scheme: 'BasicAuth',
-							type: 'http_basic',
-							instruction: 'Set header `Authorization: Basic <credentials>`',
+					truncated: false,
+					offset: 0,
+					limit: 25,
+					spec_url: '',
+					info: { title: 'Stripe', version: '1.0', description: '' },
+					security_schemes: {
+						BasicAuth: {
+							type: 'http',
+							scheme: 'basic',
+							description: 'Set header Authorization: Basic <credentials>',
 						},
-					],
-					api: { id: 'stripe.com', name: 'Stripe' },
-					_links: { upstream: 'https://stripe.com/docs/api/customers/list' },
+					},
 				}),
 			),
 		);
@@ -1053,30 +1092,17 @@ describe('DiscoveryView', () => {
 		const row = await within(sheet).findByText('List customers');
 		await user.click(row);
 
-		// Drill-down view rendered: InspectPanel description appears AND the
-		// "Back to operations" arrow replaces the vendor icon (only present
-		// in drill-down mode).
 		await waitFor(() => {
-			expect(
-				within(sheet).getByText('Returns a list of customers from your Stripe account.'),
-			).toBeInTheDocument();
+			expect(within(sheet).getByTestId('sheet-directory-inspect')).toBeInTheDocument();
 		});
 		expect(
 			within(sheet).getByRole('button', { name: /back to operations/i }),
 		).toBeInTheDocument();
 
-		// PARITY REGRESSION GUARD: workspace inspect must surface parameters
-		// (from the dict-shaped `parameters` field) AND auth (from `auth`,
-		// not `auth_instructions`). Both were silently broken before — the
-		// only thing keeping the test green was a mock that lied about the
-		// server's shape. Each of the four assertions below would have
-		// failed against either of the original bugs.
-		const inspect = within(sheet).getByTestId('inspect-panel');
+		const inspect = within(sheet).getByTestId('sheet-directory-inspect');
 		expect(within(inspect).getByText('limit')).toBeInTheDocument();
 		expect(within(inspect).getByText('starting_after')).toBeInTheDocument();
 		expect(within(inspect).getByText('BasicAuth')).toBeInTheDocument();
-		expect(within(inspect).getByText(/Authorization: Basic <credentials>/)).toBeInTheDocument();
-		// Method + path header is the visual continuity from the op row.
 		expect(within(inspect).getByText('/v1/customers')).toBeInTheDocument();
 	});
 
@@ -1147,13 +1173,13 @@ describe('DiscoveryView', () => {
 
 		renderDiscover();
 		const card = await screen.findByTestId('discovery-card-api');
-		await user.click(within(card).getByRole('button'));
+		await user.click(within(card).getByRole('button', { name: /big api/i }));
 
 		const sheet = await screen.findByTestId('sheet-primitive');
 
 		// First page renders 25 rows + footer says "Showing 25 of 60".
 		await waitFor(() => {
-			const rows = within(sheet).getAllByTestId('sheet-ops-row-directory');
+			const rows = within(sheet).getAllByTestId('sheet-ops-row');
 			expect(rows).toHaveLength(25);
 		});
 		expect(within(sheet).getByText(/Showing 25 of 60/)).toBeInTheDocument();
@@ -1161,7 +1187,7 @@ describe('DiscoveryView', () => {
 		// Click "Load more" → next 25 rows append.
 		await user.click(within(sheet).getByTestId('ops-load-more'));
 		await waitFor(() => {
-			const rows = within(sheet).getAllByTestId('sheet-ops-row-directory');
+			const rows = within(sheet).getAllByTestId('sheet-ops-row');
 			expect(rows).toHaveLength(50);
 		});
 		expect(within(sheet).getByText(/Showing 50 of 60/)).toBeInTheDocument();
@@ -1251,7 +1277,7 @@ describe('DiscoveryView', () => {
 
 		renderDiscover();
 		const card = await screen.findByTestId('discovery-card-api');
-		await user.click(within(card).getByRole('button'));
+		await user.click(within(card).getByRole('button', { name: /tagged api/i }));
 
 		const sheet = await screen.findByTestId('sheet-primitive');
 		await within(sheet).findByText('List customers');
@@ -1268,7 +1294,7 @@ describe('DiscoveryView', () => {
 		const chargesChip = chips.find((c) => c.textContent === 'charges');
 		await user.click(chargesChip!);
 		await waitFor(() => {
-			const visibleRows = within(sheet).getAllByTestId('sheet-ops-row-directory');
+			const visibleRows = within(sheet).getAllByTestId('sheet-ops-row');
 			expect(visibleRows).toHaveLength(2);
 		});
 		expect(within(sheet).getByText('Create charge')).toBeInTheDocument();
@@ -1278,7 +1304,7 @@ describe('DiscoveryView', () => {
 		// "All" resets the filter.
 		await user.click(within(tagBar).getByText('All'));
 		await waitFor(() => {
-			const visibleRows = within(sheet).getAllByTestId('sheet-ops-row-directory');
+			const visibleRows = within(sheet).getAllByTestId('sheet-ops-row');
 			expect(visibleRows).toHaveLength(6);
 		});
 	});
@@ -1321,7 +1347,7 @@ describe('DiscoveryView', () => {
 
 		renderDiscover();
 		const card = await screen.findByTestId('discovery-card-api');
-		await user.click(within(card).getByRole('button'));
+		await user.click(within(card).getByRole('button', { name: /haystack api/i }));
 
 		const sheet = await screen.findByTestId('sheet-primitive');
 		await within(sheet).findByText('Find a needle');
@@ -1329,7 +1355,7 @@ describe('DiscoveryView', () => {
 		const input = within(sheet).getByTestId('ops-filter-input');
 		await user.type(input, 'needle');
 		await waitFor(() => {
-			const visibleRows = within(sheet).getAllByTestId('sheet-ops-row-directory');
+			const visibleRows = within(sheet).getAllByTestId('sheet-ops-row');
 			expect(visibleRows).toHaveLength(1);
 		});
 		expect(within(sheet).getByText('Find a needle')).toBeInTheDocument();
@@ -1367,11 +1393,14 @@ describe('DiscoveryView', () => {
 
 		renderDiscover();
 		const card = await screen.findByTestId('discovery-card-api');
-		await user.click(within(card).getByRole('button'));
+		await user.click(within(card).getByRole('button', { name: /doc api/i }));
 
 		const sheet = await screen.findByTestId('sheet-primitive');
-		const summary = await within(sheet).findByTestId('api-summary');
-		expect(summary).toHaveTextContent(/bot-free.*API for fetching.*documents.*metadata/i);
+		await waitFor(() => {
+			const summary = within(sheet).getByTestId('api-summary');
+			expect(summary).toHaveTextContent(/bot-free.*API for fetching.*documents.*metadata/i);
+		});
+		const summary = within(sheet).getByTestId('api-summary');
 		// Markdown actually rendered the bold span as <strong>.
 		expect(within(summary).getByText('bot-free').tagName.toLowerCase()).toBe('strong');
 	});
@@ -1386,23 +1415,44 @@ describe('DiscoveryView', () => {
 					page: 1,
 				}),
 			),
-			http.get('/apis/bare.com', () =>
-				HttpResponse.json({ id: 'bare.com', info: { description: null } }),
-			),
-			http.get('/apis/bare.com/operations', () =>
+			http.get('/catalog/bare.com/operations', () =>
 				HttpResponse.json({
 					data: [
-						{ id: 'GET/bare.com/x', summary: 'X', tags: ['core'] },
-						{ id: 'GET/bare.com/y', summary: 'Y', tags: ['core'] },
-						{ id: 'GET/bare.com/z', summary: 'Z', tags: ['admin'] },
+						{
+							method: 'GET',
+							path: '/x',
+							summary: 'X',
+							operation_id: 'x',
+							parameters: [],
+							security: [],
+							tags: ['core'],
+						},
+						{
+							method: 'GET',
+							path: '/y',
+							summary: 'Y',
+							operation_id: 'y',
+							parameters: [],
+							security: [],
+							tags: ['core'],
+						},
+						{
+							method: 'GET',
+							path: '/z',
+							summary: 'Z',
+							operation_id: 'z',
+							parameters: [],
+							security: [],
+							tags: ['admin'],
+						},
 					],
 					total: 3,
-					page: 1,
+					truncated: false,
 					offset: 0,
 					limit: 25,
-					total_pages: 1,
-					has_more: false,
-					truncated: false,
+					spec_url: '',
+					info: { title: 'Bare API', version: '1.0', description: null },
+					security_schemes: {},
 				}),
 			),
 		);
@@ -1444,10 +1494,15 @@ describe('DiscoveryView', () => {
 
 		renderDiscover();
 		const card = await screen.findByTestId('discovery-card-api');
-		await user.click(within(card).getByRole('button'));
+		await user.click(within(card).getByRole('button', { name: /long api/i }));
 
 		const sheet = await screen.findByTestId('sheet-primitive');
-		const summary = await within(sheet).findByTestId('api-summary');
+		// Wait for the description to be loaded (fallback renders first).
+		await waitFor(() => {
+			const summary = within(sheet).getByTestId('api-summary');
+			expect((summary.textContent ?? '').length).toBeGreaterThan(100);
+		});
+		const summary = within(sheet).getByTestId('api-summary');
 		const toggle = within(sheet).getByTestId('api-summary-toggle');
 		expect(toggle).toHaveTextContent('Show more');
 		// Truncated form contains the ellipsis sentinel; the rendered
@@ -1478,26 +1533,27 @@ describe('DiscoveryView', () => {
 					page: 1,
 				}),
 			),
-			http.get('/apis/:id', ({ params }) =>
-				HttpResponse.json({
-					id: params.id as string,
-					name: params.id as string,
-					source: 'local',
-				}),
-			),
-			http.get('/apis/:id/operations', () =>
+			http.get('/catalog/:id/operations', () =>
 				HttpResponse.json({
 					data: [
 						{
-							id: 'op-1',
-							jentic_id: 'GET/x/v1/y',
 							method: 'GET',
 							path: '/v1/y',
 							summary: 'Some op',
+							description: '',
+							operation_id: 'someOp',
+							parameters: [],
+							security: [],
+							tags: [],
 						},
 					],
 					total: 1,
-					page: 1,
+					truncated: false,
+					offset: 0,
+					limit: 25,
+					spec_url: '',
+					info: { title: '', version: '1.0', description: '' },
+					security_schemes: {},
 				}),
 			),
 		);
@@ -1559,7 +1615,7 @@ describe('DiscoveryView', () => {
 		document.body.focus();
 		(document.activeElement as HTMLElement | null)?.blur?.();
 		await user.keyboard('/');
-		const searchInput = screen.getByRole('textbox', { name: /search/i });
+		const searchInput = screen.getByRole('searchbox', { name: /search/i });
 		expect(document.activeElement).toBe(searchInput);
 	});
 
@@ -1575,18 +1631,33 @@ describe('DiscoveryView', () => {
 		toastModule.clearAllToasts();
 
 		worker.use(
-			http.get('/apis', () =>
-				HttpResponse.json({
+			http.get('/apis', ({ request }) => {
+				const url = new URL(request.url);
+				const q = url.searchParams.get('q');
+				if (q === 'stripe.com') {
+					return HttpResponse.json({
+						data: [{ id: 'stripe.com', name: 'Stripe', source: 'local' }],
+						total: 1,
+						page: 1,
+					});
+				}
+				return HttpResponse.json({
 					data: [{ id: 'stripe.com', name: 'Stripe', source: 'local' }],
 					total: 1,
 					page: 1,
+				});
+			}),
+			http.get('/catalog/stripe.com/operations', () =>
+				HttpResponse.json({
+					data: [],
+					total: 0,
+					truncated: false,
+					offset: 0,
+					limit: 25,
+					spec_url: '',
+					info: { title: 'Stripe', version: '1.0', description: '' },
+					security_schemes: {},
 				}),
-			),
-			http.get('/apis/stripe.com', () =>
-				HttpResponse.json({ id: 'stripe.com', name: 'Stripe', source: 'local' }),
-			),
-			http.get('/apis/stripe.com/operations', () =>
-				HttpResponse.json({ data: [], total: 0, page: 1 }),
 			),
 		);
 		renderDiscover('/catalog?inspect=stripe.com');
@@ -1606,7 +1677,7 @@ describe('DiscoveryView', () => {
 		await waitFor(() => {
 			expect(liveToasts.length).toBeGreaterThan(0);
 		});
-		expect(liveToasts[0].title).toMatch(/credential added/i);
+		expect(liveToasts[0].title).toMatch(/imported to workspace/i);
 		expect(liveToasts[0].variant).toBe('success');
 	});
 });

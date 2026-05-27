@@ -286,6 +286,7 @@ export default function WorkflowDetailPage() {
 					slug={slug!}
 					stepsCount={steps.length}
 					involvedApis={involvedApis}
+					createdAt={workflow.created_at}
 				/>
 
 				<div className="flex flex-wrap items-center justify-between gap-3">
