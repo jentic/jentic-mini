@@ -28,7 +28,16 @@ export default defineConfig({
 		browser: {
 			enabled: true,
 			provider: playwright(),
-			instances: [{ browser: 'chromium' }],
+			instances: [
+				{
+					browser: 'chromium',
+					// Tell Chromium to honour reduced-motion so framer-motion's
+					// entrance animations resolve to their final state immediately.
+					// Without this, axe colour-contrast checks see mid-animation
+					// opacity values and report false positives.
+					context: { reducedMotion: 'reduce' },
+				},
+			],
 		},
 		globals: true,
 		setupFiles: ['./src/__tests__/setup.ts'],

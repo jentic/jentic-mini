@@ -2,6 +2,7 @@ import type { ReactElement } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import { render, type RenderOptions } from '@testing-library/react';
+import { MotionConfig } from 'framer-motion';
 import { http, HttpResponse } from 'msw';
 
 interface Options extends Omit<RenderOptions, 'wrapper'> {
@@ -21,17 +22,24 @@ export function renderWithProviders(ui: ReactElement, options: Options = {}) {
 
 	function Wrapper({ children }: { children: React.ReactNode }) {
 		return (
-			<QueryClientProvider client={queryClient}>
-				<MemoryRouter initialEntries={[route]}>
-					{path ? (
-						<Routes>
-							<Route path={path} element={children} />
-						</Routes>
-					) : (
-						children
-					)}
-				</MemoryRouter>
-			</QueryClientProvider>
+			// `reducedMotion="always"` matches the production `MotionConfig`
+			// in `<App />` but forces every framer-motion animation to its
+			// final state in the test environment. Without this, axe colour-
+			// contrast checks fire while a `motion.div` is still mid-fade,
+			// observing a translucent `bg-primary` button as ~1:1 contrast.
+			<MotionConfig reducedMotion="always">
+				<QueryClientProvider client={queryClient}>
+					<MemoryRouter initialEntries={[route]}>
+						{path ? (
+							<Routes>
+								<Route path={path} element={children} />
+							</Routes>
+						) : (
+							children
+						)}
+					</MemoryRouter>
+				</QueryClientProvider>
+			</MotionConfig>
 		);
 	}
 
