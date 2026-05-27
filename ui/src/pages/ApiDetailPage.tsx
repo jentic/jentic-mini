@@ -10,7 +10,7 @@ import { AppLink } from '@/components/ui/AppLink';
 import { Button } from '@/components/ui/Button';
 import { ConfirmDeleteDialog } from '@/components/ui/ConfirmDeleteDialog';
 import { KeyboardShortcutsBar, MOD_KEY } from '@/components/ui/KeyboardShortcutsBar';
-import { ApiDetailView } from '@/components/workspace/ApiDetailView';
+import { ApiDetailView } from '@/components/workspace/api-detail';
 import { VendorIcon } from '@/components/discovery/VendorIcon';
 import { api, apiUrl } from '@/api/client';
 import { isTypingTarget } from '@/lib/keyboard';
