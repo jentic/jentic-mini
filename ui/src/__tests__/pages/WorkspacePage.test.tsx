@@ -97,7 +97,13 @@ describe('WorkspacePage', () => {
 					page: 1,
 				}),
 			),
-			http.get('/workflows', () => HttpResponse.json([])),
+			http.get('/workflows', ({ request }) => {
+				const url = new URL(request.url);
+				const paged = url.searchParams.has('page') || url.searchParams.has('limit');
+				return HttpResponse.json(
+					paged ? { data: [], total: 0, page: 1, limit: 60, total_pages: 1 } : [],
+				);
+			}),
 		);
 		renderWorkspace();
 		await screen.findByTestId('workspace-section-apis');
@@ -113,25 +119,38 @@ describe('WorkspacePage', () => {
 	});
 
 	it('renders the Workflows section when workflows exist', async () => {
+		const rows = [
+			{
+				id: 'send-welcome',
+				slug: 'send-welcome',
+				name: 'Send welcome email',
+				description: 'Welcome new signups via email',
+				// Real `/workflows` shape — the listing returns
+				// `steps_count` (number) and `involved_apis`
+				// (string[]), not `steps[]` / `api_ids[]`. An
+				// earlier version of this test used the wrong
+				// names and silently disabled the meta-row check.
+				steps_count: 3,
+				involved_apis: ['sendgrid.com'],
+			},
+		];
 		worker.use(
 			http.get('/apis', () => HttpResponse.json({ data: [], total: 0, page: 1 })),
-			http.get('/workflows', () =>
-				HttpResponse.json([
-					{
-						id: 'send-welcome',
-						slug: 'send-welcome',
-						name: 'Send welcome email',
-						description: 'Welcome new signups via email',
-						// Real `/workflows` shape — the listing returns
-						// `steps_count` (number) and `involved_apis`
-						// (string[]), not `steps[]` / `api_ids[]`. An
-						// earlier version of this test used the wrong
-						// names and silently disabled the meta-row check.
-						steps_count: 3,
-						involved_apis: ['sendgrid.com'],
-					},
-				]),
-			),
+			http.get('/workflows', ({ request }) => {
+				const url = new URL(request.url);
+				const paged = url.searchParams.has('page') || url.searchParams.has('limit');
+				return HttpResponse.json(
+					paged
+						? {
+								data: rows,
+								total: rows.length,
+								page: 1,
+								limit: 60,
+								total_pages: 1,
+							}
+						: rows,
+				);
+			}),
 		);
 		renderWorkspace();
 
@@ -144,27 +163,40 @@ describe('WorkspacePage', () => {
 	});
 
 	it('shows a vendor pile capped at 4 logos with a "+N" overflow chip on multi-API workflows', async () => {
+		const rows = [
+			{
+				id: 'big-fanout',
+				slug: 'big-fanout',
+				name: 'Cross-system reconcile',
+				description: 'Touches a lot of upstreams',
+				steps_count: 8,
+				involved_apis: [
+					'stripe.com',
+					'zendesk.com',
+					'hubspot.com',
+					'slack.com',
+					'asana.com',
+					'github.com',
+				],
+			},
+		];
 		worker.use(
 			http.get('/apis', () => HttpResponse.json({ data: [], total: 0, page: 1 })),
-			http.get('/workflows', () =>
-				HttpResponse.json([
-					{
-						id: 'big-fanout',
-						slug: 'big-fanout',
-						name: 'Cross-system reconcile',
-						description: 'Touches a lot of upstreams',
-						steps_count: 8,
-						involved_apis: [
-							'stripe.com',
-							'zendesk.com',
-							'hubspot.com',
-							'slack.com',
-							'asana.com',
-							'github.com',
-						],
-					},
-				]),
-			),
+			http.get('/workflows', ({ request }) => {
+				const url = new URL(request.url);
+				const paged = url.searchParams.has('page') || url.searchParams.has('limit');
+				return HttpResponse.json(
+					paged
+						? {
+								data: rows,
+								total: rows.length,
+								page: 1,
+								limit: 60,
+								total_pages: 1,
+							}
+						: rows,
+				);
+			}),
 		);
 		renderWorkspace();
 
@@ -232,19 +264,32 @@ describe('WorkspacePage', () => {
 		expect(within(githubTile).queryByText(/toolkit/i)).toBeNull();
 	});
 
-	it('filters the visible tiles in-memory as the user types', async () => {
+	it('filters the visible API tiles via the server when the user types', async () => {
 		const user = userEvent.setup();
+		const seenQueries: string[] = [];
 		worker.use(
-			http.get('/apis', () =>
-				HttpResponse.json({
-					data: [
-						{ id: 'stripe.com', name: 'Stripe', source: 'local' },
-						{ id: 'github.com', name: 'GitHub', source: 'local' },
-					],
-					total: 2,
+			http.get('/apis', ({ request }) => {
+				const url = new URL(request.url);
+				const q = url.searchParams.get('q');
+				seenQueries.push(q ?? '');
+				const all = [
+					{ id: 'stripe.com', name: 'Stripe', source: 'local' },
+					{ id: 'github.com', name: 'GitHub', source: 'local' },
+				];
+				const filtered = q
+					? all.filter(
+							(r) =>
+								r.id.toLowerCase().includes(q.toLowerCase()) ||
+								r.name.toLowerCase().includes(q.toLowerCase()),
+						)
+					: all;
+				return HttpResponse.json({
+					data: filtered,
+					total: filtered.length,
 					page: 1,
-				}),
-			),
+					total_pages: 1,
+				});
+			}),
 		);
 		renderWorkspace();
 
@@ -252,11 +297,128 @@ describe('WorkspacePage', () => {
 		expect(screen.getAllByTestId('workspace-tile-api')).toHaveLength(2);
 
 		await user.type(screen.getByLabelText(/filter workspace/i), 'strip');
-		// In-memory filter — no /search fan-out, just narrows the tiles.
+		// The filter goes to the server's `?q=` so APIs that aren't on
+		// the first page (workspaces with >60 APIs) still show up.
+		await waitFor(() => {
+			expect(seenQueries.some((q) => q === 'strip')).toBe(true);
+		});
 		await waitFor(() => {
 			expect(screen.getAllByTestId('workspace-tile-api')).toHaveLength(1);
 		});
-		expect(screen.getByText(/1 of 2 match "strip"/i)).toBeInTheDocument();
+		expect(screen.getByText(/1 match "strip"/i)).toBeInTheDocument();
+	});
+
+	it('renders a "Load more" button when the workspace has more APIs than fit on a page', async () => {
+		const user = userEvent.setup();
+		const requestedPages: number[] = [];
+		worker.use(
+			http.get('/apis', ({ request }) => {
+				const url = new URL(request.url);
+				const page = Number(url.searchParams.get('page') ?? '1');
+				requestedPages.push(page);
+				if (page === 1) {
+					return HttpResponse.json({
+						data: [{ id: 'a.com', name: 'A', source: 'local' }],
+						total: 2,
+						page: 1,
+						total_pages: 2,
+					});
+				}
+				return HttpResponse.json({
+					data: [{ id: 'b.com', name: 'B', source: 'local' }],
+					total: 2,
+					page: 2,
+					total_pages: 2,
+				});
+			}),
+		);
+		renderWorkspace();
+
+		await screen.findByTestId('workspace-section-apis');
+		// Page 1 only — one tile visible.
+		expect(screen.getAllByTestId('workspace-tile-api')).toHaveLength(1);
+
+		const loadMore = await screen.findByTestId('workspace-apis-load-more');
+		await user.click(within(loadMore).getByRole('button', { name: /load more/i }));
+
+		await waitFor(() => {
+			expect(screen.getAllByTestId('workspace-tile-api')).toHaveLength(2);
+		});
+		expect(requestedPages).toContain(2);
+		// Once we've paged through everything the trailing affordance
+		// disappears — no point in prompting for more when there isn't.
+		await waitFor(() => {
+			expect(screen.queryByTestId('workspace-apis-load-more')).toBeNull();
+		});
+	});
+
+	// Mirrors the APIs "Load more" test above. Workflows used to fetch
+	// the entire `/workflows` table in one bare-array request, which
+	// silently truncated visually (the grid happily rendered 1000+
+	// tiles in one DOM but the network payload kept growing). Now the
+	// workspace fans out across pages just like the APIs grid; this
+	// pins the contract that successive pages accumulate without
+	// duplicating rows.
+	it('renders a "Load more" button when the workspace has more workflows than fit on a page', async () => {
+		const user = userEvent.setup();
+		const requestedPages: number[] = [];
+		worker.use(
+			http.get('/apis', () => HttpResponse.json({ data: [], total: 0, page: 1 })),
+			http.get('/workflows', ({ request }) => {
+				const url = new URL(request.url);
+				const paged = url.searchParams.has('page') || url.searchParams.has('limit');
+				if (!paged) return HttpResponse.json([]);
+				const page = Number(url.searchParams.get('page') ?? '1');
+				requestedPages.push(page);
+				if (page === 1) {
+					return HttpResponse.json({
+						data: [
+							{
+								id: 'wf-a',
+								slug: 'wf-a',
+								name: 'Workflow A',
+								steps_count: 1,
+								involved_apis: [],
+							},
+						],
+						total: 2,
+						page: 1,
+						limit: 60,
+						total_pages: 2,
+					});
+				}
+				return HttpResponse.json({
+					data: [
+						{
+							id: 'wf-b',
+							slug: 'wf-b',
+							name: 'Workflow B',
+							steps_count: 1,
+							involved_apis: [],
+						},
+					],
+					total: 2,
+					page: 2,
+					limit: 60,
+					total_pages: 2,
+				});
+			}),
+		);
+		renderWorkspace();
+
+		await screen.findByTestId('workspace-section-workflows');
+		expect(screen.getAllByTestId('workspace-tile-workflow')).toHaveLength(1);
+
+		const loadMore = await screen.findByTestId('workspace-workflows-load-more');
+		await user.click(within(loadMore).getByRole('button', { name: /load more/i }));
+
+		await waitFor(() => {
+			expect(screen.getAllByTestId('workspace-tile-workflow')).toHaveLength(2);
+		});
+		expect(requestedPages).toContain(2);
+		await waitFor(() => {
+			expect(screen.queryByTestId('workspace-workflows-load-more')).toBeNull();
+		});
 	});
 
 	it('exposes the page-help dialog via the "?" key', async () => {
@@ -291,7 +453,13 @@ describe('WorkspacePage', () => {
 			const user = userEvent.setup();
 			worker.use(
 				http.get('/apis', () => HttpResponse.json({ data: [], total: 0, page: 1 })),
-				http.get('/workflows', () => HttpResponse.json([])),
+				http.get('/workflows', ({ request }) => {
+					const url = new URL(request.url);
+					const paged = url.searchParams.has('page') || url.searchParams.has('limit');
+					return HttpResponse.json(
+						paged ? { data: [], total: 0, page: 1, limit: 60, total_pages: 1 } : [],
+					);
+				}),
 			);
 			renderWorkspace();
 

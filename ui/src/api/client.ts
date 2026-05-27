@@ -211,6 +211,23 @@ export const api = {
 	importFromCatalog: (apiId: string) => CatalogService.getCatalogEntryCatalogApiIdGet({ apiId }),
 	listWorkflows: (q?: string, source?: string) =>
 		CatalogService.listWorkflowsWorkflowsGet({ q: q ?? null, source: source ?? null }),
+	// Paginated variant — backend returns `{data, total, page, limit, total_pages}`
+	// when *either* `page` or `limit` is present, otherwise it falls back to
+	// the historical bare-array shape consumed by `listWorkflows()`. Exposed
+	// separately so the workspace grid can fan out across pages without
+	// breaking the half-dozen surfaces that still expect a flat list.
+	listWorkflowsPaged: (page = 1, limit = 20, source?: string, q?: string) => {
+		const params = new URLSearchParams({ page: String(page), limit: String(limit) });
+		if (source) params.set('source', source);
+		if (q) params.set('q', q);
+		return fetchJson<{
+			data: Array<Record<string, unknown>>;
+			total: number;
+			page: number;
+			limit: number;
+			total_pages: number;
+		}>(`/workflows?${params}`);
+	},
 	getWorkflow: (slug: string) => CatalogService.getWorkflowWorkflowsSlugGet({ slug }),
 	addNote: (resource: string, note: string, type?: string) =>
 		CatalogService.createNoteNotesPost({ requestBody: { resource, note, type: type ?? null } }),

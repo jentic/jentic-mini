@@ -24,7 +24,17 @@ export const handlers = [
 
 	http.get('/toolkits', () => HttpResponse.json([])),
 
-	http.get('/workflows', () => HttpResponse.json([])),
+	http.get('/workflows', ({ request }) => {
+		// `/workflows` returns a bare array by default (every consumer
+		// outside the workspace grid expects this). When the workspace
+		// pagination fan-out passes `page`/`limit`, switch to the
+		// `{data, total, page, limit, total_pages}` envelope.
+		const url = new URL(request.url);
+		const paged = url.searchParams.has('page') || url.searchParams.has('limit');
+		return HttpResponse.json(
+			paged ? { data: [], total: 0, page: 1, limit: 20, total_pages: 1 } : [],
+		);
+	}),
 
 	http.get('/traces', () => HttpResponse.json({ traces: [], total: 0 })),
 

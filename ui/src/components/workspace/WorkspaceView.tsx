@@ -8,6 +8,7 @@ import { WorkspaceStatsStrip } from './WorkspaceStatsStrip';
 import { WorkspaceTile, type WorkspaceTileEntity } from './WorkspaceTile';
 import type { ImportTab } from './ImportSourceDialog';
 import { api } from '@/api/client';
+import { Button } from '@/components/ui/Button';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { useRovingGridFocus } from '@/hooks/useRovingGridFocus';
 import { isTypingTarget } from '@/lib/keyboard';
@@ -37,12 +38,6 @@ import { toast } from '@/components/ui/toastStore';
 
 const WORKSPACE_PAGE_SIZE = 60;
 
-function matchesQuery(haystack: string | null | undefined, needle: string): boolean {
-	if (!needle) return true;
-	if (!haystack) return false;
-	return haystack.toLowerCase().includes(needle.toLowerCase());
-}
-
 export function WorkspaceView({
 	onRequestImport,
 }: {
@@ -57,35 +52,178 @@ export function WorkspaceView({
 	const navigate = useNavigate();
 	const queryClient = useQueryClient();
 
+	// ── Filter input ──────────────────────────────────────────────────────
+	//
+	// Declared before the data block because the API list now fans out as
+	// `/apis?q=…&page=…&source=local` so the workspace can find rows that
+	// aren't on page 1 (workspaces with >60 APIs). The text input feeds a
+	// debounced server query; the workflow filter still runs in-memory
+	// because workflows aren't paginated.
+	const [filterInput, setFilterInput] = useState('');
+	const trimmedFilter = filterInput.trim();
+	const [debouncedFilter, setDebouncedFilter] = useState('');
+	useEffect(() => {
+		const handle = window.setTimeout(() => setDebouncedFilter(trimmedFilter), 200);
+		return () => window.clearTimeout(handle);
+	}, [trimmedFilter]);
+	const searchRef = useRef<WorkspaceSearchHandle>(null);
+	const apisGridRef = useRef<HTMLDivElement>(null);
+	const workflowsGridRef = useRef<HTMLDivElement>(null);
+	const onApisKeyDown = useRovingGridFocus(
+		apisGridRef,
+		'button[data-testid="workspace-tile-api"]',
+	);
+	const onWorkflowsKeyDown = useRovingGridFocus(
+		workflowsGridRef,
+		'button[data-testid="workspace-tile-workflow"]',
+	);
+
 	// ── Workspace data ────────────────────────────────────────────────────
 	//
-	// One paginated APIs probe (we ask for a generous first page; users with
-	// >60 APIs are extremely rare on the Mini surface — and if they hit it,
-	// the sub-section will simply add a "Load more" button rather than an
-	// infinite-scroll sentinel that fights the page's scroll model).
+	// Paginated APIs probe. Each page accumulates into a single list so the
+	// grid renders progressively when the user clicks "Load more". The
+	// query key includes the debounced filter so typing in the search box
+	// pivots to a server-filtered listing — without that, a workspace with
+	// >`WORKSPACE_PAGE_SIZE` APIs would silently hide rows past the first
+	// page (the bug that motivated this fan-out: importing Slack and not
+	// finding it because alphabetically it landed at row 65).
+	const [apisPage, setApisPage] = useState(1);
+	const [apisAccumulator, setApisAccumulator] = useState<Array<Record<string, unknown>>>([]);
+
+	// Reset paging + accumulator when the filter changes. We key off the
+	// *debounced* value so a single keystroke doesn't blow the accumulator
+	// away mid-typing (which would briefly show "no results" before the
+	// next-page response arrives).
+	const apisFilterRef = useRef(debouncedFilter);
+	useEffect(() => {
+		if (apisFilterRef.current === debouncedFilter) return;
+		apisFilterRef.current = debouncedFilter;
+		setApisPage(1);
+		setApisAccumulator([]);
+	}, [debouncedFilter]);
+
 	const apisQuery = useQuery({
-		queryKey: ['workspace', 'apis', 1, WORKSPACE_PAGE_SIZE],
-		queryFn: () => api.listApis(1, WORKSPACE_PAGE_SIZE, 'local'),
+		queryKey: ['workspace', 'apis', apisPage, WORKSPACE_PAGE_SIZE, debouncedFilter || null],
+		queryFn: () =>
+			api.listApis(apisPage, WORKSPACE_PAGE_SIZE, 'local', debouncedFilter || undefined),
 		staleTime: 30_000,
+		placeholderData: (prev) => prev,
 	});
 	const apisPayload = apisQuery.data as
-		| { data?: Array<Record<string, unknown>>; total?: number }
+		| { data?: Array<Record<string, unknown>>; total?: number; total_pages?: number }
 		| undefined;
-	const apis = useMemo<Array<Record<string, unknown>>>(
-		() => (Array.isArray(apisPayload?.data) ? apisPayload.data : []),
-		[apisPayload],
-	);
+
+	// Merge each page into the accumulator, deduping by `id` so a refetch
+	// of page 1 (e.g. after `credentialImported`) updates rows in place
+	// without duplicating them when later pages have already loaded.
+	useEffect(() => {
+		if (apisQuery.isPlaceholderData) return;
+		const incoming = apisPayload?.data;
+		if (!Array.isArray(incoming)) return;
+		if (apisPage === 1) {
+			setApisAccumulator(incoming);
+			return;
+		}
+		setApisAccumulator((prev) => {
+			const indexById = new Map<string, number>();
+			prev.forEach((row, idx) => {
+				const id = typeof row?.id === 'string' ? row.id : '';
+				if (id) indexById.set(id, idx);
+			});
+			const next = prev.slice();
+			for (const row of incoming) {
+				const id = typeof row?.id === 'string' ? row.id : '';
+				const existingIdx = id ? indexById.get(id) : undefined;
+				if (existingIdx !== undefined) {
+					next[existingIdx] = row;
+				} else {
+					if (id) indexById.set(id, next.length);
+					next.push(row);
+				}
+			}
+			return next;
+		});
+	}, [apisPayload, apisPage, apisQuery.isPlaceholderData]);
+
+	const apis = apisAccumulator;
 	const apisTotal = apisPayload?.total ?? apis.length;
+	const apisTotalPages = apisPayload?.total_pages ?? 1;
+	const apisHasMore = apisPage < apisTotalPages;
+	const apisIsFetchingMore = apisQuery.isFetching && apisPage > 1;
+
+	// Paginated workflows probe — same shape and rationale as the APIs
+	// fan-out above. `GET /workflows` returns a bare list when no `page`
+	// / `limit` is supplied (preserving every other consumer), and an
+	// envelope when we ask for a page. Without this, a workspace with
+	// >`WORKSPACE_PAGE_SIZE` workflows would silently truncate the grid.
+	const [workflowsPage, setWorkflowsPage] = useState(1);
+	const [workflowsAccumulator, setWorkflowsAccumulator] = useState<
+		Array<Record<string, unknown>>
+	>([]);
+	const workflowsFilterRef = useRef(debouncedFilter);
+	useEffect(() => {
+		if (workflowsFilterRef.current === debouncedFilter) return;
+		workflowsFilterRef.current = debouncedFilter;
+		setWorkflowsPage(1);
+		setWorkflowsAccumulator([]);
+	}, [debouncedFilter]);
 
 	const workflowsQuery = useQuery({
-		queryKey: ['workspace', 'workflows'],
-		queryFn: () => api.listWorkflows(undefined, 'local'),
+		queryKey: [
+			'workspace',
+			'workflows',
+			workflowsPage,
+			WORKSPACE_PAGE_SIZE,
+			debouncedFilter || null,
+		],
+		queryFn: () =>
+			api.listWorkflowsPaged(
+				workflowsPage,
+				WORKSPACE_PAGE_SIZE,
+				'local',
+				debouncedFilter || undefined,
+			),
 		staleTime: 60_000,
+		placeholderData: (prev) => prev,
 	});
-	const workflows = useMemo<Array<Record<string, unknown>>>(
-		() => (Array.isArray(workflowsQuery.data) ? workflowsQuery.data : []),
-		[workflowsQuery.data],
-	);
+	const workflowsPayload = workflowsQuery.data as
+		| { data?: Array<Record<string, unknown>>; total?: number; total_pages?: number }
+		| undefined;
+
+	useEffect(() => {
+		if (workflowsQuery.isPlaceholderData) return;
+		const incoming = workflowsPayload?.data;
+		if (!Array.isArray(incoming)) return;
+		if (workflowsPage === 1) {
+			setWorkflowsAccumulator(incoming);
+			return;
+		}
+		setWorkflowsAccumulator((prev) => {
+			const indexBySlug = new Map<string, number>();
+			prev.forEach((row, idx) => {
+				const slug = typeof row?.slug === 'string' ? (row.slug as string) : '';
+				if (slug) indexBySlug.set(slug, idx);
+			});
+			const next = prev.slice();
+			for (const row of incoming) {
+				const slug = typeof row?.slug === 'string' ? (row.slug as string) : '';
+				const existingIdx = slug ? indexBySlug.get(slug) : undefined;
+				if (existingIdx !== undefined) {
+					next[existingIdx] = row;
+				} else {
+					if (slug) indexBySlug.set(slug, next.length);
+					next.push(row);
+				}
+			}
+			return next;
+		});
+	}, [workflowsPayload, workflowsPage, workflowsQuery.isPlaceholderData]);
+
+	const workflows = workflowsAccumulator;
+	const workflowsTotal = workflowsPayload?.total ?? workflows.length;
+	const workflowsTotalPages = workflowsPayload?.total_pages ?? 1;
+	const workflowsHasMore = workflowsPage < workflowsTotalPages;
+	const workflowsIsFetchingMore = workflowsQuery.isFetching && workflowsPage > 1;
 
 	// ── Toolkit → API coverage map ───────────────────────────────────────
 	//
@@ -159,97 +297,74 @@ export function WorkspaceView({
 
 	const hasDefaultToolkit = toolkits.some((t) => t.id === 'default');
 
-	// ── In-memory filter ──────────────────────────────────────────────────
-	const [filterInput, setFilterInput] = useState('');
-	const searchRef = useRef<WorkspaceSearchHandle>(null);
-	const apisGridRef = useRef<HTMLDivElement>(null);
-	const workflowsGridRef = useRef<HTMLDivElement>(null);
-	const onApisKeyDown = useRovingGridFocus(
-		apisGridRef,
-		'button[data-testid="workspace-tile-api"]',
-	);
-	const onWorkflowsKeyDown = useRovingGridFocus(
-		workflowsGridRef,
-		'button[data-testid="workspace-tile-workflow"]',
-	);
 	const filteredApis = useMemo<WorkspaceTileEntity[]>(() => {
-		const q = filterInput.trim();
-		return apis
-			.filter((row) => {
-				const name = String(row.name ?? row.id ?? '');
-				const description = String(row.description ?? '');
-				return matchesQuery(name, q) || matchesQuery(description, q);
-			})
-			.map((row) => {
-				const id = String(row.id ?? '');
-				const explicitToolkits = apiToolkitMap.get(id) ?? [];
-				const hasCreds = Boolean(row.has_credentials);
-				const toolkitCount =
-					explicitToolkits.length + (hasDefaultToolkit && hasCreds ? 1 : 0);
-				const toolkitNames = Array.from({ length: toolkitCount }, (_, i) =>
-					i < explicitToolkits.length ? explicitToolkits[i] : 'default',
-				);
-				return {
-					kind: 'api',
-					id,
-					name: String(row.name ?? row.id ?? ''),
-					description:
-						typeof row.description === 'string'
-							? (row.description as string)
-							: undefined,
-					hasCredentials: hasCreds,
-					toolkitNames,
-					operationCount:
-						typeof row.operation_count === 'number' ? row.operation_count : undefined,
-					credentialCount:
-						typeof row.credential_count === 'number' ? row.credential_count : undefined,
-					workflowCount:
-						typeof row.workflow_count === 'number' ? row.workflow_count : undefined,
-					importedAt: typeof row.created_at === 'number' ? row.created_at : undefined,
-				};
-			});
-	}, [apis, filterInput, apiToolkitMap, hasDefaultToolkit]);
+		// APIs come from the server already filtered by the debounced
+		// `q=`. We only do row → tile-entity shaping here.
+		return apis.map((row) => {
+			const id = String(row.id ?? '');
+			const explicitToolkits = apiToolkitMap.get(id) ?? [];
+			const hasCreds = Boolean(row.has_credentials);
+			const toolkitCount = explicitToolkits.length + (hasDefaultToolkit && hasCreds ? 1 : 0);
+			const toolkitNames = Array.from({ length: toolkitCount }, (_, i) =>
+				i < explicitToolkits.length ? explicitToolkits[i] : 'default',
+			);
+			return {
+				kind: 'api',
+				id,
+				name: String(row.name ?? row.id ?? ''),
+				description:
+					typeof row.description === 'string' ? (row.description as string) : undefined,
+				hasCredentials: hasCreds,
+				toolkitNames,
+				operationCount:
+					typeof row.operation_count === 'number' ? row.operation_count : undefined,
+				credentialCount:
+					typeof row.credential_count === 'number' ? row.credential_count : undefined,
+				workflowCount:
+					typeof row.workflow_count === 'number' ? row.workflow_count : undefined,
+				importedAt: typeof row.created_at === 'number' ? row.created_at : undefined,
+			};
+		});
+	}, [apis, apiToolkitMap, hasDefaultToolkit]);
 
 	const filteredWorkflows = useMemo<WorkspaceTileEntity[]>(() => {
-		const q = filterInput.trim();
-		return workflows
-			.filter((row) => {
-				const name = String(row.name ?? row.id ?? '');
-				const description = String(row.description ?? '');
-				return matchesQuery(name, q) || matchesQuery(description, q);
-			})
-			.map((row) => {
-				// `/workflows` returns `steps_count: number` and
-				// `involved_apis: string[]`. The earlier draft of this
-				// component read `row.steps` / `row.api_ids` — those keys
-				// don't exist on the response and silently produced
-				// "0 steps · 0 APIs" for every tile.
-				const steps =
-					typeof row.steps_count === 'number' ? (row.steps_count as number) : undefined;
-				const involved = Array.isArray(row.involved_apis)
-					? (row.involved_apis as unknown[]).map(String)
-					: [];
-				return {
-					kind: 'workflow',
-					id: String(row.id ?? row.slug ?? ''),
-					slug: typeof row.slug === 'string' ? (row.slug as string) : undefined,
-					name: String(row.name ?? row.id ?? ''),
-					description:
-						typeof row.description === 'string'
-							? (row.description as string)
-							: undefined,
-					stepsCount: steps,
-					involvedApis: involved,
-					importedAt: typeof row.created_at === 'number' ? row.created_at : undefined,
-				};
-			});
-	}, [workflows, filterInput]);
+		// Workflows come from the server already filtered by the
+		// debounced `q=` (same protocol as the APIs fan-out). We only
+		// shape rows into tile entities here.
+		return workflows.map((row) => {
+			// `/workflows` returns `steps_count: number` and
+			// `involved_apis: string[]`. The earlier draft of this
+			// component read `row.steps` / `row.api_ids` — those keys
+			// don't exist on the response and silently produced
+			// "0 steps · 0 APIs" for every tile.
+			const steps =
+				typeof row.steps_count === 'number' ? (row.steps_count as number) : undefined;
+			const involved = Array.isArray(row.involved_apis)
+				? (row.involved_apis as unknown[]).map(String)
+				: [];
+			return {
+				kind: 'workflow',
+				id: String(row.id ?? row.slug ?? ''),
+				slug: typeof row.slug === 'string' ? (row.slug as string) : undefined,
+				name: String(row.name ?? row.id ?? ''),
+				description:
+					typeof row.description === 'string' ? (row.description as string) : undefined,
+				stepsCount: steps,
+				involvedApis: involved,
+				importedAt: typeof row.created_at === 'number' ? row.created_at : undefined,
+			};
+		});
+	}, [workflows]);
 
-	const totalFiltered = filteredApis.length + filteredWorkflows.length;
-	const totalUnfiltered = apis.length + workflows.length;
-	const resultsLabel = filterInput
-		? `${totalFiltered} of ${totalUnfiltered} match "${filterInput.trim()}"`
-		: undefined;
+	// Result label semantics: when a filter is active, both API and
+	// workflow counts are the server-side totals for the filtered query
+	// (i.e. across *all* pages, not just the rows we've loaded into the
+	// accumulator). The per-section "· N" headers continue to show
+	// their own totals.
+	const filteredApisCount = trimmedFilter ? apisTotal : filteredApis.length;
+	const filteredWorkflowsCount = trimmedFilter ? workflowsTotal : filteredWorkflows.length;
+	const totalFiltered = filteredApisCount + filteredWorkflowsCount;
+	const resultsLabel = trimmedFilter ? `${totalFiltered} match "${trimmedFilter}"` : undefined;
 
 	function openTile(entity: WorkspaceTileEntity) {
 		if (entity.kind === 'api') {
@@ -355,20 +470,43 @@ export function WorkspaceView({
 								onRequestImport={onRequestImport}
 							/>
 						) : (
-							<div
-								ref={apisGridRef}
-								onKeyDown={onApisKeyDown}
-								className="grid min-w-0 gap-3 md:grid-cols-2 xl:grid-cols-3"
-								data-testid="workspace-grid-apis"
-							>
-								{filteredApis.map((entity) => (
-									<WorkspaceTile
-										key={entity.id}
-										entity={entity}
-										onOpen={openTile}
-									/>
-								))}
-							</div>
+							<>
+								<div
+									ref={apisGridRef}
+									onKeyDown={onApisKeyDown}
+									className="grid min-w-0 gap-3 md:grid-cols-2 xl:grid-cols-3"
+									data-testid="workspace-grid-apis"
+								>
+									{filteredApis.map((entity) => (
+										<WorkspaceTile
+											key={entity.id}
+											entity={entity}
+											onOpen={openTile}
+										/>
+									))}
+								</div>
+								{(apisHasMore || apisIsFetchingMore) && (
+									<div
+										className="flex items-center justify-center pt-2"
+										data-testid="workspace-apis-load-more"
+									>
+										{apisIsFetchingMore ? (
+											<div className="text-muted-foreground flex items-center gap-2 text-sm">
+												<Loader2 className="h-4 w-4 animate-spin" />
+												Loading more…
+											</div>
+										) : (
+											<Button
+												variant="ghost"
+												size="sm"
+												onClick={() => setApisPage((p) => p + 1)}
+											>
+												Load more
+											</Button>
+										)}
+									</div>
+								)}
+							</>
 						)}
 					</section>
 
@@ -381,7 +519,7 @@ export function WorkspaceView({
 										className="text-muted-foreground/80 ml-2 font-mono text-xs"
 										data-testid="workspace-section-workflows-count"
 									>
-										· {workflows.length.toLocaleString()}
+										· {workflowsTotal.toLocaleString()}
 									</span>
 								</h2>
 								{workflowsQuery.isFetching && !workflowsQuery.isLoading ? (
@@ -400,20 +538,43 @@ export function WorkspaceView({
 									onRequestImport={onRequestImport}
 								/>
 							) : (
-								<div
-									ref={workflowsGridRef}
-									onKeyDown={onWorkflowsKeyDown}
-									className="grid min-w-0 gap-3 md:grid-cols-2 xl:grid-cols-3"
-									data-testid="workspace-grid-workflows"
-								>
-									{filteredWorkflows.map((entity) => (
-										<WorkspaceTile
-											key={entity.id}
-											entity={entity}
-											onOpen={openTile}
-										/>
-									))}
-								</div>
+								<>
+									<div
+										ref={workflowsGridRef}
+										onKeyDown={onWorkflowsKeyDown}
+										className="grid min-w-0 gap-3 md:grid-cols-2 xl:grid-cols-3"
+										data-testid="workspace-grid-workflows"
+									>
+										{filteredWorkflows.map((entity) => (
+											<WorkspaceTile
+												key={entity.id}
+												entity={entity}
+												onOpen={openTile}
+											/>
+										))}
+									</div>
+									{(workflowsHasMore || workflowsIsFetchingMore) && (
+										<div
+											className="flex items-center justify-center pt-2"
+											data-testid="workspace-workflows-load-more"
+										>
+											{workflowsIsFetchingMore ? (
+												<div className="text-muted-foreground flex items-center gap-2 text-sm">
+													<Loader2 className="h-4 w-4 animate-spin" />
+													Loading more…
+												</div>
+											) : (
+												<Button
+													variant="ghost"
+													size="sm"
+													onClick={() => setWorkflowsPage((p) => p + 1)}
+												>
+													Load more
+												</Button>
+											)}
+										</div>
+									)}
+								</>
 							)}
 						</section>
 					) : null}
