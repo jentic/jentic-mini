@@ -277,7 +277,13 @@ export async function mockTraceDetail(page: Page, id = 'trace-1') {
 }
 
 export async function mockWorkflows(page: Page) {
+	// Handle both bare `/workflows` and parameterised forms like
+	// `/workflows?source=local` (used by the Workspace queries).
 	await page.route('**/workflows', (route) => {
+		if (!isApiRequest(route)) return route.continue();
+		return route.fulfill({ json: [] });
+	});
+	await page.route('**/workflows?*', (route) => {
 		if (!isApiRequest(route)) return route.continue();
 		return route.fulfill({ json: [] });
 	});
