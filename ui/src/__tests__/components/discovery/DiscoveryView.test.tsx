@@ -1462,9 +1462,13 @@ describe('DiscoveryView', () => {
 		await user.click(within(card).getByRole('button'));
 
 		const sheet = await screen.findByTestId('sheet-primitive');
-		const summary = await within(sheet).findByTestId('api-summary');
 		// Fallback shape: "<host> — N operations across M tags"
-		expect(summary).toHaveTextContent(/bare\.com.*3 operations across 2 tags/);
+		// Wait for the operation count to load — `previewCatalogOperations`
+		// returns asynchronously so the summary first renders with just the host.
+		await waitFor(() => {
+			const summary = within(sheet).getByTestId('api-summary');
+			expect(summary).toHaveTextContent(/bare\.com.*3 operations across 2 tags/);
+		});
 	});
 
 	it('long descriptions get a Show more / Show less toggle', async () => {
