@@ -92,7 +92,17 @@ export function PageHeader({
 					)}
 				</div>
 			</div>
-			{actions && <div className="flex shrink-0 items-center gap-2">{actions}</div>}
+			{actions && (
+				// `self-center` keeps the actions cluster vertically centred
+				// against the title row when nothing wraps. The parent uses
+				// `items-start` so a multi-line subtitle hugs the top of the
+				// title column; without `self-center` here the actions would
+				// also pin to the top and look top-heavy on the most common
+				// (single-line) header layout. When the row wraps to a new
+				// line on narrow viewports `self-center` is a no-op (it
+				// centres within its own flex line).
+				<div className="flex shrink-0 items-center gap-2 self-center">{actions}</div>
+			)}
 		</div>
 	);
 
@@ -108,15 +118,7 @@ export function PageHeader({
 				className,
 			)}
 		>
-			{/*
-			 * Asymmetric vertical padding — `pt-4 md:pt-5` keeps a comfortable
-			 * top breathing room under the fixed TopNavbar, while the smaller
-			 * `pb-3` shrinks the visual gap to whatever sits flush below
-			 * (e.g. Discover's sticky search toolbar). When `pb` matched `pt`
-			 * the title-to-toolbar gap looked top-heavy because the toolbar's
-			 * own `py-3` then stacked against a 20px header skirt.
-			 */}
-			<div className="px-page-gutter pt-4 pb-3 md:pt-5">
+			<div className="px-4 py-4 md:py-5">
 				{animated ? (
 					<motion.div
 						initial={{ opacity: 0, y: -8 }}
