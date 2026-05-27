@@ -546,10 +546,25 @@ async def list_apis(
     #   - it's a sub-api (contains "/") AND exact sub-api is in covered_sub_apis, OR
     #   - it's a leaf (no "/") AND its vendor is in covered_leaf_vendors
     # This prevents language.googleapis.com hiding googleapis.com/gmail (a different API).
+    #
+    # CRITICAL: a *path-style* local id like `slack.com/openai` represents
+    # ONE specific sub-API the user has imported (the "Slack AI Plugin"
+    # subset). It is NOT a leaf-level API for the `slack.com` vendor —
+    # the catalog still has a separate `slack.com` row (the full Slack
+    # Web API) which the user has not imported and should still be able
+    # to discover. So path-style ids must only be deduped against their
+    # own exact match (handled below by `local_by_id`); they must NOT
+    # contribute to `covered_leaf_vendors` or to the `covered_sub_apis`
+    # derived from their hostname's subdomain (which would also be
+    # nonsensical: `slack.com/openai` says nothing about whether the
+    # user covers `slack.com/anything-else`).
     _GENERIC_SUBS = {"api", "www", "app", "web", "portal", "v1", "v2", "v3"}
     covered_sub_apis: set[str] = set()
     covered_leaf_vendors: set[str] = set()
     for local_id in {r[0] for r in local_rows}:
+        if "/" in local_id:
+            # Path-style sub-api — exact-match dedup only (via local_by_id below).
+            continue
         hostname = local_id.split("/")[0]
         parts = hostname.split(".")
         if len(parts) < 2:

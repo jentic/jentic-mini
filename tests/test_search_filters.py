@@ -393,3 +393,96 @@ def test_apis_catalog_include_imported_pivots_to_local_row(
     # path leaves alone; assert presence + boolean shape rather than a
     # specific value (the seed doesn't attach credentials).
     assert isinstance(pivoted["has_credentials"], bool), pivoted
+
+
+def test_apis_catalog_path_style_sibling_is_not_suppressed_by_dedup(
+    admin_client, monkeypatch, tmp_path
+):
+    """Importing a path-style sub-API (e.g. `slack.com/openai`) must NOT
+    hide its sibling leaf-vendor catalog row (`slack.com`).
+
+    The two are different specs with disjoint operations — the catalog
+    `slack.com` row is the full Slack Web API, the local
+    `slack.com/openai` row is the small "Slack AI Plugin" subset. Before
+    the May 2027 fix, the cross-vendor dedup harvested `slack.com` from
+    the local id's hostname into `covered_leaf_vendors`, which silently
+    dropped the leaf catalog row. Symptom in the UI: Discover showed
+    `slack.com/openai` with the imported pill but the genuinely-missing
+    `slack.com` row was nowhere to be found, leaving the user unable to
+    import the full Slack API to back workflows that needed it.
+
+    Pin the desired behaviour: with `include_imported=true`, both rows
+    must survive — the imported one as `source=local` and the leaf
+    vendor as `source=catalog`.
+    """
+    sibling_local_id = "slack-test.local/openai"
+    sibling_leaf_id = "slack-test.local"
+
+    spec = {
+        "openapi": "3.1.0",
+        "info": {"title": "Slack AI Plugin (test)", "version": "1.0.0"},
+        # Force the api_id below via the import payload — the spec's
+        # base_url isn't load-bearing here.
+        "servers": [{"url": "https://slack-test.local/openai"}],
+        "paths": {
+            "/x": {
+                "get": {
+                    "operationId": "x_slack_test_openai",
+                    "summary": "stub",
+                    "responses": {"200": {"description": "ok"}},
+                }
+            }
+        },
+    }
+    resp = admin_client.post(
+        "/import",
+        json={
+            "sources": [
+                {
+                    "type": "inline",
+                    "content": json.dumps(spec),
+                    "filename": "slack_test_openai.json",
+                    "force_api_id": sibling_local_id,
+                }
+            ]
+        },
+    )
+    assert resp.status_code in (200, 201), resp.text
+
+    try:
+        manifest = tmp_path / "manifest_slack_siblings.json"
+        manifest.write_text(
+            json.dumps(
+                [
+                    {
+                        "api_id": sibling_leaf_id,
+                        "path": f"apis/openapi/{sibling_leaf_id}",
+                        "spec_url": f"https://example.invalid/{sibling_leaf_id}.json",
+                    },
+                    {
+                        "api_id": sibling_local_id,
+                        "path": f"apis/openapi/{sibling_local_id}",
+                        "spec_url": f"https://example.invalid/{sibling_local_id}.json",
+                    },
+                ]
+            )
+        )
+        monkeypatch.setattr(catalog_router, "CATALOG_MANIFEST_PATH", manifest)
+
+        resp = admin_client.get("/apis?source=catalog&include_imported=true")
+        assert resp.status_code == 200, resp.text
+        rows = resp.json()["data"]
+        ids = {r["id"]: r["source"] for r in rows}
+
+        # The imported sub-API surfaces as the local-pivoted row.
+        assert ids.get(sibling_local_id) == "local", (
+            f"{sibling_local_id} should pivot to local, got {ids}"
+        )
+        # The leaf-vendor catalog row is genuinely *not* imported and
+        # must remain available for the user to import. Before the fix
+        # this row was dropped by the leaf-vendor dedup.
+        assert ids.get(sibling_leaf_id) == "catalog", (
+            f"{sibling_leaf_id} should appear as an importable catalog row, got {ids}"
+        )
+    finally:
+        admin_client.delete(f"/apis/{sibling_local_id}?cascade=true")
