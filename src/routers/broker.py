@@ -1082,6 +1082,43 @@ async def broker(request: Request, target: str):
                     # Write trace for Pipedream proxy call
                     trace_status = "success" if _pd_resp.status_code < 400 else "error"
                     await _write_trace(trace_status, _pd_resp.status_code)
+                    if _pd_resp.status_code < 400:
+                        await vault.mark_credential_used(pd_cred_id)
+                    # Track OAuth account health: 401/403 = broken grant; <400 = healthy.
+                    # Powers the red/green StatusDot in the credentials list and the
+                    # inline Reconnect affordance on the workspace API detail page.
+                    if _pd_resp.status_code in (401, 403):
+                        try:
+                            async with get_db() as _hdb:
+                                await _hdb.execute(
+                                    "UPDATE oauth_broker_accounts SET healthy=0 "
+                                    "WHERE account_id=? AND api_host=?",
+                                    (pd_account_id, routing_host),
+                                )
+                                await _hdb.commit()
+                        except Exception:
+                            log.debug(
+                                "Pipedream health write (unhealthy) failed for account %s host %s",
+                                pd_account_id,
+                                routing_host,
+                                exc_info=True,
+                            )
+                    elif _pd_resp.status_code < 400:
+                        try:
+                            async with get_db() as _hdb:
+                                await _hdb.execute(
+                                    "UPDATE oauth_broker_accounts SET healthy=1 "
+                                    "WHERE account_id=? AND api_host=? AND healthy IS NOT 1",
+                                    (pd_account_id, routing_host),
+                                )
+                                await _hdb.commit()
+                        except Exception:
+                            log.debug(
+                                "Pipedream health write (healthy) failed for account %s host %s",
+                                pd_account_id,
+                                routing_host,
+                                exc_info=True,
+                            )
                     _pd_resp_headers = {
                         k: v
                         for k, v in _pd_resp.headers.items()
@@ -1223,6 +1260,8 @@ async def broker(request: Request, target: str):
                 # Update trace with final status
                 trace_status = "success" if resp.status < 400 else "error"
                 await _write_trace(trace_status, resp.status)
+                if credential_id and resp.status < 400:
+                    await vault.mark_credential_used(credential_id)
 
                 if upstream_async_flag:
                     await update_job(
@@ -1342,6 +1381,11 @@ async def broker(request: Request, target: str):
             await confirm_overlay(api_id, execution_id)
         except Exception:
             pass  # non-fatal
+
+    # ── Mark credential last_used_at on success ───────────────────────────────
+    # Best-effort; failures are swallowed inside vault.mark_credential_used.
+    if credential_id and _upstream_status < 400:
+        await vault.mark_credential_used(credential_id)
 
     # ── Auth failure hint for BasicAuth ───────────────────────────────────────
     # When a BasicAuth call gets 401/403, the likely cause is the wrong

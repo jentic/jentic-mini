@@ -20,6 +20,7 @@ import yaml
 from fastapi import APIRouter, Depends, HTTPException, Path, Request, Response
 from pydantic import BaseModel, Field
 
+from src.audit import persist_audit
 from src.auth import client_ip, default_allowed_ips, require_human_session
 from src.db import DEFAULT_TOOLKIT_ID, get_db
 from src.models import (
@@ -1012,6 +1013,14 @@ async def set_credential_permissions(
         len(rules_list),
         client_ip(request),
     )
+    await persist_audit(
+        event="PERMISSIONS_SET",
+        actor_kind="human",
+        ip=client_ip(request),
+        target_kind="credential",
+        target_id=cred_id,
+        payload={"toolkit_id": toolkit_id, "rules": len(rules_list)},
+    )
     return result
 
 
@@ -1072,6 +1081,14 @@ async def patch_credential_permissions(
         added,
         removed,
         client_ip(request),
+    )
+    await persist_audit(
+        event="PERMISSIONS_PATCHED",
+        actor_kind="human",
+        ip=client_ip(request),
+        target_kind="credential",
+        target_id=cred_id,
+        payload={"toolkit_id": toolkit_id, "added": added, "removed": removed},
     )
     return result
 

@@ -2,13 +2,16 @@
 
 import json
 import logging
-from typing import Annotated
+from typing import Annotated, Any
+from urllib.parse import urlparse
 
+import httpx
 import yaml
 from fastapi import APIRouter, HTTPException, Path, Query, Request
 from fastapi.responses import JSONResponse
 
 import src.vault as vault
+from src.audit import persist_audit, query_audit
 from src.auth import client_ip
 from src.config import JENTIC_PUBLIC_HOSTNAME
 from src.db import get_db
@@ -326,21 +329,161 @@ async def create(body: CredentialCreate, request: Request):
             server_variables=getattr(body, "server_variables", None),
             scheme=getattr(body, "scheme", None),
             routes=getattr(body, "routes", None),
+            description=getattr(body, "description", None),
         )
     except Exception:
         log.exception("Failed to create credential")
         raise HTTPException(400, "Failed to create credential.")
 
     actor = "human" if request.state.is_human_session else f"toolkit={request.state.toolkit_id}"
-    audit_log.info(
-        "CREDENTIAL_CREATED id=%s label=%s api_id=%s actor=%s ip=%s",
-        cred["id"],
-        cred["label"],
-        api_id,
-        actor,
-        client_ip(request),
+    await persist_audit(
+        event="CREDENTIAL_CREATED",
+        actor_kind="human" if request.state.is_human_session else "toolkit",
+        actor_id=None if request.state.is_human_session else request.state.toolkit_id,
+        ip=client_ip(request),
+        target_kind="credential",
+        target_id=cred["id"],
+        payload={"label": cred["label"], "api_id": api_id, "actor": actor},
     )
     return cred
+
+
+@router.post(
+    "/{cid:path}/test",
+    summary="Test a credential by issuing a low-impact upstream probe",
+)
+async def test_credential(
+    cid: Annotated[str, Path(description="Credential ID to test")],
+):
+    """Verify a credential by issuing a single 5-second probe to the upstream API.
+
+    The probe URL is chosen, in priority order:
+    1. `x-jentic-healthcheck` declared in the API's OpenAPI spec
+    2. The first `GET` operation in the spec with no required parameters
+    3. The root URL of the API's first declared server
+    4. The credential's first declared route host
+
+    Response shape: `{ ok: bool, status: int | null, hint: string | null, probe_url: string | null }`.
+    A 2xx upstream response is `ok=true`. 401/403 returns `ok=false` with a hint that the
+    credential is rejected. 404/405 on a probe path is treated as `ok=true` since the
+    upstream **did respond** — we only care that the credential is plausibly valid.
+
+    No body is sent. No agent-policy involvement. Used by the credentials UI's
+    "Test connection" button on the form page and (later) inline next to the
+    credential row in the list.
+    """
+    cred = await vault.get_credential(cid)
+    if not cred:
+        raise HTTPException(404, "Credential not found")
+
+    api_id = cred.get("api_id")
+    routes = cred.get("routes") or []
+    fallback_host = None
+    if api_id:
+        fallback_host = api_id
+    elif routes:
+        fallback_host = routes[0].split("/", 1)[0]
+
+    spec = await _load_api_spec(api_id) if api_id else None
+    probe_url = _pick_probe_url(spec, fallback_host)
+    if not probe_url:
+        return {
+            "ok": False,
+            "status": None,
+            "hint": "no_probe_url",
+            "probe_url": None,
+            "message": "Could not determine a probe URL from the spec or credential routes.",
+        }
+
+    headers, _cred_with_value = await vault.build_inject_headers_for_credential(cid)
+    if cred.get("auth_type") == "pipedream_oauth":
+        # Pipedream credentials don't carry a direct token we can inject — the broker
+        # proxies through Pipedream. Surface this as a non-fatal diagnostic so the UI
+        # can show an informative tooltip rather than a fake red.
+        return {
+            "ok": False,
+            "status": None,
+            "hint": "pipedream_unsupported",
+            "probe_url": probe_url,
+            "message": (
+                "Pipedream OAuth credentials cannot be probed directly — the upstream call "
+                "is mediated by Pipedream. Use the broker (e.g. a small workflow run) to validate."
+            ),
+        }
+
+    try:
+        async with httpx.AsyncClient(timeout=5.0, follow_redirects=False) as client:
+            resp = await client.get(probe_url, headers=headers)
+        status = resp.status_code
+    except httpx.TimeoutException:
+        return {
+            "ok": False,
+            "status": None,
+            "hint": "timeout",
+            "probe_url": probe_url,
+            "message": "Probe timed out after 5 seconds.",
+        }
+    except httpx.HTTPError as exc:
+        return {
+            "ok": False,
+            "status": None,
+            "hint": "network_error",
+            "probe_url": probe_url,
+            "message": f"Network error: {exc}",
+        }
+
+    # 401/403 = the credential was rejected by the upstream; this is an authoritative
+    # "broken" signal. 404/405 means the probe path doesn't exist but the host responded —
+    # we count that as "ok" because the credential itself wasn't rejected.
+    ok = (status < 400) or (status in (404, 405))
+    hint: str | None = None
+    if status in (401, 403):
+        hint = "unauthorized"
+    elif status == 429:
+        hint = "rate_limited"
+    elif status >= 500:
+        hint = "upstream_error"
+
+    if ok:
+        await vault.mark_credential_used(cid)
+
+    return {
+        "ok": ok,
+        "status": status,
+        "hint": hint,
+        "probe_url": probe_url,
+    }
+
+
+@router.get(
+    "/{cid:path}/bindings",
+    summary="List toolkits this credential is bound to",
+)
+async def list_credential_bindings(
+    cid: Annotated[str, Path(description="Credential ID")],
+):
+    """Return `[{toolkit_id, toolkit_name, alias}]` for every toolkit this credential is bound to.
+
+    Powers the per-row "Used by N toolkits" chip cluster in the credentials list and the
+    cascade-impact preview in `ConfirmDeleteDialog`'s credential variant. A single indexed
+    JOIN — avoids the N+1 fan-out the UI would otherwise have to do.
+    """
+    if not await vault.get_credential(cid):
+        raise HTTPException(404, "Credential not found")
+    async with get_db() as db:
+        async with db.execute(
+            """SELECT t.id, t.name, tc.alias
+               FROM toolkit_credentials tc
+               JOIN toolkits t ON t.id = tc.toolkit_id
+               WHERE tc.credential_id = ?
+               ORDER BY t.name""",
+            (cid,),
+        ) as cur:
+            rows = await cur.fetchall()
+    return [
+        {"toolkit_id": r[0], "toolkit_name": r[1], "alias": r[2]}
+        for r in rows
+    ]
 
 
 @router.get(
@@ -400,11 +543,20 @@ async def patch(
         server_variables=getattr(body, "server_variables", None),
         scheme=getattr(body, "scheme", None),
         routes=getattr(body, "routes", None),
+        description=getattr(body, "description", None),
     )
     if not row:
         raise HTTPException(404, "Credential not found")
     actor = "human" if request.state.is_human_session else f"toolkit={request.state.toolkit_id}"
-    audit_log.info("CREDENTIAL_UPDATED id=%s actor=%s ip=%s", cid, actor, client_ip(request))
+    await persist_audit(
+        event="CREDENTIAL_UPDATED",
+        actor_kind="human" if request.state.is_human_session else "toolkit",
+        actor_id=None if request.state.is_human_session else request.state.toolkit_id,
+        ip=client_ip(request),
+        target_kind="credential",
+        target_id=cid,
+        payload={"actor": actor},
+    )
     return row
 
 
@@ -418,6 +570,11 @@ async def delete(
     The credential is removed from the vault and unbound from all toolkits that reference it.
     Agents using toolkits with this credential will immediately lose access to the upstream API.
 
+    For credentials backed by Pipedream OAuth (`auth_type == 'pipedream_oauth'`), the
+    upstream Pipedream grant is also revoked so the connection cannot be re-used out-of-band.
+    Failures on the upstream revoke are logged but do not block local deletion — local
+    cleanup is the source of truth.
+
     **Auth:** Requires human session OR agent key with explicit `DELETE /credentials` allow rule on jentic-mini credential.
 
     **Warning:** This operation cannot be undone. The secret value is irrecoverably destroyed.
@@ -430,10 +587,52 @@ async def delete(
                 status_code=403,
                 detail="Deleting credentials requires a human session, or an agent key with an explicit DELETE /credentials allow rule on the jentic-mini credential.",
             )
+    cred = await vault.get_credential(cid)
+    if not cred:
+        raise HTTPException(404, "Credential not found")
+
+    pipedream_revoked: bool | None = None
+    if cred.get("auth_type") == "pipedream_oauth":
+        # Map credential row → broker/account so we can revoke upstream. The
+        # link is materialized in oauth_broker_accounts; we keep this query
+        # tight rather than parsing the cred id format.
+        async with get_db() as db:
+            async with db.execute(
+                "SELECT broker_id, account_id FROM oauth_broker_accounts "
+                "WHERE broker_id || '-' || account_id || '-' || replace(api_host, '.', '-') = ? "
+                "LIMIT 1",
+                (cid,),
+            ) as cur:
+                row = await cur.fetchone()
+        if row:
+            from src.routers.oauth_brokers import revoke_pipedream_account_upstream
+
+            pipedream_revoked = await revoke_pipedream_account_upstream(row[0], row[1])
+            # Drop the local oauth_broker_accounts row(s) bound to this credential
+            async with get_db() as db:
+                await db.execute(
+                    "DELETE FROM oauth_broker_accounts "
+                    "WHERE broker_id || '-' || account_id || '-' || replace(api_host, '.', '-') = ?",
+                    (cid,),
+                )
+                await db.commit()
+
     if not await vault.delete_credential(cid):
         raise HTTPException(404, "Credential not found")
     actor = "human" if request.state.is_human_session else f"toolkit={request.state.toolkit_id}"
-    audit_log.info("CREDENTIAL_DELETED id=%s actor=%s ip=%s", cid, actor, client_ip(request))
+    await persist_audit(
+        event="CREDENTIAL_DELETED",
+        actor_kind="human" if request.state.is_human_session else "toolkit",
+        actor_id=None if request.state.is_human_session else request.state.toolkit_id,
+        ip=client_ip(request),
+        target_kind="credential",
+        target_id=cid,
+        payload={
+            "actor": actor,
+            "auth_type": cred.get("auth_type"),
+            "pipedream_revoked": pipedream_revoked,
+        },
+    )
 
 
 @router.get(
@@ -470,8 +669,8 @@ async def list_credentials(
     async with get_db() as db:
         async with db.execute(
             f"SELECT c.id, c.label, c.api_id, c.auth_type, c.created_at, c.updated_at, c.identity, "
-            f"       c.server_variables, c.scheme, "
-            f"       oba.account_id, oba.app_slug, oba.synced_at "
+            f"       c.server_variables, c.scheme, c.last_used_at, c.description, "
+            f"       oba.account_id, oba.app_slug, oba.synced_at, oba.healthy "
             f"FROM credentials c "
             f"LEFT JOIN oauth_broker_accounts oba ON oba.broker_id || '-' || oba.account_id || '-' || replace(oba.api_host, '.', '-') = c.id "
             f"{where} ORDER BY c.created_at DESC",
@@ -504,10 +703,143 @@ async def list_credentials(
             "identity": r[6] if len(r) > 6 else None,
             "server_variables": json.loads(r[7]) if len(r) > 7 and r[7] else None,
             "scheme": json.loads(r[8]) if len(r) > 8 and r[8] else None,
+            "last_used_at": r[9] if len(r) > 9 else None,
+            "description": r[10] if len(r) > 10 else None,
             "routes": routes_map.get(r[0]),
-            "account_id": r[9] if len(r) > 9 else None,
-            "app_slug": r[10] if len(r) > 10 else None,
-            "synced_at": r[11] if len(r) > 11 else None,
+            "account_id": r[11] if len(r) > 11 else None,
+            "app_slug": r[12] if len(r) > 12 else None,
+            "synced_at": r[13] if len(r) > 13 else None,
+            # `healthy` is a SQLite INTEGER (0/1) or NULL — coerce to bool/None
+            # so the JSON shape matches the Pydantic model. Manual creds never
+            # join a row in oauth_broker_accounts so they pass through as None,
+            # which the UI reads as "unknown / not applicable".
+            "healthy": (bool(r[14]) if len(r) > 14 and r[14] is not None else None),
         }
         for r in rows
     ]
+
+
+# ── Credential health: bindings + test connection ─────────────────────────────
+
+
+async def _load_api_spec(api_id: str) -> dict | None:
+    """Best-effort load of the OpenAPI spec for an API (yaml or json on disk)."""
+    async with get_db() as db:
+        async with db.execute("SELECT spec_path FROM apis WHERE id=?", (api_id,)) as cur:
+            row = await cur.fetchone()
+    if not row or not row[0]:
+        return None
+    try:
+        with open(row[0]) as f:
+            raw = f.read()
+        if row[0].endswith((".yaml", ".yml")):
+            return yaml.safe_load(raw)
+        try:
+            return json.loads(raw)
+        except json.JSONDecodeError:
+            return yaml.safe_load(raw)
+    except Exception:
+        return None
+
+
+def _spec_servers(spec: dict) -> list[str]:
+    """Extract concrete server URLs from a spec, dropping any with `{var}` templates we can't resolve."""
+    servers = spec.get("servers") or []
+    out: list[str] = []
+    for s in servers:
+        url = (s or {}).get("url")
+        if not url or "{" in url:
+            continue
+        out.append(url.rstrip("/"))
+    return out
+
+
+def _pick_probe_url(spec: dict | None, fallback_host: str | None) -> str | None:
+    """Choose a probe URL for `POST /credentials/{id}/test`.
+
+    Priority (per Phase 0 spec):
+      1. `x-jentic-healthcheck` (top-level, on a path, or on an operation) — explicit operator opt-in
+      2. First `GET` operation with no required parameters
+      3. First server URL (root)
+      4. Fallback host root
+    """
+    if spec:
+        # 1a. Top-level x-jentic-healthcheck
+        hc = spec.get("x-jentic-healthcheck")
+        if isinstance(hc, str) and hc.startswith("http"):
+            return hc
+        if isinstance(hc, dict) and isinstance(hc.get("url"), str):
+            return hc["url"]
+
+        servers = _spec_servers(spec)
+        base = servers[0] if servers else None
+
+        paths = spec.get("paths") or {}
+
+        # 1b. Path- or operation-level x-jentic-healthcheck
+        for path, item in paths.items():
+            if not isinstance(item, dict):
+                continue
+            if isinstance(item.get("x-jentic-healthcheck"), (str, bool)) and base:
+                return f"{base}{path}"
+            for verb in ("get", "head"):
+                op = item.get(verb)
+                if isinstance(op, dict) and op.get("x-jentic-healthcheck") and base:
+                    return f"{base}{path}"
+
+        # 2. First GET operation with no required parameters.
+        if base:
+            for path, item in paths.items():
+                if not isinstance(item, dict):
+                    continue
+                op = item.get("get")
+                if not isinstance(op, dict):
+                    continue
+                params = op.get("parameters") or []
+                # Path templating means we can't safely call `/users/{id}` — skip those.
+                if "{" in path:
+                    continue
+                required = [p for p in params if isinstance(p, dict) and p.get("required")]
+                if not required:
+                    return f"{base}{path}"
+
+        # 3. Server root.
+        if base:
+            return base
+
+    if fallback_host:
+        return f"https://{fallback_host}/"
+    return None
+
+
+# ── Audit log query (top-level for cross-resource use) ────────────────────────
+
+
+audit_router = APIRouter(prefix="/audit", tags=["credentials"])
+
+
+@audit_router.get("", summary="Query the persistent audit log")
+async def query_audit_events(
+    target_kind: Annotated[
+        str | None, Query(description="Filter by target kind (e.g. 'credential', 'toolkit')")
+    ] = None,
+    target_id: Annotated[str | None, Query(description="Filter by target ID")] = None,
+    credential_id: Annotated[
+        str | None,
+        Query(description="Convenience: equivalent to target_kind=credential&target_id=<this>"),
+    ] = None,
+    event: Annotated[str | None, Query(description="Filter by event name")] = None,
+    limit: Annotated[int, Query(ge=1, le=500, description="Max rows to return")] = 50,
+    offset: Annotated[int, Query(ge=0, description="Pagination offset")] = 0,
+) -> list[dict[str, Any]]:
+    """Return audit rows newest-first. Drives the credential history panel in the UI."""
+    if credential_id and not (target_kind or target_id):
+        target_kind = "credential"
+        target_id = credential_id
+    return await query_audit(
+        target_kind=target_kind,
+        target_id=target_id,
+        event=event,
+        limit=limit,
+        offset=offset,
+    )

@@ -523,6 +523,7 @@ async def list_apis(
             "name": r[1],
             "vendor": extract_vendor(r[0]),
             "source": "local",
+            "local": True,
             "has_credentials": r[0] in cred_api_ids,
             "has_workflows": r[0] in wf_local_api_ids,
             "description": r[2],
@@ -616,6 +617,7 @@ async def list_apis(
                         "name": lr[1] or api_id,
                         "vendor": extract_vendor(lr[0]),
                         "source": "local",
+                        "local": True,
                         "has_credentials": lr[0] in cred_api_ids,
                         "has_workflows": lr[0] in wf_local_api_ids or api_id in workflow_api_ids,
                         "description": lr[2],
@@ -645,6 +647,7 @@ async def list_apis(
                     "name": api_id,
                     "vendor": extract_vendor(api_id),
                     "source": "catalog",
+                    "local": False,
                     "has_credentials": False,
                     "has_workflows": api_id in workflow_api_ids,
                     "description": None,
@@ -1064,6 +1067,12 @@ async def get_api(
         "id": row[0],
         "name": row[1],
         "vendor": extract_vendor(row[0]),
+        # `get_api` is a local-only lookup (404 above if the row isn't in `apis`),
+        # so an API surfaced here is always imported. The credentials form's
+        # ApiPicker uses `source` to render the Local/Catalog badge — keep this
+        # in sync with `list_apis`.
+        "source": "local",
+        "local": True,
         "description": spec_description,
         "base_url": row[4],
         "created_at": row[5],
