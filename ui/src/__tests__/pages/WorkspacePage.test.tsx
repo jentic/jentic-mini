@@ -85,7 +85,7 @@ describe('WorkspacePage', () => {
 		const stripeTile = tiles.find((t) => t.dataset.tileId === 'stripe.com')!;
 		const githubTile = tiles.find((t) => t.dataset.tileId === 'github.com')!;
 		expect(within(stripeTile).getByText(/1 credential/)).toBeInTheDocument();
-		expect(within(githubTile).getByText(/No credential/)).toBeInTheDocument();
+		expect(within(githubTile).getByText(/Add credential/)).toBeInTheDocument();
 	});
 
 	it('renders the Workflows section with an empty CTA when there are no workflows yet', async () => {

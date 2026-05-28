@@ -2,6 +2,7 @@ import { Plus, Key, KeyRound } from 'lucide-react';
 import { AppLink } from '@/components/ui/AppLink';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { SectionTitle } from '@/components/discovery/SectionTitle';
+import { StatusDot, type CredentialStatus } from '@/components/credentials';
 import { timeAgo } from '@/lib/time';
 
 interface CredentialsSectionProps {
@@ -14,6 +15,12 @@ interface CredentialsSectionProps {
  * Renders the "Credentials" block of the API detail surface — empty
  * state with an inline CTA, or a list of credentials each linking to
  * its edit page. Purely presentational; the parent owns the data.
+ *
+ * Each row carries a `StatusDot` derived from the credential's
+ * `last_used_at` and (for Pipedream OAuth) the `healthy` bit. Same
+ * derivation logic as the main /credentials list — kept inline here
+ * to avoid a coupling of the workspace UI to credential row internals.
+ * If the rules drift, lift `deriveStatus` to a shared module.
  */
 export function CredentialsSection({ credentials, isLoading, apiId }: CredentialsSectionProps) {
 	return (
@@ -40,36 +47,48 @@ export function CredentialsSection({ credentials, isLoading, apiId }: Credential
 					</div>
 				) : (
 					<ul className="space-y-2">
-						{credentials.map((cred: any) => (
-							<li key={cred.id}>
-								<AppLink
-									href={`/credentials/${encodeURIComponent(cred.id)}/edit`}
-									className="border-border/50 hover:border-primary/40 hover:bg-muted/50 flex items-center gap-3 rounded-lg border p-3 transition-colors"
-								>
-									<KeyRound className="text-muted-foreground h-4 w-4 shrink-0" />
-									<div className="min-w-0 flex-1">
-										<div className="flex items-baseline gap-2">
-											<span className="text-foreground text-sm font-medium">
-												{cred.label || 'Unnamed'}
-											</span>
-											{cred.auth_type && (
-												<span className="bg-muted text-muted-foreground rounded px-1.5 py-0.5 text-[10px] font-medium uppercase">
-													{cred.auth_type}
+						{credentials.map((cred: any) => {
+							const status = deriveStatus(cred);
+							return (
+								<li key={cred.id}>
+									<AppLink
+										href={`/credentials/${encodeURIComponent(cred.id)}/edit`}
+										className="border-border/50 hover:border-primary/40 hover:bg-muted/50 flex items-center gap-3 rounded-lg border p-3 transition-colors"
+									>
+										<KeyRound className="text-muted-foreground h-4 w-4 shrink-0" />
+										<div className="min-w-0 flex-1">
+											<div className="flex items-center gap-2">
+												<span className="text-foreground text-sm font-medium">
+													{cred.label || 'Unnamed'}
 												</span>
+												<StatusDot
+													status={status.tone}
+													label={status.label}
+													size="sm"
+												/>
+												{cred.auth_type && (
+													<span className="bg-muted text-muted-foreground rounded px-1.5 py-0.5 text-[10px] font-medium uppercase">
+														{cred.auth_type}
+													</span>
+												)}
+											</div>
+											{cred.identity && (
+												<p className="text-muted-foreground mt-0.5 truncate text-xs">
+													{cred.identity}
+												</p>
 											)}
 										</div>
-										{cred.identity && (
-											<p className="text-muted-foreground mt-0.5 truncate text-xs">
-												{cred.identity}
-											</p>
-										)}
-									</div>
-									<span className="text-muted-foreground/60 text-xs whitespace-nowrap">
-										{cred.created_at ? timeAgo(cred.created_at) : ''}
-									</span>
-								</AppLink>
-							</li>
-						))}
+										<span className="text-muted-foreground/60 text-xs whitespace-nowrap">
+											{cred.last_used_at
+												? `used ${timeAgo(cred.last_used_at)}`
+												: cred.created_at
+													? timeAgo(cred.created_at)
+													: ''}
+										</span>
+									</AppLink>
+								</li>
+							);
+						})}
 						<li>
 							<AppLink
 								href={`/credentials/new?api_id=${encodeURIComponent(apiId)}`}
@@ -83,4 +102,23 @@ export function CredentialsSection({ credentials, isLoading, apiId }: Credential
 			</div>
 		</section>
 	);
+}
+
+function deriveStatus(cred: any): { tone: CredentialStatus; label: string } {
+	if (cred.healthy === false || cred.healthy === 0) {
+		return {
+			tone: 'broken',
+			label: 'OAuth grant rejected — reconnect to restore.',
+		};
+	}
+	if (cred.last_used_at) {
+		return {
+			tone: 'ok',
+			label: `Last used ${timeAgo(cred.last_used_at)} — broker observed a healthy upstream call.`,
+		};
+	}
+	return {
+		tone: 'unknown',
+		label: 'Not yet probed. Use Test connection on the edit page to verify.',
+	};
 }

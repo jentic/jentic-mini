@@ -122,9 +122,17 @@ export function WorkspaceTile({ entity, onOpen }: WorkspaceTileProps) {
 								{entity.credentialCount === 1 ? '' : 's'}
 							</span>
 						) : (
+							// We can't nest a real <a> here — the tile itself is a
+							// <button> for keyboard semantics — so instead we hand the
+							// user a strong visual nudge ("Add credential →"). Clicking
+							// the tile takes them to the API detail page where the
+							// CredentialsSection's empty-state CTA links straight to
+							// /credentials/new?api_id=…, which is the same destination.
+							// A nested <a> would cause `validateDOMNesting` warnings
+							// and break VoiceOver's tile-as-single-control behaviour.
 							<span className="inline-flex items-center gap-1 text-amber-600 dark:text-amber-400">
 								<AlertTriangle size={11} aria-hidden="true" />
-								No credential
+								Add credential →
 							</span>
 						)}
 						{entity.toolkitNames && entity.toolkitNames.length > 0 ? (
