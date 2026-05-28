@@ -33,6 +33,7 @@ import { ConfirmInline } from '@/components/ui/ConfirmInline';
 import { Badge } from '@/components/ui/Badge';
 import { PermissionRuleEditor } from '@/components/ui/PermissionRuleEditor';
 import { PageShell } from '@/components/layout/PageShell';
+import { toast } from '@/components/ui/toastStore';
 
 function CredentialPermissionEditor({
 	toolkitId,
@@ -155,9 +156,29 @@ function RequestAccessDialog({ toolkitId, onClose }: { toolkitId: string; onClos
 			}),
 		onSuccess: (data: any) => {
 			queryClient.invalidateQueries({ queryKey: ['access-requests', toolkitId] });
-			alert(
-				`Access request created!\n\nApproval URL: ${data.approve_url || data._links?.approve_ui || 'Check pending requests'}`,
-			);
+			// `approve_url` (legacy) and `_links.approve_ui` (HATEOAS) both work — the
+			// server uses HATEOAS for new requests but older flows still ship the
+			// flat field. Surface either as a toast with a copyable action so the
+			// requester can hand the URL to the approver without us blocking the UI
+			// behind a window.alert (which broke keyboard focus and screen readers).
+			const approveUrl: string | undefined =
+				data?.approve_url || data?._links?.approve_ui;
+			toast({
+				variant: 'success',
+				title: 'Access request created',
+				description: approveUrl
+					? 'Share the approval link with whoever needs to approve this request.'
+					: 'Find it under "Pending requests".',
+				action: approveUrl
+					? {
+							label: 'Copy approval URL',
+							onClick: () => {
+								void navigator.clipboard?.writeText(approveUrl);
+							},
+						}
+					: undefined,
+				durationMs: 8000,
+			});
 			onClose();
 		},
 		onError: (e: Error) => setError(e.message),

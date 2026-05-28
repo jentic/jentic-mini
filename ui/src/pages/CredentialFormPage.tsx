@@ -7,6 +7,7 @@ import type { CredentialCreate, CredentialPatch, ApiOut } from '@/api/types';
 import { AppLink } from '@/components/ui/AppLink';
 import { BackButton } from '@/components/ui/BackButton';
 import { PageHeader } from '@/components/ui/PageHeader';
+import { PageHelp } from '@/components/ui/PageHelp';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
@@ -14,8 +15,10 @@ import { Textarea } from '@/components/ui/Textarea';
 import { Label } from '@/components/ui/Label';
 import { ErrorAlert } from '@/components/ui/ErrorAlert';
 import { emitCredentialImported } from '@/lib/events/credentialImported';
+import { emitApiImported } from '@/lib/events/apiImported';
 import { LoadingState } from '@/components/ui/LoadingState';
 import { PageShell } from '@/components/layout/PageShell';
+import { TestConnectionButton } from '@/components/credentials';
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -274,6 +277,12 @@ function ApiPicker({ onSelect }: { onSelect: (api: ApiOut) => void }) {
 					<p className="text-muted-foreground mb-1.5 px-1 font-mono text-[10px] tracking-widest uppercase">
 						From the Jentic public catalog
 					</p>
+					{local.length === 0 && (
+						<p className="text-muted-foreground/80 mb-2 text-xs">
+							Picking a catalog API imports it into your workspace as part of saving
+							this credential — there's no separate import step.
+						</p>
+					)}
 					<div className="space-y-1">
 						{catalog.map((a: ApiOut) => (
 							<ApiRow key={a.id} api={a} onSelect={onSelect} />
@@ -391,6 +400,7 @@ function CredentialFields({
 		if (existing) {
 			setLabel(existing.label ?? '');
 			setIdentity(existing.identity ?? '');
+			setDescription(existing.description ?? '');
 			if (existing.server_variables && Object.keys(existing.server_variables).length > 0) {
 				setServerVars(existing.server_variables as Record<string, string>);
 			}
@@ -412,6 +422,10 @@ function CredentialFields({
 	);
 	const [value, setValue] = useState(prefill?.value ?? '');
 	const [identity, setIdentity] = useState(prefill?.identity ?? existing?.identity ?? '');
+	// `description` is free-form metadata — never sent upstream by the broker,
+	// purely for the user's bookkeeping ("which agent uses this", "rotated 2024-12").
+	// Round-trips through the new Tier-1 schema column on credentials.
+	const [description, setDescription] = useState(existing?.description ?? '');
 	const [error, setError] = useState<string | Error | null>(null);
 
 	// Advanced broker fields
@@ -452,13 +466,20 @@ function CredentialFields({
 		mutationFn: (d: CredentialCreate) => api.createCredential(d),
 		onSuccess: (created) => {
 			queryClient.invalidateQueries({ queryKey: ['credentials'] });
-			// P8: tell any open Discover tab that a credential just landed.
-			// `created` may carry counts in the future; for now the api_id
-			// is enough to trigger the close-the-loop toast.
-			emitCredentialImported({
-				api_id:
-					selectedApi?.id ?? (created as { api_id?: string } | undefined)?.api_id ?? '',
-			});
+			const apiIdFromForm =
+				selectedApi?.id ?? (created as { api_id?: string } | undefined)?.api_id ?? '';
+			// Tell any open Discover / Workspace tab that a credential
+			// just landed.
+			emitCredentialImported({ api_id: apiIdFromForm });
+			// Importing a *catalog* API row triggers a server-side
+			// `ensure_catalog_api_imported`. From the user's perspective
+			// the workspace just gained an API as a side effect of the
+			// credential save — surface that as a separate event so the
+			// catalog "Available" pill can flip to "In workspace" without
+			// having to overload `credentialImported`.
+			if (apiIdFromForm && selectedApi?.source === 'catalog') {
+				emitApiImported({ api_id: apiIdFromForm, source: 'catalog' });
+			}
 			onSaved();
 		},
 		onError: (e: Error) => setError(e),
@@ -528,6 +549,7 @@ function CredentialFields({
 				server_variables: cleanedVars,
 				scheme: parsedScheme,
 				routes: parsedRoutes,
+				description: description.trim() || null,
 			});
 		} else {
 			if (!value) {
@@ -541,6 +563,7 @@ function CredentialFields({
 				value,
 				identity: identity || undefined,
 				server_variables: cleanedVars,
+				description: description.trim() || undefined,
 			});
 		}
 	};
@@ -621,9 +644,7 @@ function CredentialFields({
 								className="text-muted-foreground mb-1 block text-xs"
 							>
 								<span className="font-mono">{varDef.name}</span>
-								{varDef.required && (
-									<span className="text-destructive ml-1">*</span>
-								)}
+								{varDef.required && <span className="text-danger ml-1">*</span>}
 							</Label>
 							{varDef.description && (
 								<p className="text-muted-foreground mb-1 text-xs">
@@ -683,6 +704,31 @@ function CredentialFields({
 				/>
 			</div>
 
+			{/* Description.
+			 *
+			 * Free-form bookkeeping note ("rotated 2025-01", "for the digest agent",
+			 * "owned by data-platform"). Round-trips through `credentials.description`
+			 * (Tier-1 schema column). Surfaced in italic on the credential row, so
+			 * teams using shared workspaces can identify intent at a glance without
+			 * opening the edit page.
+			 */}
+			<div>
+				<Label
+					htmlFor="cred-description"
+					className="text-muted-foreground mb-1 block text-xs"
+				>
+					Description <span className="text-muted-foreground/60">(optional)</span>
+				</Label>
+				<Textarea
+					id="cred-description"
+					value={description}
+					onChange={(e) => setDescription(e.target.value)}
+					placeholder="What is this credential used for? When was it rotated?"
+					rows={2}
+					className="bg-background"
+				/>
+			</div>
+
 			{/* OAuth flow */}
 			{schemeType === 'oauth2' &&
 				(() => {
@@ -708,7 +754,7 @@ function CredentialFields({
 									access.
 								</p>
 								{connectLinkMutation.isError && (
-									<p className="text-destructive text-xs">
+									<p className="text-danger text-xs">
 										Failed to generate connect link. Check your Pipedream broker
 										config.
 									</p>
@@ -942,8 +988,42 @@ function CredentialFields({
 				</div>
 			)}
 
-			{schemeType !== 'oauth2' && (
-				<div className="flex gap-2 pt-2">
+			{/* Test connection — edit mode only.
+			 *
+			 * The probe needs a saved credential ID (the backend reads the
+			 * decrypted value from `credentials.id`), so we only render this
+			 * button when we're editing an existing credential. New
+			 * credentials get tested immediately *after* save by clicking
+			 * back into the row in the list.
+			 */}
+			{isEdit && editId && (
+				<div className="border-border/60 rounded-lg border border-dashed p-3">
+					<p className="text-muted-foreground mb-2 text-xs">
+						Verify the credential by issuing a single, low-impact probe to the upstream
+						API. Bearer / API key creds only — Pipedream OAuth grants are validated by
+						the broker.
+					</p>
+					<TestConnectionButton credentialId={editId} />
+				</div>
+			)}
+
+			{/* Save / Cancel footer.
+			 *
+			 * Sticks to the bottom of the viewport on long forms so the user
+			 * never has to scroll back to a hidden submit button.
+			 *
+			 * For NEW OAuth2 credentials we hide the form submit — the
+			 * Pipedream "connect" flow above is the actual save path
+			 * (creating an account upstream is what produces the credential
+			 * row), so a "Save" button here would be misleading.
+			 *
+			 * For EDITS we always show the button (issue #159) — even on
+			 * OAuth-managed credentials the user can rename / update
+			 * description / etc. via PATCH. Pipedream owns the *value*,
+			 * not the metadata.
+			 */}
+			{(isEdit || schemeType !== 'oauth2') && (
+				<div className="bg-background/95 border-border supports-[backdrop-filter]:bg-background/80 sticky bottom-0 -mx-1 mt-2 flex gap-2 border-t px-1 pt-3 pb-2 backdrop-blur">
 					<Button type="submit" loading={isPending} fullWidth>
 						{isEdit ? 'Update Credential' : 'Save Credential'}
 					</Button>
@@ -1032,6 +1112,24 @@ export default function CredentialFormPage() {
 		setStep('fill');
 	};
 
+	// "Cancel" semantics:
+	//   - In the picker step (or anywhere we have history), prefer
+	//     `navigate(-1)` so a user who deeplinked in from an API detail page
+	//     lands back on that detail page (preserving the workspace context
+	//     they were exploring) instead of being dumped on /credentials.
+	//   - For agents that were sent here via direct URL with no history
+	//     (e.g. an MCP-driven workflow), fall back to /credentials.
+	const handleCancel = () => {
+		// `window.history.length` is heuristic but the conventional cue —
+		// React Router deliberately doesn't expose a precise count.
+		// length===1 means we opened straight into the form (no prior page).
+		if (window.history.length > 1) {
+			navigate(-1);
+		} else {
+			navigate('/credentials');
+		}
+	};
+
 	return (
 		<PageShell width="form">
 			<BackButton to="/credentials" label="Back to Credentials" />
@@ -1059,6 +1157,56 @@ export default function CredentialFormPage() {
 						: selectedApi?.source === 'catalog'
 							? 'Import to Workspace'
 							: 'Add Credential'
+				}
+				actions={
+					<PageHelp
+						title="About the credential form"
+						intro={
+							<p>
+								Credentials are stored encrypted-at-rest. Once saved, the value
+								never leaves the broker — it's injected into upstream calls on your
+								behalf. This form covers two flows: <strong>manual</strong> (paste a
+								bearer / API key) and <strong>OAuth via Pipedream</strong> (redirect
+								through Pipedream Connect, no value to paste).
+							</p>
+						}
+						sections={[
+							{
+								heading: 'Choosing an API',
+								body: (
+									<p>
+										The picker shows both your workspace APIs (
+										<strong>Local</strong> badge) and the public catalog (
+										<strong>Catalog</strong> badge). Picking a catalog API
+										imports it into your workspace as a side effect of saving
+										the credential — there's no separate import step.
+									</p>
+								),
+							},
+							{
+								heading: 'Test connection',
+								body: (
+									<p>
+										After saving, use <strong>Test connection</strong> to issue
+										a single 5-second probe with the credential injected. We
+										prefer an <code>x-jentic-healthcheck</code>-tagged operation
+										if the spec defines one; otherwise we fall back to the
+										server root.
+									</p>
+								),
+							},
+							{
+								heading: 'Description',
+								body: (
+									<p>
+										Free-form bookkeeping note for your team — "rotated
+										2025-01", "for the digest agent", etc. Never sent upstream;
+										surfaced inline on the credentials list.
+									</p>
+								),
+							},
+						]}
+					/>
 				}
 			/>
 
@@ -1094,7 +1242,12 @@ export default function CredentialFormPage() {
 				{step === 'fill' && selectedApi && (
 					<CredentialFields
 						selectedApi={selectedApi}
-						onBack={() => setStep('pick')}
+						onBack={
+							// In edit mode or deeplink mode there's no picker
+							// step to go back to, so Cancel should return to
+							// the prior route (workspace API detail / list).
+							isEdit || !!paramApiId ? handleCancel : () => setStep('pick')
+						}
 						onSaved={() => navigate('/credentials')}
 						editId={id}
 						existing={existing}
