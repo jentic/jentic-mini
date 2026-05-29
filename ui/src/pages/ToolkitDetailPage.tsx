@@ -36,6 +36,7 @@ import { PageShell } from '@/components/layout/PageShell';
 import { toast } from '@/components/ui/toastStore';
 import { CredentialEditSheet } from '@/components/credentials/CredentialEditSheet';
 import { AddCredentialDialog } from '@/components/credentials/AddCredentialDialog';
+import { BindExistingCredentialDialog } from '@/components/credentials/BindExistingCredentialDialog';
 import { useCredentialEditSheet } from '@/hooks/useCredentialEditSheet';
 import { useAddCredentialDialog } from '@/hooks/useAddCredentialDialog';
 
@@ -305,6 +306,7 @@ export default function ToolkitDetailPage() {
 	const [editingPermForCred, setEditingPermForCred] = useState<string | null>(null);
 	const editSheet = useCredentialEditSheet();
 	const addDialog = useAddCredentialDialog();
+	const [bindOpen, setBindOpen] = useState(false);
 
 	const { data: toolkit, isLoading } = useQuery({
 		queryKey: ['toolkit', id],
@@ -649,14 +651,23 @@ export default function ToolkitDetailPage() {
 					</h3>
 					<div className="flex items-center gap-2">
 						{id !== 'default' && (
-							<Button
-								size="sm"
-								onClick={() =>
-									addDialog.openForToolkit(id!, toolkit.name ?? toolkit.id)
-								}
-							>
-								<Plus className="h-4 w-4" /> Add credential
-							</Button>
+							<>
+								<Button
+									variant="secondary"
+									size="sm"
+									onClick={() => setBindOpen(true)}
+								>
+									<LinkIcon className="h-4 w-4" /> Bind existing
+								</Button>
+								<Button
+									size="sm"
+									onClick={() =>
+										addDialog.openForToolkit(id!, toolkit.name ?? toolkit.id)
+									}
+								>
+									<Plus className="h-4 w-4" /> Add credential
+								</Button>
+							</>
 						)}
 						<Button
 							variant="secondary"
@@ -676,16 +687,30 @@ export default function ToolkitDetailPage() {
 								access.
 							</p>
 							{id !== 'default' && (
-								<Button
-									variant="ghost"
-									size="sm"
-									onClick={() =>
-										addDialog.openForToolkit(id!, toolkit.name ?? toolkit.id)
-									}
-									className="text-primary hover:text-primary/80 mt-2 inline-flex items-center gap-1 text-sm font-medium"
-								>
-									<Plus className="h-3.5 w-3.5" /> Add credential
-								</Button>
+								<div className="mt-2 flex items-center justify-center gap-2">
+									<Button
+										variant="ghost"
+										size="sm"
+										onClick={() => setBindOpen(true)}
+										className="text-primary hover:text-primary/80 inline-flex items-center gap-1 text-sm font-medium"
+									>
+										<LinkIcon className="h-3.5 w-3.5" /> Bind existing
+									</Button>
+									<span className="text-muted-foreground text-xs">or</span>
+									<Button
+										variant="ghost"
+										size="sm"
+										onClick={() =>
+											addDialog.openForToolkit(
+												id!,
+												toolkit.name ?? toolkit.id,
+											)
+										}
+										className="text-primary hover:text-primary/80 inline-flex items-center gap-1 text-sm font-medium"
+									>
+										<Plus className="h-3.5 w-3.5" /> Add new
+									</Button>
+								</div>
 							)}
 						</div>
 					) : (
@@ -862,6 +887,16 @@ export default function ToolkitDetailPage() {
 				onSelectApi={addDialog.setSelectedApi}
 				onSavedCredentialId={addDialog.setSavedCredentialId}
 			/>
+
+			{id && id !== 'default' && (
+				<BindExistingCredentialDialog
+					open={bindOpen}
+					toolkitId={id}
+					toolkitName={toolkit.name ?? toolkit.id}
+					excludeCredentialIds={credentials.map((c: any) => c.credential_id)}
+					onClose={() => setBindOpen(false)}
+				/>
+			)}
 		</PageShell>
 	);
 }
