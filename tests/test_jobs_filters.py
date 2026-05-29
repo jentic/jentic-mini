@@ -132,3 +132,75 @@ def test_response_exposes_agent_id(admin_client, seeded_jobs):  # noqa: ARG001
     # we exposed it without breaking the previously-required keys.
     assert items["job_filter_aaa01"]["status"] == "running"
     assert items["job_filter_aaa01"]["kind"] == "broker"
+
+
+# ── kind + comma-separated status (Monitor Jobs tab) ─────────────────────────
+
+
+@pytest.fixture
+def seeded_workflow_job(admin_client):  # noqa: ARG001
+    """Add a workflow-kind job so the kind filter has something to discriminate."""
+    now = 1_700_000_000.0
+    with sqlite3.connect(DB_PATH) as cx:
+        cx.execute(
+            """INSERT INTO jobs (id, kind, slug_or_id, toolkit_id, agent_id, status, created_at, inputs)
+               VALUES (?, 'workflow', 'gh.create_pr', 'tk_a', 'agnt_filter_alice', 'pending', ?, '{}')""",
+            ("job_filter_wf001", now),
+        )
+        cx.commit()
+    yield
+    with sqlite3.connect(DB_PATH) as cx:
+        cx.execute("DELETE FROM jobs WHERE id = ?", ("job_filter_wf001",))
+        cx.commit()
+
+
+def test_filter_by_kind_workflow(admin_client, seeded_jobs, seeded_workflow_job):  # noqa: ARG001
+    """kind=workflow returns only workflow-kind rows."""
+    resp = admin_client.get("/jobs?kind=workflow&limit=100")
+    assert resp.status_code == 200
+    ids = _ids(resp)
+    assert "job_filter_wf001" in ids
+    assert ids.isdisjoint(_FIXTURE_JOB_IDS)  # all seeded broker jobs excluded
+
+
+def test_filter_by_kind_broker(admin_client, seeded_jobs, seeded_workflow_job):  # noqa: ARG001
+    """kind=broker returns broker-kind rows only."""
+    resp = admin_client.get("/jobs?kind=broker&limit=100")
+    assert resp.status_code == 200
+    ids = _ids(resp)
+    assert set(_FIXTURE_JOB_IDS) <= ids
+    assert "job_filter_wf001" not in ids
+
+
+def test_filter_by_kind_invalid_rejected(admin_client):
+    """Invalid kind values are rejected by the OpenAPI pattern (422)."""
+    resp = admin_client.get("/jobs?kind=garbage")
+    assert resp.status_code == 422
+
+
+def test_filter_by_status_comma_in_clause(admin_client, seeded_jobs):  # noqa: ARG001
+    """status=pending,running maps to SQL IN (...) and returns the union."""
+    resp = admin_client.get("/jobs?status=pending,running&limit=100")
+    assert resp.status_code == 200
+    ids = _ids(resp)
+    # Two running + one pending from the seeded corpus
+    assert {"job_filter_aaa01", "job_filter_bbb01", "job_filter_ccc01"} <= ids
+    assert "job_filter_aaa02" not in ids  # complete excluded
+
+
+def test_filter_by_status_comma_with_whitespace(admin_client, seeded_jobs):  # noqa: ARG001
+    """Whitespace in the comma list is tolerated (mirrors how UIs assemble URLs)."""
+    resp = admin_client.get("/jobs?status=pending,%20running&limit=100")
+    assert resp.status_code == 200
+    ids = _ids(resp)
+    assert {"job_filter_aaa01", "job_filter_bbb01", "job_filter_ccc01"} <= ids
+
+
+def test_kind_and_status_compose(admin_client, seeded_jobs, seeded_workflow_job):  # noqa: ARG001
+    """kind + multi-status compose with AND semantics."""
+    resp = admin_client.get("/jobs?kind=broker&status=running,complete&limit=100")
+    assert resp.status_code == 200
+    ids = _ids(resp)
+    assert {"job_filter_aaa01", "job_filter_aaa02", "job_filter_bbb01"} <= ids
+    assert "job_filter_ccc01" not in ids  # pending excluded
+    assert "job_filter_wf001" not in ids  # workflow excluded

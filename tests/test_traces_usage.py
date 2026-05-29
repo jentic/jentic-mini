@@ -213,3 +213,33 @@ def test_default_window_is_24h(admin_client, seeded_usage):  # noqa: ARG001
     body = resp.json()
     assert body["until"] - body["since"] == 86400.0
     assert body["bucket_seconds"] == 3600
+
+
+def test_top_rows_include_sparkline_trend(admin_client, seeded_usage):
+    """Each top row exposes a fixed-length `trend` series whose counts sum to row.total."""
+    now = seeded_usage["now"]
+    resp = admin_client.get(f"/traces/usage?since={now - 3600}&until={now + 1}&group_by=toolkit")
+    assert resp.status_code == 200
+    top = resp.json()["top"]
+    assert top, "expected at least one top row"
+    for row in top:
+        assert "trend" in row, row
+        trend = row["trend"]
+        assert isinstance(trend, list)
+        # Server contract: 12 equal buckets across the window regardless of width.
+        assert len(trend) == 12, f"expected 12 sparkline buckets, got {len(trend)}"
+        assert all(isinstance(n, int) and n >= 0 for n in trend)
+        assert sum(trend) == row["total"], f"trend sum {sum(trend)} != row total {row['total']}"
+
+
+def test_trend_independent_of_main_bucket_seconds(admin_client, seeded_usage):
+    """Sparkline width stays at 12 buckets even on a 30-day window where the
+    main `bucket_seconds` is 1 day (~30 main buckets).
+    """
+    now = seeded_usage["now"]
+    resp = admin_client.get(f"/traces/usage?since={now - 30 * 86400}&until={now + 1}")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["bucket_seconds"] == 86400
+    for row in body["top"]:
+        assert len(row["trend"]) == 12
