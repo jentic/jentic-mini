@@ -2,7 +2,6 @@ import {
 	Activity,
 	Bot,
 	BookOpen,
-	Cog,
 	FolderOpen,
 	KeyRound,
 	LayoutDashboard,
@@ -40,7 +39,6 @@ export const NAV_ITEMS: NavItem[] = [
 	{ href: '/catalog', label: 'API Catalog', icon: BookOpen },
 	{ href: '/workflows', label: 'Workflows', icon: Workflow },
 	{ href: '/agents', label: 'Agents', icon: Bot },
-	{ href: '/traces', label: 'Traces', icon: Activity },
-	{ href: '/jobs', label: 'Async Jobs', icon: Cog },
+	{ href: '/monitor', label: 'Monitor', icon: Activity },
 	{ href: '/search', label: 'Search', icon: Search },
 ];
