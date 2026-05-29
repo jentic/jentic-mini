@@ -525,7 +525,7 @@ wheels = [
 
 [[package]]
 name = "fastapi"
-version = "0.136.1"
+version = "0.136.3"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "annotated-doc" },
@@ -534,9 +534,9 @@ dependencies = [
     { name = "typing-extensions" },
     { name = "typing-inspection" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/5d/45/c130091c2dfa061bbfe3150f2a5091ef1adf149f2a8d2ae769ecaf6e99a2/fastapi-0.136.1.tar.gz", hash = "sha256:7af665ad7acfa0a3baf8983d393b6b471b9da10ede59c60045f49fbc89a0fa7f", size = 397448, upload-time = "2026-04-23T16:49:44.046Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/81/2d/ff8d91d7b564d464629a0fd50a4489c97fcb836ac230bf3a7269232a9b1f/fastapi-0.136.3.tar.gz", hash = "sha256:e487fae93ad408e6f47641ee4dfe389864fd7bec92e547ea8498fc13f43e83ab", size = 396410, upload-time = "2026-05-23T18:53:15.192Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/5a/ff/2e4eca3ade2c22fe1dea7043b8ee9dabe47753349eb1b56a202de8af6349/fastapi-0.136.1-py3-none-any.whl", hash = "sha256:a6e9d7eeada96c93a4d69cb03836b44fa34e2854accb7244a1ece36cd4781c3f", size = 117683, upload-time = "2026-04-23T16:49:42.437Z" },
+    { url = "https://files.pythonhosted.org/packages/e0/82/45359b62a067409bd929ae8a56b8ed13e5a8c8a61194b3c236920999ab83/fastapi-0.136.3-py3-none-any.whl", hash = "sha256:3d2a69bdf04b7e9f3afa292c3bc7a98816bbfafa10bc9b45f3f3700d2f761620", size = 117481, upload-time = "2026-05-23T18:53:16.924Z" },
 ]
 
 [[package]]
@@ -876,7 +876,7 @@ requires-dist = [
     { name = "arazzo-runner", specifier = ">=0.9.5" },
     { name = "bcrypt", specifier = "==5.0.0" },
     { name = "cryptography", specifier = "==48.0.0" },
-    { name = "fastapi", specifier = "==0.136.1" },
+    { name = "fastapi", specifier = "==0.136.3" },
     { name = "httpx", specifier = "==0.28.1" },
     { name = "jentic-openapi-common", specifier = ">=1.0.0a51" },
     { name = "pyjwt", specifier = "==2.13.0" },
@@ -892,7 +892,7 @@ dev = [
     { name = "pytest", specifier = ">=9.0.3,<10" },
     { name = "pytest-asyncio", specifier = ">=0.24,<2" },
     { name = "ruff", specifier = ">=0.15.14,<0.16.0" },
-    { name = "schemathesis", specifier = ">=4.15.0" },
+    { name = "schemathesis", specifier = ">=4.20.3" },
 ]
 
 [[package]]
@@ -1894,7 +1894,7 @@ wheels = [
 
 [[package]]
 name = "schemathesis"
-version = "4.19.0"
+version = "4.20.3"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "click" },
@@ -1915,9 +1915,9 @@ dependencies = [
     { name = "typing-extensions" },
     { name = "werkzeug" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/47/27/d41c4f23fc7adc2c85e5dd7856020ba9008f75c584aec55ccc782d4a9953/schemathesis-4.19.0.tar.gz", hash = "sha256:15f34816630438f47b3e2f8a71f2181c1023aa458d414317e01fce40001d0066", size = 2152446, upload-time = "2026-05-19T06:23:32.146Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/b9/5c/b04277777f6316565af1a45ffb4d71941d2fd8bdf3541af4dcefd3f51f4d/schemathesis-4.20.3.tar.gz", hash = "sha256:fed6b67d926543f55e55b68d1d99c5bc1b7ef4ae4b36287d14b207bb3aaef906", size = 2263670, upload-time = "2026-05-29T07:27:32.448Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/6d/92/87f848bb8c8f34aad775de6e9c18f32437bf5ef78d4a3d31e00237eb08a7/schemathesis-4.19.0-py3-none-any.whl", hash = "sha256:41a0e534f156c3c9b2dd36b44c8535f5ebda0af8308dbeeee3c93064908aa62f", size = 738552, upload-time = "2026-05-19T06:23:30.118Z" },
+    { url = "https://files.pythonhosted.org/packages/b6/bd/2f1f24580691e43b1cf50ace2167d154804321a2d843efc31e50e0b07115/schemathesis-4.20.3-py3-none-any.whl", hash = "sha256:c04f32d242f3f3652df997b6917f4f6855a7bf78a0bb63bcdc7c11a6cb6432ac", size = 745158, upload-time = "2026-05-29T07:27:30.564Z" },
 ]
 
 [[package]]
