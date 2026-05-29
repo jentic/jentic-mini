@@ -753,6 +753,26 @@ class TraceOut(BaseModel):
     completed_at: float | None = Field(
         default=None, examples=[1672531201.0], description="Unix timestamp when execution completed"
     )
+    job_id: str | None = Field(
+        default=None,
+        examples=["job_abc123xyz"],
+        description=(
+            "Async job that owns this trace, when the trace was produced inside a job's "
+            "lifecycle (Prefer: wait=0 broker call, upstream-202, or async workflow run). "
+            "Null for synchronous calls. The Monitor page renders a [job ↗] cross-link "
+            "in the Execution Log when this is set."
+        ),
+    )
+    parent_trace_id: str | None = Field(
+        default=None,
+        examples=["exec_abc123xyz"],
+        description=(
+            "Parent workflow trace this trace is a child step of. Set on broker traces "
+            "spawned by an arazzo-runner workflow execution; null for top-level broker "
+            "calls and for the workflow trace itself. Used to render \"part of workflow X\" "
+            "context in the Execution Detail panel."
+        ),
+    )
     steps: list[TraceStepOut] = Field(
         default_factory=list,
         examples=[[]],
@@ -836,6 +856,18 @@ class UsageTopRow(BaseModel):
     success: int = Field(examples=[490], description="Successful traces")
     failed: int = Field(examples=[10], description="Failed traces")
     avg_ms: float | None = Field(default=None, examples=[320.0], description="Mean duration")
+    trend: list[int] | None = Field(
+        default=None,
+        examples=[[3, 5, 2, 8, 11, 7, 4, 6, 9, 5, 3, 7]],
+        description=(
+            "Compact time-series of trace counts for this row across the window, "
+            "aligned to a fixed number of equally-sized buckets (12 by default). "
+            "Used to render per-row sparklines on the Monitor page Breakdown table. "
+            "Independent of the top-level `buckets` field — this one always has the "
+            "same length regardless of window size, while `buckets` width is chosen "
+            "by the server."
+        ),
+    )
     model_config = {"extra": "allow"}
 
 

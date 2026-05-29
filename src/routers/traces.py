@@ -43,6 +43,8 @@ async def write_trace(
     error: str | None,
     step_outputs: dict | None = None,
     agent_id: str | None = None,
+    job_id: str | None = None,
+    parent_trace_id: str | None = None,
 ) -> str:
     """Write an execution trace (+ optional step records) to the DB.
 
@@ -52,13 +54,16 @@ async def write_trace(
         await db.execute(
             """INSERT INTO executions
                (id, toolkit_id, agent_id, operation_id, workflow_id, spec_path,
-                status, http_status, duration_ms, error, created_at, completed_at)
-               VALUES (?,?,?,?,?,?,?,?,?,?,unixepoch(),unixepoch())
+                status, http_status, duration_ms, error, job_id, parent_trace_id,
+                created_at, completed_at)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,unixepoch(),unixepoch())
                ON CONFLICT(id) DO UPDATE SET
                  status=excluded.status,
                  http_status=excluded.http_status,
                  duration_ms=excluded.duration_ms,
                  error=excluded.error,
+                 job_id=COALESCE(executions.job_id, excluded.job_id),
+                 parent_trace_id=COALESCE(executions.parent_trace_id, excluded.parent_trace_id),
                  completed_at=unixepoch()""",
             (
                 trace_id,
@@ -71,6 +76,8 @@ async def write_trace(
                 http_status,
                 duration_ms,
                 error,
+                job_id,
+                parent_trace_id,
             ),
         )
 
@@ -249,7 +256,8 @@ async def list_traces(
     async with get_db() as db:
         async with db.execute(
             f"""SELECT id, toolkit_id, agent_id, operation_id, workflow_id,
-                      status, http_status, duration_ms, error, created_at, completed_at
+                      status, http_status, duration_ms, error, created_at, completed_at,
+                      job_id, parent_trace_id
                FROM executions
                WHERE {where_sql}
                ORDER BY created_at DESC LIMIT ? OFFSET ?""",
@@ -278,6 +286,8 @@ async def list_traces(
                 "error": r[8],
                 "created_at": r[9],
                 "completed_at": r[10],
+                "job_id": r[11],
+                "parent_trace_id": r[12],
                 "_links": {"self": f"/traces/{r[0]}"},
             }
             for r in rows
@@ -500,6 +510,35 @@ async def get_usage(
         ) as cur:
             top_rows = await cur.fetchall()
 
+        # Per-row sparkline trend: a fixed-length time-series for each top row.
+        # Independent of the top-level `bucket_seconds` (which can be up to 144
+        # columns wide) — sparklines render best with a small, constant number
+        # of points so we always pick 12 equal buckets across the window.
+        SPARKLINE_BUCKETS = 12
+        sparkline_seconds = max(1.0, span / SPARKLINE_BUCKETS)
+        trend_map: dict[str, list[int]] = {}
+        if top_rows:
+            top_keys = [tr[0] or "" for tr in top_rows]
+            placeholders = ",".join("?" * len(top_keys))
+            async with db.execute(
+                f"""SELECT
+                      {group_col} AS k,
+                      CAST((created_at - ?) / ? AS INTEGER) AS bidx,
+                      COUNT(*)
+                    FROM executions WHERE {where_sql}
+                      AND {group_col} IN ({placeholders})
+                    GROUP BY k, bidx""",
+                [since, sparkline_seconds, *params, *top_keys],
+            ) as cur:
+                trend_rows = await cur.fetchall()
+            for tr in top_rows:
+                trend_map[tr[0] or ""] = [0] * SPARKLINE_BUCKETS
+            for k, bidx, count in trend_rows:
+                key = k or ""
+                idx = max(0, min(SPARKLINE_BUCKETS - 1, int(bidx)))
+                if key in trend_map:
+                    trend_map[key][idx] += int(count or 0)
+
         # For agent group_by, look up friendly labels in one pass. For toolkit
         # we don't have a 1:1 name table (id IS the slug); for api the host is
         # already its own label.
@@ -523,6 +562,7 @@ async def get_usage(
             "success": int(tr[2] or 0),
             "failed": int(tr[3] or 0),
             "avg_ms": float(tr[4]) if tr[4] is not None else None,
+            "trend": trend_map.get(tr[0] or "", []),
         }
         for tr in top_rows
     ]
@@ -574,7 +614,8 @@ async def get_trace(
     async with get_db() as db:
         async with db.execute(
             f"""SELECT id, toolkit_id, agent_id, operation_id, workflow_id, spec_path,
-                      status, http_status, duration_ms, error, created_at, completed_at
+                      status, http_status, duration_ms, error, created_at, completed_at,
+                      job_id, parent_trace_id
                FROM executions WHERE id=? AND {scope_sql}""",
             (trace_id, *scope_params),
         ) as cur:
@@ -621,6 +662,8 @@ async def get_trace(
         "error": row[9],
         "created_at": row[10],
         "completed_at": row[11],
+        "job_id": row[12],
+        "parent_trace_id": row[13],
         "steps": steps,
         "_links": {"self": f"/traces/{row[0]}"},
     }
