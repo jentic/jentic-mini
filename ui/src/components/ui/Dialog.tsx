@@ -81,6 +81,14 @@ interface DialogProps {
 	 * opted out.
 	 */
 	dismissOnBackdrop?: boolean;
+	/**
+	 * Optional id of an element that *describes* (vs. names) the
+	 * dialog — wired through to `aria-describedby`. Use this for
+	 * destructive confirmation dialogs where the body conveys
+	 * impact information that screen-reader users need announced
+	 * along with the title.
+	 */
+	describedById?: string;
 }
 
 export function Dialog({
@@ -92,6 +100,7 @@ export function Dialog({
 	size = 'md',
 	className,
 	dismissOnBackdrop = true,
+	describedById,
 }: DialogProps) {
 	const dialogRef = useRef<HTMLDialogElement>(null);
 	const titleId = `dialog-title-${React.useId()}`;
@@ -129,6 +138,7 @@ export function Dialog({
 		<dialog
 			ref={dialogRef}
 			aria-labelledby={titleId}
+			aria-describedby={describedById}
 			onCancel={handleCancel}
 			onClick={handleBackdropClick}
 			className={cn(

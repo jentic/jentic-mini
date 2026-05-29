@@ -25,6 +25,11 @@ export function useCredentialImportedSync(opts: { onImported: (apiId: string) =>
 			queryClient.invalidateQueries({ queryKey: ['sheet-resolve-source', evt.api_id] });
 			queryClient.invalidateQueries({ queryKey: ['workspace'] });
 			queryClient.invalidateQueries({ queryKey: ['workspace-stats'] });
+			// Per-API and global credential queries: WorkflowDetailView keys on
+			// ['credentials','for-api',apiId] and ApiDetailView on
+			// ['credentials',apiId], so without this the chips that depend
+			// on credential presence stay stale until staleTime expires.
+			queryClient.invalidateQueries({ queryKey: ['credentials'] });
 
 			opts.onImported(evt.api_id);
 

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Trash2, Workflow, KeyRound, Boxes, Layers, CircleDot } from 'lucide-react';
 import { Dialog } from './Dialog';
@@ -27,6 +27,9 @@ export function ConfirmDeleteDialog({
 }: ConfirmDeleteDialogProps) {
 	const isApi = target?.kind === 'api';
 	const [cascade, setCascade] = useState(false);
+	// Stable id for the dialog body's lead paragraph, so screen readers
+	// announce the impact summary alongside the title via aria-describedby.
+	const descriptionId = `delete-dialog-desc-${useId()}`;
 
 	useEffect(() => {
 		if (open) setCascade(false);
@@ -38,6 +41,7 @@ export function ConfirmDeleteDialog({
 			onClose={onClose}
 			title={isApi ? 'Remove API' : 'Delete workflow'}
 			size="md"
+			describedById={descriptionId}
 			footer={
 				<div className="flex w-full items-center gap-3">
 					<Button
@@ -69,9 +73,15 @@ export function ConfirmDeleteDialog({
 					cascade={cascade}
 					onCascadeChange={setCascade}
 					open={open}
+					descriptionId={descriptionId}
 				/>
 			) : target?.kind === 'workflow' ? (
-				<WorkflowCascadeInfo slug={target.slug} name={target.name} open={open} />
+				<WorkflowCascadeInfo
+					slug={target.slug}
+					name={target.name}
+					open={open}
+					descriptionId={descriptionId}
+				/>
 			) : null}
 		</Dialog>
 	);
@@ -83,12 +93,14 @@ function ApiCascadeInfo({
 	cascade,
 	onCascadeChange,
 	open,
+	descriptionId,
 }: {
 	apiId: string;
 	name: string;
 	cascade: boolean;
 	onCascadeChange: (v: boolean) => void;
 	open: boolean;
+	descriptionId: string;
 }) {
 	const { data: allRelated, isLoading: loadingWorkflows } = useQuery({
 		queryKey: ['delete-cascade', 'api-workflows', apiId],
@@ -157,7 +169,7 @@ function ApiCascadeInfo({
 
 	return (
 		<div className="space-y-5">
-			<p className="text-foreground/80 text-[13px] leading-relaxed">
+			<p id={descriptionId} className="text-foreground/80 text-[13px] leading-relaxed">
 				<strong className="text-foreground font-medium">{name}</strong> and all its
 				operations will be permanently removed from your workspace.
 			</p>
@@ -289,7 +301,17 @@ function ApiCascadeInfo({
 	);
 }
 
-function WorkflowCascadeInfo({ slug, name, open }: { slug: string; name: string; open: boolean }) {
+function WorkflowCascadeInfo({
+	slug,
+	name,
+	open,
+	descriptionId,
+}: {
+	slug: string;
+	name: string;
+	open: boolean;
+	descriptionId: string;
+}) {
 	const { data: workflow } = useQuery({
 		queryKey: ['delete-cascade', 'workflow-detail', slug],
 		queryFn: () => api.getWorkflow(slug),
@@ -302,7 +324,7 @@ function WorkflowCascadeInfo({ slug, name, open }: { slug: string; name: string;
 
 	return (
 		<div className="space-y-5">
-			<p className="text-foreground/80 text-[13px] leading-relaxed">
+			<p id={descriptionId} className="text-foreground/80 text-[13px] leading-relaxed">
 				<strong className="text-foreground font-medium">{name}</strong> will be permanently
 				deleted from your workspace.
 			</p>

@@ -114,7 +114,12 @@ function ApiDetailSheetContent({
 	const shouldResolve = !initialEntity?.source || initialEntity.source === 'directory';
 	const { data: resolvedApi } = useQuery({
 		queryKey: ['sheet-resolve-source', apiId],
-		queryFn: () => api.listApis(1, 1, 'local', apiId),
+		// `q=` is a substring filter, so a leaf like `slack.com` matches
+		// `slack.com/openai` etc. We need enough rows in the response to
+		// guarantee the exact id (if present) lands on the first page —
+		// otherwise the workspace check below false-negatives. limit=20
+		// is cheap and covers every realistic vendor sub-API count.
+		queryFn: () => api.listApis(1, 20, 'local', apiId),
 		enabled: shouldResolve,
 		staleTime: 10_000,
 	});
