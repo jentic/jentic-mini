@@ -14,6 +14,7 @@ import {
 	Globe,
 } from 'lucide-react';
 import { AppLink } from '@/components/ui/AppLink';
+import { PageShell } from '@/components/layout/PageShell';
 import { api, apiUrl } from '@/api/client';
 import { Badge, MethodBadge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
@@ -488,7 +489,7 @@ export default function CatalogPage() {
 	const [q, setQ] = useState('');
 
 	return (
-		<div className="max-w-5xl space-y-6">
+		<PageShell>
 			<PageHeader
 				category="Discovery"
 				title="API Catalog"
@@ -541,6 +542,6 @@ export default function CatalogPage() {
 
 			{tab === 'registered' && <RegisteredTab q={q} />}
 			{tab === 'catalog' && <CatalogTab q={q} />}
-		</div>
+		</PageShell>
 	);
 }

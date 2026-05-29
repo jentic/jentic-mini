@@ -7,6 +7,7 @@ import { PageHeader } from '@/components/ui/PageHeader';
 import { LoadingState } from '@/components/ui/LoadingState';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { ErrorAlert } from '@/components/ui/ErrorAlert';
+import { PageShell } from '@/components/layout/PageShell';
 
 export default function WorkflowsPage() {
 	const navigate = useNavigate();
@@ -21,7 +22,7 @@ export default function WorkflowsPage() {
 	});
 
 	return (
-		<div className="max-w-5xl space-y-5">
+		<PageShell spacing="space-y-5">
 			<PageHeader category="Catalog" title="Workflows" />
 
 			{isLoading ? (
@@ -110,6 +111,6 @@ export default function WorkflowsPage() {
 					))}
 				</div>
 			)}
-		</div>
+		</PageShell>
 	);
 }

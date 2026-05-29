@@ -8,6 +8,7 @@ import { BackButton } from '@/components/ui/BackButton';
 import { LoadingState } from '@/components/ui/LoadingState';
 import { AppLink } from '@/components/ui/AppLink';
 import { Card, CardHeader, CardBody } from '@/components/ui/Card';
+import { PageShell } from '@/components/layout/PageShell';
 import { statusVariant } from '@/lib/status';
 import { formatTimestamp } from '@/lib/time';
 
@@ -49,7 +50,7 @@ export default function JobDetailPage() {
 		);
 
 	return (
-		<div className="max-w-4xl space-y-6">
+		<PageShell width="reading">
 			<BackButton to="/jobs" label="Back to Jobs" />
 
 			<div className="flex items-start justify-between gap-4">
@@ -149,6 +150,6 @@ export default function JobDetailPage() {
 					</CardBody>
 				</Card>
 			)}
-		</div>
+		</PageShell>
 	);
 }

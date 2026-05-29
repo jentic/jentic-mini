@@ -15,6 +15,7 @@ import { PageHeader } from '@/components/ui/PageHeader';
 import { LoadingState } from '@/components/ui/LoadingState';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { ErrorAlert } from '@/components/ui/ErrorAlert';
+import { PageShell } from '@/components/layout/PageShell';
 import { useAuth } from '@/hooks/useAuth';
 
 function formatSyncedAt(ts: number): string {
@@ -495,7 +496,7 @@ export default function CredentialsPage() {
 	});
 
 	return (
-		<div className="max-w-5xl space-y-5">
+		<PageShell spacing="space-y-5">
 			<PageHeader
 				category="Management"
 				title="Credentials Vault"
@@ -750,6 +751,6 @@ export default function CredentialsPage() {
 					</div>
 				</div>
 			)}
-		</div>
+		</PageShell>
 	);
 }

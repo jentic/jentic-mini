@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { PageHeader } from '@/components/ui/PageHeader';
+import { PageShell } from '@/components/layout/PageShell';
 import { Button } from '@/components/ui/Button';
 import { Dialog } from '@/components/ui/Dialog';
 import { LoadingState } from '@/components/ui/LoadingState';
@@ -459,13 +460,17 @@ export default function AgentsPage() {
 		declinedAgentsQuery.isLoading ||
 		removedAgentsQuery.isLoading
 	) {
-		return <LoadingState message="Loading agents…" />;
+		return (
+			<PageShell>
+				<LoadingState message="Loading agents…" />
+			</PageShell>
+		);
 	}
 	if (activeAgentsQuery.isError || declinedAgentsQuery.isError || removedAgentsQuery.isError) {
 		return (
-			<div className="p-6">
+			<PageShell>
 				<ErrorAlert message="Could not load agents. Log in as admin and try again." />
-			</div>
+			</PageShell>
 		);
 	}
 
@@ -478,7 +483,7 @@ export default function AgentsPage() {
 	const detailIsArchive = detail != null && (detailIsRemoved || detail.status === 'denied');
 
 	return (
-		<div className="p-6">
+		<PageShell>
 			<PageHeader
 				category="Security"
 				title="Agents"
@@ -985,6 +990,6 @@ export default function AgentsPage() {
 					</>
 				)}
 			</Dialog>
-		</div>
+		</PageShell>
 	);
 }

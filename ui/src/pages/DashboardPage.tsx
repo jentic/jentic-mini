@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { AlertTriangle, KeyRound, Settings } from 'lucide-react';
 import { AppLink } from '@/components/ui/AppLink';
+import { PageShell } from '@/components/layout/PageShell';
 import { usePendingRequests } from '@/hooks/usePendingRequests';
 import { api } from '@/api/client';
 import { timeAgo } from '@/lib/time';
@@ -32,7 +33,7 @@ export default function DashboardPage() {
 	const traces = (tracesPage as any)?.traces ?? [];
 
 	return (
-		<div className="space-y-6">
+		<PageShell>
 			<h1 className="text-foreground text-3xl font-bold">Dashboard</h1>
 
 			{Array.isArray(pendingRequests) && pendingRequests.length > 0 && (
@@ -181,6 +182,6 @@ export default function DashboardPage() {
 					</div>
 				)}
 			</div>
-		</div>
+		</PageShell>
 	);
 }
