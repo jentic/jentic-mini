@@ -91,6 +91,25 @@ _HOP_BY_HOP = {
     "x-jentic-credential",
     "x-jentic-service",
     "x-jentic-callback",
+    # Browser session cookies (jentic_session JWT in particular) authenticate
+    # the caller to *Jentic*, not to the upstream API. Forwarding them would
+    # (a) leak the JWT to whatever upstream is being proxied (it gets logged
+    # there and echoed back into broker job result bodies for any GET /jobs
+    # admin to read), and (b) be the wrong identity for the upstream anyway.
+    # See #56 for the response-side analogue (closed wontfix because response
+    # headers are legitimate application data); the request-side reasoning is
+    # different — the agent's Cookie is never intended for the upstream when
+    # called through the broker.
+    "cookie",
+    # Browser session cookies (jentic_session JWT in particular) authenticate
+    # the caller to *Jentic*, not to the upstream API. Forwarding them would
+    # (a) leak the JWT to whatever upstream is being proxied (it gets logged
+    # there and echoed back into broker job result bodies for any GET /jobs
+    # admin to read), and (b) be the wrong identity for the upstream anyway.
+    # See #56 for the response-side analogue (closed wontfix because response
+    # headers are legitimate application data); the request-side reasoning is
+    # different — the agent's Cookie is never intended for the upstream when
+    # called through the broker.
     # Host is set from the target URL
     "host",
     # Reverse-proxy headers injected by nginx/traefik/etc. — these describe
