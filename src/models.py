@@ -769,7 +769,7 @@ class TraceOut(BaseModel):
         description=(
             "Parent workflow trace this trace is a child step of. Set on broker traces "
             "spawned by an arazzo-runner workflow execution; null for top-level broker "
-            "calls and for the workflow trace itself. Used to render \"part of workflow X\" "
+            'calls and for the workflow trace itself. Used to render "part of workflow X" '
             "context in the Execution Detail panel."
         ),
     )

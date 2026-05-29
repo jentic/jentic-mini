@@ -14,10 +14,12 @@ spins up real upstream HTTP and (b) we want to assert the storage shape
 independent of dispatch concerns.
 """
 
+import inspect
 import sqlite3
 
 import pytest
 from src.db import DB_PATH
+from src.routers import broker as broker_module
 from src.routers.traces import write_trace
 
 
@@ -38,9 +40,7 @@ def cleanup_xlink_traces():
 
 
 @pytest.mark.asyncio
-async def test_write_trace_persists_job_id_and_parent_trace(
-    admin_client, cleanup_xlink_traces
-):  # noqa: ARG001
+async def test_write_trace_persists_job_id_and_parent_trace(admin_client, cleanup_xlink_traces):  # noqa: ARG001
     """Both new columns survive INSERT and surface in list + detail responses."""
     await write_trace(
         trace_id="exec_xlink_child",
@@ -144,11 +144,7 @@ def test_parent_trace_header_loopback_only(admin_client):  # noqa: ARG001
     branch is present in the broker source without standing up a real
     upstream (which would require auth, credentials, and network).
     """
-    import inspect
-
-    from src.routers import broker
-
-    src = inspect.getsource(broker.broker)
+    src = inspect.getsource(broker_module.broker)
     assert "X-Jentic-Parent-Trace" in src
     # Loopback set must be checked before the value is assigned to
     # parent_trace_id. Verify both pieces appear and the loopback hosts are

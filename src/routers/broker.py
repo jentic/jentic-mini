@@ -1223,9 +1223,7 @@ async def broker(request: Request, target: str):
             except Exception as exc:
                 # Update trace on exception
                 await _write_trace("error", 500, f"Background task error: {str(exc)}")
-                await update_job(
-                    job_id, status="failed", error=str(exc), trace_id=execution_id
-                )
+                await update_job(job_id, status="failed", error=str(exc), trace_id=execution_id)
             finally:
                 discard_task(job_id)
 

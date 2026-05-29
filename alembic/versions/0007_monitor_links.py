@@ -65,9 +65,7 @@ def upgrade() -> None:
     # Reverse: "find the job for this trace". Used by the Execution Log
     # cross-link badge — needs to be cheap on every row render.
     op.execute(
-        "CREATE INDEX IF NOT EXISTS idx_jobs_trace_id "
-        "ON jobs(trace_id) "
-        "WHERE trace_id IS NOT NULL"
+        "CREATE INDEX IF NOT EXISTS idx_jobs_trace_id ON jobs(trace_id) WHERE trace_id IS NOT NULL"
     )
 
 
