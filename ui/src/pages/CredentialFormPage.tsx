@@ -36,8 +36,16 @@ import {
  *     `?api_id=…` deeplink contract is published and we don't want
  *     to break it.
  *   - The redirect approach (`/credentials/:id/edit` →
- *     `/credentials?edit=:id`) lands in Phase 2; until then this
- *     file is the canonical edit surface.
+ *     `/credentials?edit=:id`) landed in Phase 2 and is the
+ *     preferred edit surface. This route still resolves edit URLs
+ *     for backward compatibility (the redirect handler in `App.tsx`
+ *     forwards them) but the canonical edit UI is now the inline
+ *     `CredentialEditSheet` mounted on the host pages.
+ *   - The new add UI is the `AddCredentialDialog` mounted on each
+ *     host. It calls `CredentialFormFields` directly (skipping this
+ *     route shell) so the dialog can run on top of the page that
+ *     opened it. This route stays as the canonical landing page for
+ *     deeplinks, and `?api_id=…` remains the published contract.
  *
  * If you find yourself adding form behaviour HERE, you almost
  * certainly want it in `CredentialFormFields` so the sheet/dialog

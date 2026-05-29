@@ -21,11 +21,13 @@
  *     that pre-date the spec_url field — keeps the hook safe to call
  *     during a deploy window where stale React Query payloads are still
  *     in memory.
- *   - On success, emit `credentialImported` so the existing toast +
- *     query-invalidation pipeline in `DiscoveryView` /
- *     `WorkspaceView` reacts (the event channel is misnamed; rename
- *     tracked in #437). Workflows that ship with the API are
- *     auto-imported by the backend; we don't fan out a second mutation.
+ *   - On success, emit `apiImported` (the canonical channel for
+ *     "an API just landed in the workspace"). Workflows that ship
+ *     with the API are auto-imported by the backend; we don't fan
+ *     out a second mutation. The legacy `credentialImported`
+ *     dual-emit was dropped in v3 cleanup; subscribers that wanted
+ *     API-arrival semantics moved to `apiImported`, and credential-
+ *     arrival subscribers keep firing on credential save events.
  *
  * Returns a stable `import` function plus loading flag so the calling
  * component can disable its button while the request is in flight.
@@ -34,7 +36,6 @@
 import { useCallback } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/api/client';
-import { emitCredentialImported } from '@/lib/events/credentialImported';
 import { emitApiImported } from '@/lib/events/apiImported';
 import { toast } from '@/components/ui/toastStore';
 
@@ -109,14 +110,13 @@ export function useImportCatalogApi(): UseImportCatalogApiResult {
 			// channel; v2 of the credentials revamp split the channels
 			// (see `src/lib/events/apiImported.ts`) so subscribers can
 			// distinguish "got an API" from "got a credential" without
-			// inspecting payload shape.
+			// inspecting payload shape. v3 cleanup removed the legacy
+			// `credentialImported` dual-emit — the only remaining
+			// API-arrival subscriber (`BrowseResults`) now listens on
+			// `apiImported`, and credential-arrival subscribers
+			// (`WorkspaceView` toast, etc.) keep firing on the saved
+			// credential's own emit path.
 			emitApiImported({ api_id: apiId, source: 'catalog' });
-			// Keep the legacy event firing too — DiscoveryView and
-			// WorkspaceView still listen on `credentialImported` for
-			// API-import side effects. We'll cut them over in a
-			// follow-up; until then dual-emitting is harmless because
-			// both subscribers use the same query-invalidation set.
-			emitCredentialImported({ api_id: apiId });
 		},
 		onError: (err: unknown, variables) => {
 			toast({
