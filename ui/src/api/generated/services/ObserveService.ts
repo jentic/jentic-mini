@@ -162,7 +162,7 @@ export class ObserveService {
          */
         agentId?: (string | null),
         /**
-         * Filter by upstream API host. Matches when the capability id (e.g. `GET/api.github.com/users/...`) contains `/{api_id}/`. Use the host as it appears in `operation_id`.
+         * Filter by upstream API. Exact match against the `api_id` column on executions, which is the catalog-form `apis.id` (e.g. `stripe.com`, `github.com`). Indexed; use this in preference to scanning `operation_id` substrings.
          */
         apiId?: (string | null),
         /**

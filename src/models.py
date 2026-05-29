@@ -796,6 +796,28 @@ class TraceOut(BaseModel):
             "context in the Execution Detail panel."
         ),
     )
+    api_id: str | None = Field(
+        default=None,
+        examples=["stripe.com"],
+        description=(
+            "Catalog id of the upstream API the broker proxied to (`apis.id`). Set at "
+            "write time from the matched credential's `api_id`; null for workflow traces "
+            "(which are multi-API by definition) and for unattributed broker calls "
+            "where no credential matched. Use this as the join key when correlating "
+            "traces with the registered API — the read endpoints already join `apis` "
+            "and surface `api_name` alongside."
+        ),
+    )
+    api_name: str | None = Field(
+        default=None,
+        examples=["Stripe API"],
+        description=(
+            "Human-readable API name from the catalog (`apis.name`) joined via `api_id`. "
+            "Null when `api_id` is null, or when `api_id` references a row that no "
+            "longer exists (e.g. the API was deleted from the catalog after the trace "
+            "was written) — frontend falls back to rendering `api_id` directly."
+        ),
+    )
     steps: list[TraceStepOut] = Field(
         default_factory=list,
         examples=[[]],
@@ -871,8 +893,11 @@ class UsageTopRow(BaseModel):
         default=None,
         examples=["GitHub"],
         description=(
-            "Human-readable label for the row. Same as `key` unless the backend "
-            "joined a friendly name (e.g. agent client_name)."
+            "Human-readable label for the row. For `group_by=agent` this is the "
+            "agent's `client_name`; for `group_by=api` it is `apis.name` when the "
+            "API is registered in the catalog (null otherwise — the frontend falls "
+            "back to rendering `key`). For `group_by=toolkit` the label is null "
+            "(toolkit ids are already human-readable slugs)."
         ),
     )
     total: int = Field(examples=[500], description="Total traces in this row")

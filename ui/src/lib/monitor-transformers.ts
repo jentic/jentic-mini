@@ -41,6 +41,13 @@ export function mapExecutionStatus(status: string | null | undefined): Execution
  *
  * The result is lowercased and stripped of anything that isn't safe for use as
  * a vendor key (icons, palette indexes). Empty input → `'unknown'`.
+ *
+ * NOTE: Prefer `trace.api_id` from the backend whenever it's available — that's
+ * the FK-shaped catalog id (`stripe.com`, not `api.stripe.com`) and joins
+ * cleanly to `apis.name`. This helper exists for two cases that don't have
+ * an `api_id` on the wire: jobs (whose `capability` is the operation_id with
+ * no resolved api), and timeline points whose vendor slug is used purely for
+ * palette/icon resolution.
  */
 export function vendorFromOperation(operationId: string | null | undefined): string {
 	if (!operationId) return 'unknown';
@@ -63,25 +70,31 @@ export function vendorFromOperation(operationId: string | null | undefined): str
 }
 
 /**
- * Pull a human-readable "API name" out of an `operation_id`. For broker calls
- * this is the upstream path (`/v1/payment_intents`); for legacy dotted
- * operation IDs it's the part after the first `.`.
+ * Resolve the human-readable API label for a trace.
+ *
+ * Prefers the backend-joined `api_name` (catalog `apis.name`, e.g. "Stripe API"),
+ * falls back to `api_id` (catalog form, e.g. `stripe.com`) when the catalog
+ * doesn't have a name, and finally derives a vendor slug from `operation_id`
+ * for legacy rows that pre-date the `api_id` column. Returns `'unknown'` only
+ * when there is genuinely nothing to display.
  */
-export function apiNameFromOperation(operationId: string | null | undefined): string {
-	if (!operationId) return 'unknown';
-	const trimmed = operationId.trim();
-	if (!trimmed) return 'unknown';
+export function apiDisplayFromTrace(trace: TraceOut): string {
+	if (trace.api_name) return trace.api_name;
+	if (trace.api_id) return trace.api_id;
+	return vendorFromOperation(trace.operation_id ?? trace.workflow_id ?? null);
+}
 
-	if (trimmed.includes('/')) {
-		const firstSlash = trimmed.indexOf('/');
-		const rest = trimmed.slice(firstSlash + 1);
-		const nextSlash = rest.indexOf('/');
-		// "host/path" → return "/path"; just "host" → return host.
-		return nextSlash > 0 ? rest.slice(nextSlash) : rest;
-	}
-
-	const dot = trimmed.indexOf('.');
-	return dot > 0 ? trimmed.slice(dot + 1) : trimmed;
+/**
+ * Resolve the *vendor slug* for a trace — the stable key used by `VendorIcon`
+ * for palette and icon resolution. Prefers `api_id` (catalog form, stable
+ * across renames) over the host segment in `operation_id` (e.g.
+ * `api.stripe.com` vs the catalog's `stripe.com` — same vendor, different
+ * palette slot if we used the host). Falls back to operation-id parsing
+ * for legacy rows.
+ */
+export function vendorSlugFromTrace(trace: TraceOut): string {
+	if (trace.api_id) return trace.api_id.toLowerCase();
+	return vendorFromOperation(trace.operation_id ?? trace.workflow_id ?? null);
 }
 
 /**
@@ -111,10 +124,9 @@ export function traceToLogEntry(
 	agentNameById: Map<string, string> = new Map(),
 ): ExecutionLogEntry {
 	const status = mapExecutionStatus(trace.status);
-	const operationId = trace.operation_id ?? trace.workflow_id ?? null;
 	const isWorkflow = !!trace.workflow_id;
-	const vendor = vendorFromOperation(operationId);
-	const apiName = apiNameFromOperation(operationId);
+	const vendor = vendorSlugFromTrace(trace);
+	const apiName = apiDisplayFromTrace(trace);
 	const toolkitId = trace.toolkit_id ?? null;
 	const agentId = trace.agent_id ?? null;
 
@@ -156,7 +168,10 @@ export function jobToLogEntry(
 	const status = mapExecutionStatus(job.status);
 	const operationId = (job.capability as string | undefined) ?? null;
 	const vendor = vendorFromOperation(operationId);
-	const apiName = apiNameFromOperation(operationId);
+	// Jobs don't carry api_id on the wire (the join lives on executions, and
+	// jobs only have a capability id). Use the vendor slug as the visible
+	// label — same heuristic the timeline used to use for everything.
+	const apiName = vendor;
 	const toolkitId = (job.toolkit_id as string | null | undefined) ?? null;
 	const agentId = (job.agent_id as string | null | undefined) ?? null;
 	const traceId = (job.trace_id as string | null | undefined) ?? null;
@@ -223,14 +238,13 @@ export function tracesToTimelinePoints(
 	agentNameById: Map<string, string> = new Map(),
 ): TimelinePoint[] {
 	return traces.map((t) => {
-		const operationId = t.operation_id ?? t.workflow_id ?? null;
 		const toolkitId = t.toolkit_id ?? '';
 		const agentId = t.agent_id ?? '';
 		return {
 			executionId: t.id,
 			timestamp: toMs(t.created_at),
-			vendor: vendorFromOperation(operationId),
-			apiName: apiNameFromOperation(operationId),
+			vendor: vendorSlugFromTrace(t),
+			apiName: apiDisplayFromTrace(t),
 			status: mapExecutionStatus(t.status),
 			durationMs: t.duration_ms ?? undefined,
 			workflowName: t.workflow_id ?? '',

@@ -210,6 +210,8 @@ export interface TraceOut {
 	completed_at?: number | null;
 	job_id?: string | null;
 	parent_trace_id?: string | null;
+	api_id?: string | null;
+	api_name?: string | null;
 	steps?: TraceStepOut[];
 	[key: string]: unknown;
 }

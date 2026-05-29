@@ -610,6 +610,14 @@ async def broker(request: Request, target: str):
     # made before each exit point flow through.
     current_job_id: str | None = None
 
+    # Catalog-form `apis.id` for the upstream API. Filled in after the
+    # credential lookup runs (see `_find_credential_for_host` below); stays
+    # None for the early-error exit points that fail before credentials are
+    # resolved (e.g. policy denials, malformed targets) and for anonymous
+    # broker calls where no credential matched. The read-side LEFT JOIN
+    # treats NULL as "unattributed", same as toolkit_id/agent_id.
+    current_api_id: str | None = None
+
     # Helper to write broker traces (reduces duplication across 10+ call sites)
     async def _write_trace(status: str, http_status: int, error: str | None = None) -> None:
         """Write trace for this broker call. All broker exit points should call this."""
@@ -628,6 +636,7 @@ async def broker(request: Request, target: str):
                 step_outputs=None,
                 job_id=current_job_id,
                 parent_trace_id=parent_trace_id,
+                api_id=current_api_id,
             )
 
     credential_alias = request.headers.get("x-jentic-credential")
@@ -857,6 +866,12 @@ async def broker(request: Request, target: str):
             service=credential_service,
             toolkit_ids=grant_ids,
         )
+        # Stamp the catalog-form api id onto the trace so the Monitor surfaces
+        # can JOIN apis at read time. _find_credential_for_host returns the
+        # `api_id` taken straight from the matched credential record, which
+        # for catalog imports is the canonical SLD form (e.g. `stripe.com`).
+        # Stays None when no credential matched (anonymous calls / no-auth APIs).
+        current_api_id = api_id
     except ServiceNotFoundError as e:
         await _write_trace("error", 409, str(e))
         return Response(

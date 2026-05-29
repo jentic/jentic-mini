@@ -45,18 +45,25 @@ async def write_trace(
     agent_id: str | None = None,
     job_id: str | None = None,
     parent_trace_id: str | None = None,
+    api_id: str | None = None,
 ) -> str:
     """Write an execution trace (+ optional step records) to the DB.
 
     Uses UPSERT to preserve created_at on updates (e.g. async pending → success).
+
+    `api_id` is the FK-shaped pointer into `apis(id)`. The broker passes the
+    credential's `api_id` when one matched (catalog-form, e.g. `stripe.com`);
+    workflow rows pass None because they're multi-API by definition. NULL is
+    fine — the read-side LEFT JOIN renders unattributed rows the same way it
+    handles unknown toolkits/agents.
     """
     async with get_db() as db:
         await db.execute(
             """INSERT INTO executions
                (id, toolkit_id, agent_id, operation_id, workflow_id, spec_path,
                 status, http_status, duration_ms, error, job_id, parent_trace_id,
-                created_at, completed_at)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,unixepoch(),unixepoch())
+                api_id, created_at, completed_at)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,unixepoch(),unixepoch())
                ON CONFLICT(id) DO UPDATE SET
                  status=excluded.status,
                  http_status=excluded.http_status,
@@ -64,6 +71,7 @@ async def write_trace(
                  error=excluded.error,
                  job_id=COALESCE(executions.job_id, excluded.job_id),
                  parent_trace_id=COALESCE(executions.parent_trace_id, excluded.parent_trace_id),
+                 api_id=COALESCE(executions.api_id, excluded.api_id),
                  completed_at=unixepoch()""",
             (
                 trace_id,
@@ -78,6 +86,7 @@ async def write_trace(
                 error,
                 job_id,
                 parent_trace_id,
+                api_id,
             ),
         )
 
@@ -117,8 +126,13 @@ async def safe_write_trace(**kwargs) -> None:
         log.warning("trace write failed (non-fatal): %s", exc)
 
 
-def _trace_scope_clause(request: Request) -> tuple[str, list]:
+def _trace_scope_clause(request: Request, prefix: str = "") -> tuple[str, list]:
     """Return (sql_predicate, params) restricting trace reads to the caller's tenant.
+
+    `prefix` lets callers qualify column refs when the trace SELECT joins
+    other tables — pass `prefix="e."` and the predicate becomes
+    `e.agent_id = ?`. Default empty for the simpler single-table reads
+    (e.g. `get_usage`).
 
     Scoping rules:
       - Human sessions (admin) see every trace.
@@ -142,10 +156,10 @@ def _trace_scope_clause(request: Request) -> tuple[str, list]:
         return "1=1", []
     agent_id = getattr(request.state, "agent_client_id", None)
     if agent_id:
-        return "agent_id = ?", [agent_id]
+        return f"{prefix}agent_id = ?", [agent_id]
     toolkit_id = getattr(request.state, "toolkit_id", None)
     if toolkit_id:
-        return "toolkit_id = ?", [toolkit_id]
+        return f"{prefix}toolkit_id = ?", [toolkit_id]
     # No principal we can scope by — fail closed so a future auth path that
     # forgets to set state doesn't accidentally expose every trace.
     return "0=1", []
@@ -186,9 +200,10 @@ async def list_traces(
         str | None,
         Query(
             description=(
-                "Filter by upstream API host. Matches when the capability id (e.g. "
-                "`GET/api.github.com/users/...`) contains `/{api_id}/`. Use the host "
-                "as it appears in `operation_id`."
+                "Filter by upstream API. Exact match against the `api_id` column "
+                "on executions, which is the catalog-form `apis.id` (e.g. "
+                "`stripe.com`, `github.com`). Indexed; use this in preference to "
+                "scanning `operation_id` substrings."
             )
         ),
     ] = None,
@@ -215,39 +230,39 @@ async def list_traces(
     ] = None,
 ):
     """Returns recent execution traces with status, capability id, toolkit, timestamp, and HTTP status. Use GET /traces/{trace_id} for step-level detail."""
-    scope_sql, scope_params = _trace_scope_clause(request)
+    scope_sql, scope_params = _trace_scope_clause(request, prefix="e.")
 
     # Optional filters layered on top of the tenant scope. Each adds an AND clause
     # only when set, so the no-filter path stays identical to the legacy plan.
     where_parts: list[str] = [scope_sql]
     params: list = list(scope_params)
     if toolkit_id is not None:
-        where_parts.append("toolkit_id = ?")
+        where_parts.append("e.toolkit_id = ?")
         params.append(toolkit_id)
     if agent_id is not None:
-        where_parts.append("agent_id = ?")
+        where_parts.append("e.agent_id = ?")
         params.append(agent_id)
     if status is not None:
-        where_parts.append("status = ?")
+        where_parts.append("e.status = ?")
         params.append(status)
     if since is not None:
-        where_parts.append("created_at >= ?")
+        where_parts.append("e.created_at >= ?")
         params.append(since)
     if until is not None:
-        where_parts.append("created_at < ?")
+        where_parts.append("e.created_at < ?")
         params.append(until)
     if capability_id is not None:
         # A capability id can land in either column depending on whether it was a
         # broker call or a workflow run; OR them so the caller doesn't have to
         # pre-classify.
-        where_parts.append("(operation_id = ? OR workflow_id = ?)")
+        where_parts.append("(e.operation_id = ? OR e.workflow_id = ?)")
         params.extend([capability_id, capability_id])
     if api_id is not None:
-        # operation_id format is METHOD/host/path; substring match keeps us
-        # index-free but cheap on the small executions table. Wrap in slashes
-        # to avoid matching e.g. `api.github.com.evil.com`.
-        where_parts.append("operation_id LIKE ?")
-        params.append(f"%/{api_id}/%")
+        # api_id is a column on executions (catalog form, e.g. `stripe.com`).
+        # Indexed; equality match. Legacy rows without api_id were backfilled
+        # in migration 0007 wherever the upstream had been imported.
+        where_parts.append("e.api_id = ?")
+        params.append(api_id)
 
     where_sql = " AND ".join(f"({p})" for p in where_parts)
     count_params = list(params)
@@ -255,17 +270,20 @@ async def list_traces(
 
     async with get_db() as db:
         async with db.execute(
-            f"""SELECT id, toolkit_id, agent_id, operation_id, workflow_id,
-                      status, http_status, duration_ms, error, created_at, completed_at,
-                      job_id, parent_trace_id
-               FROM executions
+            f"""SELECT e.id, e.toolkit_id, e.agent_id, e.operation_id, e.workflow_id,
+                      e.status, e.http_status, e.duration_ms, e.error,
+                      e.created_at, e.completed_at,
+                      e.job_id, e.parent_trace_id,
+                      e.api_id, a.name AS api_name
+               FROM executions e
+               LEFT JOIN apis a ON a.id = e.api_id
                WHERE {where_sql}
-               ORDER BY created_at DESC LIMIT ? OFFSET ?""",
+               ORDER BY e.created_at DESC LIMIT ? OFFSET ?""",
             page_params,
         ) as cur:
             rows = await cur.fetchall()
         async with db.execute(
-            f"SELECT COUNT(*) FROM executions WHERE {where_sql}", count_params
+            f"SELECT COUNT(*) FROM executions e WHERE {where_sql}", count_params
         ) as cur:
             total = (await cur.fetchone())[0]
 
@@ -288,6 +306,8 @@ async def list_traces(
                 "completed_at": r[10],
                 "job_id": r[11],
                 "parent_trace_id": r[12],
+                "api_id": r[13],
+                "api_name": r[14],
                 "_links": {"self": f"/traces/{r[0]}"},
             }
             for r in rows
@@ -480,22 +500,16 @@ async def get_usage(
             for br in bucket_rows
         ]
 
-        # Top groups: pick the column based on group_by. For 'api' we extract
-        # the host segment from operation_id (METHOD/host/path); SQLite doesn't
-        # have a regex split, so we do a small Python loop after the GROUP BY.
+        # Top groups: pick the column based on group_by. Each is a real column
+        # on `executions` now — `api_id` was added in migration 0007 and is
+        # populated at write time by the broker (or backfilled). No more
+        # operation_id substring gymnastics.
         if group_by == "toolkit":
             group_col = "COALESCE(toolkit_id, '')"
         elif group_by == "agent":
             group_col = "COALESCE(agent_id, '')"
         else:  # api
-            # Extract the second slash-segment of operation_id. Two passes of
-            # substring trimming is enough — the format is METHOD/host/path.
-            group_col = (
-                "COALESCE("
-                "SUBSTR(operation_id, INSTR(operation_id, '/') + 1, "
-                "INSTR(SUBSTR(operation_id, INSTR(operation_id, '/') + 1), '/') - 1), "
-                "'')"
-            )
+            group_col = "COALESCE(api_id, '')"
         async with db.execute(
             f"""SELECT
                   {group_col} AS k,
@@ -539,9 +553,12 @@ async def get_usage(
                 if key in trend_map:
                     trend_map[key][idx] += int(count or 0)
 
-        # For agent group_by, look up friendly labels in one pass. For toolkit
-        # we don't have a 1:1 name table (id IS the slug); for api the host is
-        # already its own label.
+        # For agent / api group_by, look up friendly labels in one pass. For
+        # toolkit we don't have a 1:1 name table (id IS the slug, no name
+        # column). For api the row key is `api_id` (catalog form, e.g.
+        # `stripe.com`) — joining `apis` recovers the human-readable name
+        # ("Stripe API"); rows whose api_id isn't registered fall through to
+        # null and the frontend renders the key.
         labels: dict[str, str | None] = {}
         if group_by == "agent" and top_rows:
             agent_ids = [r[0] for r in top_rows if r[0]]
@@ -553,11 +570,27 @@ async def get_usage(
                 ) as cur:
                     for cid, name in await cur.fetchall():
                         labels[cid] = name
+        elif group_by == "api" and top_rows:
+            api_ids = [r[0] for r in top_rows if r[0]]
+            if api_ids:
+                placeholders = ",".join("?" * len(api_ids))
+                async with db.execute(
+                    f"SELECT id, name FROM apis WHERE id IN ({placeholders})",
+                    api_ids,
+                ) as cur:
+                    for aid, name in await cur.fetchall():
+                        labels[aid] = name
 
     top = [
         {
             "key": tr[0] or "",
-            "label": labels.get(tr[0]) if group_by == "agent" else (tr[0] or None),
+            # Display label resolution by group:
+            #   - agent: agents.client_name (looked up above)
+            #   - api:   apis.name when registered (looked up above), null
+            #            otherwise — frontend falls back to rendering the key
+            #            (the catalog-form host)
+            #   - toolkit: id IS the label (no separate name table)
+            "label": (labels.get(tr[0]) if group_by in ("agent", "api") else (tr[0] or None)),
             "total": int(tr[1] or 0),
             "success": int(tr[2] or 0),
             "failed": int(tr[3] or 0),
@@ -610,13 +643,17 @@ async def get_trace(
     trace_id: Annotated[str, Path(description="Trace ID (format: exec_{12chars})")],
 ):
     """Returns the full execution trace with all steps: capability called, inputs, outputs, HTTP status, and timing. Useful for debugging failed workflow steps."""
-    scope_sql, scope_params = _trace_scope_clause(request)
+    scope_sql, scope_params = _trace_scope_clause(request, prefix="e.")
     async with get_db() as db:
         async with db.execute(
-            f"""SELECT id, toolkit_id, agent_id, operation_id, workflow_id, spec_path,
-                      status, http_status, duration_ms, error, created_at, completed_at,
-                      job_id, parent_trace_id
-               FROM executions WHERE id=? AND {scope_sql}""",
+            f"""SELECT e.id, e.toolkit_id, e.agent_id, e.operation_id, e.workflow_id,
+                      e.spec_path, e.status, e.http_status, e.duration_ms, e.error,
+                      e.created_at, e.completed_at,
+                      e.job_id, e.parent_trace_id,
+                      e.api_id, a.name AS api_name
+               FROM executions e
+               LEFT JOIN apis a ON a.id = e.api_id
+               WHERE e.id=? AND {scope_sql}""",
             (trace_id, *scope_params),
         ) as cur:
             row = await cur.fetchone()
@@ -664,6 +701,8 @@ async def get_trace(
         "completed_at": row[11],
         "job_id": row[12],
         "parent_trace_id": row[13],
+        "api_id": row[14],
+        "api_name": row[15],
         "steps": steps,
         "_links": {"self": f"/traces/{row[0]}"},
     }

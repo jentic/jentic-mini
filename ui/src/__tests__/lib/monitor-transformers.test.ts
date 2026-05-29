@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
 	mapExecutionStatus,
 	vendorFromOperation,
-	apiNameFromOperation,
+	apiDisplayFromTrace,
 	traceToLogEntry,
 	jobToLogEntry,
 	jobToJobLogEntry,
@@ -24,34 +24,59 @@ describe('monitor-transformers', () => {
 		expect(mapExecutionStatus('weird')).toBe('QUEUED');
 	});
 
-	it('extracts vendor and api name from operation_id', () => {
+	it('extracts a vendor slug from operation_id (legacy and broker formats)', () => {
 		// Legacy dotted format
 		expect(vendorFromOperation('slack.chat.post')).toBe('slack');
-		expect(apiNameFromOperation('slack.chat.post')).toBe('chat.post');
 		expect(vendorFromOperation(null)).toBe('unknown');
-		expect(apiNameFromOperation(undefined)).toBe('unknown');
+		expect(vendorFromOperation(undefined)).toBe('unknown');
 
 		// Production format: METHOD/host/path (broker calls)
 		expect(vendorFromOperation('GET/api.stripe.com/v1/payment_intents')).toBe('api.stripe.com');
-		expect(apiNameFromOperation('GET/api.stripe.com/v1/payment_intents')).toBe(
-			'/v1/payment_intents',
-		);
 		expect(vendorFromOperation('POST/api.slack.com/api/chat.postMessage')).toBe(
 			'api.slack.com',
 		);
-		expect(apiNameFromOperation('POST/api.slack.com/api/chat.postMessage')).toBe(
-			'/api/chat.postMessage',
-		);
 		// Host-only edge case (no path segment)
 		expect(vendorFromOperation('GET/api.example.com')).toBe('api.example.com');
-		expect(apiNameFromOperation('GET/api.example.com')).toBe('api.example.com');
+	});
+
+	it('apiDisplayFromTrace prefers backend-joined api_name, then api_id, then derived vendor', () => {
+		// 1. Backend joined name wins.
+		expect(
+			apiDisplayFromTrace({
+				id: 't1',
+				api_name: 'Stripe API',
+				api_id: 'stripe.com',
+				operation_id: 'GET/api.stripe.com/v1/charges',
+				status: 'success',
+			} as unknown as TraceOut),
+		).toBe('Stripe API');
+
+		// 2. Falls back to api_id when name missing.
+		expect(
+			apiDisplayFromTrace({
+				id: 't2',
+				api_name: null,
+				api_id: 'unregistered.example.com',
+				operation_id: 'GET/unregistered.example.com/x',
+				status: 'success',
+			} as unknown as TraceOut),
+		).toBe('unregistered.example.com');
+
+		// 3. Legacy: no api_id at all → derive from operation_id.
+		expect(
+			apiDisplayFromTrace({
+				id: 't3',
+				operation_id: 'github.repos.list',
+				status: 'success',
+			} as unknown as TraceOut),
+		).toBe('github');
 	});
 
 	it('converts a TraceOut into an ExecutionLogEntry', () => {
 		const trace: TraceOut = {
 			id: 'tr-1',
 			toolkit_id: 'tk-1',
-			operation_id: 'github.repos.list',
+			operation_id: 'GET/api.github.com/repos',
 			workflow_id: null,
 			status: 'success',
 			duration_ms: 124,
@@ -61,6 +86,8 @@ describe('monitor-transformers', () => {
 			error: null,
 			steps: [],
 			agent_id: 'agent-7',
+			api_id: 'github.com',
+			api_name: 'GitHub',
 		};
 		const entry = traceToLogEntry(
 			trace,
@@ -72,9 +99,32 @@ describe('monitor-transformers', () => {
 		expect(entry.status).toBe('COMPLETED');
 		expect(entry.toolkitName).toBe('GitHub Toolkit');
 		expect(entry.agentName).toBe('Bot 7');
-		expect(entry.apiVendor).toBe('github');
-		expect(entry.apiName).toBe('repos.list');
+		// Vendor slug is the catalog id, NOT the upstream host — keeps palette
+		// stable across api.github.com / github.com.
+		expect(entry.apiVendor).toBe('github.com');
+		// Display name is the catalog `apis.name`.
+		expect(entry.apiName).toBe('GitHub');
 		expect(entry.durationMs).toBe(124);
+	});
+
+	it('falls back to api_id then operation_id when apis.name is missing', () => {
+		const traceWithIdOnly = {
+			id: 'tr-id-only',
+			operation_id: 'GET/unregistered.example.com/x',
+			status: 'success',
+			created_at: 1_700_000_000,
+			api_id: 'unregistered.example.com',
+			api_name: null,
+		} as unknown as TraceOut;
+		expect(traceToLogEntry(traceWithIdOnly).apiName).toBe('unregistered.example.com');
+
+		const legacyTrace = {
+			id: 'tr-legacy',
+			operation_id: 'github.repos.list',
+			status: 'success',
+			created_at: 1_700_000_000,
+		} as unknown as TraceOut;
+		expect(traceToLogEntry(legacyTrace).apiName).toBe('github');
 	});
 
 	it('converts in-flight jobs into ExecutionLogEntry rows', () => {

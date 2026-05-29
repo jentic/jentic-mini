@@ -30,6 +30,7 @@ def seeded_usage(admin_client):  # noqa: ARG001
             "tk_a",
             "agnt_usage_alice",
             "GET/api.github.com/users",
+            "github.com",
             "success",
             100,
             now - 60,
@@ -39,6 +40,7 @@ def seeded_usage(admin_client):  # noqa: ARG001
             "tk_a",
             "agnt_usage_alice",
             "GET/api.github.com/users",
+            "github.com",
             "success",
             200,
             now - 50,
@@ -48,6 +50,7 @@ def seeded_usage(admin_client):  # noqa: ARG001
             "tk_a",
             "agnt_usage_alice",
             "POST/api.github.com/issues",
+            "github.com",
             "failed",
             500,
             now - 40,
@@ -57,6 +60,7 @@ def seeded_usage(admin_client):  # noqa: ARG001
             "tk_b",
             "agnt_usage_bob",
             "GET/api.stripe.com/charges",
+            "stripe.com",
             "success",
             300,
             now - 30,
@@ -66,6 +70,7 @@ def seeded_usage(admin_client):  # noqa: ARG001
             "tk_b",
             "agnt_usage_bob",
             "GET/api.stripe.com/charges",
+            "stripe.com",
             "success",
             1000,
             now - 20,
@@ -76,6 +81,7 @@ def seeded_usage(admin_client):  # noqa: ARG001
             "tk_a",
             None,
             "GET/api.github.com/users",
+            "github.com",
             "success",
             50,
             now - 30 * 86400,
@@ -90,10 +96,19 @@ def seeded_usage(admin_client):  # noqa: ARG001
                 ("agnt_usage_bob", "Bob"),
             ],
         )
+        # Seed the catalog so the api group_by label-join can resolve names.
+        cx.executemany(
+            "INSERT OR IGNORE INTO apis (id, name) VALUES (?, ?)",
+            [
+                ("github.com", "GitHub"),
+                ("stripe.com", "Stripe"),
+            ],
+        )
         cx.executemany(
             """INSERT INTO executions
-                  (id, toolkit_id, agent_id, operation_id, status, duration_ms, created_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                  (id, toolkit_id, agent_id, operation_id, api_id,
+                   status, duration_ms, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
             rows,
         )
         cx.commit()
@@ -101,6 +116,7 @@ def seeded_usage(admin_client):  # noqa: ARG001
     with sqlite3.connect(DB_PATH) as cx:
         cx.execute("DELETE FROM executions WHERE id IN (?,?,?,?,?,?)", _FIXTURE_TRACE_IDS)
         cx.execute("DELETE FROM agents WHERE client_id IN (?,?)", _FIXTURE_AGENT_IDS)
+        cx.execute("DELETE FROM apis WHERE id IN (?, ?)", ("github.com", "stripe.com"))
         cx.commit()
 
 
@@ -176,15 +192,18 @@ def test_top_by_agent_includes_friendly_label(admin_client, seeded_usage):
     assert rows["agnt_usage_bob"]["label"] == "Bob"
 
 
-def test_top_by_api_extracts_host(admin_client, seeded_usage):
+def test_top_by_api_uses_catalog_id_and_label(admin_client, seeded_usage):
     now = seeded_usage["now"]
     resp = admin_client.get(f"/traces/usage?since={now - 3600}&until={now + 1}&group_by=api")
     assert resp.status_code == 200
     rows = {r["key"]: r for r in resp.json()["top"]}
-    # api.github.com sees 3 traces (a001/a002/a003 — including the failed one).
-    assert rows["api.github.com"]["total"] == 3
-    assert rows["api.github.com"]["failed"] == 1
-    assert rows["api.stripe.com"]["total"] == 2
+    # Keys are catalog-form `apis.id` (the `api_id` column); labels come from
+    # the join against `apis.name`.
+    assert rows["github.com"]["total"] == 3
+    assert rows["github.com"]["failed"] == 1
+    assert rows["github.com"]["label"] == "GitHub"
+    assert rows["stripe.com"]["total"] == 2
+    assert rows["stripe.com"]["label"] == "Stripe"
 
 
 def test_filter_to_one_toolkit_before_aggregating(admin_client, seeded_usage):

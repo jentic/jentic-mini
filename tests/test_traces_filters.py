@@ -31,11 +31,11 @@ def seeded_traces(admin_client):  # noqa: ARG001
     """Insert a fixed corpus before each test, clean up after.
 
     Layout:
-      a001  toolkit=tk_a  agent=alice  status=success  op=GET/api.github.com/users
-      a002  toolkit=tk_a  agent=alice  status=failed   wf=wf_review
-      b001  toolkit=tk_b  agent=bob    status=success  op=POST/api.stripe.com/charges
-      c001  toolkit=tk_a  agent=None   status=pending  op=GET/api.github.com/orgs   created 1h ago
-      d001  toolkit=tk_b  agent=None   status=success  op=GET/api.openai.com/chat   created 24h ago
+      a001  toolkit=tk_a  agent=alice  status=success  op=GET/api.github.com/users  api_id=github.com
+      a002  toolkit=tk_a  agent=alice  status=failed   wf=wf_review                  api_id=None
+      b001  toolkit=tk_b  agent=bob    status=success  op=POST/api.stripe.com/charges api_id=stripe.com
+      c001  toolkit=tk_a  agent=None   status=pending  op=GET/api.github.com/orgs    api_id=github.com  (1h ago)
+      d001  toolkit=tk_b  agent=None   status=success  op=GET/api.openai.com/chat    api_id=openai.com  (24h ago)
     """
     now = 1_700_000_000.0  # frozen timestamp so since/until are deterministic
     rows = [
@@ -46,9 +46,19 @@ def seeded_traces(admin_client):  # noqa: ARG001
             "GET/api.github.com/users",
             None,
             "success",
+            "github.com",
             now,
         ),
-        ("exec_filter_a002", "tk_a", "agnt_filter_alice", None, "wf_review", "failed", now),
+        (
+            "exec_filter_a002",
+            "tk_a",
+            "agnt_filter_alice",
+            None,
+            "wf_review",
+            "failed",
+            None,
+            now,
+        ),
         (
             "exec_filter_b001",
             "tk_b",
@@ -56,10 +66,29 @@ def seeded_traces(admin_client):  # noqa: ARG001
             "POST/api.stripe.com/charges",
             None,
             "success",
+            "stripe.com",
             now,
         ),
-        ("exec_filter_c001", "tk_a", None, "GET/api.github.com/orgs", None, "pending", now - 3600),
-        ("exec_filter_d001", "tk_b", None, "GET/api.openai.com/chat", None, "success", now - 86400),
+        (
+            "exec_filter_c001",
+            "tk_a",
+            None,
+            "GET/api.github.com/orgs",
+            None,
+            "pending",
+            "github.com",
+            now - 3600,
+        ),
+        (
+            "exec_filter_d001",
+            "tk_b",
+            None,
+            "GET/api.openai.com/chat",
+            None,
+            "success",
+            "openai.com",
+            now - 86400,
+        ),
     ]
     with sqlite3.connect(DB_PATH) as cx:
         cx.executemany(
@@ -73,8 +102,8 @@ def seeded_traces(admin_client):  # noqa: ARG001
         cx.executemany(
             """INSERT INTO executions
                   (id, toolkit_id, agent_id, operation_id, workflow_id,
-                   status, created_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                   status, api_id, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
             rows,
         )
         cx.commit()
@@ -133,9 +162,9 @@ def test_filter_by_capability_id_matches_either_column(admin_client, seeded_trac
     assert _ids(wf_resp) >= {"exec_filter_a002"}
 
 
-def test_filter_by_api_host_substring(admin_client, seeded_traces):  # noqa: ARG001
-    """api_id matches the host segment of operation_id, not arbitrary substrings."""
-    resp = admin_client.get("/traces?api_id=api.github.com&limit=500")
+def test_filter_by_api_id_exact_match(admin_client, seeded_traces):  # noqa: ARG001
+    """api_id matches the catalog-form `apis.id` column on executions, not a substring of operation_id."""
+    resp = admin_client.get("/traces?api_id=github.com&limit=500")
     assert resp.status_code == 200
     ids = _ids(resp)
     assert "exec_filter_a001" in ids
