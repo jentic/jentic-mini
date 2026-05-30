@@ -83,7 +83,7 @@ def barrikade_test_credentials():
     asyncio.run(teardown())
 
 
-# ── Mock plugin helper ────────────────────────────────────────────────────────
+# Mock plugin helper
 
 
 class _MockSecurityPlugin(SecurityPlugin):
@@ -121,7 +121,7 @@ def _register_mock_plugin():
         security_registry.deregister(p.name)
 
 
-# ── BarrikadePlugin unit tests ────────────────────────────────────────────────
+# BarrikadePlugin unit tests
 
 
 @pytest.mark.asyncio
@@ -188,7 +188,7 @@ async def test_client_fail_open_on_exception():
         assert res.is_safe is False
 
 
-# ── Ingress Middleware Tests ──────────────────────────────────────────────────
+# Ingress Middleware Tests
 
 
 def test_ingress_middleware_safe(client, agent_key_header, _register_mock_plugin):
@@ -254,13 +254,13 @@ def test_ingress_middleware_blocked_workflow_body(client, agent_key_header, _reg
     assert "malicious input here" in mock_plugin.calls[0]
 
 
-# ── Egress Broker Tests ──────────────────────────────────────────────────────
+# Egress Response Body Tests
 
 
-def test_egress_broker_safe(
+def test_egress_response_safe(
     client, agent_key_header, barrikade_test_credentials, _register_mock_plugin
 ):
-    """Test safe broker egress requests are allowed."""
+    """Test that a safe response body from the upstream API is allowed to pass through."""
     mock_plugin = _register_mock_plugin(
         SecurityVerdict(
             is_safe=True,
@@ -271,37 +271,69 @@ def test_egress_broker_safe(
         )
     )
 
-    # We use simulate mode so we don't send real upstream requests
-    resp = client.post(
-        f"/{EGRESS_HOST}/v1/charges",
-        json={"amount": 100, "description": "safe payment"},
-        headers={**agent_key_header, "X-Jentic-Simulate": "true"},
-    )
-    assert resp.status_code == 200
-    assert any("safe payment" in c for c in mock_plugin.calls)
+    # Mock the outbound aiohttp request
+    mock_response = AsyncMock()
+    mock_response.read.return_value = b'{"status": "succeeded", "message": "all clear"}'
+    mock_response.status = 200
+    mock_response.headers = {"Content-Type": "application/json"}
+
+    mock_session = AsyncMock()
+    client_instance = AsyncMock()
+    mock_session.__aenter__.return_value = client_instance
+
+    client_instance.request = MagicMock()
+    client_instance.request.return_value.__aenter__ = AsyncMock(return_value=mock_response)
+    client_instance.request.return_value.__aexit__ = AsyncMock(return_value=None)
+
+    with patch("aiohttp.ClientSession", return_value=mock_session):
+        resp = client.post(
+            f"/{EGRESS_HOST}/v1/charges",
+            json={"amount": 100},
+            headers=agent_key_header,
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["status"] == "succeeded"
+        assert any("all clear" in c for c in mock_plugin.calls)
 
 
-def test_egress_broker_blocked(
+def test_egress_response_blocked(
     client, agent_key_header, barrikade_test_credentials, _register_mock_plugin
 ):
-    """Test unsafe broker egress requests are blocked before forwarding."""
+    """Test that an unsafe response body from the upstream API is blocked."""
     mock_plugin = _register_mock_plugin(
         SecurityVerdict(
             is_safe=False,
             verdict="block",
-            decision_layer="llm",
-            confidence_score=0.99,
+            decision_layer="heuristic",
+            confidence_score=0.97,
             plugin_name="mock-security",
         )
     )
 
-    resp = client.post(
-        f"/{EGRESS_HOST}/v1/charges",
-        json={"amount": 100, "description": "unsafe payment payload"},
-        headers={**agent_key_header, "X-Jentic-Simulate": "true"},
-    )
-    assert resp.status_code == 403
-    data = resp.json()
-    assert data["error"] == "security_violation"
-    assert data["verdict"] == "block"
-    assert any("unsafe payment payload" in c for c in mock_plugin.calls)
+    # Mock the outbound aiohttp request to return a suspicious body
+    mock_response = AsyncMock()
+    mock_response.read.return_value = b'{"exfiltrated_key": "sk_live_12345"}'
+    mock_response.status = 200
+    mock_response.headers = {"Content-Type": "application/json"}
+
+    mock_session = AsyncMock()
+    client_instance = AsyncMock()
+    mock_session.__aenter__.return_value = client_instance
+
+    client_instance.request = MagicMock()
+    client_instance.request.return_value.__aenter__ = AsyncMock(return_value=mock_response)
+    client_instance.request.return_value.__aexit__ = AsyncMock(return_value=None)
+
+    with patch("aiohttp.ClientSession", return_value=mock_session):
+        resp = client.post(
+            f"/{EGRESS_HOST}/v1/charges",
+            json={"amount": 100},
+            headers=agent_key_header,
+        )
+        assert resp.status_code == 403
+        data = resp.json()
+        assert data["error"] == "security_violation"
+        assert "response body from the upstream service was blocked" in data["message"]
+        assert data["verdict"] == "block"
+        assert any("sk_live_12345" in c for c in mock_plugin.calls)
