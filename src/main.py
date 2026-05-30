@@ -22,11 +22,11 @@ from pydantic import BaseModel, Field
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from src.auth import APIKeyMiddleware, is_proxy_trusted_peer
-from src.barrikade_client import BarrikadeClient
 from src.brokers.pipedream import PipedreamOAuthBroker
 from src.config import (
     APP_VERSION,
-    BARRIKADE_INGRESS_ENABLED,
+    BARRIKADE_FAIL_OPEN,
+    BARRIKADE_TIMEOUT_MS,
     BARRIKADE_URL,
     JENTIC_ROOT_PATH,
     JENTIC_TRUSTED_PROXY_HEADER,
@@ -59,6 +59,9 @@ from src.routers import workflows as workflows_router
 from src.routers.apis import rebuild_index_on_startup
 from src.routers.catalog import refresh_catalog_if_stale
 from src.routers.toolkits import policy_router as toolkits_policy_router
+from src.security import security_registry
+from src.security.barrikade import BarrikadePlugin
+from src.security.utils import extract_text_from_payload, extract_text_from_query_params
 from src.startup import backfill_credential_routes, seed_broker_apps, self_register
 from src.utils import build_absolute_url, build_canonical_url, route_path
 
@@ -90,6 +93,16 @@ async def lifespan(app: FastAPI):
     for _b in _pd_brokers:
         oauth_broker_registry.register(_b)
     log.info("Jentic loaded %d OAuth broker(s)", len(_pd_brokers))
+    # Security plugins
+    if BARRIKADE_URL:
+        security_registry.register(
+            BarrikadePlugin(
+                url=BARRIKADE_URL,
+                timeout_ms=BARRIKADE_TIMEOUT_MS,
+                fail_open=BARRIKADE_FAIL_OPEN,
+            )
+        )
+        log.info("Security plugin registered: barrikade (%s)", BARRIKADE_URL)
     log.info("Jentic ready")
     yield
     log.info("Jentic shutting down")
@@ -188,90 +201,59 @@ _TAGS_METADATA = [
 ]
 
 
-# ── Barrikade Ingress Security Middleware ────────────────────────────────────
-class BarrikadeIngressMiddleware(BaseHTTPMiddleware):
+# Security Ingress Middleware
+class SecurityIngressMiddleware(BaseHTTPMiddleware):
+    """Generic ingress middleware that delegates to the security plugin registry."""
+
     async def dispatch(self, request: Request, call_next):
-        if not BARRIKADE_INGRESS_ENABLED or not BARRIKADE_URL:
+        if not security_registry.has_plugins():
             return await call_next(request)
 
         path = request.scope.get("path", "")
         method = request.method
 
-        # Normalize path
-        normalized_path = path.lstrip("/")
-        first_segment = normalized_path.split("/")[0] if normalized_path else ""
+        # 1. Scan query parameters
+        if request.query_params:
+            query_text = extract_text_from_query_params(request.query_params)
+            if query_text.strip():
+                verdict = await security_registry.scan_ingress(query_text, path, method)
+                if verdict and not verdict.is_safe:
+                    return JSONResponse(
+                        status_code=403,
+                        content={
+                            "error": "security_violation",
+                            "message": f"The request query was blocked by the {verdict.plugin_name} security layer.",
+                            "verdict": verdict.verdict,
+                            "decision_layer": verdict.decision_layer,
+                            "confidence_score": verdict.confidence_score,
+                        },
+                    )
 
-        # Identify if target is search, workflow execution, or broker
-        is_search = path == "/search"
-        is_workflow = path.startswith("/workflows/") and method == "POST"
-        is_broker = "." in first_segment
+        # 2. Scan request body for POST/PUT/PATCH/DELETE
+        if method in ("POST", "PUT", "PATCH", "DELETE"):
+            body_bytes = await request.body()
 
-        if is_search or is_workflow or is_broker:
-            # 1. Scan query parameters for GET/POST/etc.
-            if request.query_params:
-                query_text = " ".join(v for v in request.query_params.values() if v)
-                if query_text.strip():
-                    res = await BarrikadeClient.scan_text(query_text)
-                    if not res.get("is_safe", True):
+            # Recycle Starlette request body stream so route handlers can read it
+            async def receive():
+                return {"type": "http.request", "body": body_bytes, "more_body": False}
+
+            request._receive = receive
+
+            if body_bytes:
+                text_to_scan = extract_text_from_payload(body_bytes)
+                if text_to_scan.strip():
+                    verdict = await security_registry.scan_ingress(text_to_scan, path, method)
+                    if verdict and not verdict.is_safe:
                         return JSONResponse(
                             status_code=403,
                             content={
                                 "error": "security_violation",
-                                "message": "The request query was blocked by the Barrikade security layer.",
-                                "verdict": res.get("final_verdict"),
-                                "decision_layer": res.get("decision_layer"),
-                                "confidence_score": res.get("confidence_score"),
+                                "message": f"The request body was blocked by the {verdict.plugin_name} security layer.",
+                                "verdict": verdict.verdict,
+                                "decision_layer": verdict.decision_layer,
+                                "confidence_score": verdict.confidence_score,
                             },
                         )
-
-            # 2. Scan request body for POST/PUT/PATCH/DELETE
-            if method in ("POST", "PUT", "PATCH", "DELETE"):
-                body_bytes = await request.body()
-
-                # Recycle Starlette request body stream so route handlers can read it
-                async def receive():
-                    return {"type": "http.request", "body": body_bytes, "more_body": False}
-
-                request._receive = receive
-
-                if body_bytes:
-                    text_to_scan = ""
-                    try:
-                        # Parse JSON payload recursively to extract only values (ignoring syntax)
-                        payload = json.loads(body_bytes)
-                        if isinstance(payload, (dict, list)):
-                            str_values = []
-
-                            def extract_strings(item):
-                                if isinstance(item, dict):
-                                    for v in item.values():
-                                        extract_strings(v)
-                                elif isinstance(item, list):
-                                    for v in item:
-                                        extract_strings(v)
-                                elif isinstance(item, str):
-                                    str_values.append(item)
-
-                            extract_strings(payload)
-                            text_to_scan = "\n".join(str_values)
-                        else:
-                            text_to_scan = body_bytes.decode("utf-8", errors="replace")
-                    except Exception:
-                        text_to_scan = body_bytes.decode("utf-8", errors="replace")
-
-                    if text_to_scan.strip():
-                        res = await BarrikadeClient.scan_text(text_to_scan)
-                        if not res.get("is_safe", True):
-                            return JSONResponse(
-                                status_code=403,
-                                content={
-                                    "error": "security_violation",
-                                    "message": "The request body was blocked by the Barrikade security layer.",
-                                    "verdict": res.get("final_verdict"),
-                                    "decision_layer": res.get("decision_layer"),
-                                    "confidence_score": res.get("confidence_score"),
-                                },
-                            )
 
         return await call_next(request)
 
@@ -349,7 +331,7 @@ app = FastAPI(
     license_info={"name": "Apache 2.0", "identifier": "Apache-2.0"},
 )
 
-app.add_middleware(BarrikadeIngressMiddleware)
+app.add_middleware(SecurityIngressMiddleware)
 app.add_middleware(APIKeyMiddleware)
 app.middleware("http")(negotiate_middleware)
 

@@ -1,4 +1,4 @@
-"""Barrikade prompt-injection scanner — concrete SecurityPlugin implementation."""
+"""Barrikade prompt-injection scanner"""
 
 import logging
 

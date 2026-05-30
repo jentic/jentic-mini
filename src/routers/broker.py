@@ -51,8 +51,7 @@ from fastapi import APIRouter, HTTPException, Path, Request, Response
 from jentic.apitools.openapi.common.uri import is_http_https_url
 
 import src.vault as vault
-from src.barrikade_client import BarrikadeClient
-from src.config import BARRIKADE_EGRESS_ENABLED, BARRIKADE_URL, JENTIC_PUBLIC_HOSTNAME
+from src.config import JENTIC_PUBLIC_HOSTNAME
 from src.db import DEFAULT_TOOLKIT_ID, get_db
 from src.oauth_broker import registry
 from src.openapi_helpers import agent_hints
@@ -62,6 +61,8 @@ from src.routers.overlays import confirm_overlay
 from src.routers.toolkits import check_credential_policy
 from src.routers.traces import new_trace_id, safe_write_trace
 from src.routers.workflows import dispatch_workflow
+from src.security import security_registry
+from src.security.utils import extract_text_from_payload, extract_text_from_query_params
 from src.utils import parse_prefer_wait
 
 
@@ -1080,25 +1081,29 @@ async def broker(request: Request, target: str):
 
     body_bytes = await request.body()
 
-    # ── Egress Security Check with Barrikade ──────────────────────────────────
-    if BARRIKADE_EGRESS_ENABLED and BARRIKADE_URL:
+    # Egress Security Check
+    if security_registry.has_plugins():
         # 1. Scan query parameters
         if request.query_params:
-            query_text = " ".join(v for v in request.query_params.values() if v)
+            query_text = extract_text_from_query_params(request.query_params)
             if query_text.strip():
-                res = await BarrikadeClient.scan_text(query_text)
-                if not res.get("is_safe", True):
+                verdict = await security_registry.scan_egress(
+                    query_text, routing_host, request.method
+                )
+                if verdict and not verdict.is_safe:
                     await _write_trace(
-                        "policy_denied", 403, "Blocked by Barrikade egress security layer"
+                        "policy_denied",
+                        403,
+                        f"Blocked by {verdict.plugin_name} egress security layer",
                     )
                     return Response(
                         content=json.dumps(
                             {
                                 "error": "security_violation",
-                                "message": "The outbound request query parameters were blocked by the Barrikade egress security layer.",
-                                "verdict": res.get("final_verdict"),
-                                "decision_layer": res.get("decision_layer"),
-                                "confidence_score": res.get("confidence_score"),
+                                "message": f"The outbound request query parameters were blocked by the {verdict.plugin_name} egress security layer.",
+                                "verdict": verdict.verdict,
+                                "decision_layer": verdict.decision_layer,
+                                "confidence_score": verdict.confidence_score,
                             }
                         ),
                         status_code=403,
@@ -1112,44 +1117,25 @@ async def broker(request: Request, target: str):
 
         # 2. Scan request body (for POST, PUT, PATCH, DELETE)
         if request.method in ("POST", "PUT", "PATCH", "DELETE") and body_bytes:
-            text_to_scan = ""
-            try:
-                # Parse JSON payload recursively to extract only values (ignoring syntax)
-                payload = json.loads(body_bytes)
-                if isinstance(payload, (dict, list)):
-                    str_values = []
-
-                    def extract_strings(item):
-                        if isinstance(item, dict):
-                            for v in item.values():
-                                extract_strings(v)
-                        elif isinstance(item, list):
-                            for v in item:
-                                extract_strings(v)
-                        elif isinstance(item, str):
-                            str_values.append(item)
-
-                    extract_strings(payload)
-                    text_to_scan = "\n".join(str_values)
-                else:
-                    text_to_scan = body_bytes.decode("utf-8", errors="replace")
-            except Exception:
-                text_to_scan = body_bytes.decode("utf-8", errors="replace")
-
+            text_to_scan = extract_text_from_payload(body_bytes)
             if text_to_scan.strip():
-                res = await BarrikadeClient.scan_text(text_to_scan)
-                if not res.get("is_safe", True):
+                verdict = await security_registry.scan_egress(
+                    text_to_scan, routing_host, request.method
+                )
+                if verdict and not verdict.is_safe:
                     await _write_trace(
-                        "policy_denied", 403, "Blocked by Barrikade egress security layer"
+                        "policy_denied",
+                        403,
+                        f"Blocked by {verdict.plugin_name} egress security layer",
                     )
                     return Response(
                         content=json.dumps(
                             {
                                 "error": "security_violation",
-                                "message": "The outbound request body was blocked by the Barrikade egress security layer.",
-                                "verdict": res.get("final_verdict"),
-                                "decision_layer": res.get("decision_layer"),
-                                "confidence_score": res.get("confidence_score"),
+                                "message": f"The outbound request body was blocked by the {verdict.plugin_name} egress security layer.",
+                                "verdict": verdict.verdict,
+                                "decision_layer": verdict.decision_layer,
+                                "confidence_score": verdict.confidence_score,
                             }
                         ),
                         status_code=403,

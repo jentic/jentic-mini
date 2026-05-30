@@ -7,7 +7,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import aiosqlite
 import pytest
 from src import vault
-from src.barrikade_client import BarrikadeClient
+from src.security import security_registry
+from src.security.barrikade import BarrikadePlugin
+from src.security.plugin import SecurityPlugin, SecurityVerdict
 
 
 EGRESS_HOST = "barrikade-egress.com"
@@ -81,9 +83,50 @@ def barrikade_test_credentials():
     asyncio.run(teardown())
 
 
+# ── Mock plugin helper ────────────────────────────────────────────────────────
+
+
+class _MockSecurityPlugin(SecurityPlugin):
+    """A lightweight mock plugin for testing the registry-based flow."""
+
+    name = "mock-security"
+
+    def __init__(self, scan_result: SecurityVerdict):
+        self._scan_result = scan_result
+        self.calls: list[str] = []
+
+    async def scan_text(self, text: str) -> SecurityVerdict:
+        self.calls.append(text)
+        return self._scan_result
+
+
+@pytest.fixture()
+def _register_mock_plugin():
+    """Context-manager fixture that registers a mock plugin on the registry.
+
+    Yields a factory: call it with a ``SecurityVerdict`` to get the
+    ``_MockSecurityPlugin`` instance.  The plugin is deregistered on teardown.
+    """
+    plugins: list[_MockSecurityPlugin] = []
+
+    def _factory(verdict: SecurityVerdict) -> _MockSecurityPlugin:
+        p = _MockSecurityPlugin(verdict)
+        security_registry.register(p)
+        plugins.append(p)
+        return p
+
+    yield _factory
+
+    for p in plugins:
+        security_registry.deregister(p.name)
+
+
+# ── BarrikadePlugin unit tests ────────────────────────────────────────────────
+
+
 @pytest.mark.asyncio
 async def test_client_scan_text_success():
-    """Test client returns correctly when mock API succeeds."""
+    """Test BarrikadePlugin returns correctly when mock API succeeds."""
     mock_response = MagicMock()
     mock_response.status_code = 200
     mock_response.json.return_value = {
@@ -96,17 +139,16 @@ async def test_client_scan_text_success():
     mock_client.__aenter__.return_value.post.return_value = mock_response
 
     with patch("httpx.AsyncClient", return_value=mock_client):
-        # Need to patch BARRIKADE_URL to enable the client
-        with patch("src.barrikade_client.BARRIKADE_URL", "http://mock-barrikade"):
-            res = await BarrikadeClient.scan_text("safe input")
-            assert res["is_safe"] is True
-            assert res["final_verdict"] == "pass"
-            assert res["confidence_score"] == 0.99
+        plugin = BarrikadePlugin(url="http://mock-barrikade", timeout_ms=5000, fail_open=True)
+        res = await plugin.scan_text("safe input")
+        assert res.is_safe is True
+        assert res.verdict == "pass"
+        assert res.confidence_score == 0.99
 
 
 @pytest.mark.asyncio
 async def test_client_scan_text_blocked():
-    """Test client returns is_safe=False when verdict is block."""
+    """Test BarrikadePlugin returns is_safe=False when verdict is block."""
     mock_response = MagicMock()
     mock_response.status_code = 200
     mock_response.json.return_value = {
@@ -119,166 +161,147 @@ async def test_client_scan_text_blocked():
     mock_client.__aenter__.return_value.post.return_value = mock_response
 
     with patch("httpx.AsyncClient", return_value=mock_client):
-        with patch("src.barrikade_client.BARRIKADE_URL", "http://mock-barrikade"):
-            res = await BarrikadeClient.scan_text("unsafe input")
-            assert res["is_safe"] is False
-            assert res["final_verdict"] == "block"
-            assert res["confidence_score"] == 0.95
+        plugin = BarrikadePlugin(url="http://mock-barrikade", timeout_ms=5000, fail_open=True)
+        res = await plugin.scan_text("unsafe input")
+        assert res.is_safe is False
+        assert res.verdict == "block"
+        assert res.confidence_score == 0.95
 
 
 @pytest.mark.asyncio
 async def test_client_fail_open_on_exception():
-    """Test client fail-open and fail-closed behaviors under exception."""
+    """Test BarrikadePlugin fail-open and fail-closed behaviors under exception."""
     mock_client = AsyncMock()
     mock_client.__aenter__.return_value.post.side_effect = Exception("Connection refused")
 
     with patch("httpx.AsyncClient", return_value=mock_client):
-        with patch("src.barrikade_client.BARRIKADE_URL", "http://mock-barrikade"):
-            # With fail open = True (default)
-            with patch("src.barrikade_client.BARRIKADE_FAIL_OPEN", True):
-                res = await BarrikadeClient.scan_text("any input")
-                assert res["is_safe"] is True
+        # With fail open = True
+        plugin_open = BarrikadePlugin(url="http://mock-barrikade", timeout_ms=5000, fail_open=True)
+        res = await plugin_open.scan_text("any input")
+        assert res.is_safe is True
 
-            # With fail open = False
-            with patch("src.barrikade_client.BARRIKADE_FAIL_OPEN", False):
-                res = await BarrikadeClient.scan_text("any input")
-                assert res["is_safe"] is False
-
-
-# Ingress Middleware Tests
-def test_ingress_middleware_safe(client, agent_key_header):
-    """Test safe ingress requests are allowed to proceed."""
-    # With ingress disabled
-    with patch("src.main.BARRIKADE_INGRESS_ENABLED", False):
-        resp = client.get("/search?q=safe", headers=agent_key_header)
-        assert resp.status_code == 200
-
-    # With ingress enabled, safe scan verdict
-    mock_scan = AsyncMock(
-        return_value={
-            "is_safe": True,
-            "final_verdict": "pass",
-            "decision_layer": "none",
-            "confidence_score": 0.0,
-            "error": None,
-        }
-    )
-    with (
-        patch("src.main.BARRIKADE_INGRESS_ENABLED", True),
-        patch("src.main.BARRIKADE_URL", "http://mock-barrikade"),
-        patch("src.barrikade_client.BarrikadeClient.scan_text", mock_scan),
-    ):
-        resp = client.get("/search?q=safe", headers=agent_key_header)
-        assert resp.status_code == 200
-        mock_scan.assert_called_once_with("safe")
-
-
-def test_ingress_middleware_blocked_search(client, agent_key_header):
-    """Test unsafe search queries are blocked with a 403 security violation."""
-    mock_scan = AsyncMock(
-        return_value={
-            "is_safe": False,
-            "final_verdict": "block",
-            "decision_layer": "llm",
-            "confidence_score": 0.98,
-            "error": None,
-        }
-    )
-    with (
-        patch("src.main.BARRIKADE_INGRESS_ENABLED", True),
-        patch("src.main.BARRIKADE_URL", "http://mock-barrikade"),
-        patch("src.barrikade_client.BarrikadeClient.scan_text", mock_scan),
-    ):
-        resp = client.get("/search?q=unsafe-query", headers=agent_key_header)
-        assert resp.status_code == 403
-        data = resp.json()
-        assert data["error"] == "security_violation"
-        assert data["verdict"] == "block"
-        assert data["decision_layer"] == "llm"
-        assert data["confidence_score"] == 0.98
-
-
-def test_ingress_middleware_blocked_workflow_body(client, agent_key_header):
-    """Test unsafe workflow POST payloads are blocked with a 403."""
-    mock_scan = AsyncMock(
-        return_value={
-            "is_safe": False,
-            "final_verdict": "block",
-            "decision_layer": "heuristic",
-            "confidence_score": 0.85,
-            "error": None,
-        }
-    )
-    with (
-        patch("src.main.BARRIKADE_INGRESS_ENABLED", True),
-        patch("src.main.BARRIKADE_URL", "http://mock-barrikade"),
-        patch("src.barrikade_client.BarrikadeClient.scan_text", mock_scan),
-    ):
-        resp = client.post(
-            "/workflows/some-slug",
-            json={"user_input": "malicious input here"},
-            headers=agent_key_header,
+        # With fail open = False
+        plugin_closed = BarrikadePlugin(
+            url="http://mock-barrikade", timeout_ms=5000, fail_open=False
         )
-        assert resp.status_code == 403
-        data = resp.json()
-        assert data["error"] == "security_violation"
-        mock_scan.assert_called_once_with("malicious input here")
+        res = await plugin_closed.scan_text("any input")
+        assert res.is_safe is False
 
 
-# Egress Broker Tests
-def test_egress_broker_safe(client, agent_key_header, barrikade_test_credentials):
+# ── Ingress Middleware Tests ──────────────────────────────────────────────────
+
+
+def test_ingress_middleware_safe(client, agent_key_header, _register_mock_plugin):
+    """Test safe ingress requests are allowed to proceed."""
+    # With no plugins registered — should pass through
+    resp = client.get("/search?q=safe", headers=agent_key_header)
+    assert resp.status_code == 200
+
+    # With a mock plugin returning safe verdict
+    mock_plugin = _register_mock_plugin(
+        SecurityVerdict(
+            is_safe=True,
+            verdict="pass",
+            decision_layer="none",
+            confidence_score=0.0,
+            plugin_name="mock-security",
+        )
+    )
+    resp = client.get("/search?q=safe", headers=agent_key_header)
+    assert resp.status_code == 200
+    assert "safe" in mock_plugin.calls
+
+
+def test_ingress_middleware_blocked_search(client, agent_key_header, _register_mock_plugin):
+    """Test unsafe search queries are blocked with a 403 security violation."""
+    _register_mock_plugin(
+        SecurityVerdict(
+            is_safe=False,
+            verdict="block",
+            decision_layer="llm",
+            confidence_score=0.98,
+            plugin_name="mock-security",
+        )
+    )
+    resp = client.get("/search?q=unsafe-query", headers=agent_key_header)
+    assert resp.status_code == 403
+    data = resp.json()
+    assert data["error"] == "security_violation"
+    assert data["verdict"] == "block"
+    assert data["decision_layer"] == "llm"
+    assert data["confidence_score"] == 0.98
+
+
+def test_ingress_middleware_blocked_workflow_body(client, agent_key_header, _register_mock_plugin):
+    """Test unsafe workflow POST payloads are blocked with a 403."""
+    mock_plugin = _register_mock_plugin(
+        SecurityVerdict(
+            is_safe=False,
+            verdict="block",
+            decision_layer="heuristic",
+            confidence_score=0.85,
+            plugin_name="mock-security",
+        )
+    )
+    resp = client.post(
+        "/workflows/some-slug",
+        json={"user_input": "malicious input here"},
+        headers=agent_key_header,
+    )
+    assert resp.status_code == 403
+    data = resp.json()
+    assert data["error"] == "security_violation"
+    assert "malicious input here" in mock_plugin.calls[0]
+
+
+# ── Egress Broker Tests ──────────────────────────────────────────────────────
+
+
+def test_egress_broker_safe(
+    client, agent_key_header, barrikade_test_credentials, _register_mock_plugin
+):
     """Test safe broker egress requests are allowed."""
-    mock_scan = AsyncMock(
-        return_value={
-            "is_safe": True,
-            "final_verdict": "pass",
-            "decision_layer": "none",
-            "confidence_score": 0.0,
-            "error": None,
-        }
+    mock_plugin = _register_mock_plugin(
+        SecurityVerdict(
+            is_safe=True,
+            verdict="pass",
+            decision_layer="none",
+            confidence_score=0.0,
+            plugin_name="mock-security",
+        )
     )
 
     # We use simulate mode so we don't send real upstream requests
-    with (
-        patch("src.main.BARRIKADE_INGRESS_ENABLED", False),
-        patch("src.routers.broker.BARRIKADE_EGRESS_ENABLED", True),
-        patch("src.routers.broker.BARRIKADE_URL", "http://mock-barrikade"),
-        patch("src.barrikade_client.BarrikadeClient.scan_text", mock_scan),
-    ):
-        resp = client.post(
-            f"/{EGRESS_HOST}/v1/charges",
-            json={"amount": 100, "description": "safe payment"},
-            headers={**agent_key_header, "X-Jentic-Simulate": "true"},
-        )
-        assert resp.status_code == 200
-        mock_scan.assert_any_call("safe payment")
+    resp = client.post(
+        f"/{EGRESS_HOST}/v1/charges",
+        json={"amount": 100, "description": "safe payment"},
+        headers={**agent_key_header, "X-Jentic-Simulate": "true"},
+    )
+    assert resp.status_code == 200
+    assert any("safe payment" in c for c in mock_plugin.calls)
 
 
-def test_egress_broker_blocked(client, agent_key_header, barrikade_test_credentials):
+def test_egress_broker_blocked(
+    client, agent_key_header, barrikade_test_credentials, _register_mock_plugin
+):
     """Test unsafe broker egress requests are blocked before forwarding."""
-    mock_scan = AsyncMock(
-        return_value={
-            "is_safe": False,
-            "final_verdict": "block",
-            "decision_layer": "llm",
-            "confidence_score": 0.99,
-            "error": None,
-        }
+    mock_plugin = _register_mock_plugin(
+        SecurityVerdict(
+            is_safe=False,
+            verdict="block",
+            decision_layer="llm",
+            confidence_score=0.99,
+            plugin_name="mock-security",
+        )
     )
 
-    with (
-        patch("src.main.BARRIKADE_INGRESS_ENABLED", False),
-        patch("src.routers.broker.BARRIKADE_EGRESS_ENABLED", True),
-        patch("src.routers.broker.BARRIKADE_URL", "http://mock-barrikade"),
-        patch("src.barrikade_client.BarrikadeClient.scan_text", mock_scan),
-    ):
-        resp = client.post(
-            f"/{EGRESS_HOST}/v1/charges",
-            json={"amount": 100, "description": "unsafe payment payload"},
-            headers={**agent_key_header, "X-Jentic-Simulate": "true"},
-        )
-        assert resp.status_code == 403
-        data = resp.json()
-        assert data["error"] == "security_violation"
-        assert data["verdict"] == "block"
-        assert "unsafe payment payload" in mock_scan.call_args[0][0]
+    resp = client.post(
+        f"/{EGRESS_HOST}/v1/charges",
+        json={"amount": 100, "description": "unsafe payment payload"},
+        headers={**agent_key_header, "X-Jentic-Simulate": "true"},
+    )
+    assert resp.status_code == 403
+    data = resp.json()
+    assert data["error"] == "security_violation"
+    assert data["verdict"] == "block"
+    assert any("unsafe payment payload" in c for c in mock_plugin.calls)
