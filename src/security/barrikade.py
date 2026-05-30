@@ -109,6 +109,6 @@ class BarrikadePlugin(SecurityPlugin):
             or "." in first_segment
         )
 
-    def should_scan_egress(self, host: str, method: str) -> bool:
-        """Scan all proxy broker egress requests."""
+    def should_scan_response(self, host: str, status_code: int) -> bool:
+        """Scan all upstream API responses."""
         return True

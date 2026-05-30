@@ -33,10 +33,14 @@ class SecurityPlugin(ABC):
         """
         return True
 
-    def should_scan_egress(self, host: str, method: str) -> bool:
-        """Determine if this plugin should scan a given outbound request.
+    def should_scan_response(self, host: str, status_code: int) -> bool:
+        """Determine if this plugin should scan a given downstream API response.
 
-        Default is True. Concrete plugins can override to target specific
-        hosts or ignore certain domains.
+        Default is True. Concrete plugins can override to only scan specific hosts
+        or only scan successful responses.
         """
         return True
+
+    async def scan_response(self, text: str, host: str) -> SecurityVerdict:
+        """Scan downstream response text. Default is to delegate to scan_text."""
+        return await self.scan_text(text)

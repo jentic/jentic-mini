@@ -56,15 +56,15 @@ class SecurityRegistry:
                 return verdict
         return None
 
-    async def scan_egress(self, text: str, host: str, method: str) -> SecurityVerdict | None:
-        """Run registered plugins against outbound text.
+    async def scan_response(self, text: str, host: str, status_code: int) -> SecurityVerdict | None:
+        """Run registered plugins against outbound response text.
 
         Returns the first blocking verdict, or None if all pass.
         """
         for plugin in self._plugins:
-            if not plugin.should_scan_egress(host, method):
+            if not plugin.should_scan_response(host, status_code):
                 continue
-            verdict = await plugin.scan_text(text)
+            verdict = await plugin.scan_response(text, host)
             if not verdict.is_safe:
                 return verdict
         return None

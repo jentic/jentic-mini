@@ -62,7 +62,7 @@ from src.routers.toolkits import check_credential_policy
 from src.routers.traces import new_trace_id, safe_write_trace
 from src.routers.workflows import dispatch_workflow
 from src.security import security_registry
-from src.security.utils import extract_text_from_payload, extract_text_from_query_params
+from src.security.utils import extract_text_from_payload
 from src.utils import parse_prefer_wait
 
 
@@ -1081,72 +1081,6 @@ async def broker(request: Request, target: str):
 
     body_bytes = await request.body()
 
-    # Egress Security Check
-    if security_registry.has_plugins():
-        # 1. Scan query parameters
-        if request.query_params:
-            query_text = extract_text_from_query_params(request.query_params)
-            if query_text.strip():
-                verdict = await security_registry.scan_egress(
-                    query_text, routing_host, request.method
-                )
-                if verdict and not verdict.is_safe:
-                    await _write_trace(
-                        "policy_denied",
-                        403,
-                        f"Blocked by {verdict.plugin_name} egress security layer",
-                    )
-                    return Response(
-                        content=json.dumps(
-                            {
-                                "error": "security_violation",
-                                "message": f"The outbound request query parameters were blocked by the {verdict.plugin_name} egress security layer.",
-                                "verdict": verdict.verdict,
-                                "decision_layer": verdict.decision_layer,
-                                "confidence_score": verdict.confidence_score,
-                            }
-                        ),
-                        status_code=403,
-                        media_type="application/json",
-                        headers={
-                            "X-Jentic-Error": "true",
-                            "X-Jentic-Execution-Id": execution_id,
-                            **_cred_headers,
-                        },
-                    )
-
-        # 2. Scan request body (for POST, PUT, PATCH, DELETE)
-        if request.method in ("POST", "PUT", "PATCH", "DELETE") and body_bytes:
-            text_to_scan = extract_text_from_payload(body_bytes)
-            if text_to_scan.strip():
-                verdict = await security_registry.scan_egress(
-                    text_to_scan, routing_host, request.method
-                )
-                if verdict and not verdict.is_safe:
-                    await _write_trace(
-                        "policy_denied",
-                        403,
-                        f"Blocked by {verdict.plugin_name} egress security layer",
-                    )
-                    return Response(
-                        content=json.dumps(
-                            {
-                                "error": "security_violation",
-                                "message": f"The outbound request body was blocked by the {verdict.plugin_name} egress security layer.",
-                                "verdict": verdict.verdict,
-                                "decision_layer": verdict.decision_layer,
-                                "confidence_score": verdict.confidence_score,
-                            }
-                        ),
-                        status_code=403,
-                        media_type="application/json",
-                        headers={
-                            "X-Jentic-Error": "true",
-                            "X-Jentic-Execution-Id": execution_id,
-                            **_cred_headers,
-                        },
-                    )
-
     # ── Simulate: return what would be sent ──────────────────────────────────
     if is_simulate:
         forward_headers = {k: v for k, v in request.headers.items() if k.lower() not in _HOP_BY_HOP}
@@ -1294,6 +1228,40 @@ async def broker(request: Request, target: str):
                 _upstream_body = await upstream_response.read()
                 _upstream_status = upstream_response.status
                 _upstream_headers = dict(upstream_response.headers)
+
+                # Response Security Scan
+                if security_registry.has_plugins() and _upstream_body:
+                    text_to_scan = extract_text_from_payload(_upstream_body)
+                    if text_to_scan.strip():
+                        verdict = await security_registry.scan_response(
+                            text_to_scan, upstream_host, _upstream_status
+                        )
+                        if verdict and not verdict.is_safe:
+                            # Record blocked execution in traces
+                            await _write_trace(
+                                "policy_denied",
+                                403,
+                                f"Response blocked by {verdict.plugin_name} security layer due to unsafe content",
+                            )
+                            return Response(
+                                content=json.dumps(
+                                    {
+                                        "error": "security_violation",
+                                        "message": f"The response body from the upstream service was blocked by the {verdict.plugin_name} security layer.",
+                                        "verdict": verdict.verdict,
+                                        "decision_layer": verdict.decision_layer,
+                                        "confidence_score": verdict.confidence_score,
+                                    }
+                                ),
+                                status_code=403,
+                                media_type="application/json",
+                                headers={
+                                    "X-Jentic-Error": "true",
+                                    "X-Jentic-Execution-Id": execution_id,
+                                    **_cred_headers,
+                                },
+                            )
+
     except asyncio.TimeoutError:
         await _write_trace("timeout", 504, f"Upstream {upstream_host} timeout after 60s")
         error_body = {
