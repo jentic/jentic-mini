@@ -10,7 +10,7 @@ dependencies = [
   "fastapi==0.136.3",
   "uvicorn[standard]==0.48.0",
   "httpx==0.28.1",
-  "aiohttp>=3.9,<4",
+  "aiohttp>=3.14.0,<4",
   "cryptography==48.0.0",
   "rank-bm25==0.2.2",
   "pyyaml==6.0.3",
@@ -29,9 +29,9 @@ Homepage = "https://github.com/jentic/jentic-mini"
 [dependency-groups]
 dev = [
     "pytest>=9.0.3,<10",
-    "pytest-asyncio>=0.24,<2",
+    "pytest-asyncio>=1.4.0,<2",
     "schemathesis>=4.20.3",
-    "ruff>=0.15.14,<0.16.0",
+    "ruff>=0.15.15,<0.16.0",
     "poethepoet>=0.37,<0.47",
 ]
 
