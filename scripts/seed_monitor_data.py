@@ -286,12 +286,40 @@ def main() -> None:
     # A small set of workflow-kind jobs so the Jobs tab's "Workflows" filter
     # has something to show. Workflows use a slug (not METHOD/host/path) and
     # always point at a trace_id — that trace lives in the executions table.
-    workflow_slugs = [
-        ("github_release_pipeline", "GitHub Release"),
-        ("billing_reconcile", "Billing Reconcile"),
-        ("daily_digest", "Daily Digest"),
+    #
+    # Each workflow gets a realistic inputs/outputs pair stamped on both the
+    # job (jobs.inputs) and the trace (executions.inputs / executions.outputs)
+    # so the Monitor drawer's Inputs / Outputs panels render real content
+    # instead of empty `{}`. The shapes mirror what the runner would persist
+    # for these pipelines in production.
+    workflow_fixtures = [
+        (
+            "github_release_pipeline",
+            "GitHub Release",
+            {"repo": "acme/widgets", "tag": "v1.4.0", "draft": False},
+            {
+                "release_url": "https://github.com/acme/widgets/releases/tag/v1.4.0",
+                "release_id": 184523991,
+                "assets_uploaded": 3,
+            },
+        ),
+        (
+            "billing_reconcile",
+            "Billing Reconcile",
+            {"period": "2026-05", "tenant": "acme"},
+            {"invoices_processed": 142, "discrepancies": 0, "total_usd": 18420.55},
+        ),
+        (
+            "daily_digest",
+            "Daily Digest",
+            {"channel": "#eng-updates", "since": "2026-06-03T00:00:00Z"},
+            {
+                "messages_summarized": 87,
+                "digest_url": "https://notion.so/acme/digest-2026-06-04",
+            },
+        ),
     ]
-    for slug, _label in workflow_slugs:
+    for slug, _label, wf_inputs, wf_outputs in workflow_fixtures:
         ts = NOW - rng.random() * 3600
         agent = rng.choice(FAKE_AGENTS) or None
         wf_trace_id = f"seed_wf_{uuid.uuid4().hex[:12]}"
@@ -301,8 +329,8 @@ def main() -> None:
             INSERT INTO executions (
                 id, toolkit_id, api_key_id, operation_id, workflow_id, spec_path,
                 inputs_hash, status, http_status, duration_ms, error,
-                created_at, completed_at, agent_id
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                created_at, completed_at, agent_id, inputs, outputs
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 wf_trace_id,
@@ -319,6 +347,8 @@ def main() -> None:
                 ts,
                 ts + 1.85,
                 agent,
+                json.dumps(wf_inputs),
+                json.dumps(wf_outputs),
             ),
         )
         inserted_exec += 1
@@ -339,13 +369,13 @@ def main() -> None:
                 slug,
                 "default",
                 "complete",
-                json.dumps({"ok": True}),
+                json.dumps({"ok": True, "outputs": wf_outputs}),
                 None,
                 200,
                 0,
                 None,
                 wf_trace_id,
-                json.dumps({}),
+                json.dumps(wf_inputs),
                 None,
                 ts,
                 ts + 1.85,
