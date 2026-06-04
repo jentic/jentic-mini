@@ -234,6 +234,54 @@ def test_default_window_is_24h(admin_client, seeded_usage):  # noqa: ARG001
     assert body["bucket_seconds"] == 3600
 
 
+def test_filter_by_api_id_uses_exact_match_not_substring(admin_client, seeded_usage):
+    """Regression: `/traces/usage?api_id=` filters on the `api_id` column,
+    not a substring of `operation_id`. A row whose operation_id contains
+    `github.com` as a substring but whose api_id is `stripe.com` must be
+    excluded when filtering for `github.com`.
+    """
+    now = seeded_usage["now"]
+    # Seed an extra row where the substring would match but the column wouldn't.
+    with sqlite3.connect(DB_PATH) as cx:
+        cx.execute(
+            """INSERT INTO executions
+                  (id, toolkit_id, agent_id, operation_id, api_id,
+                   status, duration_ms, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                "exec_usage_substr1",
+                "tk_b",
+                "agnt_usage_bob",
+                # operation_id contains "github.com" — old substring filter
+                # would have matched this row.
+                "POST/proxy.github.com.example/v1/charges",
+                "stripe.com",
+                "success",
+                150,
+                now - 10,
+            ),
+        )
+        cx.commit()
+    try:
+        resp = admin_client.get(
+            f"/traces/usage?since={now - 3600}&until={now + 1}&api_id=github.com"
+        )
+        assert resp.status_code == 200, resp.text
+        # 3 real github.com rows + 0 from the trap row.
+        assert resp.json()["stats"]["total"] == 3
+
+        resp = admin_client.get(
+            f"/traces/usage?since={now - 3600}&until={now + 1}&api_id=stripe.com"
+        )
+        assert resp.status_code == 200, resp.text
+        # 2 stripe.com rows + the trap row whose api_id is stripe.com = 3.
+        assert resp.json()["stats"]["total"] == 3
+    finally:
+        with sqlite3.connect(DB_PATH) as cx:
+            cx.execute("DELETE FROM executions WHERE id = ?", ("exec_usage_substr1",))
+            cx.commit()
+
+
 def test_top_rows_include_sparkline_trend(admin_client, seeded_usage):
     """Each top row exposes a fixed-length `trend` series whose counts sum to row.total."""
     now = seeded_usage["now"]

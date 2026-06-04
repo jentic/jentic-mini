@@ -254,7 +254,7 @@ export class ObserveService {
          */
         agentId?: (string | null),
         /**
-         * Filter by upstream API host (substring match on operation_id)
+         * Filter by upstream API. Exact match against the indexed `api_id` column on executions (catalog-form `apis.id`, e.g. `stripe.com`). Same semantics as `/traces?api_id=`.
          */
         apiId?: (string | null),
         /**

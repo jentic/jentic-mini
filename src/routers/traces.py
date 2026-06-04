@@ -367,7 +367,13 @@ async def get_usage(
     ] = None,
     api_id: Annotated[
         str | None,
-        Query(description="Filter by upstream API host (substring match on operation_id)"),
+        Query(
+            description=(
+                "Filter by upstream API. Exact match against the indexed "
+                "`api_id` column on executions (catalog-form `apis.id`, "
+                "e.g. `stripe.com`). Same semantics as `/traces?api_id=`."
+            )
+        ),
     ] = None,
     status: Annotated[
         str | None, Query(description="Filter to a single status before aggregating")
@@ -420,8 +426,12 @@ async def get_usage(
         where_parts.append("agent_id = ?")
         params.append(agent_id)
     if api_id is not None:
-        where_parts.append("operation_id LIKE ?")
-        params.append(f"%/{api_id}/%")
+        # Exact match on the indexed `api_id` column. Was a substring on
+        # `operation_id` until /traces switched to the column in 0007 — this
+        # endpoint had been left behind and disagreed with /traces on what
+        # `api_id` meant. Catalog-form ids only (e.g. "github.com").
+        where_parts.append("api_id = ?")
+        params.append(api_id)
     if status is not None:
         where_parts.append("status = ?")
         params.append(status)
