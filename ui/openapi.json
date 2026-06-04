@@ -8960,6 +8960,15 @@
 						"title": "Steps",
 						"description": "Step-by-step execution log (for workflows)",
 						"examples": [[]]
+					},
+					"children": {
+						"items": {
+							"$ref": "#/components/schemas/TraceChildOut"
+						},
+						"type": "array",
+						"title": "Children",
+						"description": "Child broker traces spawned by this trace (rows where `executions.parent_trace_id` equals this trace's id). Populated for workflow traces; always empty for broker traces. The Monitor Execution drawer renders these as a `Child broker calls` panel with cross-links into each child's own drawer. Ordered by `created_at` ascending so the rendered list reads in step order.",
+						"examples": [[]]
 					}
 				},
 				"additionalProperties": true,
@@ -8967,6 +8976,62 @@
 				"required": ["id", "status"],
 				"title": "TraceOut",
 				"description": "Complete execution trace with status, timing, and step-by-step results for debugging."
+			},
+			"TraceChildOut": {
+				"properties": {
+					"id": {
+						"type": "string",
+						"title": "Id",
+						"examples": ["exec_abc123xyz"]
+					},
+					"operation_id": {
+						"anyOf": [{ "type": "string" }, { "type": "null" }],
+						"title": "Operation Id",
+						"description": "Operation capability id of the broker call (always set — children are broker traces).",
+						"examples": ["GET/api.github.com/repos/{owner}/{repo}"]
+					},
+					"status": {
+						"anyOf": [{ "type": "string" }, { "type": "null" }],
+						"title": "Status",
+						"description": "Child trace status: success, failed, or pending.",
+						"examples": ["success"]
+					},
+					"http_status": {
+						"anyOf": [{ "type": "integer" }, { "type": "null" }],
+						"title": "Http Status",
+						"description": "Final HTTP status code from the upstream call.",
+						"examples": [200]
+					},
+					"duration_ms": {
+						"anyOf": [{ "type": "integer" }, { "type": "null" }],
+						"title": "Duration Ms",
+						"description": "Child trace duration in milliseconds.",
+						"examples": [412]
+					},
+					"created_at": {
+						"anyOf": [{ "type": "number" }, { "type": "null" }],
+						"title": "Created At",
+						"description": "Unix timestamp when the child trace started; the panel orders by this.",
+						"examples": [1672531200.0]
+					},
+					"api_id": {
+						"anyOf": [{ "type": "string" }, { "type": "null" }],
+						"title": "Api Id",
+						"description": "Catalog id of the child trace's upstream API (joined from `executions.api_id`).",
+						"examples": ["api.github.com"]
+					},
+					"api_name": {
+						"anyOf": [{ "type": "string" }, { "type": "null" }],
+						"title": "Api Name",
+						"description": "Human-readable api name from the catalog; null when api_id is unset or stale.",
+						"examples": ["GitHub"]
+					}
+				},
+				"additionalProperties": true,
+				"type": "object",
+				"required": ["id"],
+				"title": "TraceChildOut",
+				"description": "Compact child broker trace summary referenced from a workflow's `children[]` panel."
 			},
 			"TraceStepOut": {
 				"properties": {

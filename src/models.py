@@ -741,6 +741,44 @@ class TraceStepOut(BaseModel):
     model_config = {"extra": "allow"}
 
 
+class TraceChildOut(BaseModel):
+    """Compact child broker trace summary referenced from a workflow's `children[]` panel."""
+
+    id: str = Field(examples=["exec_abc123xyz"], description="Child trace id")
+    operation_id: str | None = Field(
+        default=None,
+        examples=["GET/api.github.com/repos/{owner}/{repo}"],
+        description="Operation capability id of the broker call (always set — children are broker traces).",
+    )
+    status: str | None = Field(
+        default=None,
+        examples=["success"],
+        description="Child trace status: success, failed, or pending.",
+    )
+    http_status: int | None = Field(
+        default=None, examples=[200], description="Final HTTP status code from the upstream call."
+    )
+    duration_ms: int | None = Field(
+        default=None, examples=[412], description="Child trace duration in milliseconds."
+    )
+    created_at: float | None = Field(
+        default=None,
+        examples=[1672531200.0],
+        description="Unix timestamp when the child trace started; the panel orders by this.",
+    )
+    api_id: str | None = Field(
+        default=None,
+        examples=["api.github.com"],
+        description="Catalog id of the child trace's upstream API (joined from `executions.api_id`).",
+    )
+    api_name: str | None = Field(
+        default=None,
+        examples=["GitHub"],
+        description="Human-readable api name from the catalog; null when api_id is unset or stale.",
+    )
+    model_config = {"extra": "allow"}
+
+
 class TraceOut(BaseModel):
     """Complete execution trace with status, timing, and step-by-step results for debugging."""
 
@@ -852,6 +890,18 @@ class TraceOut(BaseModel):
         default_factory=list,
         examples=[[]],
         description="Step-by-step execution log (for workflows)",
+    )
+    children: list[TraceChildOut] = Field(
+        default_factory=list,
+        examples=[[]],
+        description=(
+            "Child broker traces spawned by this trace (rows where "
+            "`executions.parent_trace_id` equals this trace's id). Populated "
+            "for workflow traces; always empty for broker traces. The Monitor "
+            "Execution drawer renders these as a `Child broker calls` panel "
+            "with cross-links into each child's own drawer. Ordered by "
+            "`created_at` ascending so the rendered list reads in step order."
+        ),
     )
     model_config = {"extra": "allow"}
 

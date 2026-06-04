@@ -728,6 +728,26 @@ async def get_trace(
         ) as cur:
             step_rows = await cur.fetchall()
 
+        # Children panel: broker traces spawned by this trace. Only workflow
+        # traces ever have children, so we skip the query for non-workflow
+        # rows. Tenant scoping reuses the same scope clause as the parent
+        # fetch — a child written under a different tenant should not leak
+        # back into a workflow drawer (defense in depth, the writer already
+        # carries tenant forward).
+        child_rows: list = []
+        if row[4]:  # row[4] is workflow_id
+            async with db.execute(
+                f"""SELECT e.id, e.operation_id, e.status, e.http_status,
+                          e.duration_ms, e.created_at,
+                          e.api_id, a.name AS api_name
+                   FROM executions e
+                   LEFT JOIN apis a ON a.id = e.api_id
+                   WHERE e.parent_trace_id = ? AND {scope_sql}
+                   ORDER BY e.created_at ASC""",
+                (trace_id, *scope_params),
+            ) as cur:
+                child_rows = await cur.fetchall()
+
     steps = [
         {
             "id": s[0],
@@ -751,6 +771,20 @@ async def get_trace(
         for s in step_rows
     ]
 
+    children = [
+        {
+            "id": c[0],
+            "operation_id": c[1],
+            "status": c[2],
+            "http_status": c[3],
+            "duration_ms": c[4],
+            "created_at": c[5],
+            "api_id": c[6],
+            "api_name": c[7],
+        }
+        for c in child_rows
+    ]
+
     return {
         "id": row[0],
         "toolkit_id": row[1],
@@ -771,5 +805,6 @@ async def get_trace(
         "inputs": json.loads(row[16]) if row[16] else None,
         "outputs": json.loads(row[17]) if row[17] else None,
         "steps": steps,
+        "children": children,
         "_links": {"self": f"/traces/{row[0]}"},
     }

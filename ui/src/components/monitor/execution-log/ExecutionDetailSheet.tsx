@@ -328,6 +328,81 @@ export function ExecutionDetailSheet({
 								</div>
 							)}
 
+							{execution.childTraces && execution.childTraces.length > 0 && (
+								<div className="space-y-2">
+									<h4 className="text-muted-foreground text-xs font-semibold tracking-wider uppercase">
+										Child broker calls ({execution.childTraces.length})
+									</h4>
+									<div className="space-y-1.5">
+										{execution.childTraces.map((child) => {
+											const label =
+												child.apiName ?? child.apiId ?? child.operationId;
+											const inner = (
+												<div className="flex items-start gap-2 text-left">
+													<StatusIcon
+														status={
+															child.status === 'failed'
+																? 'FAILED'
+																: child.status === 'pending'
+																	? 'RUNNING'
+																	: 'COMPLETED'
+														}
+														size="sm"
+													/>
+													<div className="min-w-0 flex-1">
+														<div className="flex flex-wrap items-center gap-1.5">
+															{label && (
+																<span className="text-foreground truncate text-xs font-medium">
+																	{label}
+																</span>
+															)}
+															{child.httpStatus !== null && (
+																<span className="text-muted-foreground bg-muted rounded px-1.5 py-0.5 font-mono text-[10px]">
+																	HTTP {child.httpStatus}
+																</span>
+															)}
+															{child.durationMs !== null && (
+																<span className="text-muted-foreground font-mono text-[10px]">
+																	{formatDuration(
+																		child.durationMs,
+																	)}
+																</span>
+															)}
+														</div>
+														{child.operationId &&
+															label !== child.operationId && (
+																<code className="text-muted-foreground mt-0.5 block truncate font-mono text-[10px]">
+																	{child.operationId}
+																</code>
+															)}
+														<code className="text-muted-foreground/70 mt-0.5 block truncate font-mono text-[10px]">
+															{child.id}
+														</code>
+													</div>
+												</div>
+											);
+											return onOpenTrace ? (
+												<button
+													key={child.id}
+													type="button"
+													onClick={() => onOpenTrace(child.id)}
+													className="border-border bg-muted/20 hover:bg-muted/40 hover:border-accent-blue/30 w-full cursor-pointer rounded-lg border p-2.5 transition-colors"
+												>
+													{inner}
+												</button>
+											) : (
+												<div
+													key={child.id}
+													className="border-border bg-muted/20 rounded-lg border p-2.5"
+												>
+													{inner}
+												</div>
+											);
+										})}
+									</div>
+								</div>
+							)}
+
 							{execution.inputs && Object.keys(execution.inputs).length > 0 && (
 								<div className="space-y-2">
 									<h4 className="text-muted-foreground text-xs font-semibold tracking-wider uppercase">

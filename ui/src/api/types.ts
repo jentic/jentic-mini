@@ -215,6 +215,19 @@ export interface TraceOut {
 	inputs?: Record<string, unknown> | null;
 	outputs?: Record<string, unknown> | null;
 	steps?: TraceStepOut[];
+	children?: TraceChildOut[];
+	[key: string]: unknown;
+}
+
+export interface TraceChildOut {
+	id: string;
+	operation_id?: string | null;
+	status?: string | null;
+	http_status?: number | null;
+	duration_ms?: number | null;
+	created_at?: number | null;
+	api_id?: string | null;
+	api_name?: string | null;
 	[key: string]: unknown;
 }
 

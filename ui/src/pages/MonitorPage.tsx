@@ -394,6 +394,28 @@ export default function MonitorPage(): JSX.Element {
 					httpStatus: (s.http_status as number | null) ?? null,
 					error: (s.error as string | null) ?? null,
 				}));
+				const rawChildren = Array.isArray(traceObj.children)
+					? (traceObj.children as Array<Record<string, unknown>>)
+					: [];
+				const childTraces = rawChildren.map((c) => {
+					const created = c.created_at as number | null | undefined;
+					return {
+						id: (c.id as string) ?? '',
+						operationId: (c.operation_id as string | null | undefined) ?? null,
+						status: (c.status as string | null | undefined) ?? null,
+						httpStatus: (c.http_status as number | null | undefined) ?? null,
+						durationMs: (c.duration_ms as number | null | undefined) ?? null,
+						// Normalise to ISO so the panel can use the same date utils as
+						// the rest of the drawer; created_at on the wire is a unix
+						// second float, missing on rows the writer hasn't stamped yet.
+						createdAt:
+							typeof created === 'number'
+								? new Date(created * 1000).toISOString()
+								: null,
+						apiId: (c.api_id as string | null | undefined) ?? null,
+						apiName: (c.api_name as string | null | undefined) ?? null,
+					};
+				});
 				// Backend returns workflow-only inputs/outputs columns; broker
 				// rows arrive null and the panels stay empty (matches webapp).
 				const traceInputs =
@@ -411,6 +433,7 @@ export default function MonitorPage(): JSX.Element {
 										| string
 										| undefined) ?? prev.errorMessage,
 								stepRows,
+								childTraces,
 								isSeedOnlyRow: false,
 								// Backend returns these too — keep them on the
 								// detail so the "Linked Context" panel renders

@@ -174,6 +174,24 @@ export interface ExecutionStepRow {
 	error: string | null;
 }
 
+/**
+ * Compact shape rendered in the "Child broker calls" panel of a workflow's
+ * Execution drawer. Mirrors `TraceChildOut` from the backend, trimmed to
+ * the fields the panel paints. The drawer treats this list as read-only:
+ * clicking a row deep-links to `?id=<childId>` and the parent drawer is
+ * replaced via the same URL-driven flow as any other row click.
+ */
+export interface ExecutionChildTrace {
+	id: string;
+	operationId: string | null;
+	status: string | null;
+	httpStatus: number | null;
+	durationMs: number | null;
+	createdAt: string | null;
+	apiId: string | null;
+	apiName: string | null;
+}
+
 export interface ExecutionDetail extends ExecutionLogEntry {
 	inputs: Record<string, unknown>;
 	outputs?: Record<string, unknown>;
@@ -184,6 +202,8 @@ export interface ExecutionDetail extends ExecutionLogEntry {
 	 * has access to the raw backend shape.
 	 */
 	stepRows?: ExecutionStepRow[];
+	/** Child broker traces when this row is a workflow execution. */
+	childTraces?: ExecutionChildTrace[];
 	/** True when the trace endpoint can only return seed/limited fields (no request/response bodies). */
 	isSeedOnlyRow?: boolean;
 }
