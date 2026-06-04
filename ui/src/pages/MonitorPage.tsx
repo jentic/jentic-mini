@@ -5,6 +5,7 @@ import { motion } from 'framer-motion';
 import { api } from '@/api/client';
 import { PageShell } from '@/components/layout/PageShell';
 import { PageHeader } from '@/components/ui/PageHeader';
+import { PageHelp } from '@/components/ui/PageHelp';
 import { SegmentedToggle } from '@/components/ui/SegmentedToggle';
 import { HoverTooltip } from '@/components/ui/HoverTooltip';
 import { RefreshButton } from '@/components/ui/RefreshButton';
@@ -485,6 +486,139 @@ export default function MonitorPage(): JSX.Element {
 							onRefresh={handleRefresh}
 							pending={isAnyFetching}
 							disabled={isOverviewLoading}
+						/>
+						<PageHelp
+							title="About Monitor"
+							intro={
+								<p>
+									<strong>Monitor</strong> is the operational lens on every
+									capability call your agents make. The page splits into three
+									tabs: <strong>Overview</strong> for trends and breakdowns,{' '}
+									<strong>Execution Log</strong> for the historical record of
+									every call, and <strong>Jobs</strong> for the control plane over
+									async work.
+								</p>
+							}
+							sections={[
+								{
+									heading: 'Execution Log vs Jobs — the short version',
+									body: (
+										<>
+											<p>
+												Both tabs show capability calls, but they answer
+												different questions and they're backed by different
+												tables.
+											</p>
+											<ul className="mt-2 list-disc space-y-1 pl-5">
+												<li>
+													<strong>Execution Log</strong> = "what
+													happened." One row per <em>trace</em> — written
+													after the call completes. Includes every
+													synchronous broker call, every workflow run, and
+													every async call once it has finished.
+												</li>
+												<li>
+													<strong>Jobs</strong> = "what was asked for,
+													including the parts that haven't happened yet."
+													One row per <em>job</em> — written when the call
+													was submitted. Only async-flavoured calls live
+													here: <code>Prefer: wait=0</code>, async
+													workflow runs, and broker calls where upstream
+													itself returned 202.
+												</li>
+											</ul>
+										</>
+									),
+								},
+								{
+									heading: 'When to use which tab',
+									body: (
+										<ul className="list-disc space-y-1 pl-5">
+											<li>
+												Debugging or auditing past calls →{' '}
+												<strong>Execution Log</strong>.
+											</li>
+											<li>
+												Watching what's running right now or cancelling a
+												runaway job → <strong>Jobs</strong>.
+											</li>
+											<li>
+												Looking at high-level health, top APIs, top agents →{' '}
+												<strong>Overview</strong>.
+											</li>
+										</ul>
+									),
+								},
+								{
+									heading: 'Why both tabs exist',
+									body: (
+										<>
+											<p>
+												The two tabs overlap on async calls that have
+												already completed, but each surface has data the
+												other can't show:
+											</p>
+											<ul className="mt-2 list-disc space-y-1 pl-5">
+												<li>
+													A synchronous broker call (the common case)
+													writes only a trace, never a job — so it{' '}
+													<strong>only</strong> appears in the Execution
+													Log.
+												</li>
+												<li>
+													A job that is still <em>pending</em> or{' '}
+													<em>running</em> hasn't produced a trace yet —
+													so it <strong>only</strong> appears in Jobs.
+												</li>
+												<li>
+													Jobs hold the agent-supplied <code>inputs</code>
+													, the <code>callback_url</code>, the
+													upstream-job URL, and the cancel action. Traces
+													don't.
+												</li>
+											</ul>
+										</>
+									),
+								},
+								{
+									heading: 'How the two tabs are linked',
+									body: (
+										<ul className="list-disc space-y-1 pl-5">
+											<li>
+												Execution Log rows that came from a job render a{' '}
+												<code>[job ↗]</code> badge that opens the matching
+												Jobs row.
+											</li>
+											<li>
+												Jobs that have produced a trace render a{' '}
+												<code>[trace ↗]</code> badge that opens the matching
+												Execution Log drawer.
+											</li>
+											<li>
+												The Overview's <strong>Active</strong> pill is
+												clickable and routes to the Jobs tab filtered to in-
+												flight statuses.
+											</li>
+										</ul>
+									),
+								},
+								{
+									heading: 'Inputs and outputs in the drawer',
+									body: (
+										<p>
+											Workflow rows show real <strong>Inputs</strong> and{' '}
+											<strong>Outputs</strong> in the detail drawer because
+											workflows have schema-shaped, bounded I/O. Broker
+											(single API call) rows leave those panels empty on
+											purpose — the broker's natural "input/output" is the raw
+											HTTP body, which is unbounded and routinely contains
+											PII, so we don't persist it. Use the operation, status,
+											and timing fields in the drawer header to inspect a
+											broker call.
+										</p>
+									),
+								},
+							]}
 						/>
 					</>
 				}
