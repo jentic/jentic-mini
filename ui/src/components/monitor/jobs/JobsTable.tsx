@@ -122,13 +122,14 @@ export function JobsTable({
 			</div>
 
 			{totalCount > pageSize && (
-				<div className="flex items-center justify-between">
-					<p className="text-muted-foreground text-xs">
-						Showing {Math.min((page - 1) * pageSize + 1, totalCount)}–
-						{Math.min(page * pageSize, totalCount)} of {totalCount}
-					</p>
-					<Pagination page={page} totalPages={totalPages} onPageChange={onPageChange} />
-				</div>
+				<Pagination
+					page={page}
+					totalPages={totalPages}
+					totalCount={totalCount}
+					pageSize={pageSize}
+					onPageChange={onPageChange}
+					className="border-border bg-card rounded-xl border"
+				/>
 			)}
 		</div>
 	);
