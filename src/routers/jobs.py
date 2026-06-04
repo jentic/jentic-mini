@@ -322,6 +322,24 @@ async def list_jobs(
         float | None,
         Query(description="Upper bound on `created_at` (unix seconds, exclusive)", ge=0),
     ] = None,
+    q: Annotated[
+        str | None,
+        Query(
+            description=(
+                "Free-text substring match (case-insensitive) across the columns the "
+                "Jobs tab row renders: `slug_or_id` (workflow slug or broker capability "
+                "id), `agent_id`, `toolkit_id`, and `upstream_job_url` (so a search for "
+                "the upstream provider's job-id snippet still finds the right row). "
+                "Empty/whitespace strings are treated as not set so the no-filter plan "
+                "stays cheap. None of those columns are indexed for prefix lookups, so "
+                "`q` always implies a scan over the rows that the tenant + time-window "
+                "clauses already select — fine for the Monitor page (24h default) but "
+                "don't use it as a general-purpose search."
+            ),
+            min_length=1,
+            max_length=200,
+        ),
+    ] = None,
 ):
     offset = (page - 1) * limit
 
@@ -357,6 +375,17 @@ async def list_jobs(
     if until is not None:
         where_parts.append("created_at < ?")
         params.append(until)
+    if q is not None and q.strip():
+        # Substring match across the four columns the Jobs row renders. The
+        # OR list mirrors the column order of the table so a typed token
+        # like "stripe" matches whether it landed in slug_or_id, the agent
+        # client_id, toolkit, or the upstream provider URL. See the docstring
+        # on the parameter for the cost story.
+        like = f"%{q.strip()}%"
+        where_parts.append(
+            "(slug_or_id LIKE ? OR agent_id LIKE ? OR toolkit_id LIKE ? OR upstream_job_url LIKE ?)"
+        )
+        params.extend([like, like, like, like])
 
     # `where_parts` always contains at least the scope predicate, so the
     # WHERE clause is unconditional now.

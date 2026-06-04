@@ -19,6 +19,7 @@ interface ExecutionLogTabProps {
 	toolkitFilter: string | null;
 	apiFilter: string | null;
 	agentFilter: string | null;
+	searchQuery: string;
 	toolkitOptions: FilterOption[];
 	apiOptions: FilterOption[];
 	agentOptions: FilterOption[];
@@ -28,6 +29,7 @@ interface ExecutionLogTabProps {
 	onToolkitChange: (toolkitId: string | null) => void;
 	onApiChange: (apiKey: string | null) => void;
 	onAgentChange: (agentId: string | null) => void;
+	onSearchChange: (q: string) => void;
 	onClearFilters: () => void;
 	onRowClick: (execution: ExecutionLogEntry) => void;
 	onPageChange: (page: number) => void;
@@ -45,6 +47,7 @@ export function ExecutionLogTab({
 	toolkitFilter,
 	apiFilter,
 	agentFilter,
+	searchQuery,
 	toolkitOptions,
 	apiOptions,
 	agentOptions,
@@ -54,6 +57,7 @@ export function ExecutionLogTab({
 	onToolkitChange,
 	onApiChange,
 	onAgentChange,
+	onSearchChange,
 	onClearFilters,
 	onRowClick,
 	onPageChange,
@@ -71,6 +75,7 @@ export function ExecutionLogTab({
 				toolkitFilter={toolkitFilter}
 				apiFilter={apiFilter}
 				agentFilter={agentFilter}
+				searchQuery={searchQuery}
 				toolkitOptions={toolkitOptions}
 				apiOptions={apiOptions}
 				agentOptions={agentOptions}
@@ -79,6 +84,7 @@ export function ExecutionLogTab({
 				onToolkitChange={onToolkitChange}
 				onApiChange={onApiChange}
 				onAgentChange={onAgentChange}
+				onSearchChange={onSearchChange}
 				onClearFilters={onClearFilters}
 				hasFilters={hasFilters}
 			/>

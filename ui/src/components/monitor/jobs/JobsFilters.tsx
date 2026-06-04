@@ -1,7 +1,8 @@
 import { type JSX } from 'react';
-import { X, ChevronDown } from 'lucide-react';
+import { X, ChevronDown, Filter } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { SegmentedToggle } from '@/components/ui/SegmentedToggle';
+import { SearchInput } from '@/components/ui/SearchInput';
 import type { JobKindFilter, JobStatusFilter } from '@/components/monitor/types';
 
 interface FilterOption {
@@ -14,6 +15,7 @@ interface JobsFiltersProps {
 	kindFilter: JobKindFilter;
 	toolkitFilter: string | null;
 	agentFilter: string | null;
+	searchQuery: string;
 	toolkitOptions: FilterOption[];
 	agentOptions: FilterOption[];
 	showAgentFilter: boolean;
@@ -22,6 +24,7 @@ interface JobsFiltersProps {
 	onKindChange: (kind: JobKindFilter) => void;
 	onToolkitChange: (toolkitId: string | null) => void;
 	onAgentChange: (agentId: string | null) => void;
+	onSearchChange: (q: string) => void;
 	onClearFilters: () => void;
 	className?: string;
 }
@@ -85,6 +88,7 @@ export function JobsFilters({
 	kindFilter,
 	toolkitFilter,
 	agentFilter,
+	searchQuery,
 	toolkitOptions,
 	agentOptions,
 	showAgentFilter,
@@ -93,6 +97,7 @@ export function JobsFilters({
 	onKindChange,
 	onToolkitChange,
 	onAgentChange,
+	onSearchChange,
 	onClearFilters,
 	className,
 }: JobsFiltersProps): JSX.Element {
@@ -115,6 +120,16 @@ export function JobsFilters({
 			<div className="bg-border hidden h-5 w-px sm:block" />
 
 			<div className="flex flex-wrap items-center gap-2">
+				<SearchInput
+					value={searchQuery}
+					onValueChange={onSearchChange}
+					size="sm"
+					icon={<Filter className="h-3.5 w-3.5" />}
+					placeholder="Filter jobs, agents, upstream URL…"
+					aria-label="Filter jobs"
+					className="w-full sm:w-56"
+				/>
+
 				<SegmentedToggle
 					layoutId="jobsKindToggle"
 					options={KIND_OPTIONS}

@@ -377,6 +377,7 @@ export const api = {
 		status,
 		since,
 		until,
+		q,
 		toolkit: _toolkit,
 		workflow: _workflow,
 	}: {
@@ -389,6 +390,7 @@ export const api = {
 		status?: string | null;
 		since?: number | null;
 		until?: number | null;
+		q?: string | null;
 		toolkit?: string;
 		workflow?: string;
 	} = {}) => {
@@ -402,6 +404,7 @@ export const api = {
 			status,
 			since,
 			until,
+			q,
 		});
 	},
 	getTrace: (traceId: string) => ObserveService.getTraceTracesTraceIdGet({ traceId }),
@@ -414,6 +417,7 @@ export const api = {
 		agentId,
 		since,
 		until,
+		q,
 	}: {
 		status?: string;
 		kind?: 'workflow' | 'broker' | null;
@@ -423,6 +427,7 @@ export const api = {
 		agentId?: string | null;
 		since?: number | null;
 		until?: number | null;
+		q?: string | null;
 	} = {}) =>
 		ObserveService.listJobsJobsGet({
 			status: status ?? null,
@@ -433,6 +438,7 @@ export const api = {
 			agentId,
 			since,
 			until,
+			q,
 		}),
 	getTracesUsage: ({
 		since,

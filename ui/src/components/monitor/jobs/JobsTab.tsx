@@ -19,6 +19,7 @@ interface JobsTabProps {
 	kindFilter: JobKindFilter;
 	toolkitFilter: string | null;
 	agentFilter: string | null;
+	searchQuery: string;
 	page: number;
 	pageSize: number;
 	since: number;
@@ -32,6 +33,7 @@ interface JobsTabProps {
 	onKindChange: (next: JobKindFilter) => void;
 	onToolkitChange: (next: string | null) => void;
 	onAgentChange: (next: string | null) => void;
+	onSearchChange: (q: string) => void;
 	onClearFilters: () => void;
 	onPageChange: (page: number) => void;
 	onOpenTrace?: (traceId: string) => void;
@@ -73,6 +75,7 @@ export function JobsTab({
 	kindFilter,
 	toolkitFilter,
 	agentFilter,
+	searchQuery,
 	page,
 	pageSize,
 	since,
@@ -86,6 +89,7 @@ export function JobsTab({
 	onKindChange,
 	onToolkitChange,
 	onAgentChange,
+	onSearchChange,
 	onClearFilters,
 	onPageChange,
 	onOpenTrace,
@@ -107,6 +111,7 @@ export function JobsTab({
 			kindFilter,
 			toolkitFilter,
 			agentFilter,
+			searchQuery,
 			since,
 		],
 		queryFn: () =>
@@ -118,6 +123,11 @@ export function JobsTab({
 				toolkitId: toolkitFilter,
 				agentId: agentFilter,
 				since,
+				// Empty/whitespace short-circuits to undefined so the no-search
+				// query plan stays identical to the current one — backend has
+				// the same guard but skipping the param keeps queryKey churn
+				// proportional to user intent.
+				q: searchQuery.trim() ? searchQuery.trim() : undefined,
 			}),
 		// Polling — same cadence as the in-flight execution log so the user
 		// experiences consistent "freshness" across tabs. 15s is the sweet
@@ -202,6 +212,7 @@ export function JobsTab({
 				kindFilter={kindFilter}
 				toolkitFilter={toolkitFilter}
 				agentFilter={agentFilter}
+				searchQuery={searchQuery}
 				toolkitOptions={toolkitOptions}
 				agentOptions={agentOptions}
 				showAgentFilter={showAgentFilter}
@@ -210,6 +221,7 @@ export function JobsTab({
 				onKindChange={onKindChange}
 				onToolkitChange={onToolkitChange}
 				onAgentChange={onAgentChange}
+				onSearchChange={onSearchChange}
 				onClearFilters={onClearFilters}
 			/>
 

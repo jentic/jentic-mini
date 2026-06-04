@@ -26,6 +26,7 @@ export class ObserveService {
         agentId,
         since,
         until,
+        q,
     }: {
         /**
          * Filter by status. Accepts a single value or a comma-separated set (e.g. `pending,running` for in-flight only). Whitespace tolerated.
@@ -59,6 +60,10 @@ export class ObserveService {
          * Upper bound on `created_at` (unix seconds, exclusive)
          */
         until?: (number | null),
+        /**
+         * Free-text substring match across slug_or_id, agent_id, toolkit_id, upstream_job_url. Whitespace-only treated as unset.
+         */
+        q?: (string | null),
     }): CancelablePromise<JobListPage> {
         return __request(OpenAPI, {
             method: 'GET',
@@ -72,6 +77,7 @@ export class ObserveService {
                 'agent_id': agentId,
                 'since': since,
                 'until': until,
+                'q': q,
             },
             errors: {
                 422: `Validation Error`,
@@ -144,6 +150,7 @@ export class ObserveService {
         since,
         until,
         capabilityId,
+        q,
     }: {
         /**
          * Maximum number of traces to return (1-500)
@@ -181,6 +188,10 @@ export class ObserveService {
          * Filter by exact capability id. Matches `operation_id` for broker calls or `workflow_id` for workflow runs.
          */
         capabilityId?: (string | null),
+        /**
+         * Free-text substring match across operation_id, workflow_id, api_id, agent_id. Whitespace-only treated as unset.
+         */
+        q?: (string | null),
     }): CancelablePromise<TraceListPage> {
         return __request(OpenAPI, {
             method: 'GET',
@@ -195,6 +206,7 @@ export class ObserveService {
                 'since': since,
                 'until': until,
                 'capability_id': capabilityId,
+                'q': q,
             },
             errors: {
                 422: `Validation Error`,

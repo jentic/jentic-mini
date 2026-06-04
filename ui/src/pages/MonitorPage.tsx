@@ -38,6 +38,21 @@ import { useToolkitOptions, useAgentOptions } from '@/components/monitor/hooks/u
 
 const PAGE_SIZE = 20;
 
+/**
+ * Tiny debounce — used for the search input so the URL `?q=` and the
+ * server query don't churn on every keystroke. 200ms is the sweet spot:
+ * fast enough that the result feels live, slow enough that typing
+ * "stripe" doesn't fire 6 requests + 6 history pushes.
+ */
+function useDebouncedValue<T>(value: T, ms: number): T {
+	const [debounced, setDebounced] = useState(value);
+	useEffect(() => {
+		const t = setTimeout(() => setDebounced(value), ms);
+		return () => clearTimeout(t);
+	}, [value, ms]);
+	return debounced;
+}
+
 const TAB_OPTIONS: Array<{ value: MonitorTab; label: string }> = [
 	{ value: 'overview', label: 'Overview' },
 	{ value: 'log', label: 'Execution Log' },
@@ -122,6 +137,12 @@ export default function MonitorPage(): JSX.Element {
 	const jobStatusFilter = readJobStatus(searchParams);
 	const jobKindFilter = readJobKind(searchParams);
 	const page = parseInt(searchParams.get('page') ?? '1', 10) || 1;
+	// `?q=` is shareable — the URL is the source of truth. We keep a local
+	// echo (`searchInput`) so typing feels instant; debouncing pushes the
+	// committed value into the URL + queries 200ms after the user stops.
+	const qParam = readSearchParam(searchParams, 'q') ?? '';
+	const [searchInput, setSearchInput] = useState(qParam);
+	const debouncedSearch = useDebouncedValue(searchInput, 200);
 	// Deep-link ids. `?id=` opens the Execution Detail drawer for a trace,
 	// `?job=` opens the Job Detail drawer in the Jobs tab. They're mutually
 	// exclusive: opening one clears the other so a back-and-forth between
@@ -217,6 +238,7 @@ export default function MonitorPage(): JSX.Element {
 			toolkitFilter,
 			apiFilter,
 			agentFilter,
+			qParam,
 			since,
 		],
 		queryFn: () =>
@@ -228,6 +250,9 @@ export default function MonitorPage(): JSX.Element {
 				agentId: agentFilter,
 				status: statusFilterToBackend(statusFilter),
 				since,
+				// Mirror the JobsTab guard: trim + drop blanks so the
+				// no-search query plan is identical to the legacy one.
+				q: qParam.trim() ? qParam.trim() : undefined,
 			}),
 		enabled: tab === 'log',
 		refetchInterval: 15_000,
@@ -312,13 +337,15 @@ export default function MonitorPage(): JSX.Element {
 		statusFilter !== 'ALL' ||
 		toolkitFilter !== null ||
 		apiFilter !== null ||
-		agentFilter !== null;
+		agentFilter !== null ||
+		qParam !== '';
 
 	const hasJobsFilters =
 		jobStatusFilter !== 'all' ||
 		jobKindFilter !== 'all' ||
 		toolkitFilter !== null ||
-		agentFilter !== null;
+		agentFilter !== null ||
+		qParam !== '';
 
 	const updateParam = (
 		next: Record<string, string | null>,
@@ -346,17 +373,29 @@ export default function MonitorPage(): JSX.Element {
 		updateParam({ api: next }, { resetPage: true });
 	const handleAgentChange = (next: string | null) =>
 		updateParam({ agent: next }, { resetPage: true });
-	const handleClearFilters = () =>
-		updateParam({ status: null, toolkit: null, api: null, agent: null }, { resetPage: true });
+	const handleSearchChange = (next: string) => {
+		// Update the local echo immediately so typing feels live; the URL
+		// + queries pick up `debouncedSearch` via the effect below.
+		setSearchInput(next);
+	};
+	const handleClearFilters = () => {
+		setSearchInput('');
+		updateParam(
+			{ status: null, toolkit: null, api: null, agent: null, q: null },
+			{ resetPage: true },
+		);
+	};
 	const handleJobStatusChange = (next: JobStatusFilter) =>
 		updateParam({ jobStatus: next === 'all' ? null : next }, { resetPage: true });
 	const handleJobKindChange = (next: JobKindFilter) =>
 		updateParam({ jobKind: next === 'all' ? null : next }, { resetPage: true });
-	const handleClearJobsFilters = () =>
+	const handleClearJobsFilters = () => {
+		setSearchInput('');
 		updateParam(
-			{ jobStatus: null, jobKind: null, toolkit: null, agent: null },
+			{ jobStatus: null, jobKind: null, toolkit: null, agent: null, q: null },
 			{ resetPage: true },
 		);
+	};
 	const handlePageChange = (next: number) => {
 		updateParam({ page: next === 1 ? null : String(next) });
 	};
@@ -530,6 +569,30 @@ export default function MonitorPage(): JSX.Element {
 		// the table polls would re-trigger the fetch effect needlessly.
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [selectedExecIdParam]);
+
+	// Sync the debounced search input → URL (?q=). Only fires when the
+	// committed value diverges from the URL, so typing 6 chars produces
+	// at most 1 history replace, not 6. resetPage so a search doesn't
+	// land on page 7 of the previous result set.
+	useEffect(() => {
+		if (debouncedSearch === qParam) return;
+		updateParam({ q: debouncedSearch || null }, { resetPage: true });
+		// updateParam is not memoised; including it would loop. The
+		// closure captures the latest searchParams via the outer hook.
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [debouncedSearch, qParam]);
+
+	// Sync the URL → input on external changes (back/forward, deep
+	// link). The `searchInput !== qParam` guard prevents this from
+	// fighting the outgoing sync above.
+	useEffect(() => {
+		if (qParam !== searchInput) {
+			setSearchInput(qParam);
+		}
+		// We deliberately don't depend on `searchInput`; this effect's
+		// job is to react to URL changes, not to local typing.
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [qParam]);
 
 	useEffect(() => {
 		const data = filteredTracesQuery.data as unknown as { traces?: unknown[] } | undefined;
@@ -801,6 +864,7 @@ export default function MonitorPage(): JSX.Element {
 					toolkitFilter={toolkitFilter}
 					apiFilter={apiFilter}
 					agentFilter={agentFilter}
+					searchQuery={searchInput}
 					toolkitOptions={toolkitOptionsQuery.options}
 					apiOptions={apiOptions}
 					agentOptions={agentOptionsQuery.options}
@@ -810,6 +874,7 @@ export default function MonitorPage(): JSX.Element {
 					onToolkitChange={handleToolkitChange}
 					onApiChange={handleApiChange}
 					onAgentChange={handleAgentChange}
+					onSearchChange={handleSearchChange}
 					onClearFilters={handleClearFilters}
 					onRowClick={handleRowClick}
 					onPageChange={handlePageChange}
@@ -821,6 +886,7 @@ export default function MonitorPage(): JSX.Element {
 					kindFilter={jobKindFilter}
 					toolkitFilter={toolkitFilter}
 					agentFilter={agentFilter}
+					searchQuery={searchInput}
 					page={page}
 					pageSize={PAGE_SIZE}
 					since={since}
@@ -834,6 +900,7 @@ export default function MonitorPage(): JSX.Element {
 					onKindChange={handleJobKindChange}
 					onToolkitChange={handleToolkitChange}
 					onAgentChange={handleAgentChange}
+					onSearchChange={handleSearchChange}
 					onClearFilters={handleClearJobsFilters}
 					onPageChange={handlePageChange}
 					onOpenTrace={handleOpenTrace}

@@ -270,6 +270,23 @@ async def list_traces(
             )
         ),
     ] = None,
+    q: Annotated[
+        str | None,
+        Query(
+            description=(
+                "Free-text substring match (case-insensitive) over the columns the "
+                "Monitor row renders: `operation_id`, `workflow_id`, `api_id`, "
+                "`agent_id`. Empty/whitespace strings are treated as not set so the "
+                "no-filter plan stays cheap. Note: none of these columns are indexed "
+                "for prefix lookups, so `q` always implies a scan over the rows the "
+                "tenant + time-window clauses already select — fine for the Monitor "
+                "page (range capped to 24h by default) but don't use it as a "
+                "general-purpose search."
+            ),
+            min_length=1,
+            max_length=200,
+        ),
+    ] = None,
 ):
     """Returns recent execution traces with status, capability id, toolkit, timestamp, and HTTP status. Use GET /traces/{trace_id} for step-level detail."""
     scope_sql, scope_params = _trace_scope_clause(request, prefix="e.")
@@ -305,6 +322,20 @@ async def list_traces(
         # in migration 0007 wherever the upstream had been imported.
         where_parts.append("e.api_id = ?")
         params.append(api_id)
+    if q is not None and q.strip():
+        # Free-text fallthrough: substring match across the four columns the
+        # Monitor row actually renders. Each LIKE forces a scan but the scan
+        # is bounded by the tenant + (since,until) clauses already in
+        # where_parts, so on the Monitor page (24h default range) it stays
+        # cheap. We OR the four columns so a single token like "stripe"
+        # matches whether it landed in api_id, operation_id, workflow_id, or
+        # agent_id.
+        like = f"%{q.strip()}%"
+        where_parts.append(
+            "(e.operation_id LIKE ? OR e.workflow_id LIKE ? "
+            "OR e.api_id LIKE ? OR e.agent_id LIKE ?)"
+        )
+        params.extend([like, like, like, like])
 
     where_sql = " AND ".join(f"({p})" for p in where_parts)
     count_params = list(params)

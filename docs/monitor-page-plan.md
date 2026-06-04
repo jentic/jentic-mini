@@ -201,10 +201,13 @@ having dedicated `workflow_executions` and `operation_executions` tables
 with `inputs` / `outputs` columns. We already collapse these into a
 single `executions` table — adding two columns is the cleanest move.
 
-**Schema** *(new migration 0008)*: add `executions.inputs TEXT`,
-`executions.outputs TEXT` (both JSON-encoded, both nullable). No
-backfill — legacy rows render as today (panel hidden by the
-`Object.keys.length > 0` guard).
+**Schema** *(extend migration 0007 in place — same branch, dev DBs get
+wiped and re-seeded locally; no production migration to worry about)*:
+add `executions.inputs TEXT` and `executions.outputs TEXT` to the
+`exec_cols` block in `0007_monitor_links.py` alongside the existing
+`api_id` / `job_id` / `parent_trace_id` ALTERs. Both JSON-encoded, both
+nullable. No backfill — legacy rows render as today (panel hidden by
+the truthy guard on the field).
 
 **Writer (workflow side)**:
 
@@ -281,11 +284,13 @@ identical in shape to the trace one.
 | M3 (active_now scope) | everything | 1 backend file, new test |
 | M4 (GET /jobs scope) | everything | 1 backend file, new tests |
 | M5 (render steps + fill in step columns) | M6 | 1 UI file, 1 backend writer |
-| M6 (workflow inputs/outputs end-to-end) | needs migration 0008 | migration + 4 backend files + 4 frontend files + tests |
+| M6 (workflow inputs/outputs end-to-end) | extends migration 0007 in place | 0007 + 4 backend files + 4 frontend files + tests |
 
 M1–M4 are tiny independent commits, ideally one PR each (or grouped as
 "monitor parity round 1"). M5 stands alone. M6 is the headline change
-and gets its own PR with a careful migration review.
+and gets its own PR; the migration extends 0007 in place since this
+branch hasn't shipped, and dev DBs get wiped + re-seeded locally (same
+recipe as the original 0007 work).
 
 ## What we're explicitly _not_ doing
 
@@ -336,7 +341,7 @@ For the implementer, the exact spots:
 | `src/routers/jobs.py` | 286-322, 382-414 | M4 — new `_jobs_scope_clause` helper, applied to list + get; 404 cross-tenant |
 | `src/routers/traces.py` | 100-112 | M5 (writer) — populate `operation`, `status`, `inputs`, `completed_at` on `execution_steps` insert |
 | `ui/src/components/monitor/execution-log/ExecutionDetailSheet.tsx` | after 211 | M5 (UI) — port the steps render block from `ui/src/pages/TraceDetailPage.tsx:132-183` |
-| `alembic/versions/0008_executions_inputs_outputs.py` | new | M6 — `ALTER TABLE executions ADD COLUMN inputs TEXT; ADD COLUMN outputs TEXT;` |
+| `alembic/versions/0007_monitor_links.py` | extend exec_cols block | M6 — add `executions.inputs TEXT`, `executions.outputs TEXT` ALTERs (idempotent guards already there); rebuild dev DB locally |
 | `src/routers/traces.py` | 33-114 | M6 — `write_trace` accepts `inputs`, `outputs`; UPSERT preserves on completion |
 | `src/routers/workflows.py` | 875-887 | M6 — pass `inputs`, `result_data["outputs"]`, **and `job_id`** (async path) |
 | `src/routers/traces.py` | 649-708 | M6 — select + return `inputs`, `outputs`; drop the misleading line-680 comment |

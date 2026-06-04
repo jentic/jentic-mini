@@ -1,8 +1,9 @@
 import { type JSX } from 'react';
-import { X, ChevronDown } from 'lucide-react';
+import { X, ChevronDown, Filter } from 'lucide-react';
 import type { ExecutionStatusFilter } from '@/components/monitor/types';
 import { cn } from '@/lib/utils';
 import { SegmentedToggle } from '@/components/ui/SegmentedToggle';
+import { SearchInput } from '@/components/ui/SearchInput';
 
 interface FilterOption {
 	value: string;
@@ -14,6 +15,7 @@ interface ExecutionFiltersProps {
 	toolkitFilter: string | null;
 	apiFilter: string | null;
 	agentFilter: string | null;
+	searchQuery: string;
 	toolkitOptions: FilterOption[];
 	apiOptions: FilterOption[];
 	agentOptions: FilterOption[];
@@ -23,6 +25,7 @@ interface ExecutionFiltersProps {
 	onToolkitChange: (toolkitId: string | null) => void;
 	onApiChange: (apiKey: string | null) => void;
 	onAgentChange: (agentId: string | null) => void;
+	onSearchChange: (q: string) => void;
 	onClearFilters: () => void;
 	hasFilters: boolean;
 	className?: string;
@@ -78,6 +81,7 @@ export function ExecutionFilters({
 	toolkitFilter,
 	apiFilter,
 	agentFilter,
+	searchQuery,
 	toolkitOptions,
 	apiOptions,
 	agentOptions,
@@ -86,6 +90,7 @@ export function ExecutionFilters({
 	onToolkitChange,
 	onApiChange,
 	onAgentChange,
+	onSearchChange,
 	onClearFilters,
 	hasFilters,
 	className,
@@ -109,6 +114,16 @@ export function ExecutionFilters({
 			<div className="bg-border hidden h-5 w-px sm:block" />
 
 			<div className="flex flex-wrap items-center gap-2">
+				<SearchInput
+					value={searchQuery}
+					onValueChange={onSearchChange}
+					size="sm"
+					icon={<Filter className="h-3.5 w-3.5" />}
+					placeholder="Filter workflows, APIs…"
+					aria-label="Filter execution log"
+					className="w-full sm:w-56"
+				/>
+
 				<FilterDropdown
 					label="All toolkits"
 					value={toolkitFilter}
