@@ -91,7 +91,15 @@ def main() -> None:
     conn = sqlite3.connect(DB_PATH)
     cur = conn.cursor()
 
-    # Wipe any previous seed rows (matched by id prefix).
+    # Wipe any previous seed rows (matched by id prefix). Workflow trace IDs
+    # use the `seed_wf_` prefix so they're caught by `seed_%`. We also wipe
+    # execution_steps here because SQLite doesn't honour ON DELETE CASCADE
+    # by default (foreign_keys pragma is off on raw sqlite3 connections),
+    # so step rows would otherwise leak across re-runs.
+    cur.execute(
+        "DELETE FROM execution_steps WHERE execution_id IN "
+        "(SELECT id FROM executions WHERE id LIKE 'seed_%')"
+    )
     cur.execute("DELETE FROM executions WHERE id LIKE 'seed_%'")
     cur.execute("DELETE FROM jobs WHERE id LIKE 'seed_%'")
     deleted = cur.rowcount
@@ -287,42 +295,128 @@ def main() -> None:
     # has something to show. Workflows use a slug (not METHOD/host/path) and
     # always point at a trace_id — that trace lives in the executions table.
     #
-    # Each workflow gets a realistic inputs/outputs pair stamped on both the
-    # job (jobs.inputs) and the trace (executions.inputs / executions.outputs)
-    # so the Monitor drawer's Inputs / Outputs panels render real content
-    # instead of empty `{}`. The shapes mirror what the runner would persist
-    # for these pipelines in production.
+    # Each workflow gets:
+    #   - realistic inputs/outputs stamped on both the trace
+    #     (executions.inputs / executions.outputs) and the owning job
+    #     (jobs.inputs + jobs.result.outputs) so the drawer Inputs / Outputs
+    #     panels render meaningful content;
+    #   - a list of per-step rows in execution_steps so the drawer's Steps
+    #     panel renders something other than "0 steps". Each step mirrors
+    #     what the Arazzo runner would persist: a step_id, an operation
+    #     (operationId / workflowId), a status, an http_status, and a JSON
+    #     `output` blob with the upstream response body or a synthetic
+    #     summary. Failure cases include a non-2xx http_status and an error
+    #     string so the failure-path UI has something to render too.
     workflow_fixtures = [
-        (
-            "github_release_pipeline",
-            "GitHub Release",
-            {"repo": "acme/widgets", "tag": "v1.4.0", "draft": False},
-            {
+        {
+            "slug": "github_release_pipeline",
+            "label": "GitHub Release",
+            "inputs": {"repo": "acme/widgets", "tag": "v1.4.0", "draft": False},
+            "outputs": {
                 "release_url": "https://github.com/acme/widgets/releases/tag/v1.4.0",
                 "release_id": 184523991,
                 "assets_uploaded": 3,
             },
-        ),
-        (
-            "billing_reconcile",
-            "Billing Reconcile",
-            {"period": "2026-05", "tenant": "acme"},
-            {"invoices_processed": 142, "discrepancies": 0, "total_usd": 18420.55},
-        ),
-        (
-            "daily_digest",
-            "Daily Digest",
-            {"channel": "#eng-updates", "since": "2026-06-03T00:00:00Z"},
-            {
+            "steps": [
+                {
+                    "step_id": "fetchLatestCommit",
+                    "operation": "GET/api.github.com/repos/{owner}/{repo}/commits/{ref}",
+                    "status": "success",
+                    "http_status": 200,
+                    "output": {"sha": "9c2d…f1a", "message": "release: cut v1.4.0"},
+                },
+                {
+                    "step_id": "createRelease",
+                    "operation": "POST/api.github.com/repos/{owner}/{repo}/releases",
+                    "status": "success",
+                    "http_status": 201,
+                    "output": {"id": 184523991, "tag_name": "v1.4.0"},
+                },
+                {
+                    "step_id": "uploadAssets",
+                    "operation": "POST/uploads.github.com/repos/{owner}/{repo}/releases/{id}/assets",
+                    "status": "success",
+                    "http_status": 201,
+                    "output": {"assets_uploaded": 3},
+                },
+            ],
+        },
+        {
+            "slug": "billing_reconcile",
+            "label": "Billing Reconcile",
+            "inputs": {"period": "2026-05", "tenant": "acme"},
+            "outputs": {"invoices_processed": 142, "discrepancies": 0, "total_usd": 18420.55},
+            "steps": [
+                {
+                    "step_id": "listInvoices",
+                    "operation": "GET/api.stripe.com/v1/invoices",
+                    "status": "success",
+                    "http_status": 200,
+                    "output": {"count": 142, "has_more": False},
+                },
+                {
+                    "step_id": "checkBalances",
+                    "operation": "GET/api.stripe.com/v1/balance",
+                    "status": "success",
+                    "http_status": 200,
+                    "output": {"available": [{"amount": 1842055, "currency": "usd"}]},
+                },
+                {
+                    "step_id": "writeLedger",
+                    "operation": "POST/api.notion.com/v1/pages",
+                    "status": "success",
+                    "http_status": 200,
+                    "output": {"page_id": "p_2c8f…"},
+                },
+            ],
+        },
+        {
+            "slug": "daily_digest",
+            "label": "Daily Digest",
+            "inputs": {"channel": "#eng-updates", "since": "2026-06-03T00:00:00Z"},
+            "outputs": {
                 "messages_summarized": 87,
                 "digest_url": "https://notion.so/acme/digest-2026-06-04",
             },
-        ),
+            "steps": [
+                {
+                    "step_id": "fetchMessages",
+                    "operation": "GET/api.slack.com/api/conversations.history",
+                    "status": "success",
+                    "http_status": 200,
+                    "output": {"messages": 87, "has_more": False},
+                },
+                {
+                    "step_id": "summarize",
+                    "operation": "POST/api.openai.com/v1/chat/completions",
+                    "status": "success",
+                    "http_status": 200,
+                    "output": {"model": "gpt-4o-mini", "tokens": 1843},
+                },
+                {
+                    "step_id": "publishDigest",
+                    "operation": "POST/api.notion.com/v1/pages",
+                    "status": "error",
+                    "http_status": 429,
+                    "output": None,
+                    "error": "rate_limited: retry after 30s",
+                },
+            ],
+        },
     ]
-    for slug, _label, wf_inputs, wf_outputs in workflow_fixtures:
+    for fixture in workflow_fixtures:
+        slug = fixture["slug"]
+        wf_inputs = fixture["inputs"]
+        wf_outputs = fixture["outputs"]
+        wf_steps = fixture["steps"]
         ts = NOW - rng.random() * 3600
         agent = rng.choice(FAKE_AGENTS) or None
         wf_trace_id = f"seed_wf_{uuid.uuid4().hex[:12]}"
+        # Workflow status mirrors the worst step — if any step errored, the
+        # workflow itself failed. Keeps the Steps panel and the top-level
+        # status badge consistent in the seeded data.
+        wf_status = "failed" if any(s["status"] == "error" for s in wf_steps) else "success"
+        wf_http = 502 if wf_status == "failed" else 200
         # The workflow trace itself — a row in executions with workflow_id set.
         cur.execute(
             """
@@ -340,8 +434,8 @@ def main() -> None:
                 slug,
                 f"specs/{slug}.yaml",
                 None,
-                "success",
-                200,
+                wf_status,
+                wf_http,
                 1850,
                 None,
                 ts,
@@ -352,9 +446,43 @@ def main() -> None:
             ),
         )
         inserted_exec += 1
-        # The owning job — kind=workflow, status=complete, trace_id pointing
-        # back at the executions row above. This gives the Jobs tab a fully
-        # correlated workflow row that links into the Execution Log.
+        # Per-step rows so the drawer's Steps panel has content. Started_at
+        # is staggered inside the workflow's window so the natural ordering
+        # by started_at matches the array order of `wf_steps`.
+        step_window = 1.85 / max(len(wf_steps), 1)
+        for step_idx, step in enumerate(wf_steps):
+            step_started = ts + step_idx * step_window
+            cur.execute(
+                """
+                INSERT INTO execution_steps (
+                    id, execution_id, step_id, operation, status, http_status,
+                    inputs, output, error, started_at, completed_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    f"step_{uuid.uuid4().hex[:12]}",
+                    wf_trace_id,
+                    step["step_id"],
+                    step["operation"],
+                    step["status"],
+                    step["http_status"],
+                    None,  # per-step inputs not modelled by the runner today
+                    json.dumps(step["output"]) if step["output"] is not None else None,
+                    step.get("error"),
+                    step_started,
+                    step_started + step_window,
+                ),
+            )
+        # The owning job — kind=workflow, trace_id pointing back at the
+        # executions row above. Status mirrors the trace status so the Jobs
+        # tab and the Execution Log agree on whether this workflow failed.
+        job_status = "error" if wf_status == "failed" else "complete"
+        job_error = (
+            "step publishDigest: rate_limited: retry after 30s" if wf_status == "failed" else None
+        )
+        job_result = (
+            json.dumps({"ok": True, "outputs": wf_outputs}) if wf_status == "success" else None
+        )
         cur.execute(
             """
             INSERT INTO jobs (
@@ -368,10 +496,10 @@ def main() -> None:
                 "workflow",
                 slug,
                 "default",
-                "complete",
-                json.dumps({"ok": True, "outputs": wf_outputs}),
-                None,
-                200,
+                job_status,
+                job_result,
+                job_error,
+                wf_http,
                 0,
                 None,
                 wf_trace_id,
