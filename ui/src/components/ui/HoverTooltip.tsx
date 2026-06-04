@@ -57,11 +57,16 @@ export function HoverTooltip({
 	role = 'tooltip',
 }: HoverTooltipProps) {
 	const triggerRef = useRef<HTMLSpanElement>(null);
+	const panelRef = useRef<HTMLSpanElement>(null);
 	const overTrigger = useRef(false);
 	const overPanel = useRef(false);
 	const tooltipId = useRef(`tt-${Math.random().toString(36).slice(2, 9)}`);
 	const [open, setOpen] = useState(false);
 	const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+	// Whether the current `pos` has been measured against the viewport.
+	// Reset to false on every reposition so the panel never flashes
+	// off-screen for one frame before the clamp effect runs.
+	const [clamped, setClamped] = useState(false);
 
 	const computePos = useCallback(() => {
 		const el = triggerRef.current;
@@ -80,6 +85,45 @@ export function HoverTooltip({
 		}
 	}, [side, gap]);
 
+	// After the panel mounts (or content/position changes) measure it and
+	// clamp the centered/anchored position so the panel stays fully inside
+	// the viewport. Without this the trigger near a viewport edge produces
+	// a panel whose `max-w` is honoured but whose content gets squeezed
+	// into the narrow strip of remaining space, rendering as a
+	// near-vertical column of one-word lines.
+	const clampToViewport = useCallback(() => {
+		const panel = panelRef.current;
+		if (!panel || !pos) return;
+		const margin = 8;
+		const w = panel.offsetWidth;
+		const h = panel.offsetHeight;
+		const vw = window.innerWidth;
+		const vh = window.innerHeight;
+
+		let left = pos.left;
+		let top = pos.top;
+
+		// Resolve the centered/anchored position into the panel's actual
+		// rendered rect, then push it back inside the viewport if it
+		// overflows on either axis.
+		if (side === 'top' || side === 'bottom') {
+			const half = w / 2;
+			if (left - half < margin) left = half + margin;
+			else if (left + half > vw - margin) left = vw - margin - half;
+			if (side === 'top' && top - h < margin) top = h + margin;
+			else if (side === 'bottom' && top + h > vh - margin) top = vh - margin - h;
+		} else {
+			const half = h / 2;
+			if (top - half < margin) top = half + margin;
+			else if (top + half > vh - margin) top = vh - margin - half;
+			if (side === 'left' && left - w < margin) left = w + margin;
+			else if (side === 'right' && left + w > vw - margin) left = vw - margin - w;
+		}
+
+		if (left !== pos.left || top !== pos.top) setPos({ top, left });
+		setClamped(true);
+	}, [pos, side]);
+
 	const checkClose = useCallback(() => {
 		requestAnimationFrame(() => {
 			if (!overTrigger.current && !overPanel.current) {
@@ -91,7 +135,10 @@ export function HoverTooltip({
 	const handleTriggerEnter = useCallback(() => {
 		overTrigger.current = true;
 		const p = computePos();
-		if (p) setPos(p);
+		if (p) {
+			setPos(p);
+			setClamped(false);
+		}
 		setOpen(true);
 	}, [computePos]);
 
@@ -117,7 +164,10 @@ export function HoverTooltip({
 		if (!open) return;
 		const onScrollOrResize = () => {
 			const p = computePos();
-			if (p) setPos(p);
+			if (p) {
+				setPos(p);
+				setClamped(false);
+			}
 		};
 		window.addEventListener('scroll', onScrollOrResize, true);
 		window.addEventListener('resize', onScrollOrResize);
@@ -126,6 +176,14 @@ export function HoverTooltip({
 			window.removeEventListener('resize', onScrollOrResize);
 		};
 	}, [open, computePos]);
+
+	// Clamp after every position change. Runs once per `pos` update, and
+	// the clamp itself only setPos when something would overflow, so the
+	// effect converges in at most two paints.
+	useEffect(() => {
+		if (!open) return;
+		clampToViewport();
+	}, [open, pos, clampToViewport]);
 
 	const transform =
 		side === 'top'
@@ -151,10 +209,16 @@ export function HoverTooltip({
 				pos &&
 				createPortal(
 					<span
+						ref={panelRef}
 						id={tooltipId.current}
 						role={role}
-						className="bg-popover/95 text-popover-foreground border-border pointer-events-auto fixed z-[9999] max-w-[320px] rounded-md border px-2.5 py-1.5 text-xs whitespace-normal shadow-lg backdrop-blur-sm"
-						style={{ top: pos.top, left: pos.left, transform }}
+						className="bg-popover/95 text-popover-foreground border-border pointer-events-auto fixed z-[9999] inline-block max-w-[320px] min-w-[160px] rounded-md border px-2.5 py-1.5 text-xs whitespace-normal shadow-lg backdrop-blur-sm"
+						style={{
+							top: pos.top,
+							left: pos.left,
+							transform,
+							visibility: clamped ? 'visible' : 'hidden',
+						}}
 						onMouseEnter={handlePanelEnter}
 						onMouseLeave={handlePanelLeave}
 					>
