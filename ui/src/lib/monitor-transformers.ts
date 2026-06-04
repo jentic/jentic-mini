@@ -149,7 +149,6 @@ export function traceToLogEntry(
 		completedAt: trace.completed_at != null ? toIso(trace.completed_at) : undefined,
 		durationMs: trace.duration_ms ?? undefined,
 		errorMessage: trace.error ?? undefined,
-		stepCount: Array.isArray(trace.steps) ? trace.steps.length : 0,
 		jobId: trace.job_id ?? null,
 		parentTraceId: trace.parent_trace_id ?? null,
 	};
@@ -193,7 +192,6 @@ export function jobToLogEntry(
 		apiName,
 		createdAt: toIso(job.created_at),
 		completedAt: job.completed_at != null ? toIso(job.completed_at) : undefined,
-		stepCount: 0,
 		isJobOnly: true,
 		jobId: job.job_id,
 		parentTraceId: null,

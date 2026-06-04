@@ -1,5 +1,5 @@
 import { type JSX } from 'react';
-import { X, AlertCircle, Clock, Zap, Layers, Hash, ArrowRight, User } from 'lucide-react';
+import { X, AlertCircle, Clock, Zap, Layers, ArrowRight, User } from 'lucide-react';
 import { StatusIcon, getStatusLabel } from '@/components/monitor/shared/StatusIcon';
 import { formatDuration } from '@/components/monitor/shared/format';
 import { getVendorConfig, getInitials } from '@/components/monitor/shared/vendor-icons';
@@ -202,11 +202,6 @@ export function ExecutionDetailSheet({
 									icon={<User className="text-muted-foreground h-3.5 w-3.5" />}
 									label="Agent"
 									value={execution.agentName ?? '—'}
-								/>
-								<MetricPill
-									icon={<Hash className="text-muted-foreground h-3.5 w-3.5" />}
-									label="Steps"
-									value={String(execution.stepCount)}
 								/>
 							</div>
 

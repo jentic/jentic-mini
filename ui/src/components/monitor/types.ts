@@ -114,7 +114,6 @@ export interface ExecutionLogEntry {
 	completedAt?: string;
 	durationMs?: number;
 	errorMessage?: string;
-	stepCount: number;
 	/** True for rows that originated from a job that hasn't materialised a trace yet. */
 	isJobOnly?: boolean;
 	/** Async job that owns this trace (Prefer: wait=0, upstream-202, async workflow). */
