@@ -34,6 +34,15 @@ interface HoverTooltipProps {
 	 * via `aria-describedby` automatically.
 	 */
 	role?: 'tooltip' | 'status';
+	/**
+	 * Tab index for the trigger wrapper. Defaults to `0` so keyboard and
+	 * screen-reader users can focus the trigger and surface the tooltip
+	 * (parity with the mouse path). Set to `-1` when the trigger already
+	 * wraps a natively focusable element (a `<button>`/`<a>`) to avoid a
+	 * redundant double tab-stop — focus on the inner element still opens
+	 * the tooltip via the bubbled `onFocus`.
+	 */
+	tabIndex?: number;
 }
 
 /**
@@ -55,6 +64,7 @@ export function HoverTooltip({
 	side = 'top',
 	gap = 8,
 	role = 'tooltip',
+	tabIndex = 0,
 }: HoverTooltipProps) {
 	const triggerRef = useRef<HTMLSpanElement>(null);
 	const panelRef = useRef<HTMLSpanElement>(null);
@@ -169,11 +179,23 @@ export function HoverTooltip({
 				setClamped(false);
 			}
 		};
+		// Escape dismisses the tooltip — keyboard users who focused the
+		// trigger (or moused over content with links) need an explicit way
+		// out that doesn't require moving the pointer.
+		const onKeyDown = (e: KeyboardEvent) => {
+			if (e.key === 'Escape') {
+				overTrigger.current = false;
+				overPanel.current = false;
+				setOpen(false);
+			}
+		};
 		window.addEventListener('scroll', onScrollOrResize, true);
 		window.addEventListener('resize', onScrollOrResize);
+		window.addEventListener('keydown', onKeyDown);
 		return () => {
 			window.removeEventListener('scroll', onScrollOrResize, true);
 			window.removeEventListener('resize', onScrollOrResize);
+			window.removeEventListener('keydown', onKeyDown);
 		};
 	}, [open, computePos]);
 
@@ -198,6 +220,7 @@ export function HoverTooltip({
 		<span
 			ref={triggerRef}
 			className={cn(triggerClassName, className)}
+			tabIndex={tabIndex}
 			onMouseEnter={handleTriggerEnter}
 			onMouseLeave={handleTriggerLeave}
 			onFocus={handleTriggerEnter}
