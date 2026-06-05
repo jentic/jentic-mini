@@ -473,7 +473,42 @@ def main() -> None:
                     step_started + step_window,
                 ),
             )
-        # The owning job — kind=workflow, trace_id pointing back at the
+            # Each workflow step is fulfilled by a real broker hop, so mint a
+            # *child* broker trace whose parent_trace_id points back at the
+            # workflow. This is what powers the "Child broker calls" panel in
+            # the workflow drawer and the children[] array on GET /traces/{id}.
+            # Without these rows the panel renders empty in the seeded DB.
+            child_op = step["operation"]  # e.g. "GET/api.github.com/repos/..."
+            child_host = child_op.split("/", 2)[1] if "/" in child_op else None
+            child_api_id = VENDOR_CATALOG.get(child_host, (None,))[0]
+            cur.execute(
+                """
+                INSERT INTO executions (
+                    id, toolkit_id, api_key_id, operation_id, workflow_id, spec_path,
+                    inputs_hash, status, http_status, duration_ms, error,
+                    created_at, completed_at, agent_id, api_id, parent_trace_id
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    f"seed_{uuid.uuid4().hex[:12]}",
+                    "default",
+                    None,
+                    child_op,
+                    None,
+                    f"specs/{child_host}.yaml" if child_host else None,
+                    None,
+                    "success" if step["status"] != "error" else "failed",
+                    step["http_status"],
+                    int(step_window * 1000),
+                    step.get("error"),
+                    step_started,
+                    step_started + step_window,
+                    agent,
+                    child_api_id,
+                    wf_trace_id,
+                ),
+            )
+            inserted_exec += 1
         # executions row above. Status mirrors the trace status so the Jobs
         # tab and the Execution Log agree on whether this workflow failed.
         job_status = "error" if wf_status == "failed" else "complete"
