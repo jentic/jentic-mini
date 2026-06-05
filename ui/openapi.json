@@ -7503,7 +7503,7 @@
 						"description": "Job type: 'workflow' or 'broker'",
 						"examples": ["workflow"]
 					},
-					"slug_or_id": {
+					"capability": {
 						"anyOf": [
 							{
 								"type": "string"
@@ -7512,8 +7512,8 @@
 								"type": "null"
 							}
 						],
-						"title": "Slug Or Id",
-						"description": "Workflow slug or capability ID",
+						"title": "Capability",
+						"description": "Workflow slug or capability ID (the broker operation id or arazzo workflow slug this job runs)",
 						"examples": ["github-create-issue"]
 					},
 					"toolkit_id": {
@@ -7546,7 +7546,7 @@
 						"type": "string",
 						"title": "Status",
 						"description": "Job status: pending, running, complete, failed, or upstream_async",
-						"examples": ["completed"]
+						"examples": ["complete"]
 					},
 					"result": {
 						"title": "Result",
@@ -8724,6 +8724,112 @@
 				"title": "ToolkitPatch",
 				"description": "Update toolkit metadata or toggle disabled/simulate flags. Only provided fields are changed."
 			},
+			"TraceChildOut": {
+				"properties": {
+					"id": {
+						"type": "string",
+						"title": "Id",
+						"description": "Child trace id",
+						"examples": ["exec_abc123xyz"]
+					},
+					"operation_id": {
+						"anyOf": [
+							{
+								"type": "string"
+							},
+							{
+								"type": "null"
+							}
+						],
+						"title": "Operation Id",
+						"description": "Operation capability id of the broker call (always set \u2014 children are broker traces).",
+						"examples": ["GET/api.github.com/repos/{owner}/{repo}"]
+					},
+					"status": {
+						"anyOf": [
+							{
+								"type": "string"
+							},
+							{
+								"type": "null"
+							}
+						],
+						"title": "Status",
+						"description": "Child trace status: success, failed, or pending.",
+						"examples": ["success"]
+					},
+					"http_status": {
+						"anyOf": [
+							{
+								"type": "integer"
+							},
+							{
+								"type": "null"
+							}
+						],
+						"title": "Http Status",
+						"description": "Final HTTP status code from the upstream call.",
+						"examples": [200]
+					},
+					"duration_ms": {
+						"anyOf": [
+							{
+								"type": "integer"
+							},
+							{
+								"type": "null"
+							}
+						],
+						"title": "Duration Ms",
+						"description": "Child trace duration in milliseconds.",
+						"examples": [412]
+					},
+					"created_at": {
+						"anyOf": [
+							{
+								"type": "number"
+							},
+							{
+								"type": "null"
+							}
+						],
+						"title": "Created At",
+						"description": "Unix timestamp when the child trace started; the panel orders by this.",
+						"examples": [1672531200.0]
+					},
+					"api_id": {
+						"anyOf": [
+							{
+								"type": "string"
+							},
+							{
+								"type": "null"
+							}
+						],
+						"title": "Api Id",
+						"description": "Catalog id of the child trace's upstream API (joined from `executions.api_id`).",
+						"examples": ["api.github.com"]
+					},
+					"api_name": {
+						"anyOf": [
+							{
+								"type": "string"
+							},
+							{
+								"type": "null"
+							}
+						],
+						"title": "Api Name",
+						"description": "Human-readable api name from the catalog; null when api_id is unset or stale.",
+						"examples": ["GitHub"]
+					}
+				},
+				"additionalProperties": true,
+				"type": "object",
+				"required": ["id"],
+				"title": "TraceChildOut",
+				"description": "Compact child broker trace summary referenced from a workflow's `children[]` panel."
+			},
 			"TraceListPage": {
 				"properties": {
 					"total": {
@@ -9017,62 +9123,6 @@
 				"title": "TraceOut",
 				"description": "Complete execution trace with status, timing, and step-by-step results for debugging."
 			},
-			"TraceChildOut": {
-				"properties": {
-					"id": {
-						"type": "string",
-						"title": "Id",
-						"examples": ["exec_abc123xyz"]
-					},
-					"operation_id": {
-						"anyOf": [{ "type": "string" }, { "type": "null" }],
-						"title": "Operation Id",
-						"description": "Operation capability id of the broker call (always set — children are broker traces).",
-						"examples": ["GET/api.github.com/repos/{owner}/{repo}"]
-					},
-					"status": {
-						"anyOf": [{ "type": "string" }, { "type": "null" }],
-						"title": "Status",
-						"description": "Child trace status: success, failed, or pending.",
-						"examples": ["success"]
-					},
-					"http_status": {
-						"anyOf": [{ "type": "integer" }, { "type": "null" }],
-						"title": "Http Status",
-						"description": "Final HTTP status code from the upstream call.",
-						"examples": [200]
-					},
-					"duration_ms": {
-						"anyOf": [{ "type": "integer" }, { "type": "null" }],
-						"title": "Duration Ms",
-						"description": "Child trace duration in milliseconds.",
-						"examples": [412]
-					},
-					"created_at": {
-						"anyOf": [{ "type": "number" }, { "type": "null" }],
-						"title": "Created At",
-						"description": "Unix timestamp when the child trace started; the panel orders by this.",
-						"examples": [1672531200.0]
-					},
-					"api_id": {
-						"anyOf": [{ "type": "string" }, { "type": "null" }],
-						"title": "Api Id",
-						"description": "Catalog id of the child trace's upstream API (joined from `executions.api_id`).",
-						"examples": ["api.github.com"]
-					},
-					"api_name": {
-						"anyOf": [{ "type": "string" }, { "type": "null" }],
-						"title": "Api Name",
-						"description": "Human-readable api name from the catalog; null when api_id is unset or stale.",
-						"examples": ["GitHub"]
-					}
-				},
-				"additionalProperties": true,
-				"type": "object",
-				"required": ["id"],
-				"title": "TraceChildOut",
-				"description": "Compact child broker trace summary referenced from a workflow's `children[]` panel."
-			},
 			"TraceStepOut": {
 				"properties": {
 					"id": {
@@ -9140,6 +9190,16 @@
 						"description": "HTTP status code from this step's API call",
 						"examples": [200]
 					},
+					"inputs": {
+						"title": "Inputs",
+						"description": "Step input arguments (resolved parameters passed to this step's operation)",
+						"examples": [
+							{
+								"owner": "jentic",
+								"repo": "jentic-mini"
+							}
+						]
+					},
 					"output": {
 						"title": "Output",
 						"description": "Step output data",
@@ -9149,11 +9209,6 @@
 								"stars": 42
 							}
 						]
-					},
-					"detail": {
-						"title": "Detail",
-						"description": "Additional step metadata or runner context",
-						"examples": [null]
 					},
 					"error": {
 						"anyOf": [

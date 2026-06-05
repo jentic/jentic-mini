@@ -634,8 +634,10 @@ class JobOut(BaseModel):
     kind: str | None = Field(
         default=None, examples=["workflow"], description="Job type: 'workflow' or 'broker'"
     )
-    slug_or_id: str | None = Field(
-        default=None, examples=["github-create-issue"], description="Workflow slug or capability ID"
+    capability: str | None = Field(
+        default=None,
+        examples=["github-create-issue"],
+        description="Workflow slug or capability ID (the broker operation id or arazzo workflow slug this job runs)",
     )
     toolkit_id: str | None = Field(
         default=None, examples=["default"], description="Toolkit that initiated this job"
@@ -646,7 +648,7 @@ class JobOut(BaseModel):
         description="Agent client_id when the job was created via an agent access token (at_…). Null for toolkit-key callers and admin-initiated jobs.",
     )
     status: str = Field(
-        examples=["completed"],
+        examples=["complete"],
         description="Job status: pending, running, complete, failed, or upstream_async",
     )
     result: Any = Field(
@@ -721,13 +723,15 @@ class TraceStepOut(BaseModel):
     http_status: int | None = Field(
         default=None, examples=[200], description="HTTP status code from this step's API call"
     )
+    inputs: Any = Field(
+        default=None,
+        examples=[{"owner": "jentic", "repo": "jentic-mini"}],
+        description="Step input arguments (resolved parameters passed to this step's operation)",
+    )
     output: Any = Field(
         default=None,
         examples=[{"name": "jentic-mini", "stars": 42}],
         description="Step output data",
-    )
-    detail: Any = Field(
-        default=None, examples=[None], description="Additional step metadata or runner context"
     )
     error: str | None = Field(
         default=None, examples=[None], description="Error message if step failed"

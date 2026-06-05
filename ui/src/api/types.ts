@@ -238,7 +238,7 @@ export interface TraceStepOut {
 	status?: string | null;
 	http_status?: number | null;
 	output?: unknown;
-	detail?: unknown;
+	inputs?: unknown;
 	error?: string | null;
 	started_at?: number | null;
 	completed_at?: number | null;
