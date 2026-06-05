@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-End-to-end smoke against a running jentic-mini parallel stack.
+End-to-end smoke against a running jentic-mini stack.
 
 Unlike ``seed_monitor_data.py`` (which writes synthetic rows directly into
 SQLite), this script exercises the *real* code paths: it logs in as admin,
@@ -36,8 +36,8 @@ otherwise mints a fresh one. Existing executions/jobs are left in place;
 each run simply appends new rows.
 
 Usage:
-    python3 scripts/e2e_smoke.py                       # default :5180
-    JENTIC_BASE_URL=http://localhost:8900 python3 …    # alt port
+    python3 scripts/e2e_smoke.py                       # default :8900
+    JENTIC_BASE_URL=http://localhost:8900 python3 …    # explicit base URL
     JENTIC_ADMIN_PASSWORD=… python3 scripts/e2e_smoke.py
 """
 
@@ -54,7 +54,7 @@ from http.cookiejar import CookieJar
 from typing import Any
 
 
-DEFAULT_BASE_URL = os.environ.get("JENTIC_BASE_URL", "http://localhost:5180")
+DEFAULT_BASE_URL = os.environ.get("JENTIC_BASE_URL", "http://localhost:8900")
 ADMIN_USERNAME = os.environ.get("JENTIC_ADMIN_USERNAME", "admin")
 ADMIN_PASSWORD = os.environ.get("JENTIC_ADMIN_PASSWORD", "adminadmin")
 TOOLKIT_KEY_LABEL = "e2e-smoke"
@@ -445,7 +445,7 @@ def section(title: str) -> None:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="jentic-mini parallel stack e2e smoke")
+    parser = argparse.ArgumentParser(description="jentic-mini e2e smoke")
     parser.add_argument("--base-url", default=DEFAULT_BASE_URL, help="API base URL")
     parser.add_argument(
         "--skip-async", action="store_true", help="Skip the async broker calls + job polling"
@@ -551,7 +551,7 @@ def main() -> int:
     print(f"  sync probes    : {len(sync_results)} ({len(sync_failures)} unexpected)")
     print(f"  async probes   : {len(async_results)}")
     print(f"  workflow       : {wf_failures} failure(s)")
-    monitor_url = http.base_url.replace(":5180", ":5181") + "/monitor"
+    monitor_url = http.base_url.replace(":8900", ":5173") + "/monitor"
     print(f"  monitor page   : {monitor_url}")
     print(f"  agents page    : {monitor_url.rsplit('/', 1)[0]}/agents")
 

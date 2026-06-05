@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """
-Seed fake executions and jobs into the parallel jentic-mini DB so the Monitor
-page has visible data. Idempotent: rows are tagged with ``seed_*`` IDs and the
-script clears prior seeds before inserting.
+Seed fake executions and jobs into the jentic-mini DB so the Monitor page has
+visible data. Idempotent: rows are tagged with ``seed_*`` IDs and the script
+clears prior seeds before inserting.
 
 Usage:
-    # In the parallel container (default DB path):
-    docker exec jentic-mini-parallel python /app/scripts/seed_monitor_data.py
+    # In the running container (default DB path):
+    docker exec jentic-mini python /app/scripts/seed_monitor_data.py
 
     # On the host, against a local DB file:
     DB_PATH=./data/jentic-mini.db python3 scripts/seed_monitor_data.py
