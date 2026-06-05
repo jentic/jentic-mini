@@ -45,6 +45,17 @@ router = APIRouter(prefix="/jobs", tags=["observe"])
 _running_tasks: dict[str, asyncio.Task] = {}
 
 
+def _like_escape(term: str) -> str:
+    r"""Escape SQL ``LIKE`` metacharacters in a user-supplied search term.
+
+    ``%`` and ``_`` are wildcards in ``LIKE``; without escaping, a search for
+    ``100%`` or ``a_b`` silently turns into a wildcard match (and ``q=%`` would
+    match every row). We backslash-escape ``\``, ``%`` and ``_`` so the term is
+    matched literally — callers MUST pair this with an ``ESCAPE '\'`` clause.
+    """
+    return term.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
 def _jobs_scope_clause(request: Request, prefix: str = "") -> tuple[str, list]:
     """Return (sql_predicate, params) restricting job reads to the caller's tenant.
 
@@ -381,9 +392,10 @@ async def list_jobs(
         # like "stripe" matches whether it landed in slug_or_id, the agent
         # client_id, toolkit, or the upstream provider URL. See the docstring
         # on the parameter for the cost story.
-        like = f"%{q.strip()}%"
+        like = f"%{_like_escape(q.strip())}%"
         where_parts.append(
-            "(slug_or_id LIKE ? OR agent_id LIKE ? OR toolkit_id LIKE ? OR upstream_job_url LIKE ?)"
+            "(slug_or_id LIKE ? ESCAPE '\\' OR agent_id LIKE ? ESCAPE '\\' "
+            "OR toolkit_id LIKE ? ESCAPE '\\' OR upstream_job_url LIKE ? ESCAPE '\\')"
         )
         params.extend([like, like, like, like])
 
@@ -402,7 +414,7 @@ async def list_jobs(
             # See `get_job` — correlated lookup avoids a JOIN that would
             # collide with the unqualified column names in `where_sql`.
             "(SELECT parent_trace_id FROM executions WHERE id = jobs.trace_id) AS parent_trace_id "
-            f"FROM jobs{where_sql} ORDER BY created_at DESC LIMIT ? OFFSET ?",
+            f"FROM jobs{where_sql} ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?",
             page_params,
         ) as cur:
             rows = await cur.fetchall()

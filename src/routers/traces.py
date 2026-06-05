@@ -21,7 +21,7 @@ from fastapi import APIRouter, HTTPException, Path, Query, Request
 from src.db import get_db
 from src.models import TraceListPage, TraceOut, UsageResponse
 from src.openapi_helpers import agent_hints
-from src.routers.jobs import _jobs_scope_clause
+from src.routers.jobs import _jobs_scope_clause, _like_escape
 
 
 router = APIRouter()
@@ -330,10 +330,10 @@ async def list_traces(
         # cheap. We OR the four columns so a single token like "stripe"
         # matches whether it landed in api_id, operation_id, workflow_id, or
         # agent_id.
-        like = f"%{q.strip()}%"
+        like = f"%{_like_escape(q.strip())}%"
         where_parts.append(
-            "(e.operation_id LIKE ? OR e.workflow_id LIKE ? "
-            "OR e.api_id LIKE ? OR e.agent_id LIKE ?)"
+            "(e.operation_id LIKE ? ESCAPE '\\' OR e.workflow_id LIKE ? ESCAPE '\\' "
+            "OR e.api_id LIKE ? ESCAPE '\\' OR e.agent_id LIKE ? ESCAPE '\\')"
         )
         params.extend([like, like, like, like])
 
@@ -351,7 +351,7 @@ async def list_traces(
                FROM executions e
                LEFT JOIN apis a ON a.id = e.api_id
                WHERE {where_sql}
-               ORDER BY e.created_at DESC LIMIT ? OFFSET ?""",
+               ORDER BY e.created_at DESC, e.id DESC LIMIT ? OFFSET ?""",
             page_params,
         ) as cur:
             rows = await cur.fetchall()
