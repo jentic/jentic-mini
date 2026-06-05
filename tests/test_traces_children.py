@@ -60,13 +60,6 @@ async def test_workflow_trace_returns_child_broker_traces_in_order(
         error=None,
         parent_trace_id=parent_id,
     )
-    # Bump created_at on the second child so the ASC ordering is observable.
-    with sqlite3.connect(DB_PATH) as cx:
-        cx.execute(
-            "UPDATE executions SET created_at = created_at + 5 WHERE id = ?",
-            (second_child,),
-        )
-        cx.commit()
     await write_trace(
         trace_id=second_child,
         toolkit_id="default",
@@ -79,6 +72,9 @@ async def test_workflow_trace_returns_child_broker_traces_in_order(
         error="validation_failed",
         parent_trace_id=parent_id,
     )
+    # Bump created_at on the second child *after* it's inserted so the ASC
+    # ordering is genuinely exercised (write_trace stamps near-identical
+    # second-resolution timestamps, so without this the order is a tie).
     with sqlite3.connect(DB_PATH) as cx:
         cx.execute(
             "UPDATE executions SET created_at = created_at + 5 WHERE id = ?",

@@ -171,3 +171,100 @@ async def test_jobs_q_matches_slug_or_upstream_url(admin_client, cleanup_q_rows)
     assert target_slug in ids
     assert target_upstream in ids
     assert other not in ids
+
+
+@pytest.mark.asyncio
+async def test_jobs_q_matches_toolkit_and_agent(admin_client, cleanup_q_rows):  # noqa: ARG001
+    """The OR list also covers `toolkit_id` and `agent_id` — exercise both."""
+    by_toolkit = f"job_q_{uuid.uuid4().hex[:8]}"
+    by_agent = f"job_q_{uuid.uuid4().hex[:8]}"
+
+    with sqlite3.connect(DB_PATH) as cx:
+        cx.execute(
+            """INSERT INTO jobs (id, kind, slug_or_id, toolkit_id, status, created_at)
+               VALUES (?, 'broker', 'POST /api.example.com/x', 'acme-payments', 'complete',
+                       strftime('%s','now'))""",
+            (by_toolkit,),
+        )
+        cx.execute(
+            """INSERT INTO jobs (id, kind, slug_or_id, toolkit_id, agent_id, status, created_at)
+               VALUES (?, 'broker', 'POST /api.example.com/y', 'default', 'agnt_zeta42',
+                       'complete', strftime('%s','now'))""",
+            (by_agent,),
+        )
+        cx.commit()
+
+    by_tk = {r["job_id"] for r in admin_client.get("/jobs?q=acme-pay&limit=100").json()["data"]}
+    assert by_toolkit in by_tk
+    assert by_agent not in by_tk
+
+    by_ag = {r["job_id"] for r in admin_client.get("/jobs?q=zeta42&limit=100").json()["data"]}
+    assert by_agent in by_ag
+    assert by_toolkit not in by_ag
+
+
+@pytest.mark.asyncio
+async def test_q_escapes_like_wildcards(admin_client, cleanup_q_rows):  # noqa: ARG001
+    """`%` / `_` in `q` are matched literally, not as LIKE wildcards.
+
+    Regression guard: before escaping, `q=%` matched every row (the filter
+    silently degraded to no-filter) and a literal `%` was unsearchable.
+    """
+    literal = f"exec_q_{uuid.uuid4().hex[:8]}"
+    plain = f"exec_q_{uuid.uuid4().hex[:8]}"
+
+    await write_trace(
+        trace_id=literal,
+        toolkit_id="default",
+        operation_id="GET/api.example.com/discount/100%off",
+        workflow_id=None,
+        spec_path=None,
+        status="success",
+        http_status=200,
+        duration_ms=10,
+        error=None,
+        api_id="example.com",
+    )
+    await write_trace(
+        trace_id=plain,
+        toolkit_id="default",
+        operation_id="GET/api.example.com/charges",
+        workflow_id=None,
+        spec_path=None,
+        status="success",
+        http_status=200,
+        duration_ms=10,
+        error=None,
+        api_id="example.com",
+    )
+
+    # A bare `%` must NOT act as "match everything": it should only match the
+    # row that literally contains a percent sign.
+    pct = {r["id"] for r in admin_client.get("/traces?q=%25&limit=500").json()["traces"]}
+    assert literal in pct
+    assert plain not in pct
+
+    # `_` is a single-char wildcard in raw LIKE; escaped, "100%o" matches only
+    # the literal row, proving both metachars are neutralised.
+    combo = {r["id"] for r in admin_client.get("/traces?q=100%25off&limit=500").json()["traces"]}
+    assert literal in combo
+    assert plain not in combo
+
+
+@pytest.mark.asyncio
+async def test_jobs_response_uses_capability_field(admin_client, cleanup_q_rows):  # noqa: ARG001
+    """`GET /jobs` serialises the slug_or_id column as `capability` on the wire."""
+    jid = f"job_q_{uuid.uuid4().hex[:8]}"
+    with sqlite3.connect(DB_PATH) as cx:
+        cx.execute(
+            """INSERT INTO jobs (id, kind, slug_or_id, toolkit_id, status, created_at)
+               VALUES (?, 'workflow', 'wf_capability_probe', 'default', 'complete',
+                       strftime('%s','now'))""",
+            (jid,),
+        )
+        cx.commit()
+
+    rows = admin_client.get("/jobs?q=capability_probe&limit=100").json()["data"]
+    row = next(r for r in rows if r["job_id"] == jid)
+    assert row["capability"] == "wf_capability_probe"
+    assert "slug_or_id" not in row
