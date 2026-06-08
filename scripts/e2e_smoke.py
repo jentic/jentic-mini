@@ -413,18 +413,22 @@ def run_workflow(http: HTTPClient, slug: str) -> dict[str, Any]:
     }
 
 
-def assert_workflow_links(
-    http: HTTPClient, workflow_trace_id: str, host: str = HTTPBIN_HOST
-) -> dict[str, Any]:
+def assert_workflow_links(http: HTTPClient, workflow_trace_id: str) -> dict[str, Any]:
     """Find child traces of the workflow and confirm parent_trace_id is set.
 
-    Strategy: query /traces filtered by api_id=httpbin.org, then keep only
-    rows with parent_trace_id == workflow_trace_id. We expect at least two
-    (one per Arazzo step). Anything less is a regression.
+    Strategy: list recent /traces, then keep only rows with
+    parent_trace_id == workflow_trace_id. We expect at least two (one per
+    Arazzo step). Anything less is a regression.
+
+    We deliberately do NOT filter by api_id here: httpbin needs no auth, so
+    no credential matches and the broker stores api_id=NULL on these child
+    traces (api_id is sourced from the matched credential record). An
+    api_id=httpbin.org filter would exact-match-exclude every child row and
+    the assertion would always find zero. parent_trace_id is the real link.
     """
     status, _, body = http.json_request(
         "GET",
-        f"/traces?api_id={host}&limit=50",
+        "/traces?limit=50",
     )
     if status != 200 or not isinstance(body, dict):
         return {"ok": False, "http": status, "reason": "lookup_failed", "body": body}
