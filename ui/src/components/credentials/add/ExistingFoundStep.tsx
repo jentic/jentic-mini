@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { ChevronRight, Plus, KeyRound } from 'lucide-react';
+import { ChevronRight, Plus, KeyRound, Check } from 'lucide-react';
 import type { ApiOut, CredentialOut } from '@/api/types';
 import { api } from '@/api/client';
 import { Button } from '@/components/ui/Button';
@@ -26,6 +26,10 @@ import { timeAgo } from '@/lib/time';
 export interface ExistingFoundStepProps {
 	selectedApi: ApiOut;
 	mode: 'workspace' | 'toolkit';
+	/** Credential ids already bound to the target toolkit (toolkit mode only).
+	 *  These rows are shown as "Already bound" and can't be selected, so the
+	 *  user never triggers a 409 "Credential already in toolkit". */
+	boundCredentialIds?: string[];
 	/** Called when the user wants to bind / pick one of the existing
 	 *  credentials. Workspace mode hides the row buttons (no-op), so
 	 *  this is only fired in toolkit mode. */
@@ -39,6 +43,7 @@ export interface ExistingFoundStepProps {
 export function ExistingFoundStep({
 	selectedApi,
 	mode,
+	boundCredentialIds,
 	onUseExisting,
 	onAddAnother,
 	onChangeApi,
@@ -51,6 +56,7 @@ export function ExistingFoundStep({
 	});
 
 	const items = data ?? [];
+	const bound = new Set(boundCredentialIds ?? []);
 
 	if (isLoading) {
 		return <LoadingState message="Checking for existing credentials…" />;
@@ -81,19 +87,23 @@ export function ExistingFoundStep({
 				</p>
 				<p className="text-muted-foreground/80 mb-3 text-xs">
 					{mode === 'toolkit'
-						? 'Bind one of these to the toolkit, or add a new credential.'
+						? 'Bind one of these to the toolkit, or add a new credential. A toolkit can hold several — the broker picks the right one per request by API, service, or explicit alias.'
 						: 'A credential for this API already exists. You can still add another if you need a separate identity.'}
 				</p>
 				<ul className="space-y-2">
-					{items.map((cred) => (
-						<li key={cred.id}>
-							<ExistingRow
-								cred={cred}
-								selectable={mode === 'toolkit'}
-								onSelect={() => onUseExisting(cred)}
-							/>
-						</li>
-					))}
+					{items.map((cred) => {
+						const isBound = bound.has(cred.id);
+						return (
+							<li key={cred.id}>
+								<ExistingRow
+									cred={cred}
+									selectable={mode === 'toolkit' && !isBound}
+									bound={isBound}
+									onSelect={() => onUseExisting(cred)}
+								/>
+							</li>
+						);
+					})}
 				</ul>
 			</div>
 
@@ -126,10 +136,12 @@ function SelectedApiSummary({ api: a, onChange }: { api: ApiOut; onChange: () =>
 function ExistingRow({
 	cred,
 	selectable,
+	bound,
 	onSelect,
 }: {
 	cred: CredentialOut;
 	selectable: boolean;
+	bound?: boolean;
 	onSelect: () => void;
 }) {
 	const status = deriveStatus(cred);
@@ -152,13 +164,22 @@ function ExistingRow({
 					<p className="text-muted-foreground mt-0.5 truncate text-xs">{cred.identity}</p>
 				)}
 			</div>
-			<span className="text-muted-foreground/60 text-xs whitespace-nowrap">
-				{cred.last_used_at
-					? `used ${timeAgo(cred.last_used_at)}`
-					: cred.created_at
-						? timeAgo(cred.created_at)
-						: ''}
-			</span>
+			{bound ? (
+				<span
+					title="Already bound to this toolkit"
+					className="bg-success/10 text-success border-success/30 inline-flex shrink-0 items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium whitespace-nowrap"
+				>
+					<Check className="h-3 w-3" aria-hidden /> Bound
+				</span>
+			) : (
+				<span className="text-muted-foreground/60 text-xs whitespace-nowrap">
+					{cred.last_used_at
+						? `used ${timeAgo(cred.last_used_at)}`
+						: cred.created_at
+							? timeAgo(cred.created_at)
+							: ''}
+				</span>
+			)}
 			{selectable && (
 				<ChevronRight className="text-muted-foreground h-4 w-4 shrink-0" aria-hidden />
 			)}

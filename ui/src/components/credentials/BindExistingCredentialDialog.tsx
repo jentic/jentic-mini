@@ -7,6 +7,7 @@ import { Dialog } from '@/components/ui/Dialog';
 import { Button } from '@/components/ui/Button';
 import { SearchInput } from '@/components/ui/SearchInput';
 import { ErrorAlert } from '@/components/ui/ErrorAlert';
+import { messageFromApiError } from '@/lib/apiError';
 import { LoadingState } from '@/components/ui/LoadingState';
 import { StatusDot, type CredentialStatus } from '@/components/credentials';
 import { timeAgo } from '@/lib/time';
@@ -86,7 +87,7 @@ export function BindExistingCredentialDialog({
 			onBound?.(credentialId);
 			onClose();
 		},
-		onError: (e: Error) => setError(e.message),
+		onError: (e) => setError(messageFromApiError(e)),
 	});
 
 	const excluded = useMemo(() => new Set(excludeCredentialIds), [excludeCredentialIds]);

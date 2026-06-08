@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ChevronLeft } from 'lucide-react';
 import { SearchApiStep } from './add/SearchApiStep';
 import { ExistingFoundStep } from './add/ExistingFoundStep';
@@ -12,6 +12,7 @@ import { Dialog } from '@/components/ui/Dialog';
 import { Button } from '@/components/ui/Button';
 import { ErrorAlert } from '@/components/ui/ErrorAlert';
 import { LoadingState } from '@/components/ui/LoadingState';
+import { messageFromApiError } from '@/lib/apiError';
 import type {
 	AddCredentialMode,
 	AddCredentialState,
@@ -63,6 +64,19 @@ export function AddCredentialDialog({
 	const [error, setError] = useState<string | null>(null);
 	const [credentialLabel, setCredentialLabel] = useState<string | null>(null);
 
+	// In toolkit mode, fetch what's already bound so the "existing credentials"
+	// step can mark them as bound and stop the user from picking one (which would
+	// otherwise hit a 409 "Credential already in toolkit").
+	const { data: boundCredentialIds } = useQuery({
+		queryKey: ['toolkit-credentials', toolkitId],
+		queryFn: () => api.listToolkitCredentials(toolkitId!),
+		enabled: open && mode === 'toolkit' && !!toolkitId,
+		select: (raw: unknown) => {
+			const list = (Array.isArray(raw) ? raw : []) as Array<{ credential_id?: string }>;
+			return list.map((c) => c.credential_id).filter(Boolean) as string[];
+		},
+	});
+
 	useEffect(() => {
 		if (!open) {
 			setError(null);
@@ -80,6 +94,9 @@ export function AddCredentialDialog({
 		}) => api.bindCredential(tkId, credentialId),
 		onSuccess: (_data, variables) => {
 			queryClient.invalidateQueries({ queryKey: ['toolkit', variables.toolkitId] });
+			queryClient.invalidateQueries({
+				queryKey: ['toolkit-credentials', variables.toolkitId],
+			});
 			queryClient.invalidateQueries({ queryKey: ['toolkits'] });
 			queryClient.invalidateQueries({ queryKey: ['toolkit-api-bindings'] });
 			queryClient.invalidateQueries({ queryKey: ['toolkit-card-enrichment'] });
@@ -89,7 +106,7 @@ export function AddCredentialDialog({
 			});
 			onGoToStep('confirm');
 		},
-		onError: (e: Error) => setError(e.message),
+		onError: (e) => setError(messageFromApiError(e)),
 	});
 
 	const handleApiSelected = (api: ApiOut) => {
@@ -193,6 +210,7 @@ export function AddCredentialDialog({
 						<ExistingFoundStep
 							selectedApi={selectedApi}
 							mode={mode}
+							boundCredentialIds={boundCredentialIds}
 							onUseExisting={handleUseExisting}
 							onAddAnother={() => onGoToStep('configure')}
 							onChangeApi={() => {
