@@ -58,6 +58,7 @@ DEFAULT_BASE_URL = os.environ.get("JENTIC_BASE_URL", "http://localhost:8900")
 ADMIN_USERNAME = os.environ.get("JENTIC_ADMIN_USERNAME", "admin")
 ADMIN_PASSWORD = os.environ.get("JENTIC_ADMIN_PASSWORD", "adminadmin")
 TOOLKIT_KEY_LABEL = "e2e-smoke"
+NO_AUTH_CRED_LABEL = "e2e-smoke httpbin (no-auth)"
 WORKFLOW_SLUG = "e2e-smoke-httpbin"
 SYNC_PROBES = [
     ("GET", "/get", 200),
@@ -123,6 +124,14 @@ class HTTPClient:
             status = exc.code
             resp_headers = dict(exc.headers.items()) if exc.headers else {}
             payload = exc.read() if hasattr(exc, "read") else b""
+        except (urllib.error.URLError, OSError) as exc:
+            # Transport-level failure (connection reset/refused/timeout) — e.g. a
+            # flaky upstream dropping the socket mid-forward. Surface it as a
+            # synthetic 0 status so the probe is recorded as a failure rather
+            # than crashing the whole smoke run.
+            status = 0
+            resp_headers = {}
+            payload = str(exc).encode()
         return status, resp_headers, payload
 
     def json_request(
@@ -182,6 +191,48 @@ def mint_agent_key(http: HTTPClient) -> str:
     if status not in (200, 201) or not isinstance(body, dict) or not body.get("key"):
         raise SystemExit(f"Could not mint agent key (HTTP {status}): {body!r}")
     return body["key"]
+
+
+def ensure_no_auth_credential(http: HTTPClient) -> None:
+    """Register an auth_type=none credential for httpbin.org so the broker
+    forwards calls instead of fail-closing.
+
+    jentic-mini uses a route-based credential model: the broker denies any
+    authenticated call (403 policy_denied) to a host with no matching
+    credential_routes row — there is no anonymous fall-through for toolkit
+    callers (see tests/test_no_auth_api.py and src/routers/broker.py). A
+    "no-auth" upstream like httpbin is therefore modelled as an
+    auth_type=none credential: POST /credentials derives the route from
+    api_id (host = "httpbin.org") and injects no auth header. The agent key
+    is on the default toolkit, which the broker resolves by host without a
+    toolkit_credentials binding, so this single call is enough.
+
+    Idempotent: deletes any prior e2e-smoke no-auth credential first so the
+    derived id and route stay stable across re-runs.
+    """
+    status, _, body = http.json_request("GET", "/credentials?api_id=httpbin.org")
+    # GET /credentials returns a bare JSON array, not an envelope object. Delete
+    # every prior e2e-smoke no-auth credential so a re-run doesn't leave two
+    # credentials matching the same host (the broker then 409s CREDENTIAL_AMBIGUOUS).
+    if status == 200 and isinstance(body, list):
+        for cred in body:
+            if cred.get("label") == NO_AUTH_CRED_LABEL and cred.get("id"):
+                http.json_request("DELETE", f"/credentials/{cred['id']}")
+    status, _, body = http.json_request(
+        "POST",
+        "/credentials",
+        json_body={
+            "label": NO_AUTH_CRED_LABEL,
+            "api_id": HTTPBIN_HOST,
+            "auth_type": "none",
+            "value": "",
+        },
+    )
+    if status not in (200, 201) or not isinstance(body, dict):
+        raise SystemExit(
+            f"Could not register no-auth credential for {HTTPBIN_HOST} (HTTP {status}): {body!r}\n"
+            f"  Without it the broker fail-closes every probe with 403 policy_denied."
+        )
 
 
 def fire_sync(http: HTTPClient, method: str, path: str, expected: int) -> dict[str, Any]:
@@ -463,6 +514,8 @@ def main() -> int:
     print(f"  logged in as {ADMIN_USERNAME} on {http.base_url}")
     http.agent_key = mint_agent_key(http)
     print(f"  minted agent key  prefix={http.agent_key[:6]}…  label={TOOLKIT_KEY_LABEL}")
+    ensure_no_auth_credential(http)
+    print(f"  registered no-auth credential for {HTTPBIN_HOST} (route-based passthrough)")
 
     section("Sync broker calls")
     sync_results = []
