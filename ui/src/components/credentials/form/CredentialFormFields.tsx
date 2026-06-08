@@ -23,7 +23,6 @@ import {
 	parseSchemeOptions,
 	isCompoundApiKey,
 	compoundLabels,
-	firstSchemeNameFromSchemes,
 	type SchemeOption,
 	type SchemeType,
 } from '@/lib/credentials/schemes';
@@ -225,10 +224,6 @@ export function CredentialFormFields({
 	const schemeType = activeScheme?.type ?? 'unknown';
 	const compound = isCompoundApiKey(schemes);
 	const { secretLabel, identityLabel } = compoundLabels(schemes);
-	// Scheme name kept here so future writes that need it (e.g. setting
-	// `scheme_name` on the credential row) can pull from a single source.
-	const _schemeName = activeScheme?.name ?? firstSchemeNameFromSchemes(schemes);
-	void _schemeName;
 
 	const createMutation = useMutation({
 		mutationFn: (d: CredentialCreate) => api.createCredential(d),

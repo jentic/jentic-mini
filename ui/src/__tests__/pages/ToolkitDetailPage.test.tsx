@@ -425,6 +425,35 @@ describe('ToolkitDetailPage — credential permissions (no duplication)', () => 
 		expect(savedBody![0]).toEqual({ effect: 'deny' });
 	});
 
+	it('keeps the editor open when the save fails (surfaces the error)', async () => {
+		const user = userEvent.setup();
+		mockToolkitWithCredential();
+		worker.use(
+			http.get('/toolkits/:id/credentials/:credId/permissions', () =>
+				HttpResponse.json([
+					{ effect: 'allow', methods: ['GET'], path: '^/v1/charges$' },
+					...SYSTEM_RULES,
+				]),
+			),
+			createErrorHandler('put', '/toolkits/:id/credentials/:credId/permissions', {
+				status: 500,
+			}),
+		);
+
+		renderToolkit();
+		await screen.findByText('Stripe Token');
+		await openPermissionEditor(user);
+
+		await user.click(screen.getByRole('button', { name: /save rules/i }));
+
+		// onError must NOT close the editor (only onSuccess does). The user
+		// keeps their in-progress rules and sees the failure.
+		await waitFor(() =>
+			expect(screen.getByRole('button', { name: /save rules/i })).toBeEnabled(),
+		);
+		expect(screen.getByText(/permission rules for/i)).toBeInTheDocument();
+	});
+
 	it('repeated open→save cycles never grow the agent rule list', async () => {
 		const user = userEvent.setup();
 		const putBodies: any[][] = [];

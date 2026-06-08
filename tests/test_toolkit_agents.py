@@ -77,6 +77,54 @@ def test_list_toolkit_agents_returns_granted_active_agents(admin_client):
         _cleanup(toolkit_id)
 
 
+def test_list_toolkit_agents_excludes_soft_deleted(admin_client):
+    """An agent with a non-null `deleted_at` is deregistered and must not appear,
+    even though its grant row still exists."""
+    resp = admin_client.post("/toolkits", json={"name": "Soft Del TK"})
+    toolkit_id = resp.json()["id"]
+    try:
+        _seed_agent(_AGENT_A, "Alive")
+        _seed_agent(_AGENT_B, "Deleted")
+        _grant(_AGENT_A, toolkit_id)
+        _grant(_AGENT_B, toolkit_id)
+        # Soft-delete agent B after granting.
+        with sqlite3.connect(DB_PATH) as cx:
+            cx.execute(
+                "UPDATE agents SET deleted_at=strftime('%s','now') WHERE client_id=?",
+                (_AGENT_B,),
+            )
+            cx.commit()
+
+        r = admin_client.get(f"/toolkits/{toolkit_id}/agents")
+        assert r.status_code == 200, r.text
+        ids = [a["client_id"] for a in r.json()["agents"]]
+        assert _AGENT_A in ids
+        assert _AGENT_B not in ids
+    finally:
+        _cleanup(toolkit_id)
+
+
+def test_list_toolkit_agents_includes_disabled_status(admin_client):
+    """A `disabled`-status agent still holds its grant and must be returned so the
+    UI can render it (only `denied`/soft-deleted are filtered out). This protects
+    the boundary against an over-broad status filter regressing the endpoint."""
+    resp = admin_client.post("/toolkits", json={"name": "Disabled Status TK"})
+    toolkit_id = resp.json()["id"]
+    try:
+        _seed_agent(_AGENT_A, "Disabled One", status="disabled")
+        _grant(_AGENT_A, toolkit_id)
+
+        r = admin_client.get(f"/toolkits/{toolkit_id}/agents")
+        assert r.status_code == 200, r.text
+        agents = r.json()["agents"]
+        ids = [a["client_id"] for a in agents]
+        assert _AGENT_A in ids
+        row = next(a for a in agents if a["client_id"] == _AGENT_A)
+        assert row["status"] == "disabled"
+    finally:
+        _cleanup(toolkit_id)
+
+
 def test_list_toolkit_agents_empty_when_no_grants(admin_client):
     resp = admin_client.post("/toolkits", json={"name": "No Agents TK"})
     toolkit_id = resp.json()["id"]

@@ -53,9 +53,17 @@ export function useApiSchemes(selectedApi: ApiOut | null): {
 	const { data: spec, isLoading: specLoading } = useQuery({
 		queryKey: ['spec', specUrl],
 		queryFn: async () => {
-			const res = await fetch(specUrl!);
-			if (!res.ok) throw new Error(`Failed to fetch spec: ${res.status}`);
-			return res.json();
+			// Abort the spec fetch if the (public, third-party) host is slow so the
+			// credential form never hangs indefinitely waiting on it.
+			const controller = new AbortController();
+			const timeout = setTimeout(() => controller.abort(), 10_000);
+			try {
+				const res = await fetch(specUrl!, { signal: controller.signal });
+				if (!res.ok) throw new Error(`Failed to fetch spec: ${res.status}`);
+				return await res.json();
+			} finally {
+				clearTimeout(timeout);
+			}
 		},
 		enabled: !!specUrl,
 		staleTime: 5 * 60 * 1000,

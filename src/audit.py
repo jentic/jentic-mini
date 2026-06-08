@@ -9,7 +9,7 @@ Callers should use `persist_audit()` instead of `audit_log.info()` for events
 the UI needs to surface; legacy callsites that only need stdout output can
 continue calling `audit_log.info(...)` directly.
 
-Schema (see alembic 0007):
+Schema (see alembic 0008):
 
     audit_events(
         id TEXT PK, ts REAL, actor_kind TEXT, actor_id TEXT,

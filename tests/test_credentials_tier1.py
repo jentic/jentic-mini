@@ -370,6 +370,35 @@ def test_audit_requires_human_session(agent_only_client):
     assert resp.status_code == 403, resp.text
 
 
+def test_patch_rejects_ungranted_agent(admin_client, agent_only_client):
+    """An agent key without an explicit PATCH /credentials allow rule cannot
+    mutate a credential. Only POST is exercised elsewhere; assert PATCH too."""
+    api_id = "tier1-agent-patch-gate.example.com"
+    _register_api(admin_client, api_id)
+    cid = _create_credential(admin_client, api_id, label="agent-patch-gate")
+
+    resp = agent_only_client.patch(f"/credentials/{cid}", json={"label": "renamed"})
+    assert resp.status_code == 403, resp.text
+    # The credential must be untouched.
+    got = admin_client.get(f"/credentials/{cid}")
+    assert got.status_code == 200
+    assert got.json()["label"] == "agent-patch-gate"
+
+
+def test_delete_rejects_ungranted_agent(admin_client, agent_only_client):
+    """An agent key without an explicit DELETE /credentials allow rule cannot
+    delete a credential. Only POST is exercised elsewhere; assert DELETE too."""
+    api_id = "tier1-agent-delete-gate.example.com"
+    _register_api(admin_client, api_id)
+    cid = _create_credential(admin_client, api_id, label="agent-delete-gate")
+
+    resp = agent_only_client.delete(f"/credentials/{cid}")
+    assert resp.status_code == 403, resp.text
+    # The credential must still exist.
+    got = admin_client.get(f"/credentials/{cid}")
+    assert got.status_code == 200, got.text
+
+
 # ── Pipedream revoke cascade on DELETE /credentials ───────────────────────────
 
 

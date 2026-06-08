@@ -150,7 +150,15 @@ def _fernet() -> Fernet:
         try:
             return Fernet(key.encode())
         except Exception:
-            pass  # fall through to auto-generate
+            # A malformed JENTIC_VAULT_KEY would otherwise silently fall through
+            # to a freshly generated key, leaving every existing ciphertext
+            # permanently undecryptable. Warn loudly so the misconfiguration is
+            # visible rather than manifesting as opaque decrypt failures later.
+            _vault_log.warning(
+                "JENTIC_VAULT_KEY is set but invalid; ignoring it and falling back to "
+                "the on-disk key. Existing credentials encrypted with a different key "
+                "will fail to decrypt. Verify JENTIC_VAULT_KEY is a valid Fernet key."
+            )
     # Auto-generate and persist a key on first use
     if _KEY_FILE.exists():
         key = _KEY_FILE.read_text().strip()

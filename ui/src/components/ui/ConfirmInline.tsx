@@ -22,12 +22,17 @@ export function ConfirmInline({
 	const [pending, setPending] = useState(false);
 
 	if (!pending) {
+		const childOnClick = (children.props as { onClick?: (e: React.MouseEvent) => void })
+			.onClick;
 		return React.cloneElement(children, {
 			onClick: (e: React.MouseEvent) => {
+				// Preserve the child's own handler before arming the confirm so we
+				// don't silently swallow it (latent footgun on a cloned trigger).
+				childOnClick?.(e);
 				e.stopPropagation();
 				setPending(true);
 			},
-		});
+		} as Partial<typeof children.props>);
 	}
 
 	return (
