@@ -19,13 +19,13 @@
 	},
 	"dependencies": {
 		"@jentic/arazzo-ui": "^1.0.0-alpha.31",
-		"@tanstack/react-query": "^5.100.14",
+		"@tanstack/react-query": "^5.101.0",
 		"clsx": "^2.1.1",
 		"framer-motion": "^12.40.0",
 		"lucide-react": "^1.17.0",
 		"react": "^18.3.1",
 		"react-dom": "^18.3.1",
-		"react-router-dom": "^6.30.3",
+		"react-router-dom": "^6.30.4",
 		"rehype-sanitize": "^6.0.0",
 		"tailwind-merge": "^3.6.0"
 	},
@@ -33,7 +33,7 @@
 		"lodash-es": ">=4.18.0"
 	},
 	"devDependencies": {
-		"@commitlint/cli": "^21.0.1",
+		"@commitlint/cli": "^21.0.2",
 		"@commitlint/config-conventional": "^21.0.1",
 		"@eslint/js": "^9.39.4",
 		"@playwright/test": "^1.60.0",
@@ -46,7 +46,7 @@
 		"@types/react-dom": "^18.3.7",
 		"@vitejs/plugin-react": "^4.7.0",
 		"@vitest/browser": "^4.1.7",
-		"@vitest/browser-playwright": "^4.1.4",
+		"@vitest/browser-playwright": "^4.1.8",
 		"@vitest/coverage-istanbul": "^4.1.5",
 		"axe-core": "^4.11.4",
 		"eslint": "^9.39.4",
@@ -59,7 +59,7 @@
 		"eslint-plugin-unused-imports": "^4.4.1",
 		"globals": "^17.6.0",
 		"husky": "^9.1.7",
-		"lint-staged": "^17.0.5",
+		"lint-staged": "^17.0.7",
 		"msw": "^2.14.6",
 		"prettier": "^3.8.3",
 		"prettier-plugin-tailwindcss": "^0.8.0",
