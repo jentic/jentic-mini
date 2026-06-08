@@ -237,6 +237,17 @@ export function ToolkitDetailBody({
 }: ToolkitDetailBodyProps) {
 	const isSheet = layout === 'sheet';
 	const queryClient = useQueryClient();
+	// Bind/unbind/permission changes ripple across surfaces that host this view
+	// (the toolkit list, the Workspace tiles, the API-detail page, and the card
+	// enrichment counts). Invalidate them all so counts/lists never go stale.
+	const invalidateToolkitSurfaces = React.useCallback(() => {
+		queryClient.invalidateQueries({ queryKey: ['toolkit', toolkitId] });
+		queryClient.invalidateQueries({ queryKey: ['toolkits'] });
+		queryClient.invalidateQueries({ queryKey: ['toolkit-api-bindings'] });
+		queryClient.invalidateQueries({ queryKey: ['toolkit-card-enrichment'] });
+		queryClient.invalidateQueries({ queryKey: ['credentials'] });
+		queryClient.invalidateQueries({ queryKey: ['workspace'] });
+	}, [queryClient, toolkitId]);
 	const [showKeyCreate, setShowKeyCreate] = useState(false);
 	const [keyName, setKeyName] = useState('');
 	const [newKey, setNewKey] = useState<string | null>(null);
@@ -330,7 +341,7 @@ export function ToolkitDetailBody({
 	const unbindMutation = useMutation({
 		mutationFn: (credentialId: string) => api.unbindCredential(toolkitId, credentialId),
 		onSuccess: () => {
-			queryClient.invalidateQueries({ queryKey: ['toolkit', toolkitId] });
+			invalidateToolkitSurfaces();
 			toast({ title: 'Credential unbound', variant: 'success' });
 		},
 		onError: (err: any) =>
@@ -345,8 +356,7 @@ export function ToolkitDetailBody({
 		mutationFn: () =>
 			api.updateToolkit(toolkitId, { name: editName || null, description: editDesc || null }),
 		onSuccess: () => {
-			queryClient.invalidateQueries({ queryKey: ['toolkit', toolkitId] });
-			queryClient.invalidateQueries({ queryKey: ['toolkits'] });
+			invalidateToolkitSurfaces();
 			setShowSettings(false);
 		},
 	});

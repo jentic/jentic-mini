@@ -124,7 +124,6 @@ export function CredentialEditSheet({
 				</header>
 
 				<div className="flex-1 overflow-hidden">
-					{!credentialId && null}
 					{credentialId && (loadingCred || loadingApi || !existingApi) && (
 						<div className="px-5 py-4">
 							<LoadingState
@@ -136,6 +135,7 @@ export function CredentialEditSheet({
 					{credentialId && existing && existingApi && (
 						<div className="h-full">
 							<CredentialFormFields
+								key={credentialId}
 								selectedApi={existingApi as ApiOut}
 								editId={credentialId}
 								existing={existing}

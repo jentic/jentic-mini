@@ -275,7 +275,8 @@ describe('ToolkitDetailPage — unbind credential', () => {
 			}),
 		);
 
-		renderToolkit();
+		const { queryClient } = renderToolkit();
+		const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries');
 		expect(await screen.findByText('Stripe Token')).toBeInTheDocument();
 
 		await user.click(screen.getByRole('button', { name: /unbind/i }));
@@ -287,6 +288,15 @@ describe('ToolkitDetailPage — unbind credential', () => {
 		await user.click(confirmBtn);
 
 		await waitFor(() => expect(unbound).toBe(true));
+
+		// Cross-surface invalidation: the host list / workspace / enrichment counts
+		// must refresh so an unbind never leaves a stale "Used by N" chip behind.
+		const invalidatedKeys = invalidateSpy.mock.calls.map(
+			(c) => (c[0] as { queryKey?: unknown[] })?.queryKey?.[0],
+		);
+		expect(invalidatedKeys).toEqual(
+			expect.arrayContaining(['toolkit', 'toolkits', 'toolkit-card-enrichment', 'workspace']),
+		);
 	});
 });
 

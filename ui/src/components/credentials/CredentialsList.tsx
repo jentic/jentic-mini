@@ -11,6 +11,7 @@ import { ConfirmDeleteDialog, type DeleteTarget } from '@/components/ui/ConfirmD
 import { EmptyState } from '@/components/ui/EmptyState';
 import { ErrorAlert } from '@/components/ui/ErrorAlert';
 import { LoadingState } from '@/components/ui/LoadingState';
+import { toast } from '@/components/ui/toastStore';
 import { SectionTitle } from '@/components/discovery/SectionTitle';
 
 interface CredentialsListProps {
@@ -122,7 +123,19 @@ export function CredentialsList({
 		},
 		onSuccess: () => {
 			queryClient.invalidateQueries({ queryKey: ['credentials'] });
+			queryClient.invalidateQueries({ queryKey: ['toolkit-card-enrichment'] });
+			queryClient.invalidateQueries({ queryKey: ['workspace'] });
 			setDeleteTarget(null);
+			toast({ title: 'Credential deleted', variant: 'success' });
+		},
+		onError: (err: any) => {
+			setDeleteTarget(null);
+			toast({
+				title: 'Failed to delete credential',
+				description:
+					err?.body?.error ?? err?.message ?? 'The server rejected the deletion.',
+				variant: 'error',
+			});
 		},
 	});
 

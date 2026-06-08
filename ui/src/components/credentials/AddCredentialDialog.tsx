@@ -81,6 +81,12 @@ export function AddCredentialDialog({
 		onSuccess: (_data, variables) => {
 			queryClient.invalidateQueries({ queryKey: ['toolkit', variables.toolkitId] });
 			queryClient.invalidateQueries({ queryKey: ['toolkits'] });
+			queryClient.invalidateQueries({ queryKey: ['toolkit-api-bindings'] });
+			queryClient.invalidateQueries({ queryKey: ['toolkit-card-enrichment'] });
+			queryClient.invalidateQueries({ queryKey: ['workspace'] });
+			queryClient.invalidateQueries({
+				queryKey: ['credential-bindings', variables.credentialId],
+			});
 			onGoToStep('confirm');
 		},
 		onError: (e: Error) => setError(e.message),

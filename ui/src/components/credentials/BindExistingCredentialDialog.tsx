@@ -79,6 +79,10 @@ export function BindExistingCredentialDialog({
 		onSuccess: (_data, credentialId) => {
 			queryClient.invalidateQueries({ queryKey: ['toolkit', toolkitId] });
 			queryClient.invalidateQueries({ queryKey: ['toolkits'] });
+			queryClient.invalidateQueries({ queryKey: ['toolkit-api-bindings'] });
+			queryClient.invalidateQueries({ queryKey: ['toolkit-card-enrichment'] });
+			queryClient.invalidateQueries({ queryKey: ['workspace'] });
+			queryClient.invalidateQueries({ queryKey: ['credential-bindings', credentialId] });
 			onBound?.(credentialId);
 			onClose();
 		},

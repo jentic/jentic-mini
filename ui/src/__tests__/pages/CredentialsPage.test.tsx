@@ -1,5 +1,5 @@
 import { http, HttpResponse, delay } from 'msw';
-import { screen, renderWithProviders, createErrorHandler } from '../test-utils';
+import { screen, waitFor, renderWithProviders, userEvent, createErrorHandler } from '../test-utils';
 import { worker } from '../mocks/browser';
 import CredentialsPage from '@/pages/CredentialsPage';
 
@@ -66,5 +66,37 @@ describe('CredentialsPage', () => {
 		expect(
 			await screen.findByRole('heading', { name: /^credentials$/i, level: 1 }),
 		).toBeInTheDocument();
+	});
+
+	it('keeps the credential listed and dismisses the dialog when delete fails', async () => {
+		const user = userEvent.setup();
+		worker.use(
+			http.get('/credentials', () =>
+				HttpResponse.json({
+					data: [
+						{ id: 'c-1', label: 'My API Key', api_id: 'stripe', auth_type: 'bearer' },
+					],
+				}),
+			),
+			http.get('/credentials/:cid/bindings', () => HttpResponse.json([])),
+			createErrorHandler('delete', '/credentials/:cid', { status: 403 }),
+		);
+
+		renderWithProviders(<CredentialsPage />);
+		expect(await screen.findByText('My API Key')).toBeInTheDocument();
+
+		await user.click(screen.getByRole('button', { name: /delete credential my api key/i }));
+
+		const confirmBtn = await screen.findByRole('button', { name: /^delete credential$/i });
+		await user.click(confirmBtn);
+
+		// On failure the dialog is dismissed (no longer stuck on a spinner) and the
+		// credential stays in the list — the onError handler surfaces a toast.
+		await waitFor(() =>
+			expect(
+				screen.queryByRole('button', { name: /^delete credential$/i }),
+			).not.toBeInTheDocument(),
+		);
+		expect(screen.getByText('My API Key')).toBeInTheDocument();
 	});
 });
