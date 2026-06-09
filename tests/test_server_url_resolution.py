@@ -173,3 +173,106 @@ def test_broker_uses_http_for_http_template(client, agent_key_header, local_apis
     url = data["would_send"]["url"]
     assert url.startswith("http://"), f"Expected http:// upstream URL, got: {url}"
     assert "192.168.1.50:8123" in url, f"Expected resolved host in URL, got: {url}"
+
+
+# ── Multi-tenant public spec (non-.local) — issue #485 ────────────────────────
+# Jira Cloud's spec uses https://{your-domain}.atlassian.net — a public host with
+# a mandatory server variable. The api_id derives to atlassian.net (no tenant).
+# Resolution must run for this non-.local host too, substituting the tenant.
+JIRA_API_ID = "atlassian.net"
+
+
+@pytest.fixture(scope="module")
+def jira_multitenant_credential(client):
+    """Register a Jira-like multi-tenant API + bearer credential carrying the tenant."""
+
+    async def setup():
+        db_path = os.environ["DB_PATH"]
+        specs_dir = os.path.join(os.path.dirname(db_path), "specs")
+        os.makedirs(specs_dir, exist_ok=True)
+
+        # Mirrors the real catalog Jira spec's servers[] block.
+        jira_spec = {
+            "openapi": "3.0.1",
+            "info": {"title": "The Jira Cloud platform REST API", "version": "1001.0.0"},
+            "servers": [
+                {
+                    "url": "https://{your-domain}.atlassian.net",
+                    "variables": {"your-domain": {"description": "Your Atlassian domain name."}},
+                }
+            ],
+            "components": {"securitySchemes": {"BearerAuth": {"type": "http", "scheme": "bearer"}}},
+            "paths": {
+                "/rest/api/3/myself": {
+                    "get": {"operationId": "getMyself", "responses": {"200": {"description": "ok"}}}
+                }
+            },
+        }
+        jira_path = os.path.join(specs_dir, "atlassian_net.json")
+        with open(jira_path, "w") as f:
+            json.dump(jira_spec, f)
+
+        enc = vault.encrypt("fake-token")
+        async with aiosqlite.connect(db_path) as db:
+            await db.execute(
+                "INSERT OR IGNORE INTO apis (id, name, base_url, spec_path) VALUES (?, ?, ?, ?)",
+                (JIRA_API_ID, "Jira Cloud", "https://{your-domain}.atlassian.net", jira_path),
+            )
+            await db.execute(
+                "INSERT OR IGNORE INTO credentials "
+                "(id, label, env_var, encrypted_value, api_id, auth_type, server_variables, scheme) "
+                "VALUES (?, ?, ?, ?, ?, 'bearer', ?, ?)",
+                (
+                    "jira-cred",
+                    "Jira Token",
+                    "JIRA_TOKEN",
+                    enc,
+                    JIRA_API_ID,
+                    json.dumps({"your-domain": "acme"}),
+                    json.dumps({"in": "header", "name": "Authorization", "prefix": "Bearer "}),
+                ),
+            )
+            await db.execute(
+                "INSERT OR IGNORE INTO credential_routes (credential_id, host) VALUES (?, ?)",
+                ("jira-cred", JIRA_API_ID),
+            )
+            await db.execute(
+                "INSERT OR IGNORE INTO toolkit_credentials (toolkit_id, credential_id) "
+                "VALUES ('default', 'jira-cred')",
+            )
+            await db.commit()
+
+    asyncio.run(setup())
+    yield
+
+    async def teardown():
+        db_path = os.environ["DB_PATH"]
+        async with aiosqlite.connect(db_path) as db:
+            await db.execute("DELETE FROM credential_routes WHERE credential_id='jira-cred'")
+            await db.execute("DELETE FROM toolkit_credentials WHERE credential_id='jira-cred'")
+            await db.execute("DELETE FROM credentials WHERE id='jira-cred'")
+            await db.execute("DELETE FROM apis WHERE id=?", (JIRA_API_ID,))
+            await db.commit()
+
+    asyncio.run(teardown())
+
+
+def test_broker_resolves_server_variable_for_non_local_host(
+    client, agent_key_header, jira_multitenant_credential
+):
+    """Regression for #485: server_variables must resolve on non-.local hosts.
+
+    A Jira-like spec (https://{your-domain}.atlassian.net) addressed at the bare
+    api_id host 'atlassian.net' must be rewritten to the tenant host
+    'acme.atlassian.net' using the credential's server_variables — not sent
+    verbatim to the tenant-less host.
+    """
+    resp = client.get(
+        f"/{JIRA_API_ID}/rest/api/3/myself",
+        headers={**agent_key_header, "X-Jentic-Simulate": "true"},
+    )
+    assert resp.status_code == 200, f"Simulate failed: {resp.text}"
+    url = resp.json()["would_send"]["url"]
+    assert url == "https://acme.atlassian.net/rest/api/3/myself", (
+        f"Expected tenant-resolved Jira URL, got: {url}"
+    )
