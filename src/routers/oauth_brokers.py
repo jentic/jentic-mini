@@ -13,6 +13,7 @@ Future:
   jentic    — Jentic's own OAuth service (once app approvals are in place)
 """
 
+import json
 import logging
 import time
 import urllib.error
@@ -517,6 +518,20 @@ class ConnectLinkRequest(NormModel):
         ),
         examples=["googleapis.com/gmail", "slack.com/api", "api.github.com"],
     )
+    server_variables: dict[str, str] | None = Field(
+        None,
+        description=(
+            "Values for the OpenAPI server template variables of multi-tenant APIs "
+            "(e.g. Jira's base URL `https://{your-domain}.atlassian.net`). "
+            "Provide the tenant value keyed by variable name, e.g. "
+            '`{"your-domain": "acme"}` to route to `acme.atlassian.net`. '
+            "Required for APIs whose catalog base URL contains a `{variable}` — without "
+            "it the broker cannot resolve the concrete tenant host. "
+            "Discover required variables via `GET /catalog?q=<name>` (look for "
+            "`server_variables`). Omit for single-tenant apps (Gmail, Slack, etc.)."
+        ),
+        examples=[{"your-domain": "acme"}],
+    )
 
 
 @router.post(
@@ -587,6 +602,10 @@ async def create_connect_link(broker_id: BrokerIdPath, body: ConnectLinkRequest,
     }
     if body.api_id:
         callback_params["api_id"] = body.api_id
+    if body.server_variables:
+        # JSON-encode the tenant binding so it survives the browser redirect and
+        # lands in oauth_broker_connect_labels for discover_accounts to consume.
+        callback_params["server_variables"] = json.dumps(body.server_variables)
     callback_path = (
         f"/oauth-brokers/{broker_id}/connect-callback?{urllib.parse.urlencode(callback_params)}"
     )
@@ -627,6 +646,9 @@ async def connect_callback(
     app: str = Query(..., description="Pipedream app slug"),
     external_user_id: str = Query("default"),
     api_id: str | None = Query(None),
+    server_variables: str | None = Query(
+        None, description="JSON-encoded OpenAPI server variables set at connect-link time"
+    ),
     replace_account_id: str | None = Query(
         None, description="Account ID to delete after successful reconnect"
     ),
@@ -649,8 +671,8 @@ async def connect_callback(
     async with get_db() as db:
         await db.execute(
             """INSERT OR REPLACE INTO oauth_broker_connect_labels
-               (id, broker_id, external_user_id, app_slug, label, api_id, created_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+               (id, broker_id, external_user_id, app_slug, label, api_id, server_variables, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 str(uuid.uuid4()),
                 broker_id,
@@ -658,6 +680,7 @@ async def connect_callback(
                 app,
                 label,
                 api_id,
+                server_variables,
                 time.time(),
             ),
         )

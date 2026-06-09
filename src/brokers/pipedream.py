@@ -22,6 +22,7 @@ Token cache: Pipedream access tokens expire in ~1 hour. We cache in memory
 from __future__ import annotations
 
 import base64
+import json
 import logging
 import mimetypes
 import time
@@ -485,13 +486,13 @@ class PipedreamOAuthBroker:
             # Multiple pending rows per app_slug are possible (e.g. two Gmail connects).
             # Use a list per slug so each new account consumes one label in order.
             async with db.execute(
-                "SELECT app_slug, label, api_id FROM oauth_broker_connect_labels "
+                "SELECT app_slug, label, api_id, server_variables FROM oauth_broker_connect_labels "
                 "WHERE broker_id=? AND external_user_id=? ORDER BY created_at ASC",
                 (self.broker_id, external_user_id),
             ) as cur:
-                pending: dict[str, list[tuple[str, str | None]]] = {}
+                pending: dict[str, list[tuple[str, str | None, str | None]]] = {}
                 for r in await cur.fetchall():
-                    pending.setdefault(r[0], []).append((r[1], r[2]))
+                    pending.setdefault(r[0], []).append((r[1], r[2], r[3]))
 
             consumed_slugs: set[str] = set()
             seen_account_ids: set[str] = set()
@@ -505,6 +506,7 @@ class PipedreamOAuthBroker:
 
                 # Default label/api_id — overridden below for new accounts with pending labels.
                 label, user_api_id = app_slug, None
+                user_server_variables: str | None = None
                 has_pending_label = False
 
                 # If no pending label, check if we already have a stored api_id for this account
@@ -527,7 +529,7 @@ class PipedreamOAuthBroker:
                 if not user_api_id and account_id not in existing_account_ids:
                     _peek_queue = pending.get(app_slug, [])
                     if _peek_queue:
-                        _peek_label, _peek_api_id = _peek_queue[0]  # peek, don't pop
+                        _peek_label, _peek_api_id, _peek_sv = _peek_queue[0]  # peek, don't pop
                         if _peek_api_id:
                             user_api_id = _peek_api_id
                             log.info(
@@ -535,6 +537,8 @@ class PipedreamOAuthBroker:
                                 user_api_id,
                                 account_id,
                             )
+                        if _peek_sv:
+                            user_server_variables = _peek_sv
 
                 # Use user-specified api_id if provided; otherwise fall back to slug map
                 if user_api_id:
@@ -547,14 +551,28 @@ class PipedreamOAuthBroker:
                     # Resolve the real hostname from the imported spec's base_url.
                     # The credential api_id must be the real HTTP host (e.g. gmail.googleapis.com)
                     # so that the broker's prefix-match lookup works at execution time.
+                    #
+                    # For multi-tenant specs the base_url carries a template variable
+                    # (e.g. Jira's 'https://{your-domain}.atlassian.net'). A bare
+                    # urlparse(...).hostname would yield the literal '{your-domain}.atlassian.net',
+                    # which is not a routable host. If the connect-link supplied
+                    # server_variables (e.g. {"your-domain": "acme"}), substitute them
+                    # first so the route is the concrete tenant host (acme.atlassian.net).
                     try:
-                        async with get_db() as _rdb:
-                            async with _rdb.execute(
-                                "SELECT base_url FROM apis WHERE id=?", (user_api_id,)
-                            ) as _rcur:
-                                _rrow = await _rcur.fetchone()
-                        if _rrow and _rrow[0]:
-                            _real_host = urlparse(_rrow[0]).hostname
+                        _sv_dict: dict[str, str] | None = None
+                        if user_server_variables:
+                            try:
+                                _sv_dict = json.loads(user_server_variables)
+                            except (ValueError, TypeError):
+                                log.warning(
+                                    "Invalid server_variables JSON for '%s': %r",
+                                    user_api_id,
+                                    user_server_variables,
+                                )
+                                _sv_dict = None
+                        _resolved_url = await vault._resolve_server_url(user_api_id, _sv_dict)
+                        if _resolved_url:
+                            _real_host = urlparse(_resolved_url).hostname
                             if _real_host:
                                 hosts = [_real_host]
                                 log.info("Resolved real host for '%s': %s", user_api_id, _real_host)
@@ -597,7 +615,9 @@ class PipedreamOAuthBroker:
                                 app_slug,
                             )
                             continue  # skip this account
-                        label, user_api_id = pending_queue.pop(0)
+                        label, user_api_id, _popped_sv = pending_queue.pop(0)
+                        if _popped_sv:
+                            user_server_variables = _popped_sv
                         has_pending_label = True
                         effective_label = label
                         await db.execute(
@@ -632,12 +652,29 @@ class PipedreamOAuthBroker:
                         # Existing credential: update the encrypted value and sync the label
                         # from oauth_broker_accounts (the authoritative source). Never read
                         # the label from credentials — that creates divergence.
-                        await db.execute(
-                            "UPDATE credentials SET label=?, encrypted_value=?, "
-                            "api_id=?, auth_type='pipedream_oauth', "
-                            "updated_at=unixepoch() WHERE id=?",
-                            (effective_label, enc_account_id, api_host, cred_id),
-                        )
+                        # Persist server_variables (tenant binding for multi-tenant specs)
+                        # so the broker can resolve the concrete host at request time; only
+                        # overwrite when we have a fresh value, never clobber with NULL.
+                        if user_server_variables:
+                            await db.execute(
+                                "UPDATE credentials SET label=?, encrypted_value=?, "
+                                "api_id=?, auth_type='pipedream_oauth', server_variables=?, "
+                                "updated_at=unixepoch() WHERE id=?",
+                                (
+                                    effective_label,
+                                    enc_account_id,
+                                    api_host,
+                                    user_server_variables,
+                                    cred_id,
+                                ),
+                            )
+                        else:
+                            await db.execute(
+                                "UPDATE credentials SET label=?, encrypted_value=?, "
+                                "api_id=?, auth_type='pipedream_oauth', "
+                                "updated_at=unixepoch() WHERE id=?",
+                                (effective_label, enc_account_id, api_host, cred_id),
+                            )
                     else:
                         # New credential: use the effective_label from oauth_broker_accounts.
                         # env_var must be unique per (account_id, api_host) — include
@@ -648,9 +685,16 @@ class PipedreamOAuthBroker:
                         env_var = f"PIPEDREAM_{account_id.upper().replace('-', '_')}_{safe_host}"
                         await db.execute(
                             "INSERT INTO credentials "
-                            "(id, label, env_var, encrypted_value, api_id, auth_type) "
-                            "VALUES (?, ?, ?, ?, ?, 'pipedream_oauth')",
-                            (cred_id, effective_label, env_var, enc_account_id, api_host),
+                            "(id, label, env_var, encrypted_value, api_id, auth_type, server_variables) "
+                            "VALUES (?, ?, ?, ?, ?, 'pipedream_oauth', ?)",
+                            (
+                                cred_id,
+                                effective_label,
+                                env_var,
+                                enc_account_id,
+                                api_host,
+                                user_server_variables,
+                            ),
                         )
 
                     # Upsert credential_routes so the broker can match incoming requests
