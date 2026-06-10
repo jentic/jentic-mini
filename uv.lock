@@ -901,7 +901,7 @@ requires-dist = [
     { name = "cryptography", specifier = "==48.0.1" },
     { name = "fastapi", specifier = "==0.136.3" },
     { name = "httpx", specifier = "==0.28.1" },
-    { name = "jentic-openapi-common", specifier = ">=1.0.0a51" },
+    { name = "jentic-openapi-common", specifier = ">=1.0.0a57" },
     { name = "pyjwt", specifier = "==2.13.0" },
     { name = "python-multipart", specifier = ">=0.0.32" },
     { name = "pyyaml", specifier = "==6.0.3" },
@@ -920,11 +920,11 @@ dev = [
 
 [[package]]
 name = "jentic-openapi-common"
-version = "1.0.0a56"
+version = "1.0.0a57"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/64/ca/9d776a3b6fe0b6c3047a59fbfcfa8f3a1e1a25caf1e68b8908ee006cdb9a/jentic_openapi_common-1.0.0a56.tar.gz", hash = "sha256:852877667a547c26620da7f2ee6cf9fd8ccddd7f3f1a547d97189bf669a2b436", size = 14955, upload-time = "2026-05-19T11:26:35.998Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/c6/56/60b07720ef30c76287e9d31cdeedd2f8daa1017b981e013522f004408755/jentic_openapi_common-1.0.0a57.tar.gz", hash = "sha256:6940edec224c8f56e069e653be29959e36d6f58c5d3eb06519db689298845175", size = 14955, upload-time = "2026-06-10T15:09:54.046Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/86/79/09d5d4b0f72230a8ad4fce814f6db67f69401d9520c332c61476a3ba5872/jentic_openapi_common-1.0.0a56-py3-none-any.whl", hash = "sha256:da63d3a0d586c83050ad92be7eafb3239107fdab871e9b6923d993a6fa4ec899", size = 18339, upload-time = "2026-05-19T11:26:20.697Z" },
+    { url = "https://files.pythonhosted.org/packages/a6/3a/d24e71cc4546201fd5c3229652872d0af8dd547b0cf6a47c0441ecb7468c/jentic_openapi_common-1.0.0a57-py3-none-any.whl", hash = "sha256:ce61a00b43f0eb7b978495eab28d7136ef13d2e70aca6b1438624b74653dcfc5", size = 18339, upload-time = "2026-06-10T15:09:39.608Z" },
 ]
 
 [[package]]
