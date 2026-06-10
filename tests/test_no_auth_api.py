@@ -70,8 +70,11 @@ def test_no_auth_api_forwards_without_credentials(client, agent_key_header, regi
     credential or policy error.
     """
     resp = client.get(f"/{NO_AUTH_HOST}/get", headers=agent_key_header)
-    assert resp.status_code == 502, (
-        f"Expected 502 (upstream unreachable), got {resp.status_code}: {resp.text}"
+    assert resp.status_code in (
+        502,
+        504,
+    ), (  # guarantees environment compatibility on both Linux/Docker and macOS platforms.
+        f"Expected 502 or 504 (upstream unreachable/timeout), got {resp.status_code}: {resp.text}"
     )
 
 
