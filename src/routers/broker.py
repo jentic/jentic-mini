@@ -345,6 +345,60 @@ async def _find_credential_for_host(
     return headers, api_id, first_credential_id, is_ambiguous
 
 
+async def _resolve_routing_host(
+    upstream_host: str, credential_id: str
+) -> tuple[str | None, str | None]:
+    """Resolve the real upstream host from a credential's server_variables.
+
+    The host the caller addressed (upstream_host) can differ from the real
+    upstream in two cases:
+      1. .local self-hosted APIs — upstream_host is a semantic routing key
+         (e.g. 'bedroom.go2rtc.local'), not a real DNS name.
+      2. Multi-tenant public specs whose server URL carries a template var
+         (e.g. Jira's 'https://{your-domain}.atlassian.net'), where the {var}
+         must be substituted from the credential's server_variables to reach
+         the tenant (e.g. acme.atlassian.net).
+
+    Returns (resolved_host, resolved_scheme). Both are None when there is
+    nothing to resolve (no credential, no server_variables, or the resolved
+    host matches upstream_host), so callers keep the original host.
+    """
+    cred = await vault.get_credential(credential_id)
+    if not cred:
+        return None, None
+    server_variables = cred.get("server_variables") or {}
+    if not server_variables:
+        if upstream_host.endswith(".local"):
+            log.warning(
+                "broker: .local route %r — credential %r has no server_variables; "
+                "cannot resolve upstream",
+                upstream_host,
+                credential_id,
+            )
+        return None, None
+
+    resolved = await vault._resolve_server_url(cred.get("api_id"), server_variables)
+    if not resolved:
+        log.warning(
+            "broker: route %r — could not resolve upstream from server_variables %r",
+            upstream_host,
+            server_variables,
+        )
+        return None, None
+
+    parsed = urlparse(resolved)
+    resolved_host = parsed.netloc
+    if not resolved_host or resolved_host == upstream_host:
+        return None, None
+    log.debug(
+        "broker: route %r resolved to upstream %r (scheme=%s) via server_variables",
+        upstream_host,
+        resolved_host,
+        parsed.scheme,
+    )
+    return resolved_host, parsed.scheme or None
+
+
 async def _find_pipedream_credential_for_host(
     host: str,
     path: str,
@@ -919,48 +973,19 @@ async def broker(request: Request, target: str):
 
     # ── Routing host ──────────────────────────────────────────────────────────
     # upstream_host is the host the caller addressed in the broker URL.
-    # For .local self-hosted APIs, the upstream_host is a semantic routing key
-    # (e.g. 'bedroom.go2rtc.local') — not a real DNS name. Resolve the actual
-    # upstream from the matched credential's server_variables.
+    # The real upstream host can differ from upstream_host in two cases:
+    #   1. .local self-hosted APIs — upstream_host is a semantic routing key
+    #      (e.g. 'bedroom.go2rtc.local'), not a real DNS name.
+    #   2. Multi-tenant public specs whose server URL carries a template var
+    #      (e.g. Jira's 'https://{your-domain}.atlassian.net'). Here the spec
+    #      base_url has a {var} that must be substituted from the credential's
+    #      server_variables to reach the tenant (e.g. acme.atlassian.net).
+    # In both cases we resolve via the matched credential's server_variables.
     routing_host = upstream_host
-    _resolved_scheme = None  # populated by .local server_variables resolution
-    if upstream_host.endswith(".local"):
-        # Find the credential's server_variables and resolve via the API's
-        # confirmed overlay server URL template.
-        _local_cred = None
-        if inject_headers is not None:
-            # Try to get the credential record that produced inject_headers
-            if credential_id:
-                _local_cred = await vault.get_credential(credential_id)
-        if _local_cred is None and credential_id:
-            _local_cred = await vault.get_credential(credential_id)
-        if _local_cred:
-            _sv = _local_cred.get("server_variables") or {}
-            _cred_api_id = _local_cred.get("api_id")
-            if _sv:
-                _resolved = await vault._resolve_server_url(_cred_api_id, _sv)
-                if _resolved:
-                    _p = urlparse(_resolved)
-                    routing_host = _p.netloc or routing_host
-                    _resolved_scheme = _p.scheme
-                    log.debug(
-                        "broker: .local route %r resolved to upstream %r (scheme=%s) via server_variables",
-                        upstream_host,
-                        routing_host,
-                        _resolved_scheme,
-                    )
-                else:
-                    log.warning(
-                        "broker: .local route %r — could not resolve upstream from server_variables %r",
-                        upstream_host,
-                        _sv,
-                    )
-            elif _sv is not None:
-                log.warning(
-                    "broker: .local route %r — credential %r has no server_variables; cannot resolve upstream",
-                    upstream_host,
-                    credential_id,
-                )
+    _resolved_scheme = None  # populated by server_variables resolution
+    if credential_id:
+        _routed_host, _resolved_scheme = await _resolve_routing_host(upstream_host, credential_id)
+        routing_host = _routed_host or routing_host
 
     # ── Pipedream credential path ─────────────────────────────────────────────
     # If the vault lookup yielded no headers, check for an explicitly-provisioned
@@ -989,6 +1014,15 @@ async def broker(request: Request, target: str):
             )
             pd_source_toolkit = toolkit_id
         if pd_account_id and pd_cred_id:
+            # Resolve the real upstream host from the Pipedream credential's
+            # server_variables (e.g. Jira's {your-domain}.atlassian.net →
+            # acme.atlassian.net). Multi-tenant specs require this; without it
+            # the bare slug-derived host (atlassian.net) would be used verbatim.
+            _pd_routed_host, _pd_scheme = await _resolve_routing_host(upstream_host, pd_cred_id)
+            if _pd_routed_host:
+                routing_host = _pd_routed_host
+                if _pd_scheme:
+                    _resolved_scheme = _pd_scheme
             # Policy check for this Pipedream credential (same gate as vault path)
             if toolkit_id or grant_ids:
                 try:
