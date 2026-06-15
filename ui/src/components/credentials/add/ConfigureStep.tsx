@@ -24,6 +24,7 @@ export function ConfigureStep({ selectedApi, onBack, onSaved }: ConfigureStepPro
 			onBack={onBack}
 			onSaved={onSaved}
 			hideApiSummary
+			layout="dialog"
 		/>
 	);
 }

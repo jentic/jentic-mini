@@ -79,16 +79,21 @@ export interface CredentialFormFieldsProps {
 	hideApiSummary?: boolean;
 	/**
 	 * Layout mode:
-	 *  - `'inline'` (default): the form is a normal block; fields and
-	 *    a sticky-on-scroll footer flow in the host's own scroll
-	 *    container. Used by the page form and the add dialog.
+	 *  - `'inline'` (default): the form is a normal block on a `bg-muted`
+	 *    card (the `/credentials/new` page). Fields and a sticky-on-scroll
+	 *    footer flow in the host's own scroll container; the footer blends
+	 *    with the page card surface.
+	 *  - `'dialog'`: same flowing layout as `inline`, but the sticky
+	 *    footer blends with the dialog surface (`bg-card`) and aligns to
+	 *    the dialog body's own gutter (no negative-margin hack). Used by
+	 *    `AddCredentialDialog` → `ConfigureStep`.
 	 *  - `'sheet'`: the form owns a full-height flex column — fields
 	 *    scroll in the middle and the Save/Cancel footer is pinned
 	 *    flush to the bottom edge with a solid divider (no blur /
 	 *    negative-margin hack). Used by `CredentialEditSheet`, whose
 	 *    host gives the form `h-full`.
 	 */
-	layout?: 'inline' | 'sheet';
+	layout?: 'inline' | 'dialog' | 'sheet';
 }
 
 const AUTH_TYPE_MAP: Record<SchemeType, CredentialCreate['auth_type']> = {
@@ -141,6 +146,7 @@ export function CredentialFormFields({
 	const queryClient = useQueryClient();
 	const isEdit = !!editId;
 	const isSheet = layout === 'sheet';
+	const isDialog = layout === 'dialog';
 
 	const { schemes, loading: schemesLoading, localDetail, spec } = useApiSchemes(selectedApi);
 	const serverVarDefs = useApiServerVarDefs(selectedApi, localDetail, spec);
@@ -453,9 +459,16 @@ export function CredentialFormFields({
 			 * the bottom edge of the flex column, matching the sheet
 			 * panel surface (`bg-card`) with a clean divider.
 			 *
-			 * Inline layout: sticky-on-scroll with a translucent blur
-			 * so the page/dialog hosts keep the submit button reachable
-			 * on long forms without a hard footer.
+			 * Dialog layout: a flush footer that bleeds horizontally to
+			 * the dialog body's edges (`-mx-5 px-5`) with a full-width
+			 * top divider. NOT sticky and NO bottom negative margin —
+			 * the parent `<form>`'s `space-y-5` supplies the 20px gap
+			 * above the divider, `pt-4` supplies 16px below it, and the
+			 * dialog body's own `py-4` supplies the matching 16px below
+			 * the buttons. That keeps the buttons symmetric in the band.
+			 *
+			 * Inline (page) layout: same flush footer, but without the
+			 * horizontal bleed — it sits within the page card's padding.
 			 *
 			 * For NEW OAuth2 credentials we hide submit — the
 			 * Pipedream "Connect" flow above is the actual save
@@ -468,13 +481,20 @@ export function CredentialFormFields({
 					className={
 						isSheet
 							? 'border-border bg-card flex shrink-0 gap-2 border-t px-5 py-4'
-							: 'bg-background/95 border-border supports-[backdrop-filter]:bg-background/80 sticky bottom-0 -mx-1 mt-2 flex gap-2 border-t px-1 pt-3 pb-2 backdrop-blur'
+							: isDialog
+								? 'border-border -mx-5 flex flex-col-reverse gap-2 border-t px-5 pt-4 sm:flex-row sm:items-center'
+								: 'border-border flex flex-col-reverse gap-2 border-t pt-4 sm:flex-row sm:items-center'
 					}
 				>
-					<Button type="submit" loading={isPending} fullWidth>
+					<Button type="submit" loading={isPending} className="flex-1">
 						{isEdit ? 'Update Credential' : 'Save Credential'}
 					</Button>
-					<Button type="button" variant="secondary" onClick={onBack}>
+					<Button
+						type="button"
+						variant="secondary"
+						onClick={onBack}
+						className="sm:flex-none"
+					>
 						Cancel
 					</Button>
 				</div>
