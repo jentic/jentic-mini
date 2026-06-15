@@ -906,7 +906,19 @@ async def sync_broker_accounts(broker_id: BrokerIdPath, body: SyncRequest, reque
         raise HTTPException(500, "Broker found in DB but could not be instantiated")
 
     try:
-        count = await live_broker.discover_accounts(body.external_user_id)
+        count = await live_broker.discover_accounts(body.external_user_id, raise_on_auth_error=True)
+    except httpx.HTTPStatusError as exc:
+        # Pipedream rejected the broker's own credentials (wrong client id /
+        # secret / project id). Surface it as 401 so the caller can tell
+        # "bad credentials" apart from a valid broker with nothing connected
+        # (which returns count=0 with a 200).
+        if exc.response is not None and exc.response.status_code in (401, 403):
+            raise HTTPException(
+                401,
+                "Pipedream rejected these credentials. "
+                "Check the client ID, secret, and project ID.",
+            )
+        raise HTTPException(502, f"Sync failed: {exc}")
     except Exception as exc:
         raise HTTPException(502, f"Sync failed: {exc}")
 
