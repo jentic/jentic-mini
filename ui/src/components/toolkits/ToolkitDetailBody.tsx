@@ -28,6 +28,7 @@ import { Label } from '@/components/ui/Label';
 import { ErrorAlert } from '@/components/ui/ErrorAlert';
 import { OneTimeKeyDisplay } from '@/components/ui/OneTimeKeyDisplay';
 import { ConfirmInline } from '@/components/ui/ConfirmInline';
+import { ConfirmDeleteDialog } from '@/components/ui/ConfirmDeleteDialog';
 import { toast } from '@/components/ui/toastStore';
 import { Badge } from '@/components/ui/Badge';
 import { CopyButton } from '@/components/ui/CopyButton';
@@ -252,6 +253,7 @@ export function ToolkitDetailBody({
 	const [keyName, setKeyName] = useState('');
 	const [newKey, setNewKey] = useState<string | null>(null);
 	const [showSettings, setShowSettings] = useState(false);
+	const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 	const [editName, setEditName] = useState('');
 	const [editDesc, setEditDesc] = useState('');
 	const [editingPermForCred, setEditingPermForCred] = useState<string | null>(null);
@@ -365,7 +367,15 @@ export function ToolkitDetailBody({
 		mutationFn: () => api.deleteToolkit(toolkitId),
 		onSuccess: () => {
 			queryClient.invalidateQueries({ queryKey: ['toolkits'] });
+			setShowDeleteConfirm(false);
 			onRequestClose();
+		},
+		onError: (e: Error) => {
+			toast({
+				title: 'Failed to delete toolkit',
+				description: e.message,
+				variant: 'error',
+			});
 		},
 	});
 
@@ -437,13 +447,23 @@ export function ToolkitDetailBody({
 					<div className="flex shrink-0 items-center gap-2">
 						<ToolkitKillSwitch toolkitId={id} disabled={!!toolkit.disabled} />
 						{id !== 'default' && (
-							<Button
-								variant="secondary"
-								size="sm"
-								onClick={() => setShowSettings(true)}
-							>
-								<Settings className="h-4 w-4" /> Settings
-							</Button>
+							<>
+								<Button
+									variant="secondary"
+									size="sm"
+									onClick={() => setShowSettings(true)}
+								>
+									<Settings className="h-4 w-4" /> Edit
+								</Button>
+								<Button
+									variant="danger"
+									size="sm"
+									onClick={() => setShowDeleteConfirm(true)}
+									aria-label="Delete toolkit"
+								>
+									<Trash2 className="h-4 w-4" />
+								</Button>
+							</>
 						)}
 					</div>
 				</div>
@@ -459,13 +479,23 @@ export function ToolkitDetailBody({
 					<div className="flex flex-wrap items-center gap-2">
 						<ToolkitKillSwitch toolkitId={id} disabled={!!toolkit.disabled} />
 						{id !== 'default' && (
-							<Button
-								variant="secondary"
-								size="sm"
-								onClick={() => setShowSettings(true)}
-							>
-								<Settings className="h-4 w-4" /> Settings
-							</Button>
+							<>
+								<Button
+									variant="secondary"
+									size="sm"
+									onClick={() => setShowSettings(true)}
+								>
+									<Settings className="h-4 w-4" /> Edit
+								</Button>
+								<Button
+									variant="danger"
+									size="sm"
+									onClick={() => setShowDeleteConfirm(true)}
+									aria-label="Delete toolkit"
+								>
+									<Trash2 className="h-4 w-4" />
+								</Button>
+							</>
 						)}
 					</div>
 				</div>
@@ -983,7 +1013,7 @@ export function ToolkitDetailBody({
 			<Dialog
 				open={showSettings}
 				onClose={() => setShowSettings(false)}
-				title="Toolkit Settings"
+				title="Edit Toolkit"
 				size="sm"
 				footer={
 					<>
@@ -1029,24 +1059,22 @@ export function ToolkitDetailBody({
 							resizable="none"
 						/>
 					</div>
-					<div className="border-border border-t pt-4">
-						<p className="text-muted-foreground mb-3 text-xs">Danger Zone</p>
-						<ConfirmInline
-							onConfirm={() => deleteMutation.mutate()}
-							message="Permanently delete this toolkit?"
-							confirmLabel="Delete Forever"
-						>
-							<Button
-								variant="danger"
-								fullWidth
-								className="justify-center gap-2 rounded-lg px-4 py-2 text-sm"
-							>
-								<Trash2 className="h-4 w-4" /> Delete Toolkit
-							</Button>
-						</ConfirmInline>
-					</div>
 				</div>
 			</Dialog>
+
+			<ConfirmDeleteDialog
+				target={
+					showDeleteConfirm
+						? { kind: 'toolkit', id: toolkitId, name: toolkit.name ?? toolkit.id }
+						: null
+				}
+				open={showDeleteConfirm}
+				onClose={() => {
+					if (!deleteMutation.isPending) setShowDeleteConfirm(false);
+				}}
+				onConfirm={() => deleteMutation.mutate()}
+				loading={deleteMutation.isPending}
+			/>
 
 			{!isSheet && (
 				<CredentialEditSheet

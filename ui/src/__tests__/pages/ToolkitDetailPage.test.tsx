@@ -114,7 +114,7 @@ describe('ToolkitDetailPage — read states', () => {
 		expect(await screen.findByText(/toolkit not found/i)).toBeInTheDocument();
 	});
 
-	it('hides Settings button for the default toolkit', async () => {
+	it('hides Edit button for the default toolkit', async () => {
 		worker.use(
 			http.get('/toolkits/:id', () =>
 				HttpResponse.json({
@@ -129,7 +129,7 @@ describe('ToolkitDetailPage — read states', () => {
 
 		renderToolkit('default');
 		await screen.findByText('Default Toolkit');
-		expect(screen.queryByRole('button', { name: /settings/i })).not.toBeInTheDocument();
+		expect(screen.queryByRole('button', { name: /^edit$/i })).not.toBeInTheDocument();
 	});
 
 	it('has no critical accessibility violations', async () => {
@@ -546,19 +546,23 @@ describe('ToolkitDetailPage — mutation errors', () => {
 		renderToolkit();
 		await screen.findByText('Test Toolkit');
 
-		await user.click(screen.getByRole('button', { name: /settings/i }));
-		expect(await screen.findByText(/toolkit settings/i)).toBeInTheDocument();
+		// Delete lives directly in the header now (not behind Settings). Before
+		// the dialog opens it's the only "Delete toolkit" control.
+		await user.click(screen.getByRole('button', { name: /delete toolkit/i }));
 
-		const deleteButton = screen.getByRole('button', { name: /delete toolkit/i });
-		await user.click(deleteButton);
+		// The cascade dialog warns before committing.
+		expect(await screen.findByText(/will be permanently deleted/i)).toBeInTheDocument();
 
-		expect(screen.getByText(/permanently delete/i)).toBeInTheDocument();
+		// Now both the header button and the dialog's confirm button read
+		// "Delete toolkit"; the last match is the one inside the dialog footer.
+		const confirmButtons = screen.getAllByRole('button', { name: /^delete toolkit$/i });
+		await user.click(confirmButtons[confirmButtons.length - 1]);
 
-		const confirmButton = screen.getAllByRole('button', { name: /delete forever/i })[0];
-		await user.click(confirmButton);
-
+		// Still on the page (didn't navigate away on the failed delete). The
+		// name now also appears inside the still-open dialog body, so match
+		// on "at least one".
 		await waitFor(() => {
-			expect(screen.getByText('Test Toolkit')).toBeInTheDocument();
+			expect(screen.getAllByText('Test Toolkit').length).toBeGreaterThan(0);
 		});
 	});
 });

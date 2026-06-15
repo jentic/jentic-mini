@@ -1,6 +1,6 @@
 import { useEffect, useId, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Trash2, Workflow, KeyRound, Boxes, Layers, CircleDot } from 'lucide-react';
+import { Trash2, Workflow, KeyRound, Boxes, Layers, CircleDot, Bot } from 'lucide-react';
 import { Dialog } from './Dialog';
 import { Button } from './Button';
 import { Checkbox } from './Checkbox';
@@ -9,7 +9,8 @@ import { api } from '@/api/client';
 export type DeleteTarget =
 	| { kind: 'api'; id: string; name: string }
 	| { kind: 'workflow'; slug: string; name: string }
-	| { kind: 'credential'; id: string; name: string; isPipedream?: boolean };
+	| { kind: 'credential'; id: string; name: string; isPipedream?: boolean }
+	| { kind: 'toolkit'; id: string; name: string };
 
 interface ConfirmDeleteDialogProps {
 	target: DeleteTarget | null;
@@ -28,6 +29,7 @@ export function ConfirmDeleteDialog({
 }: ConfirmDeleteDialogProps) {
 	const isApi = target?.kind === 'api';
 	const isCredential = target?.kind === 'credential';
+	const isToolkit = target?.kind === 'toolkit';
 	const [cascade, setCascade] = useState(false);
 	// Stable id for the dialog body's lead paragraph, so screen readers
 	// announce the impact summary alongside the title via aria-describedby.
@@ -41,7 +43,15 @@ export function ConfirmDeleteDialog({
 		<Dialog
 			open={open}
 			onClose={onClose}
-			title={isApi ? 'Remove API' : isCredential ? 'Delete credential' : 'Delete workflow'}
+			title={
+				isApi
+					? 'Remove API'
+					: isCredential
+						? 'Delete credential'
+						: isToolkit
+							? 'Delete toolkit'
+							: 'Delete workflow'
+			}
 			size="md"
 			describedById={descriptionId}
 			footer={
@@ -69,7 +79,9 @@ export function ConfirmDeleteDialog({
 								? 'Remove API'
 								: isCredential
 									? 'Delete credential'
-									: 'Delete workflow'}
+									: isToolkit
+										? 'Delete toolkit'
+										: 'Delete workflow'}
 					</Button>
 				</div>
 			}
@@ -96,6 +108,13 @@ export function ConfirmDeleteDialog({
 					name={target.name}
 					isPipedream={target.isPipedream}
 					open={open}
+				/>
+			) : target?.kind === 'toolkit' ? (
+				<ToolkitCascadeInfo
+					toolkitId={target.id}
+					name={target.name}
+					open={open}
+					descriptionId={descriptionId}
 				/>
 			) : null}
 		</Dialog>
@@ -168,6 +187,100 @@ function CredentialCascadeInfo({
 					You'll need to reconnect from scratch to use this account again — there's no way
 					to undo this from Jentic alone.
 				</div>
+			)}
+		</div>
+	);
+}
+
+/**
+ * Renders who loses access when a toolkit is deleted: the agents granted
+ * it (they'll get an authorization error on their next call) and the API
+ * keys minted for it (those keys stop working). This mirrors the
+ * credential dialog's "before picture" so deleting a toolkit isn't a
+ * silent "why did my agent stop working?" surprise.
+ *
+ * Pulls agents from `/toolkits/{id}/agents` and keys from
+ * `/toolkits/{id}/keys` — the same endpoints the toolkit detail view
+ * already uses, so the numbers match what the user just saw.
+ */
+function ToolkitCascadeInfo({
+	toolkitId,
+	name,
+	open,
+	descriptionId,
+}: {
+	toolkitId: string;
+	name: string;
+	open: boolean;
+	descriptionId: string;
+}) {
+	const { data: agents = [], isLoading: loadingAgents } = useQuery({
+		queryKey: ['delete-cascade', 'toolkit-agents', toolkitId],
+		queryFn: () => api.listToolkitAgents(toolkitId),
+		enabled: open,
+		select: (d) => (Array.isArray(d?.agents) ? d.agents : []),
+	});
+
+	const { data: keys = [], isLoading: loadingKeys } = useQuery({
+		queryKey: ['delete-cascade', 'toolkit-keys', toolkitId],
+		queryFn: () => api.listKeys(toolkitId),
+		enabled: open,
+		select: (d: unknown) =>
+			Array.isArray(d)
+				? d
+				: Array.isArray((d as { keys?: unknown })?.keys)
+					? ((d as { keys: unknown[] }).keys as unknown[])
+					: [],
+	});
+
+	const isLoading = loadingAgents || loadingKeys;
+	const hasImpact = agents.length > 0 || keys.length > 0;
+
+	return (
+		<div className="space-y-5">
+			<p id={descriptionId} className="text-foreground/80 text-[13px] leading-relaxed">
+				<strong className="text-foreground font-medium">{name}</strong> will be permanently
+				deleted from your workspace. This can't be undone.
+			</p>
+
+			{isLoading && (
+				<p className="text-muted-foreground animate-pulse text-xs">
+					Checking who has access…
+				</p>
+			)}
+
+			{!isLoading && agents.length > 0 && (
+				<ImpactGroup
+					color="amber"
+					icon={<Bot size={14} />}
+					title="Agents losing access"
+					count={agents.length}
+					subtitle="These agents will fail to call this toolkit until granted another"
+					items={agents.map((a) => a.client_name || a.client_id)}
+				/>
+			)}
+
+			{!isLoading && keys.length > 0 && (
+				<ImpactGroup
+					color="amber"
+					icon={<KeyRound size={14} />}
+					title="API keys revoked"
+					count={keys.length}
+					subtitle="Anything calling the toolkit with these keys stops working immediately"
+					items={keys.map(
+						(k) =>
+							(k as { name?: string; label?: string; id?: string }).name ||
+							(k as { label?: string }).label ||
+							(k as { id?: string }).id ||
+							'key',
+					)}
+				/>
+			)}
+
+			{!isLoading && !hasImpact && (
+				<p className="text-muted-foreground text-xs">
+					No agents or API keys reference this toolkit — safe to delete.
+				</p>
 			)}
 		</div>
 	);
