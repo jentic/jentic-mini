@@ -5,7 +5,6 @@ import { StatusDot, type CredentialStatus } from './StatusDot';
 import type { CredentialOut } from '@/api/types';
 import { api } from '@/api/client';
 import { AppLink } from '@/components/ui/AppLink';
-import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { VendorIcon } from '@/components/discovery/VendorIcon';
 import { timeAgo } from '@/lib/time';
@@ -31,40 +30,34 @@ interface CredentialRowProps {
 }
 
 /**
- * One row in the credentials list.
+ * One credential card in the credentials grid.
  *
- * Visually a thin card per row (the page's main content), structured the same
- * way every workspace surface lays out its objects:
+ * Deliberately mirrors `ToolkitCard`'s anatomy so the Credentials and
+ * Toolkits pages read as one family:
  *
- *   [vendor icon] [primary identity + secondary metadata]   [actions]
+ *   [vendor icon] [name + source]
+ *   [description]
+ *   [used-by chips]
+ *   [meta row .......... edit · delete]
  *
- * Differences from the old inline implementation:
+ * Behaviour:
  *
- * 1. Uses `<VendorIcon>` keyed off `api_id` so the same brand logo the user
- *    sees in Discover and the workspace tile shows up here too. We've been
- *    using a generic key icon, which made every credential look identical
- *    — useless for users with 5+ creds across different APIs.
+ * 1. The whole card is the edit affordance — clicking anywhere that isn't a
+ *    nested control (the action buttons, the "used by" links) opens the edit
+ *    sheet. The footer buttons stop propagation so they don't double-fire.
  *
- * 2. Renders a **`StatusDot`** with the live health derived from
- *    `last_used_at` and the new /test endpoint hint. Static auth types
- *    (bearer / apiKey) get an "OK / unknown" reading from `last_used_at`;
- *    Pipedream OAuth picks up its `healthy` bit from the broker rows
- *    (passed through `cred.synced_at` for now — Phase 3 wires the actual
- *    health field once the API exposes it).
+ * 2. `<VendorIcon>` is keyed off `api_id`, so each credential carries the
+ *    brand logo the user already recognises from Discover and the workspace.
  *
- * 3. Shows **toolkit binding chips** sourced from `/credentials/:id/bindings`.
- *    Each chip is a real link to the toolkit detail page. Capped at 3 visible
- *    so a credential bound to many toolkits stays scannable; overflow goes
- *    into a `+N more` chip that's also a link (to the credentials filter).
+ * 3. A `<StatusDot>` sits next to the name (health from `last_used_at` /
+ *    Pipedream `healthy`).
  *
- * 4. **Local / Available** badge surfaced via `cred.api_source` (set by the
- *    parent component since the API row lives in `apis.list` not the cred).
- *    "Available" mirrors the Discover surface wording for directory APIs
- *    not yet imported (vs the internal `catalog`/`directory` source value).
- *
- * The row is intentionally NOT a single big link — the row is multi-action
- * (Edit, Delete, sometimes Reconnect) and a wrapping `<a>` would steal
- * keyboard focus from those buttons.
+ * NB: an earlier iteration rendered a "Self-hosted API" / "From Discover"
+ * source label here, keyed off `apis.list`'s `local` flag. It was removed
+ * because the backend doesn't record API provenance — `local` means
+ * "registered in this workspace" (true for every credentialed API, since
+ * adding a credential auto-imports the catalog spec), so the label could
+ * never be correct. Don't reintroduce it without a real origin signal.
  */
 export function CredentialRow({
 	cred,
@@ -102,118 +95,131 @@ export function CredentialRow({
 	const isPipedream = cred.auth_type === 'pipedream_oauth';
 
 	return (
-		<div className="group border-border/60 bg-card hover:border-border rounded-xl border p-4 transition-all hover:shadow-sm">
+		<div
+			role="button"
+			tabIndex={0}
+			onClick={handleEditClick}
+			onKeyDown={(e) => {
+				if (e.key === 'Enter' || e.key === ' ') {
+					e.preventDefault();
+					handleEditClick();
+				}
+			}}
+			aria-label={`Edit credential ${cred.label}`}
+			className="group border-border/60 bg-card hover:border-border hover:bg-muted/30 focus-visible:ring-primary/40 flex h-full min-w-0 cursor-pointer flex-col gap-3 overflow-hidden rounded-xl border p-4 text-left transition-all hover:-translate-y-0.5 hover:shadow-sm focus-visible:ring-2 focus-visible:outline-none"
+		>
 			<div className="flex items-center gap-3">
 				<VendorIcon
 					name={cred.label || cred.id}
 					vendor={cred.api_id ?? undefined}
-					size="md"
+					size="lg"
 				/>
 				<div className="min-w-0 flex-1">
-					<div className="flex flex-wrap items-center gap-2">
-						<button
-							type="button"
-							onClick={handleEditClick}
-							className="text-foreground hover:text-primary truncate font-medium focus-visible:underline focus-visible:outline-none"
-						>
+					<div className="flex items-center gap-2">
+						<h3 className="font-heading text-foreground min-w-0 flex-1 truncate text-sm font-semibold">
 							{cred.label}
-						</button>
-
+						</h3>
 						<StatusDot status={status.tone} label={status.label} />
-
-						{cred.api_id && (
-							<span className="text-muted-foreground font-mono text-xs">
-								{cred.api_id}
-							</span>
-						)}
-						{(cred as CredentialOut & { api_local?: boolean }).api_local !==
-							undefined && (
-							<Badge
-								variant={
-									(cred as CredentialOut & { api_local?: boolean }).api_local
-										? 'success'
-										: 'default'
-								}
-								className="text-[10px] uppercase"
-							>
-								{(cred as CredentialOut & { api_local?: boolean }).api_local
-									? 'Local'
-									: 'Available'}
-							</Badge>
-						)}
-						{isPipedream ? (
-							<Badge variant="default" className="text-[10px]">
-								OAuth via Pipedream
-							</Badge>
-						) : cred.auth_type ? (
-							<Badge variant="default" className="text-[10px]">
-								{cred.auth_type}
-							</Badge>
-						) : null}
 					</div>
-
-					<div className="text-muted-foreground mt-0.5 flex flex-wrap items-baseline gap-x-3 gap-y-1 text-xs">
-						{cred.description && (
-							<span className="text-foreground/70 max-w-md truncate italic">
-								{cred.description}
-							</span>
-						)}
-						{cred.last_used_at != null && (
-							<span>last used {timeAgo(cred.last_used_at)}</span>
-						)}
-						{cred.last_used_at == null && cred.created_at != null && (
-							<span>added {timeAgo(cred.created_at)}</span>
-						)}
-						{isPipedream && cred.account_id && (
-							<span className="font-mono text-[11px] opacity-70">
-								{cred.account_id}
-							</span>
-						)}
-					</div>
-
-					{bindings.length > 0 && (
-						<div className="mt-2 flex flex-wrap items-center gap-1.5">
-							<span className="text-muted-foreground/80 text-[11px] tracking-wider uppercase">
-								Used by
-							</span>
-							{bindings.slice(0, 3).map((b) => (
-								<AppLink
-									key={b.toolkit_id}
-									href={`/toolkits/${encodeURIComponent(b.toolkit_id)}`}
-									className="border-border/60 bg-background hover:border-primary/40 hover:text-primary text-foreground/80 rounded-full border px-2 py-0.5 text-[11px] transition-colors"
-								>
-									{b.toolkit_name || b.toolkit_id}
-								</AppLink>
-							))}
-							{bindings.length > 3 && (
-								<span className="text-muted-foreground text-[11px]">
-									+{bindings.length - 3} more
-								</span>
-							)}
-						</div>
+					{cred.api_id && (
+						<p className="text-muted-foreground mt-0.5 truncate font-mono text-xs">
+							{cred.api_id}
+						</p>
 					)}
 				</div>
+			</div>
 
-				<div className="flex items-center gap-2">
+			{/* Description slot — always rendered, reserved at exactly two lines
+			    (`min-h-[2lh]` + `line-clamp-2`), so cards in the same grid row
+			    keep identical vertical rhythm whether or not a description
+			    exists. Falls back to the humanized auth type so the space
+			    reads as content, not a hole. */}
+			<p className="text-muted-foreground line-clamp-2 min-h-[2lh] text-xs leading-snug break-words">
+				{cred.description || authTypeLabel(cred.auth_type)}
+			</p>
+
+			{/* Bindings slot — same always-rendered treatment as the description
+			    (min-h matches the chip row) so the async bindings query doesn't
+			    shift layout when it resolves, and unbound cards stay level with
+			    bound neighbours. "Not used" is information, not filler. */}
+			<div className="flex min-h-[24px] flex-wrap items-center gap-1.5">
+				{bindings.length > 0 ? (
+					<>
+						<span className="text-muted-foreground/80 text-[10px] tracking-wider uppercase">
+							Used by
+						</span>
+						{bindings.slice(0, 3).map((b) => (
+							<AppLink
+								key={b.toolkit_id}
+								href={`/toolkits/${encodeURIComponent(b.toolkit_id)}`}
+								onClick={(e) => e.stopPropagation()}
+								className="border-border/60 bg-background hover:border-primary/40 hover:text-primary text-foreground/80 rounded-full border px-2 py-0.5 text-[11px] transition-colors"
+							>
+								{b.toolkit_name || b.toolkit_id}
+							</AppLink>
+						))}
+						{bindings.length > 3 && (
+							<span className="text-muted-foreground text-[11px]">
+								+{bindings.length - 3} more
+							</span>
+						)}
+					</>
+				) : (
+					<span className="text-muted-foreground/70 text-[11px]">
+						Not used by any toolkit
+					</span>
+				)}
+			</div>
+
+			<div className="border-border/50 mt-auto flex items-center gap-2 border-t pt-3">
+				<div className="text-muted-foreground flex min-w-0 flex-1 flex-col gap-0.5 text-[11px]">
+					<span className="truncate">
+						{cred.last_used_at != null
+							? `last used ${timeAgo(cred.last_used_at)}`
+							: cred.created_at != null
+								? `added ${timeAgo(cred.created_at)}`
+								: isPipedream
+									? 'OAuth via Pipedream'
+									: (cred.auth_type ?? '')}
+					</span>
+				</div>
+
+				<div className="flex shrink-0 items-center gap-1">
 					{isPipedream && onReconnect && status.tone === 'broken' && (
-						<Button variant="secondary" size="sm" onClick={onReconnect}>
-							<RotateCcw className="h-4 w-4" /> Reconnect
+						<Button
+							variant="secondary"
+							size="sm"
+							onClick={(e) => {
+								e.stopPropagation();
+								onReconnect();
+							}}
+							aria-label={`Reconnect ${cred.label}`}
+						>
+							<RotateCcw className="h-4 w-4" />
 						</Button>
 					)}
-					<Button variant="secondary" size="sm" onClick={handleEditClick}>
-						<Settings className="h-4 w-4" /> Edit
+					<Button
+						variant="secondary"
+						size="sm"
+						onClick={(e) => {
+							e.stopPropagation();
+							handleEditClick();
+						}}
+						aria-label={`Edit credential ${cred.label}`}
+					>
+						<Settings className="h-4 w-4" />
 					</Button>
-					{/* Delete now opens a real dialog with the toolkit
+					{/* Delete opens a confirmation dialog with the toolkit
 					   binding cascade preview (see CredentialsList →
-					   ConfirmDeleteDialog). The previous ConfirmInline
-					   was a single-tap shortcut that gave users no
-					   visibility into which toolkits would lose this
-					   credential — see Phase 4 of the credentials
-					   revamp plan. */}
+					   ConfirmDeleteDialog) so the user sees which toolkits
+					   would lose this credential before committing. */}
 					<Button
 						variant="danger"
 						size="sm"
-						onClick={onDelete}
+						onClick={(e) => {
+							e.stopPropagation();
+							onDelete();
+						}}
 						disabled={deleting}
 						aria-label={`Delete credential ${cred.label}`}
 					>
@@ -223,6 +229,95 @@ export function CredentialRow({
 			</div>
 		</div>
 	);
+}
+
+/**
+ * Card-shaped skeleton that mirrors `CredentialRow`'s layout exactly so the
+ * grid doesn't shift when real data resolves. Anatomy matches the row:
+ *
+ *   [vendor icon] [name + api_id]
+ *   [description]
+ *   [meta row .......... actions]
+ *
+ * Used by `CredentialsListSkeleton`. Kept alongside `CredentialRow` for the
+ * same reason `ToolkitCardSkeleton` lives next to `ToolkitCard` — the two
+ * must move together.
+ */
+export function CredentialCardSkeleton() {
+	return (
+		<div className="border-border/60 bg-card flex h-full min-w-0 flex-col gap-3 rounded-xl border p-4">
+			<div className="flex items-center gap-3">
+				<div className="bg-muted h-12 w-12 shrink-0 animate-pulse rounded-xl" />
+				<div className="min-w-0 flex-1 space-y-2">
+					<div className="bg-muted h-4 w-2/3 animate-pulse rounded" />
+					<div className="bg-muted h-3 w-1/2 animate-pulse rounded" />
+				</div>
+			</div>
+			<div className="space-y-1.5">
+				<div className="bg-muted h-3 w-full animate-pulse rounded" />
+				<div className="bg-muted h-3 w-3/5 animate-pulse rounded" />
+			</div>
+			<div className="bg-muted h-5 w-32 animate-pulse rounded-full" />
+			<div className="border-border/50 mt-auto flex items-center gap-3 border-t pt-3">
+				<div className="bg-muted h-3 w-24 animate-pulse rounded" />
+				<div className="ml-auto flex gap-1">
+					<div className="bg-muted h-7 w-7 animate-pulse rounded-md" />
+					<div className="bg-muted h-7 w-7 animate-pulse rounded-md" />
+				</div>
+			</div>
+		</div>
+	);
+}
+
+/**
+ * A section title placeholder plus a grid of card skeletons in the same
+ * responsive layout as the populated list, with a small staggered shimmer
+ * delay. Drop-in replacement for the generic spinner so the loading frame
+ * matches the loaded frame — same as `ToolkitsListSkeleton` does for Toolkits.
+ */
+export function CredentialsListSkeleton({ count = 6 }: { count?: number }) {
+	return (
+		<div className="space-y-5" aria-hidden="true" data-testid="credentials-skeleton">
+			<div className="bg-muted h-4 w-32 animate-pulse rounded" />
+			<div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+				{Array.from({ length: count }).map((_, i) => (
+					// eslint-disable-next-line react/no-array-index-key -- static placeholders, never reordered
+					<div key={`cred-skeleton-${i}`} style={{ animationDelay: `${i * 60}ms` }}>
+						<CredentialCardSkeleton />
+					</div>
+				))}
+			</div>
+		</div>
+	);
+}
+
+/**
+ * Humanized auth-type fallback for the description slot. Credentials
+ * frequently have no description; showing *what kind* of secret this is
+ * keeps the reserved two-line slot informative instead of blank.
+ */
+function authTypeLabel(authType: string | null | undefined): string {
+	switch (authType) {
+		case 'bearer':
+			return 'Bearer token';
+		case 'basic':
+			return 'Basic auth credential';
+		case 'oauth2':
+			return 'OAuth 2.0 credential';
+		case 'pipedream_oauth':
+			return 'OAuth connection via Pipedream';
+		case 'apiKey':
+		case 'api_key':
+			return 'API key';
+		case null:
+		case undefined:
+		case '':
+			return 'Stored credential';
+		default:
+			// Unknown/custom scheme names (e.g. "JenticApiKey") pass through —
+			// the raw scheme is still more useful than a generic placeholder.
+			return authType;
+	}
 }
 
 /**

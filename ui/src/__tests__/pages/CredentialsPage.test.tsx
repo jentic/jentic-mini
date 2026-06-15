@@ -14,7 +14,7 @@ describe('CredentialsPage', () => {
 
 		renderWithProviders(<CredentialsPage />);
 
-		expect(screen.getByText('Loading credentials...')).toBeInTheDocument();
+		expect(screen.getByTestId('credentials-skeleton')).toBeInTheDocument();
 	});
 
 	it('renders empty state when no credentials', async () => {

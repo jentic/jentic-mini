@@ -1,18 +1,33 @@
 import { useMemo, useState } from 'react';
+import { motion } from 'framer-motion';
 import { Key } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { CredentialRow } from './CredentialRow';
+import { CredentialRow, CredentialsListSkeleton } from './CredentialRow';
 import { PipedreamCard } from './PipedreamCard';
+import { OAuthConnectionDetailSheet } from './OAuthConnectionDetailSheet';
 import type { CredentialOut } from '@/api/types';
 import { api, oauthBrokers } from '@/api/client';
 import { Button } from '@/components/ui/Button';
 import { ConfirmDeleteDialog, type DeleteTarget } from '@/components/ui/ConfirmDeleteDialog';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { ErrorAlert } from '@/components/ui/ErrorAlert';
-import { LoadingState } from '@/components/ui/LoadingState';
 import { toast } from '@/components/ui/toastStore';
 import { SectionTitle } from '@/components/discovery/SectionTitle';
+import { useOAuthConnectionSheet } from '@/hooks/useOAuthConnectionSheet';
+
+// Mirrors the Toolkits list entrance: a staggered grid (0.04s between cards)
+// where each card fades + lifts in. Kept in sync with `toolkitCardVariants`
+// / `gridVariants` so Credentials and Toolkits read as one family.
+const gridVariants = {
+	hidden: { opacity: 1 },
+	visible: { opacity: 1, transition: { staggerChildren: 0.04 } },
+} as const;
+
+const cardVariants = {
+	hidden: { opacity: 0, y: 8 },
+	visible: { opacity: 1, y: 0, transition: { duration: 0.2, ease: 'easeOut' } },
+} as const;
 
 interface CredentialsListProps {
 	loggedIn: boolean;
@@ -50,6 +65,12 @@ interface CredentialsListProps {
  * stay simple — each row only renders the controls that make sense for its
  * kind, no `if (auth_type === 'pipedream_oauth')` branching at the row
  * level.
+ *
+ * Clicking a row opens a kind-appropriate surface: manual creds open the
+ * host's `CredentialEditSheet` (via `onEditCredential`); OAuth connections
+ * open this component's own `OAuthConnectionDetailSheet` (read-mostly
+ * facts + sync-safe metadata edits + reconnect/delete), since their secret
+ * lives upstream and there's nothing to rotate locally.
  */
 export function CredentialsList({
 	loggedIn,
@@ -58,6 +79,7 @@ export function CredentialsList({
 }: CredentialsListProps) {
 	const navigate = useNavigate();
 	const queryClient = useQueryClient();
+	const oauthSheet = useOAuthConnectionSheet();
 
 	const {
 		data: credentials = [],
@@ -74,45 +96,15 @@ export function CredentialsList({
 		enabled: loggedIn,
 	});
 
-	// API list is needed to badge each credential row "Local" vs "Available".
-	// We grab it once and stitch onto each cred — cheaper than fanning out
-	// from the row component.
-	const { data: apis } = useQuery({
-		queryKey: ['apis-for-cred-badges'],
-		queryFn: () => api.listApis(1, 500, 'local'),
-		enabled: loggedIn,
-		select: (d: unknown) => {
-			const arr = Array.isArray(d) ? d : (d as { data?: unknown })?.data;
-			return Array.isArray(arr) ? (arr as Array<{ id: string; local?: boolean }>) : [];
-		},
-	});
-
-	const localApiIds = useMemo(() => {
-		const set = new Set<string>();
-		(apis ?? []).forEach((a) => {
-			if (a.local !== false) set.add(a.id);
-		});
-		return set;
-	}, [apis]);
-
-	const annotated = useMemo(
-		() =>
-			credentials.map((c) => ({
-				...c,
-				api_local: c.api_id ? localApiIds.has(c.api_id) : undefined,
-			})) as Array<CredentialOut & { api_local?: boolean }>,
-		[credentials, localApiIds],
-	);
-
 	const [manualCreds, pipedreamCreds] = useMemo(() => {
-		const manual: typeof annotated = [];
-		const pipedream: typeof annotated = [];
-		annotated.forEach((c) => {
+		const manual: CredentialOut[] = [];
+		const pipedream: CredentialOut[] = [];
+		credentials.forEach((c) => {
 			if (c.auth_type === 'pipedream_oauth') pipedream.push(c);
 			else manual.push(c);
 		});
 		return [manual, pipedream];
-	}, [annotated]);
+	}, [credentials]);
 
 	const deleteMutation = useMutation({
 		mutationFn: (cred: { id: string; authType: string; accountId?: string }) => {
@@ -162,7 +154,7 @@ export function CredentialsList({
 		: null;
 
 	if (!loggedIn || isLoading) {
-		return <LoadingState message="Loading credentials..." />;
+		return <CredentialsListSkeleton />;
 	}
 	if (isError) {
 		return <ErrorAlert message="Failed to load credentials. Please try refreshing the page." />;
@@ -196,46 +188,60 @@ export function CredentialsList({
 			{manualCreds.length > 0 && (
 				<section>
 					<SectionTitle count={manualCreds.length}>Credentials</SectionTitle>
-					<div className="mt-2 space-y-2">
+					<motion.div
+						variants={gridVariants}
+						initial="hidden"
+						animate="visible"
+						className="mt-2 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3"
+					>
 						{manualCreds.map((cred) => (
-							<CredentialRow
-								key={cred.id}
-								cred={cred}
-								onEdit={onEditCredential}
-								onDelete={() =>
-									setDeleteTarget({
-										id: cred.id,
-										authType: cred.auth_type ?? '',
-										name: cred.label,
-										isPipedream: false,
-									})
-								}
-							/>
+							<motion.div key={cred.id} variants={cardVariants}>
+								<CredentialRow
+									cred={cred}
+									onEdit={onEditCredential}
+									onDelete={() =>
+										setDeleteTarget({
+											id: cred.id,
+											authType: cred.auth_type ?? '',
+											name: cred.label,
+											isPipedream: false,
+										})
+									}
+								/>
+							</motion.div>
 						))}
-					</div>
+					</motion.div>
 				</section>
 			)}
 
 			{pipedreamCreds.length > 0 && (
 				<section>
 					<SectionTitle count={pipedreamCreds.length}>OAuth connections</SectionTitle>
-					<div className="mt-2 space-y-2">
+					<motion.div
+						variants={gridVariants}
+						initial="hidden"
+						animate="visible"
+						className="mt-2 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3"
+					>
 						{pipedreamCreds.map((cred) => (
-							<CredentialRow
-								key={cred.id}
-								cred={cred}
-								onDelete={() =>
-									setDeleteTarget({
-										id: cred.id,
-										authType: 'pipedream_oauth',
-										accountId: cred.account_id ?? undefined,
-										name: cred.label,
-										isPipedream: true,
-									})
-								}
-							/>
+							<motion.div key={cred.id} variants={cardVariants}>
+								<CredentialRow
+									cred={cred}
+									onEditPipedream={() => oauthSheet.openSheet(cred.id)}
+									onReconnect={() => oauthSheet.openSheet(cred.id)}
+									onDelete={() =>
+										setDeleteTarget({
+											id: cred.id,
+											authType: 'pipedream_oauth',
+											accountId: cred.account_id ?? undefined,
+											name: cred.label,
+											isPipedream: true,
+										})
+									}
+								/>
+							</motion.div>
 						))}
-					</div>
+					</motion.div>
 				</section>
 			)}
 
@@ -254,6 +260,26 @@ export function CredentialsList({
 					});
 				}}
 				loading={deleteMutation.isPending}
+			/>
+
+			<OAuthConnectionDetailSheet
+				credentialId={oauthSheet.stickyId}
+				open={oauthSheet.open}
+				onClose={oauthSheet.closeSheet}
+				onAfterClose={oauthSheet.clearSticky}
+				onDelete={(cred) => {
+					// Hand the destructive path to the shared, cascade-aware
+					// confirm dialog (same one the row's trash button uses) so
+					// the user sees which toolkits would lose this connection.
+					oauthSheet.closeSheet();
+					setDeleteTarget({
+						id: cred.id,
+						authType: 'pipedream_oauth',
+						accountId: cred.account_id ?? undefined,
+						name: cred.label,
+						isPipedream: true,
+					});
+				}}
 			/>
 		</div>
 	);
