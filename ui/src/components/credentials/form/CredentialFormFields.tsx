@@ -235,6 +235,10 @@ export function CredentialFormFields({
 		mutationFn: (d: CredentialCreate) => api.createCredential(d),
 		onSuccess: (created) => {
 			queryClient.invalidateQueries({ queryKey: ['credentials'] });
+			const createdId = (created as { id?: string } | undefined)?.id;
+			if (createdId) {
+				queryClient.invalidateQueries({ queryKey: ['credential', createdId] });
+			}
 			const apiIdFromForm =
 				selectedApi?.id ?? (created as { api_id?: string } | undefined)?.api_id ?? '';
 			emitCredentialImported({ api_id: apiIdFromForm });
@@ -255,6 +259,7 @@ export function CredentialFormFields({
 		mutationFn: (d: CredentialPatch) => api.updateCredential(editId!, d),
 		onSuccess: () => {
 			queryClient.invalidateQueries({ queryKey: ['credentials'] });
+			queryClient.invalidateQueries({ queryKey: ['credential', editId!] });
 			onSaved({ id: editId!, api_id: selectedApi.id });
 		},
 		onError: (e: Error) => setError(e),

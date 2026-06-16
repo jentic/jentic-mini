@@ -143,6 +143,7 @@ export function OAuthConnectionDetailSheet({
 			// The grant lands asynchronously in the other tab; nudge the
 			// caches so the status dot refreshes when the user returns.
 			queryClient.invalidateQueries({ queryKey: ['credentials'] });
+			queryClient.invalidateQueries({ queryKey: ['credential', credentialId] });
 			queryClient.invalidateQueries({ queryKey: ['oauth-broker-accounts'] });
 			if (cred?.api_id) emitCredentialImported({ api_id: cred.api_id });
 			toast({

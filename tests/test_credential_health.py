@@ -18,8 +18,46 @@ These tests pin the contract end-to-end at the data layer:
 """
 
 import pytest
+import src.routers.apis as apis
+import src.routers.credentials as creds
 from src import vault
 from src.db import get_db
+
+
+class _StubResponse:
+    def __init__(self, status_code: int):
+        self.status_code = status_code
+
+
+class _StubAsyncClient:
+    """Drop-in for httpx.AsyncClient that returns a fixed status, no network.
+
+    Used to drive the /test endpoint's health write-back deterministically:
+    the real probe would need a reachable upstream, but the contract under
+    test is "what does a 2xx / 401 persist to credentials.healthy".
+    """
+
+    _status = 200
+
+    def __init__(self, *args, **kwargs):
+        pass
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *args):
+        return False
+
+    async def get(self, *args, **kwargs):
+        return _StubResponse(self._status)
+
+
+def _patch_probe(monkeypatch, status: int) -> None:
+    """Allow the SSRF guard and stub the outbound probe to return `status`."""
+    monkeypatch.setattr(apis, "is_private_server_url", lambda *a, **k: False)
+
+    client_cls = type("_Client", (_StubAsyncClient,), {"_status": status})
+    monkeypatch.setattr(creds.httpx, "AsyncClient", client_cls)
 
 
 @pytest.mark.asyncio
@@ -86,3 +124,68 @@ async def test_list_credentials_surfaces_manual_healthy(admin_client):
     assert row is not None, "created credential missing from list"
     assert row["healthy"] is False
     assert row["health_checked_at"] is not None
+
+
+# ── /test endpoint health write-back ─────────────────────────────────────────
+#
+# The headline behaviour of the branch: a Test-connection probe persists its
+# verdict so the StatusDot flips without a reload. The existing tier1 tests only
+# cover unreachable/SSRF/pipedream hosts (ok=False), never a real 2xx/401 — so
+# the write paths (`mark_credential_health(healthy=True/False)`) were untested.
+# We stub the outbound probe so the contract is "what does the status persist".
+
+from tests.test_credentials_tier1 import _create_credential, _register_api  # noqa: E402
+
+
+def test_test_endpoint_persists_healthy_true_on_2xx(admin_client, monkeypatch):
+    """A 2xx probe marks the manual credential healthy=True and surfaces it."""
+    api_id = "health-writeback-ok.example.com"
+    _register_api(admin_client, api_id)
+    cid = _create_credential(admin_client, api_id)
+
+    _patch_probe(monkeypatch, 200)
+    resp = admin_client.post(f"/credentials/{cid}/test")
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["ok"] is True
+
+    listed = admin_client.get("/credentials").json()
+    row = next(c for c in listed if c["id"] == cid)
+    assert row["healthy"] is True
+    assert row["health_checked_at"] is not None
+
+
+def test_test_endpoint_persists_healthy_false_on_401(admin_client, monkeypatch):
+    """A 401 probe marks the credential healthy=False (authoritative rejection)."""
+    api_id = "health-writeback-401.example.com"
+    _register_api(admin_client, api_id)
+    cid = _create_credential(admin_client, api_id)
+
+    _patch_probe(monkeypatch, 401)
+    resp = admin_client.post(f"/credentials/{cid}/test")
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["ok"] is False
+    assert body["hint"] == "unauthorized"
+
+    listed = admin_client.get("/credentials").json()
+    row = next(c for c in listed if c["id"] == cid)
+    assert row["healthy"] is False
+    assert row["health_checked_at"] is not None
+
+
+def test_test_endpoint_leaves_healthy_untouched_on_429(admin_client, monkeypatch):
+    """Ambiguous statuses (429/5xx) are not credential verdicts — healthy stays NULL."""
+    api_id = "health-writeback-429.example.com"
+    _register_api(admin_client, api_id)
+    cid = _create_credential(admin_client, api_id)
+
+    _patch_probe(monkeypatch, 429)
+    resp = admin_client.post(f"/credentials/{cid}/test")
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["ok"] is False
+    assert body["hint"] == "rate_limited"
+
+    listed = admin_client.get("/credentials").json()
+    row = next(c for c in listed if c["id"] == cid)
+    assert row["healthy"] is None, "429 must not write a health verdict"

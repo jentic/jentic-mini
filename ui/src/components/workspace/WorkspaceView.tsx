@@ -390,6 +390,9 @@ export function WorkspaceView({
 			queryClient.invalidateQueries({ queryKey: ['workspace', 'apis'] });
 			queryClient.invalidateQueries({ queryKey: ['workspace', 'workflows'] });
 			queryClient.invalidateQueries({ queryKey: ['workspace-stats'] });
+			// A credential bound to an API that backs a toolkit changes the
+			// toolkit card piles/counts, so refresh the enrichment too.
+			queryClient.invalidateQueries({ queryKey: ['toolkit-card-enrichment'] });
 			toast({
 				title: 'Credential saved',
 				description: `${evt.api_id} is ready to run.`,

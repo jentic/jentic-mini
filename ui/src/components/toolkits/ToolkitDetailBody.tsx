@@ -306,6 +306,9 @@ export function ToolkitDetailBody({
 		onSuccess: () => {
 			queryClient.invalidateQueries({ queryKey: ['toolkit-agents', toolkitId] });
 			queryClient.invalidateQueries({ queryKey: ['agents'] });
+			// agentCount on the toolkit cards comes from the enrichment query,
+			// which invalidateToolkitSurfaces refreshes alongside the lists.
+			invalidateToolkitSurfaces();
 			toast({ title: 'Agent access revoked', variant: 'success' });
 		},
 		onError: (err: any) =>
@@ -323,6 +326,8 @@ export function ToolkitDetailBody({
 			setShowKeyCreate(false);
 			setKeyName('');
 			queryClient.invalidateQueries({ queryKey: ['toolkit-keys', toolkitId] });
+			// key_count is rendered from the toolkit lists/cards.
+			invalidateToolkitSurfaces();
 		},
 	});
 
@@ -330,6 +335,7 @@ export function ToolkitDetailBody({
 		mutationFn: (keyId: string) => api.revokeKey(toolkitId, keyId),
 		onSuccess: () => {
 			queryClient.invalidateQueries({ queryKey: ['toolkit-keys', toolkitId] });
+			invalidateToolkitSurfaces();
 			toast({ title: 'API key revoked', variant: 'success' });
 		},
 		onError: (err: any) =>
@@ -366,7 +372,10 @@ export function ToolkitDetailBody({
 	const deleteMutation = useMutation({
 		mutationFn: () => api.deleteToolkit(toolkitId),
 		onSuccess: () => {
-			queryClient.invalidateQueries({ queryKey: ['toolkits'] });
+			// The cascade also removes API keys and agent grants, so refresh the
+			// agent surfaces in addition to the toolkit lists/cards.
+			invalidateToolkitSurfaces();
+			queryClient.invalidateQueries({ queryKey: ['agents'] });
 			setShowDeleteConfirm(false);
 			onRequestClose();
 		},
