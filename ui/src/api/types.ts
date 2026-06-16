@@ -126,6 +126,13 @@ export interface CredentialOut {
 	app_slug?: string | null;
 	synced_at?: number | null;
 	healthy?: boolean | null;
+	/**
+	 * Unix timestamp of the last health observation — a broker call verdict
+	 * (<400 → healthy, 401/403 → broken) or an explicit Test connection.
+	 * Null until the credential has been exercised. Drives the "checked Xm ago"
+	 * line in the StatusDot tooltip.
+	 */
+	health_checked_at?: number | null;
 }
 
 export interface CredentialCreate {

@@ -497,8 +497,16 @@ async def test_credential(
     elif status >= 500:
         hint = "upstream_error"
 
+    # Persist the verdict so the StatusDot reflects the explicit test, mirroring
+    # what the broker writes on live traffic. Only 401/403 is an authoritative
+    # "rejected" signal; an `ok` probe means the credential was accepted. We
+    # deliberately don't touch `healthy` for ambiguous statuses (429/5xx) — those
+    # are upstream availability problems, not credential verdicts.
     if ok:
         await vault.mark_credential_used(cid)
+        await vault.mark_credential_health(cid, healthy=True)
+    elif status in (401, 403):
+        await vault.mark_credential_health(cid, healthy=False)
 
     return {
         "ok": ok,
@@ -731,7 +739,8 @@ async def list_credentials(
         async with db.execute(
             f"SELECT c.id, c.label, c.api_id, c.auth_type, c.created_at, c.updated_at, c.identity, "
             f"       c.server_variables, c.scheme, c.last_used_at, c.description, "
-            f"       oba.account_id, oba.app_slug, oba.synced_at, oba.healthy "
+            f"       oba.account_id, oba.app_slug, oba.synced_at, oba.healthy, "
+            f"       c.healthy, c.health_checked_at "
             f"FROM credentials c "
             f"LEFT JOIN oauth_broker_accounts oba ON oba.broker_id || '-' || oba.account_id || '-' || replace(oba.api_host, '.', '-') = c.id "
             f"{where} ORDER BY c.created_at DESC",
@@ -770,11 +779,18 @@ async def list_credentials(
             "account_id": r[11] if len(r) > 11 else None,
             "app_slug": r[12] if len(r) > 12 else None,
             "synced_at": r[13] if len(r) > 13 else None,
-            # `healthy` is a SQLite INTEGER (0/1) or NULL — coerce to bool/None
-            # so the JSON shape matches the Pydantic model. Manual creds never
-            # join a row in oauth_broker_accounts so they pass through as None,
-            # which the UI reads as "unknown / not applicable".
-            "healthy": (bool(r[14]) if len(r) > 14 and r[14] is not None else None),
+            # Health precedence: a Pipedream-managed credential carries its health
+            # on the joined oauth_broker_accounts row (oba.healthy, r[14]); that
+            # wins. A manual credential has no oba row, so we fall back to its own
+            # credentials.healthy (r[15]), written by the broker / Test connection.
+            # Both are SQLite INTEGER (0/1) or NULL — coerce to bool/None so the
+            # JSON shape matches the Pydantic model. NULL on both = "unknown".
+            "healthy": (
+                bool(r[14])
+                if len(r) > 14 and r[14] is not None
+                else (bool(r[15]) if len(r) > 15 and r[15] is not None else None)
+            ),
+            "health_checked_at": r[16] if len(r) > 16 else None,
         }
         for r in rows
     ]

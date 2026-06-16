@@ -3,7 +3,7 @@ import { AppLink } from '@/components/ui/AppLink';
 import { Button } from '@/components/ui/Button';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { SectionTitle } from '@/components/discovery/SectionTitle';
-import { StatusDot, type CredentialStatus } from '@/components/credentials';
+import { StatusDot, deriveCredentialStatus } from '@/components/credentials';
 import { timeAgo } from '@/lib/time';
 
 interface CredentialsSectionProps {
@@ -33,10 +33,9 @@ interface CredentialsSectionProps {
  * its edit page. Purely presentational; the parent owns the data.
  *
  * Each row carries a `StatusDot` derived from the credential's
- * `last_used_at` and (for Pipedream OAuth) the `healthy` bit. Same
- * derivation logic as the main /credentials list — kept inline here
- * to avoid a coupling of the workspace UI to credential row internals.
- * If the rules drift, lift `deriveStatus` to a shared module.
+ * `last_used_at` / `healthy` / `health_checked_at` via the shared
+ * `deriveCredentialStatus` helper — the same derivation the main
+ * /credentials list uses, so the two surfaces never drift.
  */
 export function CredentialsSection({
 	credentials,
@@ -48,7 +47,7 @@ export function CredentialsSection({
 	// Shared row rendering — used by both the link path (default)
 	// and the button path (when `onEditCredential` is provided).
 	const renderRowBody = (cred: any) => {
-		const status = deriveStatus(cred);
+		const status = deriveCredentialStatus(cred);
 		return (
 			<>
 				<KeyRound className="text-muted-foreground h-4 w-4 shrink-0" />
@@ -57,7 +56,12 @@ export function CredentialsSection({
 						<span className="text-foreground text-sm font-medium">
 							{cred.label || 'Unnamed'}
 						</span>
-						<StatusDot status={status.tone} label={status.label} size="sm" />
+						<StatusDot
+							status={status.tone}
+							label={status.label}
+							detail={status.detail}
+							size="sm"
+						/>
 						{cred.auth_type && (
 							<span className="bg-muted text-muted-foreground rounded px-1.5 py-0.5 text-[10px] font-medium uppercase">
 								{cred.auth_type}
@@ -159,23 +163,4 @@ export function CredentialsSection({
 			</div>
 		</section>
 	);
-}
-
-function deriveStatus(cred: any): { tone: CredentialStatus; label: string } {
-	if (cred.healthy === false || cred.healthy === 0) {
-		return {
-			tone: 'broken',
-			label: 'OAuth grant rejected — reconnect to restore.',
-		};
-	}
-	if (cred.last_used_at) {
-		return {
-			tone: 'ok',
-			label: `Last used ${timeAgo(cred.last_used_at)} — broker observed a healthy upstream call.`,
-		};
-	}
-	return {
-		tone: 'unknown',
-		label: 'Not yet probed. Use Test connection on the edit page to verify.',
-	};
 }

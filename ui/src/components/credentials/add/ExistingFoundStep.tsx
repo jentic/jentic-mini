@@ -4,7 +4,7 @@ import type { ApiOut, CredentialOut } from '@/api/types';
 import { api } from '@/api/client';
 import { Button } from '@/components/ui/Button';
 import { LoadingState } from '@/components/ui/LoadingState';
-import { StatusDot, type CredentialStatus } from '@/components/credentials';
+import { StatusDot, deriveCredentialStatus } from '@/components/credentials';
 import { timeAgo } from '@/lib/time';
 
 /**
@@ -144,7 +144,7 @@ function ExistingRow({
 	bound?: boolean;
 	onSelect: () => void;
 }) {
-	const status = deriveStatus(cred);
+	const status = deriveCredentialStatus(cred);
 	const body = (
 		<>
 			<KeyRound className="text-muted-foreground h-4 w-4 shrink-0" />
@@ -153,7 +153,12 @@ function ExistingRow({
 					<span className="text-foreground text-sm font-medium">
 						{cred.label || 'Unnamed'}
 					</span>
-					<StatusDot status={status.tone} label={status.label} size="sm" />
+					<StatusDot
+						status={status.tone}
+						label={status.label}
+						detail={status.detail}
+						size="sm"
+					/>
 					{cred.auth_type && (
 						<span className="bg-muted text-muted-foreground rounded px-1.5 py-0.5 text-[10px] font-medium uppercase">
 							{cred.auth_type}
@@ -203,23 +208,4 @@ function ExistingRow({
 			{body}
 		</div>
 	);
-}
-
-function deriveStatus(cred: CredentialOut): { tone: CredentialStatus; label: string } {
-	if (cred.healthy === false) {
-		return {
-			tone: 'broken',
-			label: 'OAuth grant rejected — reconnect to restore.',
-		};
-	}
-	if (cred.last_used_at) {
-		return {
-			tone: 'ok',
-			label: `Last used ${timeAgo(cred.last_used_at)}.`,
-		};
-	}
-	return {
-		tone: 'unknown',
-		label: 'Not yet probed.',
-	};
 }

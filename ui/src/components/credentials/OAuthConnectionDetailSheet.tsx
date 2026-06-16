@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowUpRight, Check, Loader2, RotateCcw, Trash2, X } from 'lucide-react';
 import { StatusDot, type CredentialStatus } from './StatusDot';
+import { deriveCredentialStatus } from './credentialStatus';
 import { api, oauthBrokers } from '@/api/client';
 import type { CredentialOut } from '@/api/types';
 import { AppLink } from '@/components/ui/AppLink';
@@ -211,7 +212,11 @@ export function OAuthConnectionDetailSheet({
 										<h3 className="text-foreground min-w-0 flex-1 truncate text-sm font-semibold">
 											{cred.label}
 										</h3>
-										<StatusDot status={status.tone} label={status.label} />
+										<StatusDot
+											status={status.tone}
+											label={status.label}
+											detail={status.detail}
+										/>
 									</div>
 									{cred.api_id && (
 										<p className="text-muted-foreground mt-0.5 truncate font-mono text-xs">
@@ -409,32 +414,25 @@ function DetailRow({ label, value }: { label: string; value: React.ReactNode }) 
 }
 
 /**
- * Tone + human-readable summary for the connection's status. Mirrors
- * `CredentialRow`'s `deriveStatus` so the dot reads identically, but adds
- * a `summary` string for the read-only facts table.
+ * Tone + human-readable summary for the connection's status. Delegates to the
+ * shared `deriveCredentialStatus` so the dot + tooltip read identically to the
+ * /credentials list, and adds a terse `summary` string for the read-only facts
+ * table on this sheet.
  */
 function deriveStatus(cred: CredentialOut): {
 	tone: CredentialStatus;
 	label: string;
+	detail?: string;
 	summary: string;
 } {
-	if (cred.healthy === false) {
-		return {
-			tone: 'broken',
-			label: 'OAuth grant rejected — reconnect to restore.',
-			summary: 'Grant rejected',
-		};
-	}
-	if (cred.last_used_at) {
-		return {
-			tone: 'ok',
-			label: `Last used ${timeAgo(cred.last_used_at)} — broker observed a healthy upstream call.`,
-			summary: 'Healthy',
-		};
-	}
-	return {
-		tone: 'unknown',
-		label: 'Not yet used. The connection is configured but unverified.',
-		summary: 'Not yet used',
-	};
+	const base = deriveCredentialStatus(cred);
+	const summary =
+		base.tone === 'broken'
+			? 'Grant rejected'
+			: base.tone === 'ok'
+				? 'Healthy'
+				: base.tone === 'unknown'
+					? 'Unverified'
+					: 'Not yet used';
+	return { ...base, summary };
 }

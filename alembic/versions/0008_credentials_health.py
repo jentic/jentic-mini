@@ -8,6 +8,17 @@ Adds the columns + table that unblock the credentials revamp UI:
   - credentials.description    TEXT  — optional free-text notes on what this
                                        credential is for. Surfaced in the
                                        form and (truncated) on the row.
+  - credentials.healthy        INT   — tri-state health for manual creds
+                                       (NULL / 0 / 1), mirroring the
+                                       oauth_broker_accounts.healthy signal
+                                       that Pipedream creds already carry.
+                                       Written by the broker on 401/403 vs
+                                       <400, and by POST /credentials/{id}/test.
+                                       Lets a manual credential's StatusDot go
+                                       red, not just grey/green.
+  - credentials.health_checked_at REAL — unix ts of the last health write
+                                       (broker observation or explicit test),
+                                       so the UI can say "checked 5m ago".
   - idx_credentials_api_id           — single-column index for the
                                        ?api_id=… filter on GET /credentials
                                        and for the new
@@ -40,6 +51,10 @@ def upgrade() -> None:
         op.execute("ALTER TABLE credentials ADD COLUMN last_used_at REAL")
     if "description" not in cred_cols:
         op.execute("ALTER TABLE credentials ADD COLUMN description TEXT")
+    if "healthy" not in cred_cols:
+        op.execute("ALTER TABLE credentials ADD COLUMN healthy INTEGER")
+    if "health_checked_at" not in cred_cols:
+        op.execute("ALTER TABLE credentials ADD COLUMN health_checked_at REAL")
 
     op.execute("CREATE INDEX IF NOT EXISTS idx_credentials_api_id ON credentials(api_id)")
 
@@ -75,6 +90,10 @@ def downgrade() -> None:
     # same baseline (e.g. 0006 uses ADD COLUMN without a table-rebuild).
     bind = op.get_bind()
     cred_cols = {row[1] for row in bind.execute(text("PRAGMA table_info(credentials)"))}
+    if "health_checked_at" in cred_cols:
+        op.execute("ALTER TABLE credentials DROP COLUMN health_checked_at")
+    if "healthy" in cred_cols:
+        op.execute("ALTER TABLE credentials DROP COLUMN healthy")
     if "description" in cred_cols:
         op.execute("ALTER TABLE credentials DROP COLUMN description")
     if "last_used_at" in cred_cols:

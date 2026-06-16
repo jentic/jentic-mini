@@ -371,7 +371,7 @@ async def create_credential(
 # If a column is added/removed, only this query and _row_to_dict need updating.
 _CREDENTIAL_COLS = (
     "id, label, created_at, updated_at, api_id, auth_type, identity, server_variables, scheme, "
-    "last_used_at, description"
+    "last_used_at, description, healthy, health_checked_at"
 )
 
 
@@ -559,6 +559,42 @@ async def mark_credential_used(cid: str) -> None:
     except Exception:
         # Non-fatal: keep the response path clean.
         _vault_log.debug("mark_credential_used: failed for cid=%s", cid, exc_info=True)
+
+
+async def mark_credential_health(cid: str, healthy: bool) -> None:
+    """Best-effort write of a manual credential's tri-state `healthy` flag.
+
+    Mirrors, for manually-stored credentials, the health signal that Pipedream
+    OAuth credentials already get via `oauth_broker_accounts.healthy`:
+
+      - ``healthy=False`` — the upstream returned 401/403, i.e. the credential
+        was authoritatively rejected. Surfaces as the red `StatusDot` and an
+        "expired / invalid" hint in the credentials UI.
+      - ``healthy=True``  — the upstream accepted the credential (a <400
+        response on a real call, or a successful Test connection probe).
+
+    Written by the broker after each manual-credential call and by
+    `POST /credentials/{id}/test`. Also stamps `health_checked_at` so the UI
+    can say "checked 5m ago". Swallows all exceptions — like
+    `mark_credential_used`, this must never block or fail the response path.
+
+    Note: Pipedream credentials carry their health on `oauth_broker_accounts`
+    (the list query joins it), so this only ever needs to touch manual rows.
+    A blind UPDATE is fine — the broker only calls it with the manual
+    credential id it actually used.
+    """
+    if not cid:
+        return
+    try:
+        async with get_db() as db:
+            await db.execute(
+                "UPDATE credentials SET healthy=?, health_checked_at=unixepoch() WHERE id=?",
+                (1 if healthy else 0, cid),
+            )
+            await db.commit()
+    except Exception:
+        # Non-fatal: keep the response path clean.
+        _vault_log.debug("mark_credential_health: failed for cid=%s", cid, exc_info=True)
 
 
 async def build_inject_headers_for_credential(cid: str) -> tuple[dict[str, str], dict | None]:
@@ -807,7 +843,8 @@ async def get_credentials_for_grants(toolkit_ids: list[str], host: str, path: st
 def _row_to_dict(row) -> dict:
     # Columns from _CREDENTIAL_COLS (explicit SELECT — immune to schema churn):
     # 0:id, 1:label, 2:created_at, 3:updated_at, 4:api_id, 5:auth_type,
-    # 6:identity, 7:server_variables, 8:scheme, 9:last_used_at, 10:description
+    # 6:identity, 7:server_variables, 8:scheme, 9:last_used_at, 10:description,
+    # 11:healthy, 12:health_checked_at
     # routes is synthetic — appended by _fetch_credential_row as the last element
     sv_raw = row[7] if len(row) > 7 else None
     try:
@@ -817,8 +854,11 @@ def _row_to_dict(row) -> dict:
     scheme_raw = row[8] if len(row) > 8 else None
     last_used_at = row[9] if len(row) > 9 and not isinstance(row[9], list) else None
     description = row[10] if len(row) > 10 and not isinstance(row[10], list) else None
+    healthy_raw = row[11] if len(row) > 11 and not isinstance(row[11], list) else None
+    healthy = None if healthy_raw is None else bool(healthy_raw)
+    health_checked_at = row[12] if len(row) > 12 and not isinstance(row[12], list) else None
     # routes is the synthetic last element added by _fetch_credential_row
-    routes = row[-1] if len(row) > 11 and isinstance(row[-1], list) else None
+    routes = row[-1] if len(row) > 13 and isinstance(row[-1], list) else None
     return {
         "id": row[0],
         "label": row[1],
@@ -832,4 +872,6 @@ def _row_to_dict(row) -> dict:
         "routes": routes,
         "last_used_at": last_used_at,
         "description": description,
+        "healthy": healthy,
+        "health_checked_at": health_checked_at,
     }

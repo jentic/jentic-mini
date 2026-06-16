@@ -1,7 +1,8 @@
 import { useQuery } from '@tanstack/react-query';
 import { Settings, Trash2, RotateCcw } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { StatusDot, type CredentialStatus } from './StatusDot';
+import { StatusDot } from './StatusDot';
+import { deriveCredentialStatus } from './credentialStatus';
 import type { CredentialOut } from '@/api/types';
 import { api } from '@/api/client';
 import { AppLink } from '@/components/ui/AppLink';
@@ -91,9 +92,8 @@ export function CredentialRow({
 		staleTime: 30_000,
 	});
 
-	const status = deriveStatus(cred);
+	const status = deriveCredentialStatus(cred);
 	const isPipedream = cred.auth_type === 'pipedream_oauth';
-
 	return (
 		<div
 			role="button"
@@ -119,7 +119,11 @@ export function CredentialRow({
 						<h3 className="font-heading text-foreground min-w-0 flex-1 truncate text-sm font-semibold">
 							{cred.label}
 						</h3>
-						<StatusDot status={status.tone} label={status.label} />
+						<StatusDot
+							status={status.tone}
+							label={status.label}
+							detail={status.detail}
+						/>
 					</div>
 					{cred.api_id && (
 						<p className="text-muted-foreground mt-0.5 truncate font-mono text-xs">
@@ -318,34 +322,4 @@ function authTypeLabel(authType: string | null | undefined): string {
 			// the raw scheme is still more useful than a generic placeholder.
 			return authType;
 	}
-}
-
-/**
- * Tone derivation for the row's `StatusDot`.
- *
- * Order matters — Pipedream's `healthy=false` is the most authoritative
- * signal we have (the broker recorded a 401/403). After that we fall back
- * to "fresh use" as a positive signal, then to "never used" (unknown).
- *
- * NB: This is intentionally **not** a network probe — that's the /test
- * button's job. Rendering 50 credential rows must not fan out 50 upstream
- * GETs.
- */
-function deriveStatus(cred: CredentialOut): { tone: CredentialStatus; label: string } {
-	if (cred.healthy === false) {
-		return {
-			tone: 'broken',
-			label: 'OAuth grant rejected — reconnect to restore.',
-		};
-	}
-	if (cred.last_used_at) {
-		return {
-			tone: 'ok',
-			label: `Last used ${timeAgo(cred.last_used_at)} — broker observed a healthy upstream call.`,
-		};
-	}
-	return {
-		tone: 'unknown',
-		label: 'Not yet probed. Use Test connection on the edit page to verify.',
-	};
 }

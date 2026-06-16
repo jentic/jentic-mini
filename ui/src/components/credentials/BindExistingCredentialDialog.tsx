@@ -9,7 +9,7 @@ import { SearchInput } from '@/components/ui/SearchInput';
 import { ErrorAlert } from '@/components/ui/ErrorAlert';
 import { messageFromApiError } from '@/lib/apiError';
 import { LoadingState } from '@/components/ui/LoadingState';
-import { StatusDot, type CredentialStatus } from '@/components/credentials';
+import { StatusDot, deriveCredentialStatus } from '@/components/credentials';
 import { timeAgo } from '@/lib/time';
 
 /**
@@ -170,7 +170,7 @@ export function BindExistingCredentialDialog({
 }
 
 function CredentialRow({ cred, onSelect }: { cred: CredentialOut; onSelect: () => void }) {
-	const status = deriveStatus(cred);
+	const status = deriveCredentialStatus(cred);
 	return (
 		<button
 			type="button"
@@ -183,7 +183,12 @@ function CredentialRow({ cred, onSelect }: { cred: CredentialOut; onSelect: () =
 					<span className="text-foreground text-sm font-medium">
 						{cred.label || 'Unnamed'}
 					</span>
-					<StatusDot status={status.tone} label={status.label} size="sm" />
+					<StatusDot
+						status={status.tone}
+						label={status.label}
+						detail={status.detail}
+						size="sm"
+					/>
 					{cred.auth_type && (
 						<span className="bg-muted text-muted-foreground rounded px-1.5 py-0.5 text-[10px] font-medium uppercase">
 							{cred.auth_type}
@@ -204,23 +209,4 @@ function CredentialRow({ cred, onSelect }: { cred: CredentialOut; onSelect: () =
 			</span>
 		</button>
 	);
-}
-
-function deriveStatus(cred: CredentialOut): { tone: CredentialStatus; label: string } {
-	if (cred.healthy === false) {
-		return {
-			tone: 'broken',
-			label: 'OAuth grant rejected — reconnect to restore.',
-		};
-	}
-	if (cred.last_used_at) {
-		return {
-			tone: 'ok',
-			label: `Last used ${timeAgo(cred.last_used_at)}.`,
-		};
-	}
-	return {
-		tone: 'unknown',
-		label: 'Not yet probed.',
-	};
 }

@@ -1302,8 +1302,12 @@ async def broker(request: Request, target: str):
                 # Update trace with final status
                 trace_status = "success" if resp.status < 400 else "error"
                 await _write_trace(trace_status, resp.status)
-                if credential_id and resp.status < 400:
-                    await vault.mark_credential_used(credential_id)
+                if credential_id:
+                    if resp.status < 400:
+                        await vault.mark_credential_used(credential_id)
+                        await vault.mark_credential_health(credential_id, healthy=True)
+                    elif resp.status in (401, 403):
+                        await vault.mark_credential_health(credential_id, healthy=False)
 
                 if upstream_async_flag:
                     await update_job(
@@ -1424,10 +1428,19 @@ async def broker(request: Request, target: str):
         except Exception:
             pass  # non-fatal
 
-    # ── Mark credential last_used_at on success ───────────────────────────────
-    # Best-effort; failures are swallowed inside vault.mark_credential_used.
-    if credential_id and _upstream_status < 400:
-        await vault.mark_credential_used(credential_id)
+    # ── Mark credential health + last_used_at from the upstream's verdict ─────
+    # Best-effort; failures are swallowed inside vault.* (never blocks the path).
+    # This is the manual-credential counterpart to the Pipedream OAuth-account
+    # health write above: <400 means the upstream accepted the credential
+    # (healthy + bump last_used_at); 401/403 means it was rejected (unhealthy →
+    # red StatusDot). Other statuses (404/429/5xx) are not credential verdicts,
+    # so we leave `healthy` untouched rather than flapping it on a flaky upstream.
+    if credential_id:
+        if _upstream_status < 400:
+            await vault.mark_credential_used(credential_id)
+            await vault.mark_credential_health(credential_id, healthy=True)
+        elif _upstream_status in (401, 403):
+            await vault.mark_credential_health(credential_id, healthy=False)
 
     # ── Auth failure hint for BasicAuth ───────────────────────────────────────
     # When a BasicAuth call gets 401/403, the likely cause is the wrong

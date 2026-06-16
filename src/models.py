@@ -373,7 +373,16 @@ class CredentialOut(BaseModel):
     False = upstream returned 401/403 and the grant needs to be reconnected;
     None = unknown / not applicable (manual bearer/api-key credentials, or
     an OAuth account that hasn't been used yet). Surfaced as `StatusDot`
-    in the credential list and as a 'Reconnect' inline action."""
+    in the credential list and as a 'Reconnect' inline action.
+
+    For manual credentials this is sourced from `credentials.healthy`, written
+    by the broker on each call (<400 → True, 401/403 → False) and by
+    `POST /credentials/{id}/test`. For Pipedream credentials it comes from the
+    joined `oauth_broker_accounts.healthy`, which takes precedence."""
+    health_checked_at: float | None = None
+    """Unix timestamp of the last health observation (a broker call verdict or an
+    explicit Test connection). Null until the credential has been exercised.
+    Lets the UI say 'checked 5m ago' in the StatusDot tooltip."""
 
 
 # ── Toolkits (output) ─────────────────────────────────────────────────────────

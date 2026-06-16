@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useMutation } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { CheckCircle2, XCircle, Loader2, AlertCircle, HelpCircle } from 'lucide-react';
 import { api } from '@/api/client';
 import { Button } from '@/components/ui/Button';
@@ -15,6 +15,11 @@ import { Button } from '@/components/ui/Button';
  * credential is mutable: the user typically clicks Test, sees a 401, edits
  * the value, clicks Test again. Stale-while-revalidating that flow would
  * just confuse them.
+ *
+ * The endpoint also persists its verdict to `credentials.healthy`, so on a
+ * successful response we invalidate the `['credentials']` list and the
+ * `['credential', id]` detail queries — that's what makes the StatusDot pill
+ * flip to its new colour without a page refresh.
  *
  * Hint mapping:
  *   - `unauthorized`         → red — credential rejected
@@ -40,10 +45,19 @@ interface TestResult {
 
 export function TestConnectionButton({ credentialId, disabled }: TestConnectionButtonProps) {
 	const [result, setResult] = useState<TestResult | null>(null);
+	const queryClient = useQueryClient();
 
 	const mutation = useMutation({
 		mutationFn: () => api.testCredential(credentialId),
-		onSuccess: (data) => setResult(data),
+		onSuccess: (data) => {
+			setResult(data);
+			// The /test endpoint persists the verdict to credentials.healthy +
+			// health_checked_at, so refetch the list and this credential to pull
+			// the new value through — otherwise the StatusDot pill stays stale
+			// until a manual page refresh.
+			queryClient.invalidateQueries({ queryKey: ['credentials'] });
+			queryClient.invalidateQueries({ queryKey: ['credential', credentialId] });
+		},
 		onError: (e: Error) =>
 			setResult({
 				ok: false,
