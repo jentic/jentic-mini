@@ -2470,7 +2470,7 @@
 			"post": {
 				"tags": ["credentials"],
 				"summary": "Test a credential by issuing a low-impact upstream probe",
-				"description": "Verify a credential by issuing a single 5-second probe to the upstream API.\n\nThe probe URL is chosen, in priority order:\n1. `x-jentic-healthcheck` declared in the API's OpenAPI spec\n2. The first `GET` operation in the spec with no required parameters\n3. The root URL of the API's first declared server\n4. The credential's first declared route host\n\nResponse shape: `{ ok: bool, status: int | null, hint: string | null, probe_url: string | null }`.\nA 2xx upstream response is `ok=true`. 401/403 returns `ok=false` with a hint that the\ncredential is rejected. 404/405 on a probe path is treated as `ok=true` since the\nupstream **did respond** \u2014 we only care that the credential is plausibly valid.\n\nNo body is sent. No agent-policy involvement. Used by the credentials UI's\n\"Test connection\" button on the form page and (later) inline next to the\ncredential row in the list.",
+				"description": "Verify a credential by issuing a single 5-second probe to the upstream API.\n\nThe probe URL is chosen, in priority order:\n1. `x-jentic-healthcheck` declared in the API's OpenAPI spec\n2. The first `GET` operation in the spec with no required parameters\n3. The root URL of the API's first declared server\n4. The credential's first declared route host\n\nResponse shape: `{ ok: bool, status: int | null, hint: string | null, probe_url: string | null }`.\nA 2xx upstream response is `ok=true`. 401/403 returns `ok=false` with a hint that the\ncredential is rejected. 404/405 on a probe path is treated as `ok=true` since the\nupstream **did respond** \u2014 we only care that the credential is plausibly valid.\n\nNo body is sent.\n\n**Auth:** Requires a human session, or an agent key with an explicit\n`POST /credentials` allow rule on the jentic-mini credential. This probe\ndecrypts and uses the stored secret to make an authenticated outbound call,\nso it is gated like the credential write endpoints \u2014 an agent cannot use it\nas an oracle against credentials it has no permission for.",
 				"operationId": "test_credential_credentials__cid__test_post",
 				"parameters": [
 					{
@@ -7412,6 +7412,17 @@
 							}
 						],
 						"title": "Healthy"
+					},
+					"health_checked_at": {
+						"anyOf": [
+							{
+								"type": "number"
+							},
+							{
+								"type": "null"
+							}
+						],
+						"title": "Health Checked At"
 					}
 				},
 				"type": "object",

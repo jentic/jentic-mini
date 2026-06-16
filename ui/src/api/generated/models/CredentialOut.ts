@@ -22,5 +22,6 @@ export type CredentialOut = {
     app_slug?: (string | null);
     synced_at?: (number | null);
     healthy?: (boolean | null);
+    health_checked_at?: (number | null);
 };
 
