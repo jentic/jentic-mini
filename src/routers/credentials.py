@@ -3,6 +3,7 @@
 import json
 import logging
 from typing import Annotated, Any
+from urllib.parse import urlparse
 
 import httpx
 import yaml
@@ -447,10 +448,15 @@ async def test_credential(
     # SSRF guard: the probe URL is derived from user-controlled api_id / routes /
     # imported spec, and we attach the decrypted secret to the request. Refuse to
     # probe private, loopback, link-local (incl. 169.254.169.254 cloud metadata),
-    # or otherwise-reserved hosts — and fail closed if the host cannot be resolved.
-    from src.routers.apis import is_private_server_url  # noqa: PLC0415
+    # or otherwise-reserved hosts. To close the DNS-rebinding (TOCTOU) gap we
+    # resolve the host exactly once here and pin the outbound connection to a
+    # validated IP, so httpx cannot re-resolve to a private address mid-flight.
+    from src.routers.apis import safe_resolve_public_ips  # noqa: PLC0415
 
-    if is_private_server_url(probe_url, resolve=True):
+    parsed_probe = urlparse(probe_url)
+    probe_host = parsed_probe.hostname or ""
+    safe_ips = safe_resolve_public_ips(probe_host)
+    if not safe_ips:
         return {
             "ok": False,
             "status": None,
@@ -464,9 +470,29 @@ async def test_credential(
 
     headers, _cred_with_value = await vault.build_inject_headers_for_credential(cid)
 
+    # Pin DNS: rewrite the URL to connect to the validated IP, but keep the
+    # original Host header + TLS SNI so the upstream still routes/validates
+    # correctly. This eliminates the validate-then-reconnect window entirely.
+    pinned_ip = safe_ips[0]
+    default_port = 443 if parsed_probe.scheme == "https" else 80
+    probe_port = parsed_probe.port or default_port
+    pinned_netloc = (
+        f"[{pinned_ip}]:{probe_port}" if ":" in pinned_ip else f"{pinned_ip}:{probe_port}"
+    )
+    pinned_url = parsed_probe._replace(netloc=pinned_netloc).geturl()
+    headers = {**headers, "Host": parsed_probe.netloc}
+
     try:
-        async with httpx.AsyncClient(timeout=5.0, follow_redirects=False) as client:
-            resp = await client.get(probe_url, headers=headers)
+        async with httpx.AsyncClient(
+            timeout=5.0,
+            follow_redirects=False,
+            verify=True,
+        ) as client:
+            resp = await client.get(
+                pinned_url,
+                headers=headers,
+                extensions={"sni_hostname": probe_host},
+            )
         status = resp.status_code
     except httpx.TimeoutException:
         return {

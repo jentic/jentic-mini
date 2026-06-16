@@ -17,6 +17,8 @@ These tests pin the contract end-to-end at the data layer:
     column (so the OAuth path is unaffected).
 """
 
+import socket
+
 import pytest
 import src.routers.apis as apis
 import src.routers.credentials as creds
@@ -54,7 +56,7 @@ class _StubAsyncClient:
 
 def _patch_probe(monkeypatch, status: int) -> None:
     """Allow the SSRF guard and stub the outbound probe to return `status`."""
-    monkeypatch.setattr(apis, "is_private_server_url", lambda *a, **k: False)
+    monkeypatch.setattr(apis, "safe_resolve_public_ips", lambda host: ["93.184.216.34"])
 
     client_cls = type("_Client", (_StubAsyncClient,), {"_status": status})
     monkeypatch.setattr(creds.httpx, "AsyncClient", client_cls)
@@ -189,3 +191,61 @@ def test_test_endpoint_leaves_healthy_untouched_on_429(admin_client, monkeypatch
     listed = admin_client.get("/credentials").json()
     row = next(c for c in listed if c["id"] == cid)
     assert row["healthy"] is None, "429 must not write a health verdict"
+
+
+# ── SSRF DNS-rebinding guard ─────────────────────────────────────────────────
+#
+# The /test guard used to validate the host, then let httpx independently
+# re-resolve the same name when connecting — a TOCTOU window an attacker with
+# low-TTL DNS exploits to answer "public" for the check and "private" (e.g.
+# 169.254.169.254) for the connection. We now resolve exactly once via
+# safe_resolve_public_ips and pin the connection to a validated IP.
+
+
+def test_safe_resolve_public_ips_blocks_mixed_answers(monkeypatch):
+    """A name that resolves to ANY private address is rejected wholesale."""
+
+    def fake_getaddrinfo(host, *args, **kwargs):
+        # Attacker answers a public AND a private address (rebinding payload).
+        return [
+            (2, 1, 6, "", ("93.184.216.34", 0)),
+            (2, 1, 6, "", ("169.254.169.254", 0)),
+        ]
+
+    monkeypatch.setattr(socket, "getaddrinfo", fake_getaddrinfo)
+    assert apis.safe_resolve_public_ips("rebind.example.com") is None
+
+
+def test_safe_resolve_public_ips_allows_public(monkeypatch):
+    monkeypatch.setattr(
+        socket,
+        "getaddrinfo",
+        lambda *a, **k: [(2, 1, 6, "", ("93.184.216.34", 0))],
+    )
+    assert apis.safe_resolve_public_ips("public.example.com") == ["93.184.216.34"]
+
+
+def test_safe_resolve_public_ips_blocks_literal_metadata():
+    """The cloud-metadata IP as a literal host is blocked without DNS."""
+    assert apis.safe_resolve_public_ips("169.254.169.254") is None
+    assert apis.safe_resolve_public_ips("localhost") is None
+
+
+def test_test_endpoint_blocks_private_resolution(admin_client, monkeypatch):
+    """When the probe host resolves private, /test returns blocked_host, no call."""
+    api_id = "ssrf-private.example.com"
+    _register_api(admin_client, api_id)
+    cid = _create_credential(admin_client, api_id)
+
+    monkeypatch.setattr(apis, "safe_resolve_public_ips", lambda host: None)
+
+    # If the guard leaks, this stub would be hit — make it explode so a regression
+    # surfaces as a 500 rather than a silent successful probe.
+    def _boom(*a, **k):
+        raise AssertionError("outbound probe must not run for a blocked host")
+
+    monkeypatch.setattr(creds.httpx, "AsyncClient", _boom)
+
+    resp = admin_client.post(f"/credentials/{cid}/test")
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["hint"] == "blocked_host"

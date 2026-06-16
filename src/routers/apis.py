@@ -214,6 +214,49 @@ def _host_is_private(host: str, *, resolve: bool) -> bool:
     return False
 
 
+def safe_resolve_public_ips(host: str) -> list[str] | None:
+    """Resolve ``host`` once and return its IPs iff *every* one is public.
+
+    This is the anti-DNS-rebinding primitive for SSRF-sensitive callers: rather
+    than checking the host and then letting a second, independent DNS lookup
+    pick the address actually connected to (the TOCTOU window an attacker with
+    low-TTL DNS exploits), the caller resolves here exactly once and then pins
+    the connection to one of the returned IPs.
+
+    Returns ``None`` (blocked) when the host is a literal/`localhost` private
+    address, when resolution fails, or when *any* resolved address is private /
+    loopback / link-local / reserved (fail-closed — a host that mixes a public
+    and a private answer is rejected wholesale).
+    """
+    host = host.strip().lower().rstrip(".")
+    if not host or host == "localhost" or host.endswith(".localhost"):
+        return None
+
+    # Literal IP — no DNS, validate directly.
+    try:
+        ip = ipaddress.ip_address(host)
+        return None if _ip_is_blocked(ip) else [host]
+    except ValueError:
+        pass
+
+    try:
+        infos = socket.getaddrinfo(host, None)
+    except OSError:
+        return None
+
+    ips: list[str] = []
+    for info in infos:
+        addr = info[4][0].split("%")[0]
+        try:
+            if _ip_is_blocked(ipaddress.ip_address(addr)):
+                return None
+        except ValueError:
+            return None
+        if addr not in ips:
+            ips.append(addr)
+    return ips or None
+
+
 def is_private_server_url(url: str, *, resolve: bool = False) -> bool:
     """Return True if the URL's host is a private/localhost/link-local address.
 
