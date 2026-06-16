@@ -97,6 +97,9 @@ describe('CredentialsPage', () => {
 				screen.queryByRole('button', { name: /^delete credential$/i }),
 			).not.toBeInTheDocument(),
 		);
-		expect(screen.getByText('My API Key')).toBeInTheDocument();
+		// The failed-delete flow re-renders the list, which can momentarily mount
+		// two copies of the row on a loaded runner. Wait for it to settle to a
+		// single credential so the assertion isn't sampled mid-transition.
+		await waitFor(() => expect(screen.getAllByText('My API Key')).toHaveLength(1));
 	});
 });
