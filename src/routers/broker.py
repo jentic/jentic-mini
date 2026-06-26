@@ -61,6 +61,8 @@ from src.routers.overlays import confirm_overlay
 from src.routers.toolkits import check_credential_policy
 from src.routers.traces import new_trace_id, safe_write_trace
 from src.routers.workflows import dispatch_workflow
+from src.security import security_registry
+from src.security.utils import extract_text_from_payload
 from src.utils import parse_prefer_wait
 
 
@@ -1208,9 +1210,10 @@ async def broker(request: Request, target: str):
     if request.url.query:
         upstream_url += f"?{request.url.query}"
 
+    body_bytes = await request.body()
+
     # ── Simulate: return what would be sent ──────────────────────────────────
     if is_simulate:
-        body_bytes = await request.body()
         forward_headers = {k: v for k, v in request.headers.items() if k.lower() not in _HOP_BY_HOP}
         forward_headers.update(inject_headers)
         would_send = {
@@ -1250,9 +1253,6 @@ async def broker(request: Request, target: str):
         forward_headers.pop("authorization", None)
     # Inject credentials (replaces any auth header)
     forward_headers.update(inject_headers)
-
-    # ── Forward request ───────────────────────────────────────────────────────
-    body_bytes = await request.body()
 
     # ── Prefer: wait=0 → async broker call ───────────────────────────────────
     if prefer_wait is not None and prefer_wait == 0.0:
@@ -1380,6 +1380,40 @@ async def broker(request: Request, target: str):
                 _upstream_body = await upstream_response.read()
                 _upstream_status = upstream_response.status
                 _upstream_headers = dict(upstream_response.headers)
+
+                # Response Security Scan
+                if security_registry.has_plugins() and _upstream_body:
+                    text_to_scan = extract_text_from_payload(_upstream_body)
+                    if text_to_scan.strip():
+                        verdict = await security_registry.scan_response(
+                            text_to_scan, upstream_host, _upstream_status
+                        )
+                        if verdict and not verdict.is_safe:
+                            # Record blocked execution in traces
+                            await _write_trace(
+                                "policy_denied",
+                                403,
+                                f"Response blocked by {verdict.plugin_name} security layer due to unsafe content",
+                            )
+                            return Response(
+                                content=json.dumps(
+                                    {
+                                        "error": "security_violation",
+                                        "message": f"The response body from the upstream service was blocked by the {verdict.plugin_name} security layer.",
+                                        "verdict": verdict.verdict,
+                                        "decision_layer": verdict.decision_layer,
+                                        "confidence_score": verdict.confidence_score,
+                                    }
+                                ),
+                                status_code=403,
+                                media_type="application/json",
+                                headers={
+                                    "X-Jentic-Error": "true",
+                                    "X-Jentic-Execution-Id": execution_id,
+                                    **_cred_headers,
+                                },
+                            )
+
     except asyncio.TimeoutError:
         await _write_trace("timeout", 504, f"Upstream {upstream_host} timeout after 60s")
         error_body = {

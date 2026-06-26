@@ -17,6 +17,7 @@ For agent-facing usage (search / inspect / execute), see [AGENTS.md](../AGENTS.m
 - [monitor.md](monitor.md) — Monitor page: Overview / Execution Log / Jobs, trace–job cross-linking, usage API
 - [oauth-broker.md](oauth-broker.md) — `OAuthBroker` protocol, token vs proxy modes, registry, DB schema
 - [pipedream.md](pipedream.md) — Pipedream Connect integration: setup, connect-link, sync, supported apps
+- [security.md](security.md) — pluggable security plugin registry, ingress request scanning, and response scanning
 - [self-registration.md](self-registration.md) — how the server registers its own OpenAPI spec at startup
 - [server-variables.md](server-variables.md) — OpenAPI server variables for self-hosted / multi-tenant APIs
 - [versioning.md](versioning.md) — `APP_VERSION` source of truth, `/version` endpoint, update-check behaviour
