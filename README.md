@@ -27,7 +27,7 @@ Jentic One is a backend platform for secure third-party API execution. A statele
 
 ## Quick Start
 
-Install the CLI to deploy Jentic One locally or interact with an existing environment:
+Install `jenticctl` to deploy Jentic One locally or manage an existing environment:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/jentic/jentic-one/main/tools/install.sh | sh
