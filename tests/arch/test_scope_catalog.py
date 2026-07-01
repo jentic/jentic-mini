@@ -68,18 +68,6 @@ def test_family_and_action_derivation() -> None:
 
 
 @pytest.mark.arch
-def test_catalog_import_implication() -> None:
-    """Verify that catalog:import implies apis:read and is implied by apis:write."""
-    catalog = build_scope_catalog()
-    by_name = {s["name"]: s for s in catalog["scopes"]}
-    assert by_name["catalog:import"]["family"] == "catalog"
-    assert by_name["catalog:import"]["action"] == "import"
-    assert "apis:read" in by_name["catalog:import"]["implies"]
-    assert "catalog:import" in by_name["apis:write"]["implies"]
-    assert "apis:read" in by_name["apis:write"]["implies_transitive"]
-
-
-@pytest.mark.arch
 def test_families_partition_scopes() -> None:
     """Every scope belongs to exactly one family, and families hold every scope."""
     catalog = build_scope_catalog()
@@ -105,6 +93,23 @@ def test_default_agent_scopes_are_catalogued() -> None:
     """Every scope granted to a default agent must exist in the catalogue."""
     missing = set(DEFAULT_AGENT_SCOPES) - set(ALL_PERMISSIONS)
     assert not missing, f"DEFAULT_AGENT_SCOPES references uncatalogued scopes: {sorted(missing)}"
+
+
+@pytest.mark.arch
+def test_catalog_import_family_and_implications() -> None:
+    """The catalog:import scope forms its own family and wires the expected graph."""
+    catalog = build_scope_catalog()
+    by_name = {s["name"]: s for s in catalog["scopes"]}
+    catalog_import = by_name["catalog:import"]
+    assert catalog_import["family"] == "catalog"
+    assert catalog_import["action"] == "import"
+    assert catalog_import["implies"] == ["apis:read"]
+
+    fam = next(f for f in catalog["families"] if f["name"] == "catalog")
+    assert fam["label"] == "Catalog"
+    # apis:write ⇒ catalog:import ⇒ apis:read (transitive closure).
+    assert "catalog:import" in by_name["apis:write"]["implies_transitive"]
+    assert "apis:read" in by_name["catalog:import"]["implies_transitive"]
 
 
 @pytest.mark.arch

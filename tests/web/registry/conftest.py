@@ -108,8 +108,8 @@ def write_only_client(web_context: Context) -> Iterator[TestClient]:
 
 
 @pytest.fixture()
-def catalog_import_client(web_context: Context) -> Iterator[TestClient]:
-    """TestClient holding only catalog:import."""
+def catalog_import_only_client(web_context: Context) -> Iterator[TestClient]:
+    """TestClient holding only catalog:import — gates the catalog import route."""
     identity = Identity(
         sub="usr_test_registry_catalog_import",
         email="registry-catalogimport@test.local",

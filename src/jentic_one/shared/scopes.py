@@ -22,6 +22,7 @@ DEFAULT_AGENT_SCOPES: tuple[str, ...] = (
     "capabilities:execute",
     "capabilities:read",
     "apis:read",
+    "catalog:import",
     "executions:read",
     "jobs:read",
     "events:read",
@@ -30,7 +31,6 @@ DEFAULT_AGENT_SCOPES: tuple[str, ...] = (
     "owner:agents:read",
     "owner:credentials:read",
     "owner:access-requests:read",
-    "catalog:import",
 )
 
 # Scopes an agent may obtain through a self-service ``scope:grant`` access
@@ -38,11 +38,14 @@ DEFAULT_AGENT_SCOPES: tuple[str, ...] = (
 # of elevations a human owner can approve without handing over administrative
 # power.
 #
-# ``apis:write`` is included so an agent can request the ability to import
-# arbitrary URLs/files into the local registry and have a human approve it.
-# It is deliberately NOT in ``DEFAULT_AGENT_SCOPES``: the agent must file
-# the request and an owner must approve it. Note that catalog imports
-# (``catalog:import``) are granted to agents by default.
+# ``apis:write`` is included so an agent can request the broader ability to
+# import, update, and delete arbitrary API definitions (URL/inline import via
+# ``POST /apis``) and have a human approve it. Importing an already-cataloged
+# API is now a default agent capability via ``catalog:import`` (in
+# ``DEFAULT_AGENT_SCOPES``), so agents no longer need to file a request just to
+# run ``jentic catalog import``. ``apis:write`` is deliberately NOT in
+# ``DEFAULT_AGENT_SCOPES``: the agent must file the request and an owner must
+# approve it.
 #
 # Still excludes the truly privileged scopes (``org:admin``, ``agents:write``)
 # so an owner with ``agents:write`` cannot self-escalate an agent to admin via

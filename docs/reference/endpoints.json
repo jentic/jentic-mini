@@ -3717,26 +3717,6 @@
         ]
       },
       {
-        "blurb": "Importing public catalog APIs into the local registry.",
-        "label": "Catalog",
-        "name": "catalog",
-        "scopes": [
-          {
-            "action": "import",
-            "description": "Import an API from the public catalog into the local registry",
-            "family": "catalog",
-            "implies": [
-              "apis:read"
-            ],
-            "implies_transitive": [
-              "apis:read"
-            ],
-            "is_superuser": false,
-            "name": "catalog:import"
-          }
-        ]
-      },
-      {
         "blurb": "Imported API definitions and metadata.",
         "label": "APIs",
         "name": "apis",
@@ -3764,6 +3744,26 @@
             ],
             "is_superuser": false,
             "name": "apis:write"
+          }
+        ]
+      },
+      {
+        "blurb": "Importing public catalog APIs into the local registry.",
+        "label": "Catalog",
+        "name": "catalog",
+        "scopes": [
+          {
+            "action": "import",
+            "description": "Import an API from the public catalog into the local registry",
+            "family": "catalog",
+            "implies": [
+              "apis:read"
+            ],
+            "implies_transitive": [
+              "apis:read"
+            ],
+            "is_superuser": false,
+            "name": "catalog:import"
           }
         ]
       },
