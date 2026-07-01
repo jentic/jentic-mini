@@ -458,6 +458,41 @@ func ComposeDownVolumes(w io.Writer, composePath string) error {
 	return run(w, "docker", composeArgs(composePath, "down", "-v")...)
 }
 
+// RemoveDataVolumes removes the named docker volumes explicitly, by name. It is
+// the belt-and-suspenders companion to ComposeDownVolumes: `docker compose down
+// -v` only removes volumes declared in the compose file for the pinned project,
+// so a volume created under a different project name (a pre-pinning install, a
+// regenerated compose file, or a stack first brought up from a different
+// directory basename) survives an otherwise-successful `down -v`. Removing the
+// project-prefixed volume names directly closes that gap.
+//
+// A volume that does not exist is treated as a no-op (not an error): the goal is
+// "ensure gone", and `down -v` having already removed it is success, not
+// failure. It returns the names that were actually removed so the caller can
+// report accurately. If docker is not on PATH it returns an error immediately so
+// the caller can surface the manual-removal hint rather than failing deep in
+// exec.
+func RemoveDataVolumes(w io.Writer, names []string) (removed []string, err error) {
+	if _, err := exec.LookPath("docker"); err != nil {
+		return nil, errors.New("`docker` not found on PATH; cannot remove the data volume(s)")
+	}
+	for _, name := range names {
+		out, rmErr := runCapture(w, "", "volume", "rm", name)
+		if rmErr == nil {
+			removed = append(removed, name)
+			continue
+		}
+		// `docker volume rm` on a missing volume exits non-zero with "no such
+		// volume" — that is the success case for us (it is already gone). Any
+		// other failure (e.g. the volume is still in use) is a real error.
+		if strings.Contains(strings.ToLower(out), "no such volume") {
+			continue
+		}
+		return removed, fmt.Errorf("docker volume rm %s: %w", name, rmErr)
+	}
+	return removed, nil
+}
+
 // ComposePs returns the `docker compose ps` output for the stack.
 func ComposePs(composePath string) (string, error) {
 	out, err := exec.Command("docker", composeArgs(composePath, "ps")...).CombinedOutput() //nolint:gosec // composePath is CLI-managed under JENTIC_HOME.

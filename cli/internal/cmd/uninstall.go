@@ -207,7 +207,24 @@ func (a *App) uninstallDocker(opts *uninstallOptions, composePath string) error 
 			fmt.Fprintln(a.Out, theme.Dimf("the database volume may survive; once the daemon is up remove it with: docker volume rm %s", vols))
 			return nil
 		}
-		fmt.Fprintln(a.Out, theme.Successf("Stopped Docker stack and removed its data volume."))
+		// `docker compose down -v` only removes volumes declared in the compose
+		// file under the pinned project. A volume created under a different
+		// project name (a pre-pinning install, a regenerated compose file, etc.)
+		// survives that otherwise-successful teardown, so remove the known
+		// project-prefixed volume(s) by name too. Best-effort: a failure here is
+		// non-fatal and points the operator at the manual removal.
+		hints := a.uninstallVolumeHint()
+		removed, rmErr := install.RemoveDataVolumes(a.Out, hints)
+		if rmErr != nil {
+			fmt.Fprintln(a.Out, theme.Warnf("could not remove the data volume by name (continuing): %v", rmErr))
+			fmt.Fprintln(a.Out, theme.Dimf("remove it by hand with: docker volume rm %s", strings.Join(hints, " ")))
+			return nil
+		}
+		if len(removed) > 0 {
+			fmt.Fprintln(a.Out, theme.Successf("Stopped Docker stack and removed its data volume (%s).", strings.Join(removed, ", ")))
+		} else {
+			fmt.Fprintln(a.Out, theme.Successf("Stopped Docker stack; no data volume found to remove (already gone)."))
+		}
 		return nil
 	}
 

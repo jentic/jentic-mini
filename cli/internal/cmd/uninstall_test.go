@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -235,6 +236,68 @@ func TestUninstall_DockerPurgeAttemptsVolumeRemoval(t *testing.T) {
 	wantVol := install.DataVolumeNames(false)[0]
 	if strings.Contains(s, "may survive") && !strings.Contains(s, wantVol) {
 		t.Errorf("failure hint should name the data volume %q:\n%s", wantVol, s)
+	}
+}
+
+// fakePurgeDocker installs a `docker` stub on PATH that makes the purge path
+// deterministic without a real daemon: `docker compose … down -v` succeeds but
+// removes nothing (the wrong-project-name case that leaves the volume behind),
+// and `docker volume rm <name>` succeeds while appending <name> to a log file.
+// Returns the log path so the test can assert the explicit fallback ran. This
+// reproduces the reported bug: down -v exits 0 yet the volume survives, so the
+// by-name removal is what actually deletes it. POSIX-only (shell stub).
+func fakePurgeDocker(t *testing.T) string {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("shell-stub PATH technique is POSIX-only")
+	}
+	dir := t.TempDir()
+	log := filepath.Join(dir, "rm_log")
+	script := "#!/bin/sh\n" +
+		"if [ \"$1\" = \"volume\" ] && [ \"$2\" = \"rm\" ]; then\n" +
+		"  echo \"$3\" >> '" + log + "'\n" +
+		"  echo \"$3\"\n" +
+		"  exit 0\n" +
+		"fi\n" +
+		// Every other invocation (compose … down -v, etc.) succeeds as a no-op,
+		// standing in for a `down -v` that matched no volumes.
+		"exit 0\n"
+	docker := filepath.Join(dir, "docker")
+	if err := os.WriteFile(docker, []byte(script), 0o755); err != nil {
+		t.Fatalf("write docker stub: %v", err)
+	}
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	return log
+}
+
+// The regression fix: when `docker compose down -v` succeeds but removes no
+// volume (the volume was created under a different project name), --purge must
+// still delete the known project-prefixed volume by name. With a sqlite
+// manifest that volume is jentic_jentic-data, and the success message must name
+// it so the operator sees the data was actually removed.
+func TestUninstall_DockerPurgeRemovesVolumeByNameWhenDownVIsNoop(t *testing.T) {
+	log := fakePurgeDocker(t)
+
+	app, out := newTestApp(t)
+	if err := os.WriteFile(app.Paths.ComposePath(), []byte("services: {}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	m := &config.Manifest{DB: "sqlite"}
+	if err := m.Save(app.Paths); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := app.uninstallE(&uninstallOptions{yes: true, purge: true}); err != nil {
+		t.Fatalf("uninstall: %v", err)
+	}
+
+	wantVol := install.DataVolumeNames(false)[0] // jentic_jentic-data
+	logged, _ := os.ReadFile(log)
+	if !strings.Contains(string(logged), wantVol) {
+		t.Errorf("expected explicit `docker volume rm %s` fallback; rm log:\n%s", wantVol, logged)
+	}
+	if s := out.String(); !strings.Contains(s, wantVol) {
+		t.Errorf("success message should name the removed volume %q:\n%s", wantVol, s)
 	}
 }
 

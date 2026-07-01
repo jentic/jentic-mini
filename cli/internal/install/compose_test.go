@@ -3,6 +3,7 @@ package install
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -170,5 +171,82 @@ func TestWriteComposeArtifactsPostgresWritesInitSQL(t *testing.T) {
 		if !strings.Contains(string(sql), "CREATE SCHEMA IF NOT EXISTS "+schema) {
 			t.Errorf("init SQL missing schema %q:\n%s", schema, sql)
 		}
+	}
+}
+
+// fakeVolumeDocker installs a `docker` stub on PATH that handles `docker volume
+// rm <name>`: it succeeds unless <name> is in missing (which makes it print the
+// daemon's real "no such volume" message and exit 1, exactly as a missing
+// volume does). Every `volume rm` invocation appends its target name to a log
+// file so the test can assert which volumes removal was attempted for. Returns
+// the log-file path. POSIX-only (shell stub), mirroring fakeDocker.
+func fakeVolumeDocker(t *testing.T, missing ...string) string {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("shell-stub PATH technique is POSIX-only")
+	}
+	dir := t.TempDir()
+	log := filepath.Join(dir, "rm_log")
+	var missingClauses strings.Builder
+	for _, m := range missing {
+		missingClauses.WriteString("    if [ \"$3\" = \"" + m + "\" ]; then\n")
+		missingClauses.WriteString("      echo \"Error: No such volume: " + m + "\" 1>&2\n")
+		missingClauses.WriteString("      exit 1\n")
+		missingClauses.WriteString("    fi\n")
+	}
+	script := "#!/bin/sh\n" +
+		"if [ \"$1\" = \"volume\" ] && [ \"$2\" = \"rm\" ]; then\n" +
+		"  echo \"$3\" >> '" + log + "'\n" +
+		missingClauses.String() +
+		"  echo \"$3\"\n" +
+		"  exit 0\n" +
+		"fi\n" +
+		"exit 0\n"
+	docker := filepath.Join(dir, "docker")
+	if err := os.WriteFile(docker, []byte(script), 0o755); err != nil {
+		t.Fatalf("write docker stub: %v", err)
+	}
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	return log
+}
+
+func TestRemoveDataVolumesRemovesEachName(t *testing.T) {
+	log := fakeVolumeDocker(t)
+
+	var buf strings.Builder
+	names := []string{"jentic_jentic-data", "jentic_db-data"}
+	removed, err := RemoveDataVolumes(&buf, names)
+	if err != nil {
+		t.Fatalf("RemoveDataVolumes: %v", err)
+	}
+	if len(removed) != len(names) {
+		t.Fatalf("removed = %v, want %v", removed, names)
+	}
+	for i, n := range names {
+		if removed[i] != n {
+			t.Errorf("removed[%d] = %q, want %q", i, removed[i], n)
+		}
+	}
+	logged, _ := os.ReadFile(log)
+	for _, n := range names {
+		if !strings.Contains(string(logged), n) {
+			t.Errorf("expected docker volume rm to be attempted for %q; log:\n%s", n, logged)
+		}
+	}
+}
+
+func TestRemoveDataVolumesSwallowsMissingVolume(t *testing.T) {
+	// The SQLite volume is already gone (down -v removed it); the Postgres one
+	// does not exist. Neither is an error, and only the present one is reported
+	// as removed.
+	fakeVolumeDocker(t, "jentic_jentic-data")
+
+	var buf strings.Builder
+	removed, err := RemoveDataVolumes(&buf, []string{"jentic_jentic-data", "jentic_db-data"})
+	if err != nil {
+		t.Fatalf("missing volume must be a no-op, got: %v", err)
+	}
+	if len(removed) != 1 || removed[0] != "jentic_db-data" {
+		t.Errorf("removed = %v, want [jentic_db-data] (missing one skipped)", removed)
 	}
 }
