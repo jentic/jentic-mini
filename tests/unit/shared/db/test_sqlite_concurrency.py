@@ -18,7 +18,7 @@ import asyncio
 from pathlib import Path
 
 import pytest
-from sqlalchemy import text
+from sqlalchemy import event, text
 
 from jentic_one.shared.config import DatabaseConfig
 from jentic_one.shared.db.session import DatabaseSession
@@ -37,8 +37,6 @@ async def file_db(tmp_path: Path) -> DatabaseSession:
 async def test_write_transaction_emits_begin_immediate(file_db: DatabaseSession) -> None:
     """The write path opens the transaction with BEGIN IMMEDIATE, not deferred."""
     statements: list[str] = []
-
-    from sqlalchemy import event
 
     sync_engine = file_db.engine.sync_engine
 

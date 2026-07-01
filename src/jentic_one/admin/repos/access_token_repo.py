@@ -24,6 +24,7 @@ class AccessTokenRepository:
         token_family_id: str,
         expires_at: datetime,
         created_by: str,
+        is_ephemeral: bool = False,
     ) -> AccessToken:
         token = AccessToken(
             token_hash=token_hash,
@@ -33,6 +34,7 @@ class AccessTokenRepository:
             token_family_id=token_family_id,
             expires_at=expires_at,
             created_by=created_by,
+            is_ephemeral=is_ephemeral,
         )
         session.add(token)
         await session.flush()
