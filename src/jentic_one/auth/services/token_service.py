@@ -8,7 +8,12 @@ from datetime import UTC, datetime, timedelta
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from jentic_one.admin.repos import AccessTokenRepository, AgentRepository, RefreshTokenRepository
+from jentic_one.admin.repos import (
+    AccessTokenRepository,
+    ActorScopeGrantRepository,
+    AgentRepository,
+    RefreshTokenRepository,
+)
 from jentic_one.auth.services.errors import InvalidGrantError
 from jentic_one.shared.audit import AuditAction, AuditTargetType, record_audit
 from jentic_one.shared.auth.identity import Identity
@@ -67,6 +72,7 @@ class TokenService:
                 token_family_id=family_id,
                 expires_at=now + timedelta(seconds=ttl),
                 created_by=actor_id,
+                is_ephemeral=True,
             )
             await record_audit(
                 session,
@@ -108,6 +114,7 @@ class TokenService:
                 token_family_id=family_id,
                 expires_at=now + timedelta(seconds=self.access_ttl_seconds),
                 created_by=actor_id,
+                is_ephemeral=False,
             )
             await RefreshTokenRepository.create(
                 session,
@@ -285,7 +292,22 @@ class TokenService:
         return {"active": False}
 
     async def resolve_access_token(self, token: str) -> Identity | None:
-        """Resolve an opaque access token for downstream middleware."""
+        """Resolve an opaque access token for downstream middleware.
+
+        For long-lived agent and service-account tokens (an access+refresh pair,
+        ``is_ephemeral=False``), scopes are resolved *live* from the actor's
+        current ``ActorScopeGrant`` rows rather than the frozen snapshot stored
+        on the token. This makes scope edits (grant/revoke, replace, approved
+        ``scope:grant`` access requests) take effect immediately without forcing
+        a re-mint — the token row's ``scopes`` column is only a mint-time
+        snapshot.
+
+        Ephemeral minted tokens (``mint_task_token`` → ``issue_access_only``,
+        ``is_ephemeral=True``) keep their frozen snapshot: their scopes are a
+        deliberate downscoped subset of the host's grants and must not be
+        re-broadened. User tokens also keep their snapshot (their permissions do
+        not come from ``ActorScopeGrant``).
+        """
         if not token.startswith(ACCESS_TOKEN_PREFIX):
             return None
 
@@ -298,17 +320,27 @@ class TokenService:
             if at is None:
                 return None
 
+            scopes = list(at.scopes)
             parent_actor_id: str | None = None
             if at.actor_type == ActorType.AGENT:
                 agent = await AgentRepository.get_by_id(session, at.actor_id)
                 if agent is not None:
                     parent_actor_id = agent.owner_id
 
+            if not at.is_ephemeral and at.actor_type in (
+                ActorType.AGENT,
+                ActorType.SERVICE_ACCOUNT,
+            ):
+                grants = await ActorScopeGrantRepository.list_for_actor(
+                    session, at.actor_id, actor_type=at.actor_type
+                )
+                scopes = [g.scope for g in grants]
+
         active = at.revoked_at is None and at.expires_at > now
         return Identity(
             sub=at.actor_id,
             actor_type=ActorType(at.actor_type),
-            permissions=list(at.scopes),
+            permissions=scopes,
             expires_at=at.expires_at,
             active=active,
             parent_actor_id=parent_actor_id,

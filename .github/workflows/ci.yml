@@ -189,11 +189,41 @@ jobs:
 
   security:
     name: Security scan
-    uses: jentic/context/.github/workflows/security-scan.yml@main
-    with:
-      python-version: "3.12"
-      bandit-targets: "src/"
-      trivy-severity: "CRITICAL,HIGH"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          sudo docker image prune -af
+
+      - uses: actions/checkout@v7
+
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          severity: 'CRITICAL,HIGH'
+          exit-code: '1'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+
+      - name: Run Bandit security linter
+        run: |
+          uv run --with bandit bandit \
+            -r src/ \
+            -c pyproject.toml \
+            --severity-level high \
+            --confidence-level high
+
+      - name: Check dependency licenses
+        run: |
+          uv sync --frozen
+          uv run --with pip-licenses pip-licenses \
+            --fail-on="GPL-3.0-only;GPL-3.0-or-later;AGPL-3.0-only;AGPL-3.0-or-later"
 
   test-unit:
     name: Unit tests
