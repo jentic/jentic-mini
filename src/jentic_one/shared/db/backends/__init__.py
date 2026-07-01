@@ -13,6 +13,7 @@ from jentic_one.shared.db.backends.sqlite import (
     SqliteBackend,
     configure_sqlite_pragmas,
     enable_sqlite_foreign_keys,
+    enable_sqlite_manual_begin,
 )
 
 __all__ = [
@@ -21,5 +22,6 @@ __all__ = [
     "SqliteBackend",
     "configure_sqlite_pragmas",
     "enable_sqlite_foreign_keys",
+    "enable_sqlite_manual_begin",
     "get_backend",
 ]

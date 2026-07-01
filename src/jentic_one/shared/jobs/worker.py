@@ -140,7 +140,7 @@ class WorkerLoop:
         now = datetime.now(UTC)
         visible_at = now + timedelta(seconds=self._config.visibility_timeout_s)
 
-        async with self._db.transaction() as session:
+        async def _claim(session: Any) -> Any:
             claimable = or_(
                 (Job.status == JobStatus.QUEUED)
                 & (or_(Job.visible_at.is_(None), Job.visible_at <= now)),
@@ -165,8 +165,14 @@ class WorkerLoop:
                 .returning(Job)
             )
             result = await session.execute(stmt)
-            job = result.scalar_one_or_none()
-            return job
+            return result.scalar_one_or_none()
+
+        # Use run_in_transaction so a transient "database is locked" (SQLite
+        # write contention with request handlers or the import job) is retried
+        # with backoff instead of crashing the poll tick. The claim is
+        # idempotent across attempts: it either flips one claimable row or
+        # matches none.
+        return await self._db.run_in_transaction(_claim)
 
     async def _execute_handler(self, handler: Any, job: Any) -> JobResultPayload:
         """Run the handler within a transaction."""

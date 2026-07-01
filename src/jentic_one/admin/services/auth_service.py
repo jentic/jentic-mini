@@ -54,6 +54,8 @@ class AuthService:
     async def login(self, payload: LoginPayload) -> TokenBundle:
         config = self._ctx.config.admin.auth
 
+        account_locked_user_id: str | None = None
+
         async with self._ctx.admin_db.session() as session:
             user = await UserRepository.get_by_email(session, payload.email)
             if user is None:
@@ -67,22 +69,29 @@ class AuthService:
                 raise InvalidCredentialsError()
 
             if secret.locked_until is not None and secret.locked_until > datetime.now(UTC):
-                login_counter.add(1, {"outcome": "lockout"})
-                async with self._ctx.admin_db.transaction() as audit_session:
-                    await record_audit(
-                        audit_session,
-                        action=AuditAction.LOGIN_FAILED,
-                        target_type=AuditTargetType.SESSION,
-                        target_id=user.id,
-                        actor_type=ActorType.USER,
-                        actor_id=user.id,
-                        reason="account_locked",
-                        origin=None,
-                    )
-                raise AccountLockedError(user.id)
+                # Defer the audit write until *after* this read session closes:
+                # holding this read connection open while opening a write
+                # transaction on the same database self-deadlocks under SQLite
+                # (the writer waits on a lock the outer read still holds).
+                account_locked_user_id = user.id
+            else:
+                password_valid = verify_password(payload.password, secret.password_hash)
+                failed_count = secret.failed_login_count
 
-            password_valid = verify_password(payload.password, secret.password_hash)
-            failed_count = secret.failed_login_count
+        if account_locked_user_id is not None:
+            login_counter.add(1, {"outcome": "lockout"})
+            async with self._ctx.admin_db.transaction() as audit_session:
+                await record_audit(
+                    audit_session,
+                    action=AuditAction.LOGIN_FAILED,
+                    target_type=AuditTargetType.SESSION,
+                    target_id=account_locked_user_id,
+                    actor_type=ActorType.USER,
+                    actor_id=account_locked_user_id,
+                    reason="account_locked",
+                    origin=None,
+                )
+            raise AccountLockedError(account_locked_user_id)
 
         if not password_valid:
             async with self._ctx.admin_db.transaction() as session:
