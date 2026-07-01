@@ -367,14 +367,13 @@ func confirmApply(doCLI, doStack bool, repo, ref string) (bool, error) {
 		what = "the stack"
 	}
 	confirm := false
-	form := install.NewForm(huh.NewGroup(
+	if err := install.RunConfirm(
 		huh.NewConfirm().
 			Title(fmt.Sprintf("Rebuild %s from %s@%s?", what, repo, ref)).
 			Affirmative("Yes, update").
 			Negative("Cancel").
 			Value(&confirm),
-	))
-	if err := form.Run(); err != nil {
+	); err != nil {
 		if errors.Is(err, huh.ErrUserAborted) {
 			return false, nil
 		}

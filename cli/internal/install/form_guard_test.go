@@ -3,6 +3,7 @@ package install
 import (
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -40,6 +41,45 @@ func TestAllFormsUseSharedConstructors(t *testing.T) {
 				rel, _ := filepath.Rel(root, path)
 				t.Errorf("%s calls %s directly; use install.NewForm / install.Input instead", rel, tok)
 			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("walk module: %v", err)
+	}
+}
+
+// TestNoConfirmRunEscapeHatch forbids running a huh confirm on its own
+// (huh.NewConfirm()....Run()), which bypasses the shared brand theme and quit
+// keymap and reintroduces the swallowed-first-Enter bug. Standalone confirms
+// must go through install.RunConfirm; multi-field wizard sections compose
+// huh.NewConfirm into install.NewForm groups (sections.go) and never call .Run()
+// on the confirm itself.
+func TestNoConfirmRunEscapeHatch(t *testing.T) {
+	root := moduleRoot(t)
+	// theme.go documents and implements the sanctioned helper; exempt it.
+	allowed := filepath.Join(root, "internal", "install", "theme.go")
+	// Matches huh.NewConfirm()...Run() across lines, with any builder chain in
+	// between, but stops at the first Run( so it can't span unrelated calls.
+	pattern := regexp.MustCompile(`huh\.NewConfirm\((?s:[^;]*?)\.Run\(`)
+
+	err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+			return nil
+		}
+		if path == allowed {
+			return nil
+		}
+		data, readErr := os.ReadFile(path)
+		if readErr != nil {
+			return readErr
+		}
+		if pattern.Match(data) {
+			rel, _ := filepath.Rel(root, path)
+			t.Errorf("%s runs a huh confirm directly (huh.NewConfirm()....Run()); use install.RunConfirm instead", rel)
 		}
 		return nil
 	})
