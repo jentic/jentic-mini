@@ -45,6 +45,7 @@ func TestMigrateArgsDisablesTTY(t *testing.T) {
 
 func TestRenderComposeSQLite(t *testing.T) {
 	d := NewDraft()
+	d.DBBackend = BackendSQLite
 	d.RuntimePath = RuntimeDocker
 	d.Apps = []string{"registry", "admin"}
 	cfg := composeConfigFor("/home/u/.jentic")
@@ -132,6 +133,7 @@ func TestRenderComposePostgres(t *testing.T) {
 func TestWriteComposeArtifactsSQLite(t *testing.T) {
 	dir := t.TempDir()
 	d := NewDraft()
+	d.DBBackend = BackendSQLite
 	d.RuntimePath = RuntimeDocker
 	cfg := composeConfigFor(dir)
 

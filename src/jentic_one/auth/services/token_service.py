@@ -82,8 +82,9 @@ class TokenService:
         # Route through run_in_transaction so a transient SQLite write-lock under
         # concurrent mint traffic is retried (with WAL + busy_timeout) rather than
         # surfaced as a 500 on the first attempt. Token generation stays outside
-        # so the returned secret is stable across a retry.
-        await self._ctx.admin_db.run_in_transaction(_write)
+        # so the returned secret is stable across a retry. Generous budget so the
+        # mint rides out a longer lock hold instead of returning a 503.
+        await self._ctx.admin_db.run_in_transaction(_write, retries=8, backoff_s=0.25)
 
         return access_plain
 
@@ -132,7 +133,10 @@ class TokenService:
 
         # See issue_access_only: retry a transient admin-DB write-lock so the
         # mint/token path under concurrent writers doesn't 500 on first contention.
-        await self._ctx.admin_db.run_in_transaction(_write)
+        # Generous budget (retries + backoff) so the mint rides out a longer lock
+        # hold (e.g. a concurrent broker execution) on the SQLite backend instead
+        # of surfacing a 503 to the wizard.
+        await self._ctx.admin_db.run_in_transaction(_write, retries=8, backoff_s=0.25)
 
         return access_plain, refresh_plain
 

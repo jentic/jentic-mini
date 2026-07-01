@@ -32,8 +32,15 @@ type Client struct {
 }
 
 // New returns a client for the given base URL (trailing slash trimmed).
+//
+// The timeout is generous (60s) because token minting writes to the admin DB,
+// which under the SQLite backend can briefly queue behind another writer (a
+// concurrent broker execution or job) holding the single file-wide write lock.
+// The mint waits out that lock via busy_timeout + retry, so a short client
+// timeout would surface a spurious "context deadline exceeded" for a request
+// that is about to succeed.
 func New(baseURL string) *Client {
-	return &Client{http: httpx.New(baseURL, 15*time.Second)}
+	return &Client{http: httpx.New(baseURL, 60*time.Second)}
 }
 
 // HTTPError is the shared problem-details transport error.

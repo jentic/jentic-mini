@@ -7,11 +7,11 @@ func TestNewDraftDefaults(t *testing.T) {
 	if d.RuntimePath != RuntimeDocker {
 		t.Errorf("RuntimePath = %q", d.RuntimePath)
 	}
-	if d.DBBackend != BackendSQLite {
+	if d.DBBackend != BackendPostgres {
 		t.Errorf("DBBackend = %q", d.DBBackend)
 	}
-	if d.IsPostgres() {
-		t.Errorf("IsPostgres should be false by default")
+	if !d.IsPostgres() {
+		t.Errorf("IsPostgres should be true by default")
 	}
 	if !d.IsDocker() {
 		t.Errorf("IsDocker should be true by default")

@@ -143,7 +143,7 @@ type Draft struct {
 func NewDraft() *Draft {
 	return &Draft{
 		RuntimePath:     RuntimeDocker,
-		DBBackend:       BackendSQLite,
+		DBBackend:       BackendPostgres,
 		PGHost:          "localhost",
 		PGPort:          "5432",
 		PGName:          "jentic",

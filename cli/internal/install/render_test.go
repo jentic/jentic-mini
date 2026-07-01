@@ -27,6 +27,7 @@ func renderToMap(t *testing.T, d *Draft) map[string]any {
 
 func TestRenderSQLite(t *testing.T) {
 	d := NewDraft()
+	d.DBBackend = BackendSQLite
 	d.SQLiteDir = "/data"
 	out := renderToMap(t, d)
 
@@ -76,6 +77,7 @@ func TestRenderPostgres(t *testing.T) {
 
 func TestRenderDockerSQLiteUsesContainerPaths(t *testing.T) {
 	d := NewDraft()
+	d.DBBackend = BackendSQLite
 	d.RuntimePath = RuntimeDocker
 	d.SQLiteDir = "/home/u/.jentic/data" // host dir, ignored under Docker
 	out := renderToMap(t, d)

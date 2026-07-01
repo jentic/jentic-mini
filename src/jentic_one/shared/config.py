@@ -71,7 +71,7 @@ class DatabaseConfig(BaseModel):
     # ``busy_timeout_ms`` is per-connection: when a write hits a held lock SQLite
     # waits up to this long for the lock to clear instead of failing instantly
     # with ``database is locked``.
-    busy_timeout_ms: int = 5000
+    busy_timeout_ms: int = 15000
     journal_mode: str = "WAL"
 
     @model_validator(mode="after")

@@ -33,6 +33,7 @@ func TestSectionsRegistryWellFormed(t *testing.T) {
 
 func TestDatabaseSummarySwitchesBackend(t *testing.T) {
 	d := NewDraft()
+	d.DBBackend = BackendSQLite
 	d.SQLiteDir = "/data"
 	sqlite := strings.Join(databaseSection.Summary(d), "\n")
 	if !strings.Contains(sqlite, "sqlite") || !strings.Contains(sqlite, "/data") {

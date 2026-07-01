@@ -162,15 +162,15 @@ var componentsSection = Section{
 var databaseSection = Section{
 	ID:    "database",
 	Title: "Database",
-	Blurb: "SQLite needs no extra services; Postgres runs as a managed container.",
+	Blurb: "Postgres (recommended) runs as a managed container and handles concurrent writers; SQLite is single-file with no Docker, best for single-user/dev.",
 	Groups: func(d *Draft) []*huh.Group {
 		return []*huh.Group{
 			huh.NewGroup(
 				huh.NewSelect[string]().
 					Title("Database backend").
 					Options(
-						huh.NewOption("SQLite (single-file, no Docker)", BackendSQLite),
-						huh.NewOption("PostgreSQL", BackendPostgres),
+						huh.NewOption("PostgreSQL (recommended)", BackendPostgres),
+						huh.NewOption("SQLite (single-file, no Docker — single-user/dev)", BackendSQLite),
 					).
 					Value(&d.DBBackend),
 			),
