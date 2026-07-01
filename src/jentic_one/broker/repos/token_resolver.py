@@ -6,7 +6,7 @@ import hashlib
 import json
 from datetime import UTC, datetime
 
-from sqlalchemy import text
+from sqlalchemy import Boolean, text
 
 from jentic_one.shared.auth.identity import Identity
 from jentic_one.shared.db import DatabaseSession
@@ -36,7 +36,7 @@ class InProcessTokenResolver:
             "SELECT actor_id, actor_type, scopes, is_ephemeral, expires_at, revoked_at"
             " FROM access_tokens"
             " WHERE token_hash = :token_hash"
-        )
+        ).columns(is_ephemeral=Boolean)
         async with self._admin_db.session() as session:
             result = await session.execute(stmt, {"token_hash": token_hash})
             row = result.one_or_none()
@@ -50,7 +50,7 @@ class InProcessTokenResolver:
             # from actor_scope_grants so scope edits take effect immediately.
             # Ephemeral minted tokens keep their downscoped snapshot; user tokens
             # do not draw scopes from actor_scope_grants.
-            if not _as_bool(row.is_ephemeral) and row.actor_type in (
+            if not row.is_ephemeral and row.actor_type in (
                 ActorType.AGENT.value,
                 ActorType.SERVICE_ACCOUNT.value,
             ):
@@ -84,17 +84,6 @@ def _as_aware_datetime(value: datetime | str) -> datetime:
     """Coerce a DB datetime value to a timezone-aware UTC ``datetime``."""
     dt = value if isinstance(value, datetime) else datetime.fromisoformat(value)
     return dt if dt.tzinfo is not None else dt.replace(tzinfo=UTC)
-
-
-def _as_bool(value: object) -> bool:
-    """Coerce a DB boolean column to ``bool`` (SQLite returns 0/1 integers)."""
-    if isinstance(value, bool):
-        return value
-    if isinstance(value, int):
-        return value != 0
-    if isinstance(value, str):
-        return value.strip().lower() in {"1", "true", "t"}
-    return bool(value)
 
 
 def _as_scope_list(value: object) -> list[str]:
