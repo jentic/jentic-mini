@@ -18,7 +18,11 @@ from sqlalchemy.ext.asyncio import (
 )
 
 from jentic_one.shared.config import DatabaseConfig
-from jentic_one.shared.db.backends import configure_sqlite_pragmas, get_backend
+from jentic_one.shared.db.backends import (
+    configure_sqlite_pragmas,
+    enable_sqlite_immediate_begin,
+    get_backend,
+)
 from jentic_one.shared.db.backends.base import DatabaseBackend
 from jentic_one.shared.db.errors import DatabaseIntegrityError, DatabaseUnavailableError
 
@@ -70,6 +74,7 @@ class DatabaseSession:
                 journal_mode=self._config.journal_mode,
                 busy_timeout_ms=self._config.busy_timeout_ms,
             )
+            enable_sqlite_immediate_begin(self._engine)
         self._session_factory = async_sessionmaker(bind=self._engine, expire_on_commit=False)
 
     async def close(self) -> None:
