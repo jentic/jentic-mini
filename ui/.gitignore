@@ -1,6 +1,0 @@
-playwright-report/
-test-results/
-coverage/
-.vitest-attachments/
-__screenshots__/
-e2e/docker/.docker-e2e-state.json

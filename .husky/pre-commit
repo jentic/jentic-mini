@@ -1,2 +1,0 @@
-uv run poe lint
-cd ui && npx lint-staged
