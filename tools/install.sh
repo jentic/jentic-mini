@@ -203,6 +203,7 @@ check_prereqs() {
   need tar
   need mktemp
   need uname
+  need docker
 }
 
 # --- platform detection -----------------------------------------------------
