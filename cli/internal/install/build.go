@@ -233,8 +233,8 @@ func (p BuildPlan) fetchSource(w io.Writer) error {
 // falling back to "main" when it can't be resolved. Lets the build checkout
 // re-sync to whatever branch the remote publishes as HEAD.
 func remoteDefaultBranch(dir string) string {
-	out, err := exec.Command("git", "-C", dir, "symbolic-ref", "--short",
-		"refs/remotes/origin/HEAD").Output() //nolint:gosec // dir is a CLI-internal build checkout path.
+	//nolint:gosec // dir is a CLI-internal build checkout path.
+	out, err := exec.Command("git", "-C", dir, "symbolic-ref", "--short", "refs/remotes/origin/HEAD").Output()
 	if err == nil {
 		if b := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(string(out)), "origin/")); b != "" {
 			return b
