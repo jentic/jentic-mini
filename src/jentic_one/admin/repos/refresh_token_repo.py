@@ -49,6 +49,18 @@ class RefreshTokenRepository:
         return result.scalar_one_or_none()
 
     @staticmethod
+    async def family_exists(session: AsyncSession, token_family_id: str) -> bool:
+        """Return True if any refresh token exists for the given family.
+
+        Distinguishes a long-lived access+refresh pair (``issue_pair``) from an
+        ephemeral, standalone access token (``issue_access_only`` — used by
+        ``mint_task_token``), which has no refresh sibling.
+        """
+        stmt = select(RefreshToken.id).where(RefreshToken.token_family_id == token_family_id)
+        result = await session.execute(stmt)
+        return result.first() is not None
+
+    @staticmethod
     async def consume(session: AsyncSession, token_id: str, *, replaced_by_id: str) -> None:
         stmt = (
             update(RefreshToken)

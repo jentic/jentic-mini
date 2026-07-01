@@ -19,7 +19,11 @@ import pytest
 from sqlalchemy import delete
 
 from jentic_one.admin.core.schema.access_tokens import AccessToken
+from jentic_one.admin.core.schema.actor_scope_grants import ActorScopeGrant
+from jentic_one.admin.core.schema.refresh_tokens import RefreshToken
 from jentic_one.admin.repos.access_token_repo import AccessTokenRepository
+from jentic_one.admin.repos.actor_scope_grant_repo import ActorScopeGrantRepository
+from jentic_one.admin.repos.refresh_token_repo import RefreshTokenRepository
 from jentic_one.broker.core.token_validation import CachedTokenValidator
 from jentic_one.broker.repos.token_resolver import InProcessTokenResolver
 from jentic_one.broker.services.auth import DualTokenValidator, JwtTokenValidator, JwtVerifier
@@ -36,6 +40,8 @@ async def clean_access_tokens(admin_db: DatabaseSession) -> AsyncGenerator[None,
     async def _truncate() -> None:
         async with admin_db.session() as session:
             await session.execute(delete(AccessToken))
+            await session.execute(delete(RefreshToken))
+            await session.execute(delete(ActorScopeGrant))
             await session.commit()
 
     await _truncate()
@@ -100,3 +106,102 @@ async def test_unknown_opaque_token_is_rejected(
 ) -> None:
     with pytest.raises(ValueError):
         await _dual(admin_db).validate("at_does_not_exist")
+
+
+async def _seed_pair_and_grants(
+    admin_db: DatabaseSession,
+    *,
+    plaintext: str,
+    actor_id: str,
+    family_id: str,
+    snapshot: list[str],
+    grants: list[str],
+) -> None:
+    """Seed a long-lived access+refresh pair (has a refresh sibling) plus live grants."""
+    now = datetime.now(UTC)
+    async with admin_db.session() as session:
+        await AccessTokenRepository.create(
+            session,
+            token_hash=hashlib.sha256(plaintext.encode()).hexdigest(),
+            actor_id=actor_id,
+            actor_type="agent",
+            scopes=snapshot,
+            token_family_id=family_id,
+            expires_at=now + timedelta(hours=1),
+            created_by=actor_id,
+        )
+        await RefreshTokenRepository.create(
+            session,
+            token_hash=hashlib.sha256((plaintext + "_rt").encode()).hexdigest(),
+            actor_id=actor_id,
+            actor_type="agent",
+            scopes=snapshot,
+            token_family_id=family_id,
+            expires_at=now + timedelta(days=7),
+            created_by=actor_id,
+        )
+        for scope in grants:
+            await ActorScopeGrantRepository.grant(
+                session,
+                actor_id=actor_id,
+                actor_type="agent",
+                scope=scope,
+                granted_by="usr_owner",
+                created_by="usr_owner",
+            )
+        await session.commit()
+
+
+async def test_long_lived_token_resolves_live_grants(
+    admin_db: DatabaseSession, clean_access_tokens: None
+) -> None:
+    """A long-lived agent token (with a refresh sibling) resolves the actor's
+    current grants, not the frozen snapshot — the broker sees scope edits."""
+    await _seed_pair_and_grants(
+        admin_db,
+        plaintext="at_longlived",
+        actor_id="agnt_ll",
+        family_id="fam_ll",
+        snapshot=["apis:read"],
+        grants=["apis:read", "apis:write"],
+    )
+
+    resolved = await _dual(admin_db).validate("at_longlived")
+
+    assert resolved.sub == "agnt_ll"
+    assert sorted(resolved.permissions) == ["apis:read", "apis:write"]
+
+
+async def test_ephemeral_minted_token_keeps_downscoped_snapshot(
+    admin_db: DatabaseSession, clean_access_tokens: None
+) -> None:
+    """An ephemeral minted token (no refresh sibling) must NOT be re-broadened to
+    the actor's full grants — its downscoped snapshot is a security guarantee."""
+    now = datetime.now(UTC)
+    async with admin_db.session() as session:
+        await AccessTokenRepository.create(
+            session,
+            token_hash=hashlib.sha256(b"at_minted_ephemeral").hexdigest(),
+            actor_id="agnt_eph",
+            actor_type="agent",
+            scopes=[BROKER_EXECUTE_SCOPE],
+            token_family_id="fam_eph",
+            expires_at=now + timedelta(minutes=5),
+            created_by="agnt_eph",
+        )
+        # Broader live grants exist, but there is NO refresh sibling for fam_eph.
+        for scope in (BROKER_EXECUTE_SCOPE, "apis:write"):
+            await ActorScopeGrantRepository.grant(
+                session,
+                actor_id="agnt_eph",
+                actor_type="agent",
+                scope=scope,
+                granted_by="usr_owner",
+                created_by="usr_owner",
+            )
+        await session.commit()
+
+    resolved = await _dual(admin_db).validate("at_minted_ephemeral")
+
+    assert resolved.sub == "agnt_eph"
+    assert resolved.permissions == [BROKER_EXECUTE_SCOPE]

@@ -359,3 +359,85 @@ async def test_resolve_non_access_token_prefix_returns_none() -> None:
     resolved = await svc.resolve_access_token("jwt_token_here")
 
     assert resolved is None
+
+
+@patch("jentic_one.auth.services.token_service.ActorScopeGrantRepository")
+@patch("jentic_one.auth.services.token_service.RefreshTokenRepository")
+@patch("jentic_one.auth.services.token_service.AgentRepository")
+@patch("jentic_one.auth.services.token_service.AccessTokenRepository")
+async def test_resolve_long_lived_agent_token_uses_live_grants(
+    mock_at_repo: MagicMock,
+    mock_agent_repo: MagicMock,
+    mock_rt_repo: MagicMock,
+    mock_grant_repo: MagicMock,
+) -> None:
+    """A long-lived agent token (has a refresh sibling) resolves live grants,
+    not the frozen snapshot — so scope edits take effect immediately."""
+    ctx = _make_ctx()
+    at_row = _make_access_token_row(actor_id="agnt_x", actor_type="agent", scopes=["apis:read"])
+    mock_at_repo.get_by_hash = AsyncMock(return_value=at_row)
+    mock_agent_repo.get_by_id = AsyncMock(return_value=None)
+    mock_rt_repo.family_exists = AsyncMock(return_value=True)
+    mock_grant_repo.list_for_actor = AsyncMock(
+        return_value=[MagicMock(scope="apis:read"), MagicMock(scope="apis:write")]
+    )
+
+    svc = TokenService(ctx)
+    resolved = await svc.resolve_access_token("at_agenttoken")
+
+    assert resolved is not None
+    assert resolved.permissions == ["apis:read", "apis:write"]
+    mock_grant_repo.list_for_actor.assert_awaited_once()
+
+
+@patch("jentic_one.auth.services.token_service.ActorScopeGrantRepository")
+@patch("jentic_one.auth.services.token_service.RefreshTokenRepository")
+@patch("jentic_one.auth.services.token_service.AgentRepository")
+@patch("jentic_one.auth.services.token_service.AccessTokenRepository")
+async def test_resolve_ephemeral_minted_token_keeps_snapshot(
+    mock_at_repo: MagicMock,
+    mock_agent_repo: MagicMock,
+    mock_rt_repo: MagicMock,
+    mock_grant_repo: MagicMock,
+) -> None:
+    """An ephemeral minted agent token (no refresh sibling) keeps its downscoped
+    snapshot and must NOT be re-broadened to the actor's full grants."""
+    ctx = _make_ctx()
+    at_row = _make_access_token_row(
+        actor_id="agnt_x", actor_type="agent", scopes=["capabilities:execute"]
+    )
+    mock_at_repo.get_by_hash = AsyncMock(return_value=at_row)
+    mock_agent_repo.get_by_id = AsyncMock(return_value=None)
+    mock_rt_repo.family_exists = AsyncMock(return_value=False)
+    mock_grant_repo.list_for_actor = AsyncMock()
+
+    svc = TokenService(ctx)
+    resolved = await svc.resolve_access_token("at_minted")
+
+    assert resolved is not None
+    assert resolved.permissions == ["capabilities:execute"]
+    mock_grant_repo.list_for_actor.assert_not_awaited()
+
+
+@patch("jentic_one.auth.services.token_service.ActorScopeGrantRepository")
+@patch("jentic_one.auth.services.token_service.RefreshTokenRepository")
+@patch("jentic_one.auth.services.token_service.AccessTokenRepository")
+async def test_resolve_user_token_keeps_snapshot(
+    mock_at_repo: MagicMock,
+    mock_rt_repo: MagicMock,
+    mock_grant_repo: MagicMock,
+) -> None:
+    """User tokens do not draw scopes from actor_scope_grants."""
+    ctx = _make_ctx()
+    at_row = _make_access_token_row(actor_id="usr_x", actor_type="user", scopes=["openid"])
+    mock_at_repo.get_by_hash = AsyncMock(return_value=at_row)
+    mock_rt_repo.family_exists = AsyncMock()
+    mock_grant_repo.list_for_actor = AsyncMock()
+
+    svc = TokenService(ctx)
+    resolved = await svc.resolve_access_token("at_usertoken")
+
+    assert resolved is not None
+    assert resolved.permissions == ["openid"]
+    mock_rt_repo.family_exists.assert_not_awaited()
+    mock_grant_repo.list_for_actor.assert_not_awaited()

@@ -33,7 +33,7 @@ class InProcessTokenResolver:
         now = datetime.now(UTC)
 
         stmt = text(
-            "SELECT actor_id, actor_type, scopes, expires_at, revoked_at"
+            "SELECT actor_id, actor_type, scopes, token_family_id, expires_at, revoked_at"
             " FROM access_tokens"
             " WHERE token_hash = :token_hash"
         )
@@ -41,8 +41,30 @@ class InProcessTokenResolver:
             result = await session.execute(stmt, {"token_hash": token_hash})
             row = result.one_or_none()
 
-        if row is None:
-            return None
+            if row is None:
+                return None
+
+            permissions = _as_scope_list(row.scopes)
+
+            # Long-lived agent/SA tokens (an access+refresh pair) resolve scopes
+            # live from actor_scope_grants so scope edits take effect immediately.
+            # Ephemeral minted tokens (no refresh sibling) keep their downscoped
+            # snapshot; user tokens do not draw scopes from actor_scope_grants.
+            if row.actor_type in (ActorType.AGENT.value, ActorType.SERVICE_ACCOUNT.value):
+                fam = await session.execute(
+                    text("SELECT 1 FROM refresh_tokens WHERE token_family_id = :family_id LIMIT 1"),
+                    {"family_id": row.token_family_id},
+                )
+                if fam.first() is not None:
+                    grants = await session.execute(
+                        text(
+                            "SELECT scope FROM actor_scope_grants"
+                            " WHERE actor_id = :actor_id AND actor_type = :actor_type"
+                            " ORDER BY scope"
+                        ),
+                        {"actor_id": row.actor_id, "actor_type": row.actor_type},
+                    )
+                    permissions = [str(g.scope) for g in grants.all()]
 
         # SQLite returns DATETIME columns from a ``text()`` query as ISO strings
         # (Postgres returns aware ``datetime``); normalise so comparisons and the
@@ -51,7 +73,6 @@ class InProcessTokenResolver:
         revoked_at = _as_aware_datetime(row.revoked_at) if row.revoked_at is not None else None
 
         active = revoked_at is None and expires_at > now
-        permissions = _as_scope_list(row.scopes)
         return Identity(
             sub=row.actor_id,
             actor_type=ActorType(row.actor_type),

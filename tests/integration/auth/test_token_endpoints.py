@@ -11,8 +11,9 @@ from sqlalchemy import delete
 from sqlalchemy.exc import OperationalError
 
 from jentic_one.admin.core.schema.access_tokens import AccessToken
+from jentic_one.admin.core.schema.actor_scope_grants import ActorScopeGrant
 from jentic_one.admin.core.schema.refresh_tokens import RefreshToken
-from jentic_one.admin.repos import AccessTokenRepository
+from jentic_one.admin.repos import AccessTokenRepository, ActorScopeGrantRepository
 from jentic_one.auth.services.errors import InvalidGrantError
 from jentic_one.auth.services.token_service import TokenService, _hash_token
 from jentic_one.auth.web.routers.oauth import token_endpoint
@@ -30,11 +31,13 @@ async def clean_tokens(integration_context: Context) -> AsyncGenerator[None, Non
     async with integration_context.admin_db.session() as session:
         await session.execute(delete(AccessToken))
         await session.execute(delete(RefreshToken))
+        await session.execute(delete(ActorScopeGrant))
         await session.commit()
     yield
     async with integration_context.admin_db.session() as session:
         await session.execute(delete(AccessToken))
         await session.execute(delete(RefreshToken))
+        await session.execute(delete(ActorScopeGrant))
         await session.commit()
 
 
@@ -128,8 +131,27 @@ async def test_invalid_refresh_token(token_service: TokenService, clean_tokens: 
         await token_service.refresh("rt_invalid_doesnotexist")
 
 
-async def test_resolve_access_token(token_service: TokenService, clean_tokens: None) -> None:
-    """resolve_access_token returns proper Identity."""
+async def test_resolve_access_token(
+    token_service: TokenService, integration_context: Context, clean_tokens: None
+) -> None:
+    """resolve_access_token returns an Identity whose scopes reflect *live* grants.
+
+    Long-lived agent tokens (an access+refresh pair) resolve scopes from the
+    actor's current ``ActorScopeGrant`` rows, so a scope change is reflected
+    immediately. Seed the grant that a real ``issue_pair`` would have derived
+    from.
+    """
+    async with integration_context.admin_db.session() as session:
+        await ActorScopeGrantRepository.grant(
+            session,
+            actor_id="agnt_resolve1",
+            actor_type=ActorType.AGENT,
+            scope="execute",
+            granted_by="usr_test",
+            created_by="usr_test",
+        )
+        await session.commit()
+
     access, _refresh = await token_service.issue_pair("agnt_resolve1", ActorType.AGENT, ["execute"])
 
     resolved = await token_service.resolve_access_token(access)
@@ -138,6 +160,74 @@ async def test_resolve_access_token(token_service: TokenService, clean_tokens: N
     assert resolved.sub == "agnt_resolve1"
     assert resolved.actor_type == "agent"
     assert resolved.permissions == ["execute"]
+
+
+async def test_resolve_reflects_scope_grant_without_remint(
+    token_service: TokenService, integration_context: Context, clean_tokens: None
+) -> None:
+    """Regression for #531: adding a scope grant takes effect on the *existing*
+    token pair — no re-mint required."""
+    async with integration_context.admin_db.session() as session:
+        await ActorScopeGrantRepository.grant(
+            session,
+            actor_id="agnt_scope",
+            actor_type=ActorType.AGENT,
+            scope="apis:read",
+            granted_by="usr_owner",
+            created_by="usr_owner",
+        )
+        await session.commit()
+
+    access, _refresh = await token_service.issue_pair("agnt_scope", ActorType.AGENT, ["apis:read"])
+    resolved = await token_service.resolve_access_token(access)
+    assert resolved is not None
+    assert resolved.permissions == ["apis:read"]
+
+    # Owner grants apis:write after the token was minted.
+    async with integration_context.admin_db.session() as session:
+        await ActorScopeGrantRepository.grant(
+            session,
+            actor_id="agnt_scope",
+            actor_type=ActorType.AGENT,
+            scope="apis:write",
+            granted_by="usr_owner",
+            created_by="usr_owner",
+        )
+        await session.commit()
+
+    # The same (unchanged) access token now resolves the new scope.
+    resolved = await token_service.resolve_access_token(access)
+    assert resolved is not None
+    assert resolved.permissions == ["apis:read", "apis:write"]
+
+
+async def test_resolve_reflects_scope_revocation_without_remint(
+    token_service: TokenService, integration_context: Context, clean_tokens: None
+) -> None:
+    """Revoking a scope also takes effect on the existing token pair immediately."""
+    async with integration_context.admin_db.session() as session:
+        for scope in ("apis:read", "apis:write"):
+            await ActorScopeGrantRepository.grant(
+                session,
+                actor_id="agnt_revoke",
+                actor_type=ActorType.AGENT,
+                scope=scope,
+                granted_by="usr_owner",
+                created_by="usr_owner",
+            )
+        await session.commit()
+
+    access, _refresh = await token_service.issue_pair(
+        "agnt_revoke", ActorType.AGENT, ["apis:read", "apis:write"]
+    )
+
+    async with integration_context.admin_db.session() as session:
+        await ActorScopeGrantRepository.revoke(session, actor_id="agnt_revoke", scope="apis:write")
+        await session.commit()
+
+    resolved = await token_service.resolve_access_token(access)
+    assert resolved is not None
+    assert resolved.permissions == ["apis:read"]
 
 
 async def test_issue_pair_transient_lock_exhausted_raises_db_unavailable(
