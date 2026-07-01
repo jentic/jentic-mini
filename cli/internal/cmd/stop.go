@@ -147,14 +147,13 @@ func (a *App) stopDocker(opts *stopOptions, composePath string) error {
 // discards the database.
 func confirmRemoveVolumes() (bool, error) {
 	confirm := false
-	form := install.NewForm(huh.NewGroup(
+	if err := install.RunConfirm(
 		huh.NewConfirm().
 			Title("Remove the stack's data volumes? This permanently deletes the database.").
 			Affirmative("Yes, delete the data").
 			Negative("Cancel").
 			Value(&confirm),
-	))
-	if err := form.Run(); err != nil {
+	); err != nil {
 		if errors.Is(err, huh.ErrUserAborted) {
 			return false, nil
 		}

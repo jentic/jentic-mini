@@ -615,14 +615,13 @@ func (a *App) apisRemove(ctx context.Context, ident *identityOptions, o *apisRmO
 
 func confirmDelete(target string) (bool, error) {
 	confirm := false
-	form := install.NewForm(huh.NewGroup(
+	if err := install.RunConfirm(
 		huh.NewConfirm().
 			Title(fmt.Sprintf("Delete %s? This cannot be undone.", target)).
 			Affirmative("Yes, delete").
 			Negative("Cancel").
 			Value(&confirm),
-	))
-	if err := form.Run(); err != nil {
+	); err != nil {
 		if errors.Is(err, huh.ErrUserAborted) {
 			return false, nil
 		}

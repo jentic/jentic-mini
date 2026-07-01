@@ -1,7 +1,10 @@
 package install
 
 import (
+	"os"
+
 	"github.com/charmbracelet/bubbles/key"
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/huh"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/jentic/jentic-one/cli/internal/theme"
@@ -50,6 +53,14 @@ func FormTheme() *huh.Theme {
 	// radio selector colour.
 	t.Focused.TextInput.Prompt = t.Focused.TextInput.Prompt.Foreground(theme.Brand)
 
+	// Confirm buttons (Yes/No). huh's default theme paints the focused button
+	// with a fuchsia background that is off-brand; repaint both so the selected
+	// answer reads as Jentic green and the other is a muted, unobtrusive button.
+	t.Focused.FocusedButton = lipgloss.NewStyle().
+		Foreground(theme.White).Background(theme.Green).Bold(true).Padding(0, 2)
+	t.Focused.BlurredButton = lipgloss.NewStyle().
+		Foreground(theme.Muted).Padding(0, 2)
+
 	// Mute everything in blurred (not-yet-focused) fields so nothing there looks
 	// selectable or active. Keep the radio glyphs (muted) so no stray "> " shows.
 	muted := lipgloss.NewStyle().Foreground(theme.Muted)
@@ -87,4 +98,21 @@ func NewForm(groups ...*huh.Group) *huh.Form {
 // test). Callers chain the usual huh.Input options (Title, Value, Validate, ...).
 func Input() *huh.Input {
 	return huh.NewInput().Prompt(PromptGlyph)
+}
+
+// RunConfirm runs a standalone yes/no confirm prompt with the shared brand theme
+// and quit keymap. Use it instead of huh.NewConfirm().Run() so every one-off
+// confirm looks the same as the wizard's forms.
+//
+// It deliberately runs without huh's default tea.WithReportFocus(): when a
+// confirm program starts back-to-back with another (e.g. right after the wizard
+// exits), focus reporting makes the terminal emit an initial focus event whose
+// handshake swallows the user's first Enter, so the prompt appears to need two
+// presses. Dropping it (while keeping huh's stderr output) fixes that. We must
+// re-add tea.WithOutput(os.Stderr) because WithProgramOptions replaces huh's
+// defaults wholesale.
+func RunConfirm(c *huh.Confirm) error {
+	return NewForm(huh.NewGroup(c)).
+		WithProgramOptions(tea.WithOutput(os.Stderr)).
+		Run()
 }

@@ -253,7 +253,7 @@ func (a *App) uninstallVolumeHint() []string {
 
 func confirmUninstall(dir string) (bool, error) {
 	confirm := false
-	form := install.NewForm(huh.NewGroup(
+	if err := install.RunConfirm(
 		huh.NewConfirm().
 			Title(fmt.Sprintf("Delete everything under %s?", dir)).
 			Description("Config files are backed up to *-old. This also stops the stack; " +
@@ -261,8 +261,7 @@ func confirmUninstall(dir string) (bool, error) {
 			Affirmative("Yes, uninstall").
 			Negative("Cancel").
 			Value(&confirm),
-	))
-	if err := form.Run(); err != nil {
+	); err != nil {
 		if errors.Is(err, huh.ErrUserAborted) {
 			return false, nil
 		}
@@ -280,15 +279,14 @@ func confirmUninstall(dir string) (bool, error) {
 // is the non-destructive one — preserve the volume and let the teardown finish.
 func confirmUninstallVolumes(dbLabel string) (bool, error) {
 	confirm := false
-	form := install.NewForm(huh.NewGroup(
+	if err := install.RunConfirm(
 		huh.NewConfirm().
 			Title(fmt.Sprintf("Also delete the Docker data volume? This permanently deletes %s.", dbLabel)).
 			Description("Keep it to let a later `install` reattach your data.").
 			Affirmative("Yes, delete the data").
 			Negative("No, keep the data").
 			Value(&confirm),
-	))
-	if err := form.Run(); err != nil {
+	); err != nil {
 		if errors.Is(err, huh.ErrUserAborted) {
 			return false, nil
 		}

@@ -34,3 +34,16 @@ func TestPromptGlyphIsRadioRing(t *testing.T) {
 		t.Errorf("PromptGlyph = %q, want it to contain %q", PromptGlyph, theme.SelectOn)
 	}
 }
+
+// Confirm buttons must be repainted with Jentic brand colours rather than huh's
+// default fuchsia focused button: the focused (selected) button uses the brand
+// green background and the blurred button the muted grey-teal foreground.
+func TestFormThemeBrandsConfirmButtons(t *testing.T) {
+	ft := FormTheme()
+	if got := ft.Focused.FocusedButton.GetBackground(); got != theme.Green {
+		t.Errorf("focused confirm button background = %v, want brand green %v", got, theme.Green)
+	}
+	if got := ft.Focused.BlurredButton.GetForeground(); got != theme.Muted {
+		t.Errorf("blurred confirm button foreground = %v, want muted %v", got, theme.Muted)
+	}
+}

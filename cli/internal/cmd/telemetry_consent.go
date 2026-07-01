@@ -46,14 +46,14 @@ func (a *App) ensureTelemetryConsent(interactive bool) (proceed bool, enabled bo
 		fmt.Fprintln(a.Out, theme.Dim.Render("For details: https://github.com/jentic/jentic-one#readme"))
 		fmt.Fprintln(a.Out)
 
-		if err := install.NewForm(huh.NewGroup(
+		if err := install.RunConfirm(
 			huh.NewConfirm().
 				Title("Allow Jentic to collect anonymous telemetry?").
 				Description("Anonymized usage events only — absolutely no personal data, no API payloads.").
 				Affirmative("Enable Telemetry").
 				Negative("Disable Telemetry").
 				Value(&enabled),
-		)).Run(); err != nil {
+		); err != nil {
 			if errors.Is(err, huh.ErrUserAborted) {
 				fmt.Fprintln(a.Out)
 				fmt.Fprintln(a.Out, theme.Warnf("Install cancelled — telemetry consent is required to proceed."))

@@ -234,13 +234,12 @@ func (a *App) offerWizard(cmd *cobra.Command, opts *installOptions, started bool
 	}
 
 	cont := true
-	if err := huh.NewConfirm().
+	if err := install.RunConfirm(huh.NewConfirm().
 		Title("Continue to guided setup?").
 		Description("Creates your first admin account, connects your AI operator, and gets you to a first call.").
 		Affirmative("Yes, guide me").
 		Negative("I'll do it myself").
-		Value(&cont).
-		Run(); err != nil || !cont {
+		Value(&cont)); err != nil || !cont {
 		fmt.Fprintln(a.Out, theme.Dim.Render("Skipping the wizard. Run `jenticctl wizard` whenever you're ready."))
 		return
 	}

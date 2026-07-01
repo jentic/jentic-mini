@@ -16,6 +16,7 @@ import (
 	"github.com/charmbracelet/huh"
 	"github.com/charmbracelet/x/term"
 	"github.com/jentic/jentic-one/cli/internal/config"
+	"github.com/jentic/jentic-one/cli/internal/install"
 	"github.com/jentic/jentic-one/cli/internal/serverinfo"
 	"github.com/jentic/jentic-one/cli/internal/theme"
 	"github.com/spf13/cobra"
@@ -133,13 +134,12 @@ func (a *App) wizardE(ctx context.Context, opts *wizardOptions) error {
 	// Step 2: offer to connect an operator.
 	if interactive {
 		connect := true
-		if err := huh.NewConfirm().
+		if err := install.RunConfirm(huh.NewConfirm().
 			Title("Connect an AI operator now?").
 			Description("Registers an agent for your operator (Claude, Cursor, …) and writes its skill.").
 			Affirmative("Yes, connect it").
 			Negative("Not now").
-			Value(&connect).
-			Run(); err != nil {
+			Value(&connect)); err != nil {
 			if errors.Is(err, huh.ErrUserAborted) {
 				a.wizardExitHint()
 				return nil
