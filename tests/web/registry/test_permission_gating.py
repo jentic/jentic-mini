@@ -34,13 +34,13 @@ def test_catalog_import_scope_implies_read_on_list_apis(catalog_import_client: T
 def test_catalog_import_endpoint_gating(
     catalog_import_client: TestClient, write_only_client: TestClient, wrong_scope_client: TestClient
 ) -> None:
-    """Verify POST /catalog/{api_id}:import is allowed for catalog:import and apis:write, but denied for others."""
+    """Verify POST /catalog/{api_id}:import is allowed for catalog:import and apis:write."""
     # 404 means it passed the 403 authorization guard and tried to resolve the catalog entry.
     assert catalog_import_client.post("/catalog/stripe.com:import").status_code == 404
-    
+
     # apis:write implies catalog:import, so it also passes authorization.
     assert write_only_client.post("/catalog/stripe.com:import").status_code == 404
-    
+
     # Unrelated scope is denied.
     assert wrong_scope_client.post("/catalog/stripe.com:import").status_code == 403
 

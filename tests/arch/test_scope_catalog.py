@@ -66,16 +66,18 @@ def test_family_and_action_derivation() -> None:
     assert by_name["owner:credentials:read"]["family"] == "owner"
     assert by_name["owner:credentials:read"]["action"] == "read"
 
+
 @pytest.mark.arch
 def test_catalog_import_implication() -> None:
     """Verify that catalog:import implies apis:read and is implied by apis:write."""
     catalog = build_scope_catalog()
     by_name = {s["name"]: s for s in catalog["scopes"]}
-    assert "catalog" == by_name["catalog:import"]["family"]
-    assert "import" == by_name["catalog:import"]["action"]
+    assert by_name["catalog:import"]["family"] == "catalog"
+    assert by_name["catalog:import"]["action"] == "import"
     assert "apis:read" in by_name["catalog:import"]["implies"]
     assert "catalog:import" in by_name["apis:write"]["implies"]
     assert "apis:read" in by_name["apis:write"]["implies_transitive"]
+
 
 @pytest.mark.arch
 def test_families_partition_scopes() -> None:
