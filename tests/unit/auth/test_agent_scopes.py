@@ -219,6 +219,7 @@ async def test_approve_grants_default_scopes_when_no_existing_grants(
     assert mock_scope_repo.grant.call_count == len(DEFAULT_AGENT_SCOPES)
     granted = [call.kwargs["scope"] for call in mock_scope_repo.grant.call_args_list]
     assert granted == list(DEFAULT_AGENT_SCOPES)
+    assert "catalog:import" in granted
 
 
 @patch("jentic_one.auth.services.agent_service.ActorScopeGrantRepository")
