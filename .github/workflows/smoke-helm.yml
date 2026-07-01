@@ -1,0 +1,124 @@
+name: Helm smoke tests
+
+on:
+  # Manual single-mode runs from the Actions tab.
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "Deployment mode to test"
+        required: true
+        type: choice
+        options:
+          - combined
+          - parts
+          - broker
+      obs:
+        description: "Bring up the observability stack alongside the app"
+        required: false
+        type: boolean
+        default: false
+
+  # Post-merge gate: run the full matrix on main so a regression is caught
+  # before it sits on the default branch unnoticed. Path filter keeps the
+  # cost off doc-only commits (each cell takes ~5–8m on a free runner).
+  push:
+    branches:
+      - main
+    paths:
+      - "deploy/**"
+      - "tools/**"
+      - "Makefile"
+      - "scripts/version.sh"
+      - "src/**"
+      - "tests/harness/**"
+      - "tests/smoke/**"
+      - "pyproject.toml"
+      - "uv.lock"
+      - ".github/workflows/smoke-helm.yml"
+
+jobs:
+  # Build the matrix dynamically so workflow_dispatch only runs the single
+  # requested cell, while push to main fans out across all the modes we
+  # want to gate on.
+  matrix:
+    name: Resolve matrix
+    runs-on: ubuntu-latest
+    outputs:
+      cells: ${{ steps.set.outputs.cells }}
+    steps:
+      - id: set
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            cells='[{"mode":"${{ inputs.mode }}","obs":${{ inputs.obs }}}]'
+          else
+            # push to main: every mode without obs, plus combined+obs to
+            # cover the OTel sidecar / central collector / remote-write wiring.
+            cells='[
+              {"mode":"combined","obs":false},
+              {"mode":"parts","obs":false},
+              {"mode":"broker","obs":false},
+              {"mode":"combined","obs":true}
+            ]'
+          fi
+          echo "cells=$(echo "$cells" | jq -c .)" >> "$GITHUB_OUTPUT"
+
+  smoke-helm:
+    name: ${{ matrix.cell.mode }}${{ matrix.cell.obs && ' + obs' || '' }}
+    needs: matrix
+    runs-on: ubuntu-latest
+
+    strategy:
+      # One failing cell shouldn't kill the others — we want to see if a
+      # regression is mode-specific or universal.
+      fail-fast: false
+      matrix:
+        cell: ${{ fromJson(needs.matrix.outputs.cells) }}
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Create kind cluster
+        uses: helm/kind-action@v1
+        with:
+          cluster_name: jentic-local
+          config: deploy/k8s/kind-config.yaml
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Install dependencies
+        run: make sync
+
+      - name: Build, load, deploy, smoke (MODE=${{ matrix.cell.mode }} OBS=${{ matrix.cell.obs }})
+        run: uv run python -m tools.deploy ci-smoke --mode ${{ matrix.cell.mode }} ${{ matrix.cell.obs && '--otel' || '--no-otel' }} --timeout 10m
+
+      - name: Debug on failure
+        if: failure()
+        run: |
+          set +e
+          echo "::group::All resources"
+          kubectl get all -A
+          echo "::endgroup::"
+          echo "::group::Pod descriptions (jentic ns)"
+          kubectl describe pods -n jentic
+          echo "::endgroup::"
+          if [ "${{ matrix.cell.obs }}" = "true" ]; then
+            echo "::group::Pod descriptions (monitoring ns)"
+            kubectl describe pods -n monitoring
+            echo "::endgroup::"
+          fi
+          echo "::group::Recent events"
+          kubectl get events -A --sort-by=.lastTimestamp | tail -50
+          echo "::endgroup::"
+          for ns in jentic monitoring; do
+            for pod in $(kubectl -n "$ns" get pods -o jsonpath='{.items[*].metadata.name}' 2>/dev/null); do
+              echo "::group::logs $ns/$pod"
+              kubectl -n "$ns" logs "$pod" --all-containers --tail=100 2>&1
+              echo "::endgroup::"
+            done
+          done

@@ -1,0 +1,5 @@
+apiVersion: v2
+name: gateway
+description: Nginx reverse-proxy gateway for parts deployment mode
+type: application
+version: 0.1.0

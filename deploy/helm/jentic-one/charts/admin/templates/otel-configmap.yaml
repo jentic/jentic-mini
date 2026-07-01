@@ -1,0 +1,3 @@
+{{- if .Values.global.observability.otel.enabled }}
+{{ include "common.otel-configmap" . }}
+{{- end }}

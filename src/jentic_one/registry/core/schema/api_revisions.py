@@ -1,0 +1,99 @@
+"""ApiRevision ORM model — versioned snapshot of an API spec."""
+
+from __future__ import annotations
+
+import uuid
+from datetime import datetime
+from typing import TYPE_CHECKING
+
+from sqlalchemy import (
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    column,
+    text,
+)
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.sql import func
+
+from jentic_one.shared.db.base import AuditableMixin, RegistryBase
+from jentic_one.shared.db.ids import new_uuid
+from jentic_one.shared.db.types import GUID, UTCDateTime
+
+if TYPE_CHECKING:
+    from jentic_one.registry.core.schema.apis import Api
+    from jentic_one.registry.core.schema.operations import Operation
+    from jentic_one.registry.core.schema.security_schemes import SecurityScheme
+    from jentic_one.registry.core.schema.servers import Server
+    from jentic_one.registry.core.schema.spec_files import SpecFile
+
+
+class ApiRevision(AuditableMixin, RegistryBase):
+    """A versioned snapshot of an API specification."""
+
+    __tablename__ = "api_revisions"
+    __table_args__ = (
+        UniqueConstraint("api_id", "spec_digest", name="uq_api_revisions_api_id_spec_digest"),
+        Index("ix_api_revisions_api_id", "api_id"),
+        Index(
+            "ix_api_revisions_one_active",
+            "api_id",
+            unique=True,
+            postgresql_where=text("state IN ('published', 'imported')"),
+            sqlite_where=text("state IN ('published', 'imported')"),
+        ),
+        Index(
+            "ix_api_revisions_api_id_created_at_id",
+            "api_id",
+            column("created_at").desc(),
+            column("id").desc(),
+        ),
+        Index(
+            "ix_api_revisions_source_url_state",
+            "source_url",
+            "state",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        GUID(),
+        primary_key=True,
+        default=new_uuid,
+        server_default=func.gen_random_uuid(),
+    )
+    api_id: Mapped[uuid.UUID] = mapped_column(
+        GUID(),
+        ForeignKey("apis.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    state: Mapped[str] = mapped_column(String(20), nullable=False, server_default=text("'draft'"))
+    origin: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    spec_digest: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    source_type: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    source_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    source_filename: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    source_content_id: Mapped[uuid.UUID | None] = mapped_column(GUID(), nullable=True)
+    submitted_by: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    operation_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    promoted_at: Mapped[datetime | None] = mapped_column(UTCDateTime(), nullable=True)
+    archived_at: Mapped[datetime | None] = mapped_column(UTCDateTime(), nullable=True)
+
+    api: Mapped[Api] = relationship(
+        back_populates="revisions",
+        foreign_keys=[api_id],
+    )
+    spec_files: Mapped[list[SpecFile]] = relationship(
+        back_populates="revision", cascade="all, delete-orphan"
+    )
+    operations: Mapped[list[Operation]] = relationship(
+        back_populates="revision", cascade="all, delete-orphan"
+    )
+    servers: Mapped[list[Server]] = relationship(
+        back_populates="revision", cascade="all, delete-orphan"
+    )
+    security_schemes: Mapped[list[SecurityScheme]] = relationship(
+        back_populates="revision", cascade="all, delete-orphan"
+    )

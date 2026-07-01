@@ -1,0 +1,400 @@
+# Default values for the observability umbrella chart.
+#
+# These defaults are intentionally conservative; production users should set
+# storage classes, retention, auth, and resource requests via override files.
+# For local kind clusters use deploy/helm/values/local-observability.yaml.
+
+# ----- Grafana -----
+grafana:
+  enabled: true
+  # Default admin password. CHANGE in any non-local environment, or
+  # provide an existingSecret via grafana.admin.existingSecret.
+  adminUser: admin
+  adminPassword: admin
+
+  service:
+    type: ClusterIP
+
+  # Pre-wired datasources pointing at the in-cluster Loki/Tempo/Prometheus
+  # services. The names follow the chart-default service names; override
+  # `*.fullnameOverride` if you customize them.
+  datasources:
+    datasources.yaml:
+      apiVersion: 1
+      datasources:
+        - name: Prometheus
+          type: prometheus
+          uid: prometheus
+          access: proxy
+          url: http://obs-prometheus-server.monitoring.svc.cluster.local
+          isDefault: true
+        - name: Loki
+          type: loki
+          uid: loki
+          access: proxy
+          url: http://obs-loki.monitoring.svc.cluster.local:3100
+          jsonData:
+            derivedFields:
+              - datasourceUid: tempo
+                matcherRegex: "trace_id=(\\w+)"
+                name: TraceID
+                url: "$${__value.raw}"
+        - name: Tempo
+          type: tempo
+          uid: tempo
+          access: proxy
+          url: http://obs-tempo.monitoring.svc.cluster.local:3200
+          jsonData:
+            httpMethod: GET
+            tracesToLogsV2:
+              datasourceUid: loki
+              filterByTraceID: true
+              tags:
+                - key: service.name
+                  value: service_name
+
+  dashboardProviders:
+    dashboardproviders.yaml:
+      apiVersion: 1
+      providers:
+        - name: default
+          orgId: 1
+          folder: ""
+          type: file
+          disableDeletion: false
+          editable: true
+          options:
+            path: /var/lib/grafana/dashboards/default
+
+# ----- Loki -----
+# Single-binary mode is plenty for a kind cluster. Production should use the
+# distributed (read/write/backend) layout with object storage.
+loki:
+  enabled: true
+  # Tell the chart to actually run the single-binary StatefulSet. Without
+  # this the chart defaults to SimpleScalable (read/write/backend), which we
+  # zero out below, leaving zero Loki pods and the gateway unable to resolve
+  # any backend.
+  deploymentMode: SingleBinary
+  loki:
+    auth_enabled: false
+    commonConfig:
+      replication_factor: 1
+    storage:
+      type: filesystem
+    # Enables the log-volume histogram in Grafana Explore.
+    limits_config:
+      volume_enabled: true
+    # Disable the ruler subsystem; we don't use Loki recording/alerting
+    # rules and it tries to mkdir under /var/loki on a read-only rootfs.
+    ruler:
+      enabled: false
+    schemaConfig:
+      configs:
+        - from: "2024-01-01"
+          store: tsdb
+          object_store: filesystem
+          schema: v13
+          index:
+            prefix: loki_index_
+            period: 24h
+  singleBinary:
+    replicas: 1
+    persistence:
+      enabled: false
+    # When persistence is disabled the chart doesn't mount /var/loki, but
+    # Loki still wants to write its chunks/wal/compactor data there. Give
+    # it an in-pod emptyDir so it doesn't try to mkdir on a read-only rootfs.
+    extraVolumes:
+      - name: loki-data
+        emptyDir: {}
+    extraVolumeMounts:
+      - name: loki-data
+        mountPath: /var/loki
+  read:
+    replicas: 0
+  write:
+    replicas: 0
+  backend:
+    replicas: 0
+  chunksCache:
+    enabled: false
+  resultsCache:
+    enabled: false
+  test:
+    enabled: false
+  # Gateway adds an nginx fronting layer with routing rules tuned for the
+  # SimpleScalable distributor/query-frontend split. In SingleBinary mode it
+  # tries to upstream to services that don't exist; just disable it and
+  # talk to the loki StatefulSet service directly.
+  gateway:
+    enabled: false
+  monitoring:
+    selfMonitoring:
+      enabled: false
+      grafanaAgent:
+        installOperator: false
+    lokiCanary:
+      enabled: false
+
+# ----- Tempo -----
+tempo:
+  enabled: true
+  tempo:
+    receivers:
+      otlp:
+        protocols:
+          grpc:
+            endpoint: 0.0.0.0:4317
+          http:
+            endpoint: 0.0.0.0:4318
+  persistence:
+    enabled: false
+
+# ----- Prometheus -----
+prometheus:
+  enabled: true
+  alertmanager:
+    enabled: false
+  prometheus-pushgateway:
+    enabled: false
+  kube-state-metrics:
+    enabled: true
+  prometheus-node-exporter:
+    enabled: false
+  server:
+    persistentVolume:
+      enabled: false
+    retention: "6h"
+    # Required so the central OTel collector's `prometheusremotewrite`
+    # exporter can actually push metrics into Prometheus. Without this
+    # flag Prometheus 2.x/3.x return 404 on /api/v1/write.
+    extraArgs:
+      web.enable-remote-write-receiver: null
+  # NB: the prometheus chart ships a default scrape job already named
+  # `kubernetes-pods`. Use a distinct job name here or Prometheus will refuse
+  # to start with "multiple scrape configs with job name" on boot.
+  extraScrapeConfigs: |
+    - job_name: 'jentic-pods'
+      kubernetes_sd_configs:
+        - role: pod
+      relabel_configs:
+        - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+          action: keep
+          regex: true
+        - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
+          action: replace
+          target_label: __metrics_path__
+          regex: (.+)
+        - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
+          action: replace
+          regex: ([^:]+)(?::\d+)?;(\d+)
+          replacement: $1:$2
+          target_label: __address__
+        - source_labels: [__meta_kubernetes_namespace]
+          action: replace
+          target_label: namespace
+        - source_labels: [__meta_kubernetes_pod_name]
+          action: replace
+          target_label: pod
+        - source_labels: [__meta_kubernetes_pod_label_app_kubernetes_io_name]
+          action: replace
+          target_label: app
+
+# ----- OpenTelemetry Collector (central) -----
+# This is the central collector that app pods' sidecars forward to. It fans
+# out: traces -> Tempo, metrics -> Prometheus.
+#
+# Logs are intentionally NOT in this pipeline. Log shipping is owned by the
+# Grafana Alloy DaemonSet below; that keeps the OTel pipeline (traces +
+# metrics) cleanly separated from the log pipeline (Alloy -> Loki).
+otelcollector:
+  enabled: true
+  mode: deployment
+  replicaCount: 1
+  image:
+    repository: otel/opentelemetry-collector-contrib
+  service:
+    type: ClusterIP
+  ports:
+    otlp:
+      enabled: true
+      containerPort: 4317
+      servicePort: 4317
+      protocol: TCP
+    otlp-http:
+      enabled: true
+      containerPort: 4318
+      servicePort: 4318
+      protocol: TCP
+  config:
+    receivers:
+      otlp:
+        protocols:
+          grpc:
+            endpoint: 0.0.0.0:4317
+          http:
+            endpoint: 0.0.0.0:4318
+    processors:
+      batch:
+        timeout: 5s
+        send_batch_size: 1024
+      memory_limiter:
+        check_interval: 1s
+        limit_percentage: 80
+        spike_limit_percentage: 25
+    exporters:
+      otlp/tempo:
+        endpoint: obs-tempo.monitoring.svc.cluster.local:4317
+        tls:
+          insecure: true
+      prometheusremotewrite:
+        endpoint: http://obs-prometheus-server.monitoring.svc.cluster.local/api/v1/write
+        tls:
+          insecure: true
+        # Promote OTLP resource attributes (service.name, service.instance.id,
+        # k8s.namespace.name, etc.) into Prometheus labels so queries like
+        # `sum by(service_name) (rate(http_server_duration_milliseconds_count[1m]))`
+        # work. Without this, resource attrs only land on the `target_info`
+        # metric and series carry no service identity.
+        resource_to_telemetry_conversion:
+          enabled: true
+    service:
+      pipelines:
+        traces:
+          receivers: [otlp]
+          processors: [memory_limiter, batch]
+          exporters: [otlp/tempo]
+        metrics:
+          receivers: [otlp]
+          processors: [memory_limiter, batch]
+          exporters: [prometheusremotewrite]
+
+# ----- Grafana Alloy (logs) -----
+# Runs as a DaemonSet on every node. Tails Kubernetes pod logs from
+# /var/log/pods, attaches pod/namespace/container labels, parses JSON
+# bodies (so structlog fields like trace_id are available as derived
+# fields in Grafana), and pushes to Loki via the loki-gateway service.
+#
+# This is the ONLY path logs take into Loki. Apps continue to write to
+# stdout normally; nothing app-side changes.
+alloy:
+  enabled: true
+  controller:
+    type: daemonset
+  alloy:
+    mounts:
+      varlog: true
+    configMap:
+      create: true
+      content: |
+        // Discover all Kubernetes pods on the local node.
+        discovery.kubernetes "pods" {
+          role = "pod"
+          selectors {
+            role  = "pod"
+            field = "spec.nodeName=" + sys.env("HOSTNAME")
+          }
+        }
+
+        // Map pod metadata to Loki labels and locate each container's
+        // on-disk log file under /var/log/pods/.
+        discovery.relabel "pods" {
+          targets = discovery.kubernetes.pods.targets
+
+          rule {
+            source_labels = ["__meta_kubernetes_namespace"]
+            target_label  = "namespace"
+          }
+          rule {
+            source_labels = ["__meta_kubernetes_pod_name"]
+            target_label  = "pod"
+          }
+          rule {
+            source_labels = ["__meta_kubernetes_pod_container_name"]
+            target_label  = "container"
+          }
+          rule {
+            source_labels = ["__meta_kubernetes_pod_label_app_kubernetes_io_name"]
+            target_label  = "app"
+          }
+          rule {
+            source_labels = ["__meta_kubernetes_pod_label_app_kubernetes_io_instance"]
+            target_label  = "instance"
+          }
+
+          // Align Loki's `service_name` with the OTEL_SERVICE_NAME that
+          // the apps export over OTLP to Tempo and Prometheus. The common
+          // Helm template at
+          // deploy/helm/jentic-one/charts/common/templates/_logging.tpl
+          // sets OTEL_SERVICE_NAME to "<release>-<chart>" (e.g. "jentic-app",
+          // "jentic-broker"), which mirrors the two app.kubernetes.io
+          // labels we set on every pod, joined by "-". Reproducing that
+          // join here means a single `service_name` value addresses logs,
+          // metrics, and traces — Grafana correlation just works.
+          //
+          // The regex `jentic-.+` scopes this to our app pods. Pods
+          // without our labels produce a string like "-<name>" or "-",
+          // which doesn't match and leaves their service_name to Loki's
+          // built-in chart-derived discovery (so observability-stack pods
+          // keep readable names like "loki", "grafana", etc.).
+          rule {
+            source_labels = [
+              "__meta_kubernetes_pod_label_app_kubernetes_io_instance",
+              "__meta_kubernetes_pod_label_app_kubernetes_io_name",
+            ]
+            separator     = "-"
+            regex         = "(jentic-.+)"
+            target_label  = "service_name"
+            replacement   = "$1"
+            action        = "replace"
+          }
+
+          rule {
+            source_labels = [
+              "__meta_kubernetes_namespace",
+              "__meta_kubernetes_pod_name",
+              "__meta_kubernetes_pod_uid",
+              "__meta_kubernetes_pod_container_name",
+            ]
+            separator    = "/"
+            regex        = "(.+)/(.+)/(.+)/(.+)"
+            target_label = "__path__"
+            replacement  = "/var/log/pods/${1}_${2}_${3}/${4}/*.log"
+          }
+        }
+
+        // Tail container log files on this node.
+        local.file_match "pods" {
+          path_targets = discovery.relabel.pods.output
+        }
+
+        loki.source.file "pods" {
+          targets    = local.file_match.pods.targets
+          forward_to = [loki.process.parse.receiver]
+        }
+
+        // Best-effort JSON parse so structlog fields are queryable.
+        // If a line is not JSON, the stage is a no-op.
+        loki.process "parse" {
+          stage.json {
+            expressions = {
+              level    = "level",
+              trace_id = "trace_id",
+              span_id  = "span_id",
+              event    = "event",
+            }
+          }
+          stage.labels {
+            values = {
+              level = "",
+            }
+          }
+          forward_to = [loki.write.default.receiver]
+        }
+
+        loki.write "default" {
+          endpoint {
+            url = "http://obs-loki.monitoring.svc.cluster.local:3100/loki/api/v1/push"
+          }
+        }

@@ -1,0 +1,91 @@
+# Keep build context small and free of secrets / dev artefacts.
+# The runtime image only needs pyproject.toml, uv.lock, README.md, src/, openapi/.
+
+# VCS
+.git/
+.gitignore
+.gitattributes
+
+# Python build / cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg
+*.egg-info/
+build/
+dist/
+wheels/
+*.whl
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+.uv/
+
+# Testing / coverage
+tests/
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+.tox/
+.nox/
+
+# Type checkers / linters
+.mypy_cache/
+.ruff_cache/
+.pyre/
+.pytype/
+
+# Local dev infra (not needed inside images)
+docker/
+deploy/
+scripts/
+docs/
+
+# CI / tooling
+.github/
+.harness/
+.claude/
+.cursor/
+
+# Node / UI build artefacts (the ui-builder Docker stage runs its own clean
+# `npm ci` + build; copying the host's node_modules/dist would bloat the
+# context and risk overlaying macOS-built native modules onto the linux image).
+node_modules/
+**/node_modules/
+ui/dist/
+
+# Editors / OS
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Logs
+logs/
+*.log
+
+# Env files (never ship secrets in build context)
+.env
+.env.*
+!.env.example
+
+# Config files with real secrets
+config/production.yaml
+jentic-one.yaml
+
+# Misc top-level files not needed at runtime
+Makefile
+lefthook.yml
+mise.toml
+REVIEWS.md
+CLAUDE.md
+.python-version

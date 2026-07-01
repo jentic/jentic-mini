@@ -1,0 +1,87 @@
+"""Pure token verification producing an Identity."""
+
+from __future__ import annotations
+
+import structlog
+
+from jentic_one.shared.auth.identity import Identity
+from jentic_one.shared.auth.tokens import decode_jwt
+from jentic_one.shared.context import Context
+from jentic_one.shared.models import ActorType
+
+logger = structlog.get_logger(__name__)
+
+
+async def resolve_permissions_for_actor(
+    ctx: Context,
+    actor_type: ActorType,
+    actor_id: str,
+    parent_actor_id: str | None,
+) -> tuple[list[str], list[str]]:
+    """Resolve native and inherited permissions for an actor by type.
+
+    Returns:
+        tuple[list[str], list[str]]: (permissions, parent_permissions)
+    """
+    # NOTE: Moving this to module-level would cause a circular dependency (shared -> admin).
+    # A test-arch exception will handle this lazy import until Phase 2 extracts resolution.
+    from jentic_one.admin.services.permission_service import PermissionService
+
+    svc = PermissionService(ctx)
+    permissions: list[str] = []
+    parent_permissions: list[str] = []
+
+    if actor_type == ActorType.USER:
+        view = await svc.get_effective_for_user(actor_id)
+        permissions = view.effective
+    elif actor_type == ActorType.AGENT:
+        # TODO (Phase 3): Fetch Agent's direct permissions via svc.get_effective_for_agent
+        if parent_actor_id:
+            view = await svc.get_effective_for_user(parent_actor_id)
+            parent_permissions = view.effective
+        else:
+            logger.warning("Agent token missing parent_actor_id")
+    elif actor_type == ActorType.SERVICE_ACCOUNT:
+        view = await svc.get_effective_for_service_account(actor_id)
+        permissions = view.effective
+
+    return permissions, parent_permissions
+
+
+async def verify_token(token: str, *, secret: str, ctx: Context) -> Identity:
+    """Decode and verify a JWT, returning the Identity.
+
+    When the JWT already embeds ``permissions`` in its claims (e.g. login JWTs),
+    those are trusted directly — no DB lookup. Otherwise falls back to the
+    database-resolved permission path for backwards compatibility.
+    """
+    claims = decode_jwt(token, secret)
+    actor_type = ActorType(claims.get("actor_type", ActorType.USER))
+    sub = claims["sub"]
+    parent_actor_id = claims.get("parent_actor_id")
+
+    embedded_permissions = claims.get("permissions")
+    if embedded_permissions is not None and isinstance(embedded_permissions, list):
+        permissions = [str(p) for p in embedded_permissions]
+        parent_permissions: list[str] = []
+    else:
+        permissions, parent_permissions = await resolve_permissions_for_actor(
+            ctx, actor_type, sub, parent_actor_id
+        )
+
+    # Merge scopes from claims into permissions (scopes are now unified)
+    scopes_raw = claims.get("scopes")
+    if isinstance(scopes_raw, list):
+        scope_strings = [str(s) for s in scopes_raw]
+        merged = list(dict.fromkeys(permissions + scope_strings))
+        permissions = merged
+
+    return Identity(
+        sub=sub,
+        email=claims.get("email", ""),
+        permissions=permissions,
+        parent_permissions=parent_permissions,
+        must_change_password=claims.get("must_change_password", False),
+        actor_type=actor_type,
+        parent_actor_id=parent_actor_id,
+    )

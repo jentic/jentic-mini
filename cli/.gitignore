@@ -1,0 +1,6 @@
+# Built binaries
+/jentic
+/jenticctl
+
+# Coverage output (make cov)
+/coverage.out

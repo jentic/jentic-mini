@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="440" height="210" viewBox="0 0 440 210" role="img" aria-label="jentic">
+  <title>jentic</title>
+  <style>
+    text {
+      font-family: "SFMono-Regular", "SF Mono", "Menlo", "Consolas", "DejaVu Sans Mono", monospace;
+      font-size: 26px;
+      font-weight: 700;
+      white-space: pre;
+    }
+  </style>
+  <g xml:space="preserve">
+    <text x="12" y="34"  fill="#68BAEC">   _            _   _      </text>
+    <text x="12" y="65"  fill="#5EDEB9">  (_) ___ _ __ | |_(_) ___ </text>
+    <text x="12" y="96"  fill="#A3CACC">  | |/ _ \ '_ \| __| |/ __|</text>
+    <text x="12" y="127" fill="#F1E38B">  | |  __/ | | | |_| | (__ </text>
+    <text x="12" y="158" fill="#FDBD79"> _/ |\___|_| |_|\__|_|\___|</text>
+    <text x="12" y="189" fill="#EDADAF">|__/                       </text>
+  </g>
+</svg>

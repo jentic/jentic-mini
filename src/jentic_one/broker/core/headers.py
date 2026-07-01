@@ -1,0 +1,101 @@
+"""Canonical Jentic-* response header names and the set of headers the broker
+filters when proxying.
+
+These are reused literals that are *not* a closed enum domain (header names), so
+per the "No magic strings" rule (00-overview) they live as module-level constants
+rather than inline string literals scattered across the routers.
+"""
+
+from __future__ import annotations
+
+from enum import StrEnum
+
+
+class JenticHeader(StrEnum):
+    """Response header names the broker adds to every proxied response."""
+
+    EXECUTION_ID = "Jentic-Execution-Id"
+    TOOLKIT_ID = "Jentic-Toolkit-Id"
+    OPERATION = "Jentic-Operation"
+    API_VENDOR = "Jentic-Api-Vendor"
+    UPSTREAM_STATUS = "Jentic-Upstream-Status"
+    ERROR_ORIGIN = "Jentic-Error-Origin"
+    IDEMPOTENT_REPLAYED = "Idempotent-Replayed"
+    IDEMPOTENCY_BODY_OMITTED = "Jentic-Idempotency-Body-Omitted"
+
+
+# The W3C ``tracestate`` response header — not a ``Jentic-*`` header but a
+# reused literal, so it lives as a constant (00-overview "No magic strings").
+# The broker echoes the packed ``jentic=`` vendor member on every response so a
+# caller correlating a synchronous response to its trace gets the same
+# who-is-calling/what-is-called payload it would see on the outbound request.
+TRACESTATE_HEADER = "tracestate"
+
+
+# The inbound multi-valued revision-pin request header (§10). A reused literal
+# (read in the router, stripped from outbound forwarding via
+# ``BROKER_CONSUMED_HEADERS``), so it lives as a module-level constant.
+JENTIC_REVISION_HEADER = "jentic-revision"
+
+
+# Security-bearing response headers scrubbed before a response is serialized into
+# any broker-side store (idempotency replay cache here; the async jobs store in
+# §05 shares this list). The broker must never hoard a valid upstream session
+# token / API key for the replay window. Lower-cased for case-insensitive match.
+SENSITIVE_RESPONSE_HEADERS: frozenset[str] = frozenset(
+    {
+        "set-cookie",
+        "authorization",
+        "proxy-authenticate",
+        "www-authenticate",
+        "x-api-key",
+        "x-jentic-api-key",
+    }
+)
+
+
+# Hop-by-hop headers (RFC 7230 §6.1) — a conformant proxy must not forward these,
+# in either direction. ``host`` is included so the broker never forwards its own
+# Host; httpx sets the correct upstream Host automatically.
+HOP_BY_HOP_HEADERS: frozenset[str] = frozenset(
+    {
+        "connection",
+        "keep-alive",
+        "proxy-authenticate",
+        "proxy-authorization",
+        "te",
+        "trailer",
+        "transfer-encoding",
+        "upgrade",
+        "host",
+    }
+)
+
+# Headers the broker consumes itself — they steer broker behaviour and must not
+# leak upstream.
+BROKER_CONSUMED_HEADERS: frozenset[str] = frozenset(
+    {
+        "authorization",
+        "prefer",
+        "idempotency-key",
+        "jentic-revision",
+        "jentic-toolkit-id",
+        "x-jentic-api-key",
+        "jentic-credential-name",
+    }
+)
+
+# Client-supplied forwarding/topology headers: stripped inbound (anti-spoof). The
+# broker never trusts the caller's claim about the original IP/proto/host, and
+# never leaks its internal topology to arbitrary third-party upstreams.
+SPOOFABLE_HEADERS: frozenset[str] = frozenset(
+    {
+        "forwarded",
+        "x-forwarded-for",
+        "x-forwarded-host",
+        "x-forwarded-proto",
+        "x-forwarded-port",
+        "x-real-ip",
+        "via",
+    }
+)

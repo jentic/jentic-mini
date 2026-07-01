@@ -1,0 +1,27 @@
+image:
+  repository: jentic-one/app
+  tag: ""
+
+replicas: 1
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 256Mi
+
+healthCheck:
+  path: /health
+  port: 8000
+
+service:
+  type: ClusterIP
+  port: 8000
+
+# Extra environment variables injected into the app container as name/value
+# pairs. Used (e.g.) to point the HuggingFace / sentence-transformers cache at a
+# writable path, since the container runs as a non-root user whose $HOME does
+# not exist.
+extraEnv: {}

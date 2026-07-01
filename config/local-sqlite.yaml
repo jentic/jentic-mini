@@ -1,0 +1,55 @@
+# Local SQLite development configuration.
+# Embedded single-file databases (one per surface) under ./.data/.
+# Uses lexical (full-text / BM25) search.
+# Usage: JENTIC_CONFIG_FILE=config/local-sqlite.yaml make start-app
+
+databases:
+  registry:
+    backend: sqlite
+    path: .data/registry.db
+    schema_name: registry
+  control:
+    backend: sqlite
+    path: .data/control.db
+    schema_name: control
+  admin:
+    backend: sqlite
+    path: .data/admin.db
+    schema_name: admin
+
+runtime:
+  debug: true
+  log_level: DEBUG
+
+server:
+  host: 127.0.0.1
+  port: 8000
+  reload: true
+
+search:
+  enabled: true
+  search_enabled: true
+  search_mode: lexical
+
+# Credential-at-rest encryption keyset (LOCAL-DEV-ONLY, 32 random bytes base64).
+# Required for credential WRITES — EncryptionService refuses an empty keyset.
+# Never reuse this key anywhere real.
+# Generate your own with: python -c "import os,base64;print(base64.b64encode(os.urandom(32)).decode())"
+credentials:
+  encryption:
+    active_id: v1
+    entries:
+      - id: v1
+        material: "Z9BctysLqeHhzbFLfSU4djsvAX7N5EVVos5G0QN7C5Q="  # pragma: allowlist secret
+  # Register the platform-managed OAuth2 provider so the authorization-code
+  # connect flow can run locally.
+  providers:
+    direct_oauth2:
+      kind: direct_oauth2
+      redirect_uri: "http://127.0.0.1:8000/credentials/oauth/callback"
+
+observability:
+  metrics:
+    exporter: none
+  tracing:
+    exporter: none

@@ -1,0 +1,39 @@
+app:
+  enabled: false
+
+broker:
+  enabled: true
+  service:
+    type: NodePort
+    nodePort: 30081
+  extraEnv:
+    # Allow the broker to proxy to the harness's in-cluster ClusterIP. DNS pinning
+    # re-resolves to the same service IP, which this subnet/domain pair permits.
+    JENTIC__BROKER__EGRESS__ALLOWED_INTERNAL_DOMAINS: .svc.cluster.local
+    JENTIC__BROKER__EGRESS__ALLOWED_PRIVATE_SUBNETS: 10.0.0.0/8
+
+registry:
+  enabled: false
+
+admin:
+  enabled: false
+
+control:
+  enabled: false
+
+# Broker needs admin-DB access, so we still spin up Postgres in broker-only
+# mode. registry/control DB env is still injected (cheap, unused) so AppConfig
+# validation passes; the broker only actually connects to admin.
+global:
+  postgresql:
+    enabled: true
+
+postgresql:
+  enabled: true
+  auth:
+    username: postgres
+    password: postgres
+    database: jentic
+  primary:
+    initdb:
+      scriptsConfigMap: "jentic-pg-init"

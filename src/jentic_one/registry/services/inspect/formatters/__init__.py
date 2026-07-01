@@ -1,0 +1,1 @@
+"""Inspect output formatters."""

@@ -1,0 +1,62 @@
+# golangci-lint v2 configuration for the Jentic CLI.
+# Run: golangci-lint run (from the cli/ directory). See `make lint`.
+version: "2"
+
+run:
+  timeout: 5m
+
+linters:
+  # The v2 default set (errcheck, govet, ineffassign, staticcheck, unused) plus
+  # high-signal additions. No blanket exclusion presets — issues are fixed in
+  # code (e.g. fire-and-forget writes use an explicit `_, _ =`) rather than
+  # silenced, so the only carve-out is for test files.
+  enable:
+    - bodyclose # response bodies are closed
+    - copyloopvar # no aliasing of loop variables
+    - dupl # duplicated code blocks
+    - durationcheck # no nonsensical time.Duration multiplications
+    - errname # error types named XxxError, sentinels ErrXxx
+    - errorlint # wrap errors with %w and use errors.Is/As
+    - gocritic # opinionated correctness/style diagnostics
+    - godot # top-level comments end in a period
+    - gosec # security issues
+    - intrange # use Go 1.22 integer range where it reads better
+    - makezero # no append to a non-zero-length make() slice
+    - misspell # common spelling mistakes
+    - nakedret # no naked returns in longer functions
+    - nilerr # don't return nil after a non-nil error check
+    - nolintlint # nolint directives must be used and explained
+    - perfsprint # prefer strconv/concat/errors.New over fmt for simple cases
+    - prealloc # preallocate slices where the size is known
+    - predeclared # don't shadow predeclared identifiers
+    - reassign # don't reassign top-level variables from other packages
+    - revive # broad style/lint rules (incl. exported-symbol docs)
+    - unconvert # remove redundant type conversions
+    - unparam # report unused function parameters/results
+    - usestdlibvars # use stdlib constants (http.MethodGet, ...)
+    - wastedassign # remove assignments never read
+    - whitespace # no leading/trailing blank lines in blocks
+  exclusions:
+    generated: lax
+    presets:
+      # The only blanket exclusion we keep: errcheck on fire-and-forget stdlib
+      # calls (fmt.Fprint* to a console writer, deferred Close on a read handle).
+      # There are 200+ such call sites; wrapping each in `_, _ =` would add noise
+      # with no safety benefit. We dropped the `comments` preset — exported
+      # symbols carry doc comments instead.
+      - std-error-handling
+    rules:
+      # Test files favour readability over some lint strictness: security and
+      # error-return checks add noise to fixtures, table-driven tests legitimately
+      # repeat structure, and helpers keep parameters for symmetry.
+      - path: _test\.go
+        linters:
+          - gosec
+          - errcheck
+          - unparam
+          - dupl
+
+formatters:
+  enable:
+    - gofumpt # strict superset of gofmt (extra style normalizations)
+    - goimports # format + group/prune imports

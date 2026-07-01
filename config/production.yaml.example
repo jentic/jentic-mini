@@ -1,0 +1,53 @@
+# Production configuration example.
+# Copy this file and fill in real values, or supply secrets via environment
+# variables (JENTIC__DATABASES__REGISTRY__PASSWORD=...).
+#
+# Production supports both single-database (schema isolation) and
+# multi-database deployments. The default local/CI setup uses a single
+# database with separate schemas.
+
+databases:
+  registry:
+    host: db.internal
+    port: 5432
+    name: jentic
+    user: app_registry
+    password: CHANGE_ME
+    pool_max: 20
+    schema_name: registry
+  control:
+    host: db.internal
+    port: 5432
+    name: jentic
+    user: app_control
+    password: CHANGE_ME
+    pool_max: 15
+    schema_name: control
+  admin:
+    host: db.internal
+    port: 5432
+    name: jentic
+    user: app_admin
+    password: CHANGE_ME
+    pool_max: 10
+    schema_name: admin
+
+services:
+  request_timeout_s: 30.0
+  retry_max: 3
+  retry_backoff_s: 1.0
+
+runtime:
+  debug: false
+  log_level: INFO
+  maintenance_mode: false
+
+server:
+  host: 0.0.0.0
+  port: 8000
+  reload: false
+
+apps:
+  - registry
+  - admin
+  - control

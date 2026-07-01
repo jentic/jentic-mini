@@ -1,0 +1,76 @@
+# Local-cluster overrides for the observability stack.
+#
+# Tuned for a single-node kind cluster: tiny resource requests, no
+# persistence, no auth bells & whistles. Layer this on top of
+# deploy/helm/observability/values.yaml.
+#
+# NOTE: Grafana datasources in deploy/helm/observability/values.yaml hardcode
+# `obs-<component>.monitoring.svc.cluster.local` (e.g. obs-loki, obs-tempo).
+# These follow the Makefile defaults `OBS_RELEASE=obs` and `MONITORING_NS=monitoring`.
+# If you override either, also update the datasource URLs in values.yaml,
+# otherwise Grafana will silently fail to reach Loki/Tempo/Prometheus.
+
+grafana:
+  service:
+    type: NodePort
+    nodePort: 30090
+
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+  persistence:
+    enabled: false
+
+loki:
+  singleBinary:
+    resources:
+      requests:
+        cpu: 50m
+        memory: 128Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+
+tempo:
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+prometheus:
+  server:
+    resources:
+      requests:
+        cpu: 50m
+        memory: 128Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+
+otelcollector:
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+
+# Alloy is a DaemonSet log shipper; one tiny pod per node is plenty for kind.
+alloy:
+  alloy:
+    resources:
+      requests:
+        cpu: 25m
+        memory: 64Mi
+      limits:
+        cpu: 200m
+        memory: 256Mi

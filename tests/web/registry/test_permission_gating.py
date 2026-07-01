@@ -1,0 +1,26 @@
+"""Enforcement tests for least-privilege gating on registry read routes.
+
+Two complementary directions:
+
+* An under-scoped caller (holds an unrelated scope) is **denied** 403 on
+  ``GET /apis``, proving the gate is real and not a no-op.
+* A caller holding only ``apis:write`` is **admitted** to ``GET /apis`` — the
+  route guard expands implications (``apis:write`` ⇒ ``apis:read``) so the
+  advertised catalogue semantics hold at enforcement, not just in the docs.
+"""
+
+from __future__ import annotations
+
+import pytest
+from fastapi.testclient import TestClient
+
+pytestmark = pytest.mark.integration
+
+
+def test_list_apis_denied_without_scope(wrong_scope_client: TestClient) -> None:
+    assert wrong_scope_client.get("/apis").status_code == 403
+
+
+def test_write_scope_implies_read_on_list_apis(write_only_client: TestClient) -> None:
+    # apis:write implies apis:read — the guard must expand it, so this is 200 not 403.
+    assert write_only_client.get("/apis").status_code == 200

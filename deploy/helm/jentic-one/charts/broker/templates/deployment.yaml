@@ -1,0 +1,66 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-broker
+  labels:
+    app.kubernetes.io/name: broker
+    app.kubernetes.io/instance: {{ .Release.Name }}
+spec:
+  replicas: {{ .Values.replicas }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: broker
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: broker
+        app.kubernetes.io/instance: {{ .Release.Name }}
+      {{- include "common.pod-annotations" . | nindent 6 }}
+    spec:
+      containers:
+        - name: broker
+          image: {{ include "common.image" . | quote }}
+          ports:
+            - containerPort: 8000
+          env:
+{{- range $k, $v := .Values.extraEnv }}
+            - name: {{ $k }}
+              value: {{ $v | quote }}
+{{- end }}
+{{ include "common.config-file.env" . | indent 12 }}
+{{ include "common.logging-env" . | indent 12 }}
+{{ include "common.metrics-env" . | indent 12 }}
+{{ include "common.db-env" . | indent 12 }}
+{{- with (include "common.config-file.mount" . | trim) }}
+          volumeMounts:
+{{ . | indent 12 }}
+{{- end }}
+          readinessProbe:
+            httpGet:
+              path: {{ .Values.healthCheck.path | default "/health" }}
+              port: {{ .Values.healthCheck.port | default 8000 }}
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: {{ .Values.healthCheck.path | default "/health" }}
+              port: {{ .Values.healthCheck.port | default 8000 }}
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+        {{- if .Values.global.observability.otel.enabled }}
+{{ include "common.otel-sidecar" . | indent 8 }}
+        {{- end }}
+      {{- $otel := .Values.global.observability.otel.enabled }}
+      {{- $cfg := (include "common.config-file.volume" . | trim) }}
+      {{- if or $otel $cfg }}
+      volumes:
+      {{- if $otel }}
+{{ include "common.otel-config-volume" . | indent 8 }}
+      {{- end }}
+      {{- with $cfg }}
+{{ . | indent 8 }}
+      {{- end }}
+      {{- end }}

@@ -1,0 +1,22 @@
+image:
+  repository: nginx
+  tag: "1.27-alpine"
+
+replicas: 1
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 32Mi
+  limits:
+    cpu: 200m
+    memory: 64Mi
+
+service:
+  type: ClusterIP
+  port: 8000
+
+upstreams:
+  admin: ""
+  registry: ""
+  control: ""

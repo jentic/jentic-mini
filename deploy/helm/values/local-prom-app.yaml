@@ -1,0 +1,49 @@
+# Overlay that switches application metrics export from OTLP to Prometheus
+# scrape mode. Use alongside a mode values file:
+#
+#   helm upgrade --install jentic deploy/helm/jentic-one \
+#     -f deploy/helm/values/local-combined.yaml \
+#     -f deploy/helm/values/local-prom-app.yaml
+#
+# Or via Make:
+#   make deploy-local MODE=combined METRICS=prometheus
+#
+# This sets the app to expose /metrics and adds pod annotations so
+# Prometheus discovers and scrapes them automatically.
+
+global:
+  observability:
+    metrics:
+      exporter: prometheus
+
+# Pod annotations for Prometheus service discovery.
+# These are picked up by the kubernetes_sd scrape job in the observability chart.
+app:
+  podAnnotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "8000"
+    prometheus.io/path: "/metrics/"
+
+broker:
+  podAnnotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "8000"
+    prometheus.io/path: "/metrics/"
+
+registry:
+  podAnnotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "8000"
+    prometheus.io/path: "/metrics/"
+
+admin:
+  podAnnotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "8000"
+    prometheus.io/path: "/metrics/"
+
+control:
+  podAnnotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "8000"
+    prometheus.io/path: "/metrics/"

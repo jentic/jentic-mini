@@ -1,0 +1,6 @@
+services:
+  db:
+    tmpfs:
+      - /var/lib/postgresql/data
+    volumes:
+      - ./init-schemas.sql:/docker-entrypoint-initdb.d/init-schemas.sql:ro

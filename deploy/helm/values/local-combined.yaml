@@ -1,0 +1,79 @@
+app:
+  enabled: true
+  service:
+    type: NodePort
+    nodePort: 30080
+  extraEnv:
+    # The auth (platform-actors OAuth) surface advertises this as the issuer and
+    # builds its endpoint/registration URIs + JWT-Bearer assertion audience from
+    # it. It MUST match the URL the smoke tests use as base_url (the kind host
+    # port 8000 → app NodePort 30080), because agent_token_exchange signs the
+    # assertion with aud=f"{base_url}/oauth/token" and the auth surface validates
+    # aud against canonical_base_url + "/oauth/token". A mismatch (e.g. the
+    # in-cluster NodePort 30080, unreachable from the test runner) makes every
+    # token exchange fail 400 invalid_grant. Without it, aud collapses to
+    # "/oauth/token" and emits malformed issuer/registration URIs.
+    JENTIC__AUTH__CANONICAL_BASE_URL: http://localhost:8000
+    # Allow the registry ingest worker (bundled in the combined app) to fetch
+    # specs from in-cluster ClusterIPs (kind service CIDR is in 10/8).
+    JENTIC__INGEST__EGRESS__ALLOWED_INTERNAL_DOMAINS: .svc.cluster.local
+    JENTIC__INGEST__EGRESS__ALLOWED_PRIVATE_SUBNETS: 10.0.0.0/8
+    requests:
+      cpu: 250m
+      memory: 1Gi
+    limits:
+      cpu: "2"
+      memory: 3Gi
+  # Credential-at-rest encryption keyset (+ the platform OAuth2 provider),
+  # mounted as a YAML config file via a ConfigMap and read through
+  # JENTIC_CONFIG_FILE. This CANNOT be expressed via the flat JENTIC__* env-var
+  # convention because `entries` is a list, and without it every credential
+  # write 500s ("EncryptionConfig.entries must not be empty"). LOCAL/SMOKE-ONLY:
+  # the key is a throwaway dev value committed for the kind cluster — never reuse
+  # it anywhere real (the ConfigMap is not a Secret).
+  configFile:
+    contents:
+      credentials:
+        encryption:
+          active_id: v1
+          entries:
+            - id: v1
+              material: "9ysLYfGPDFNdEcL9Z9RUa5YoREALVwjX9E2MCQ8iE7Q="  # pragma: allowlist secret
+        providers:
+          direct_oauth2:
+            kind: direct_oauth2
+            redirect_uri: "http://127.0.0.1:30080/credentials/oauth/callback"
+
+broker:
+  enabled: true
+  service:
+    type: NodePort
+    nodePort: 30081
+  extraEnv:
+    # Allow the broker to proxy to in-cluster ClusterIPs. DNS pinning re-resolves
+    # to the same service IP, which this subnet/domain pair permits.
+    JENTIC__BROKER__EGRESS__ALLOWED_INTERNAL_DOMAINS: .svc.cluster.local
+    JENTIC__BROKER__EGRESS__ALLOWED_PRIVATE_SUBNETS: 10.0.0.0/8
+
+registry:
+  enabled: false
+
+admin:
+  enabled: false
+
+control:
+  enabled: false
+
+global:
+  postgresql:
+    enabled: true
+
+postgresql:
+  enabled: true
+  auth:
+    username: postgres
+    password: postgres
+    database: jentic
+  primary:
+    initdb:
+      scriptsConfigMap: "jentic-pg-init"

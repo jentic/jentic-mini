@@ -1,0 +1,22 @@
+# Overlay that wires the app pods' OTel sidecars to the central collector
+# deployed by the `observability` chart.
+#
+# Layer this AFTER your mode values file, e.g.:
+#   helm upgrade --install jentic deploy/helm/jentic-one \
+#     -f deploy/helm/values/local-combined.yaml \
+#     -f deploy/helm/values/local-otel-app.yaml
+#
+# Or, more conveniently:
+#   make deploy-local MODE=combined OTEL=1
+#
+# Prerequisite: `make obs-up` (so the collector service exists in `monitoring`).
+
+global:
+  observability:
+    otel:
+      enabled: true
+      # Cross-namespace service DNS for the central collector.
+      endpoint: "obs-otelcollector.monitoring.svc.cluster.local:4317"
+      samplingRatio: "1.0"
+      tls:
+        insecure: true

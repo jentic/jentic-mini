@@ -1,0 +1,59 @@
+"""Persistence and finalization stages."""
+
+from __future__ import annotations
+
+import uuid
+from typing import ClassVar
+
+from jentic_one.registry.ingest.pipeline.ctx import PipelineContext
+from jentic_one.registry.ingest.stages.base import BasePipelineStage
+from jentic_one.registry.repos import ApiRepository, ApiRevisionRepository, SpecFileRepository
+
+
+class StoreSpecFileStage(BasePipelineStage):
+    """Persists the raw spec file content."""
+
+    name: ClassVar[str] = "StoreSpecFileStage"
+    _requires: ClassVar[dict[str, type]] = {"revision_id": uuid.UUID}
+    _produces: ClassVar[dict[str, type]] = {"spec_file_id": uuid.UUID}
+
+    async def _run(self, ctx: PipelineContext) -> None:
+        revision_id = ctx.require("revision_id", uuid.UUID)
+        spec_file = await SpecFileRepository.create_or_update(
+            ctx.session,
+            revision_id=revision_id,
+            filename=ctx.specification.api_identifier.filename,
+            content=ctx.specification.content or {},
+            sha=ctx.specification.sha,
+            created_by=ctx.created_by,
+        )
+        ctx.produce("spec_file_id", spec_file.id, uuid.UUID)
+
+
+class FinalizeStage(BasePipelineStage):
+    """Updates aggregate counts on the Api and ApiRevision."""
+
+    name: ClassVar[str] = "FinalizeStage"
+    _requires: ClassVar[dict[str, type]] = {
+        "api_id": uuid.UUID,
+        "revision_id": uuid.UUID,
+        "operation_ids": set,
+    }
+    _produces: ClassVar[dict[str, type]] = {}
+
+    async def _run(self, ctx: PipelineContext) -> None:
+        api_id = ctx.require("api_id", uuid.UUID)
+        revision_id = ctx.require("revision_id", uuid.UUID)
+        operation_ids: set[str] = ctx.require("operation_ids", set)
+        operation_count = len(operation_ids)
+
+        await ApiRevisionRepository.set_operation_count(ctx.session, revision_id, operation_count)
+        await ApiRepository.apply_counts(
+            ctx.session,
+            api_id,
+            revision_count_delta=1,
+            operation_count=operation_count,
+        )
+
+        if ctx.specification.origin is not None:
+            await ApiRepository.set_current_revision(ctx.session, api_id, revision_id)

@@ -1,0 +1,165 @@
+gateway:
+  enabled: false
+
+broker:
+  enabled: false
+  image:
+    repository: jentic-one/broker
+    tag: ""
+  replicas: 1
+  service:
+    type: ClusterIP
+    port: 8000
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+
+app:
+  enabled: true
+  image:
+    repository: jentic-one/app
+    tag: ""
+  replicas: 1
+  service:
+    type: ClusterIP
+    port: 8000
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+
+registry:
+  enabled: false
+  image:
+    repository: jentic-one/registry
+    tag: ""
+  replicas: 1
+  service:
+    type: ClusterIP
+    port: 8000
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+
+admin:
+  enabled: false
+  image:
+    repository: jentic-one/admin
+    tag: ""
+  replicas: 1
+  service:
+    type: ClusterIP
+    port: 8000
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+
+control:
+  enabled: false
+  image:
+    repository: jentic-one/control
+    tag: ""
+  replicas: 1
+  service:
+    type: ClusterIP
+    port: 8000
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+
+global:
+  image:
+    # Tag injected by `make deploy-local` from scripts/version.sh (which reads
+    # pyproject.toml). Empty here means "fall back to per-service image.tag,
+    # then Chart.AppVersion, then 'latest'". Override at the CLI for ad-hoc:
+    #   helm install ... --set global.image.tag=v0.1.0
+    tag: ""
+    # Optional registry prefix. When set, services without an explicit
+    # `image.repository` override get `<registry>/<service-name>` automatically.
+    registry: ""
+  observability:
+    otel:
+      enabled: false
+      image: otel/opentelemetry-collector-contrib:latest
+      endpoint: ""
+      samplingRatio: "1.0"
+      tls:
+        insecure: true
+    logging:
+      format: json
+      level: info
+    metrics:
+      exporter: otlp
+  postgresql:
+    enabled: false
+  # Bitnami chart 16.4.x rejects images outside its expected registry; we
+  # need to pin `bitnamilegacy/postgresql` (see the postgresql block below)
+  # so this gate has to be opened. Production deployments that use a
+  # different registry/image can leave this off.
+  security:
+    allowInsecureImages: true
+  # WARNING: dev-only credential pattern.
+  # In production, do NOT set `password` here. Replace `common.db-env` in your
+  # subchart deployments with a Secret-backed `valueFrom: secretKeyRef:` block,
+  # or pass an `existingSecret` reference. See deploy/README.md
+  # "Production secrets" for the recipe.
+  databases:
+    registry:
+      host: ""
+      port: 5432
+      name: jentic
+      user: registry_user
+      password: registry_pass
+      schema: registry
+    control:
+      host: ""
+      port: 5432
+      name: jentic
+      user: control_user
+      password: control_pass
+      schema: control
+    admin:
+      host: ""
+      port: 5432
+      name: jentic
+      user: admin_user
+      password: admin_pass
+      schema: admin
+
+postgresql:
+  enabled: false
+  # Bitnami moved free-tier images to `bitnamilegacy/` in Aug 2025; the
+  # default `bitnami/postgresql:17.2.0-debian-12-r6` was pruned from Docker
+  # Hub and now ImagePullBackOffs. Pin to the legacy mirror until the
+  # bundled chart version is upgraded (or we vendor postgres ourselves).
+  # Production environments should override this with their own image.
+  image:
+    registry: docker.io
+    repository: bitnamilegacy/postgresql
+    tag: 17.2.0-debian-12-r6
+  auth:
+    username: postgres
+    password: postgres
+    database: jentic
+  primary:
+    initdb:
+      scriptsConfigMap: ""

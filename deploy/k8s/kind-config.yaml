@@ -1,0 +1,28 @@
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+nodes:
+  - role: control-plane
+    # Host-port → NodePort mappings used by the local overlays in
+    # deploy/helm/values/local-*.yaml. Keep these in sync with the
+    # `service.nodePort` values in those overlays.
+    #
+    #  Combined mode:  app→8000 (NodePort 30080), broker→8080
+    #  Parts mode:     gateway→8000 (NodePort 30080), broker→8080,
+    #                  admin→8001, control→8002, registry→8003
+    #  Broker mode:    broker→8080
+    extraPortMappings:
+      - containerPort: 30080
+        hostPort: 8000
+        protocol: TCP
+      - containerPort: 30081
+        hostPort: 8080
+        protocol: TCP
+      - containerPort: 30082
+        hostPort: 8001
+        protocol: TCP
+      - containerPort: 30083
+        hostPort: 8002
+        protocol: TCP
+      - containerPort: 30086
+        hostPort: 8003
+        protocol: TCP

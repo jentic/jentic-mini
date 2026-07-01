@@ -1,0 +1,60 @@
+app:
+  enabled: false
+
+gateway:
+  enabled: true
+  service:
+    type: NodePort
+    nodePort: 30080
+  upstreams:
+    admin: jentic-admin
+    registry: jentic-registry
+    control: jentic-control
+
+broker:
+  enabled: true
+  service:
+    type: NodePort
+    nodePort: 30081
+  extraEnv:
+    # Allow the broker to proxy to in-cluster ClusterIPs. DNS pinning
+    # re-resolves to the same service IP, which this subnet/domain pair permits.
+    JENTIC__BROKER__EGRESS__ALLOWED_INTERNAL_DOMAINS: .svc.cluster.local
+    JENTIC__BROKER__EGRESS__ALLOWED_PRIVATE_SUBNETS: 10.0.0.0/8
+
+registry:
+  enabled: true
+  service:
+    type: NodePort
+    nodePort: 30086
+  extraEnv:
+    # The registry surface runs the import worker in parts mode; allow it to fetch
+    # specs from in-cluster ClusterIPs (kind service CIDR is in 10/8).
+    JENTIC__INGEST__EGRESS__ALLOWED_INTERNAL_DOMAINS: .svc.cluster.local
+    JENTIC__INGEST__EGRESS__ALLOWED_PRIVATE_SUBNETS: 10.0.0.0/8
+
+admin:
+  enabled: true
+  service:
+    type: NodePort
+    nodePort: 30082
+
+control:
+  enabled: true
+  service:
+    type: NodePort
+    nodePort: 30083
+
+global:
+  postgresql:
+    enabled: true
+
+postgresql:
+  enabled: true
+  auth:
+    username: postgres
+    password: postgres
+    database: jentic
+  primary:
+    initdb:
+      scriptsConfigMap: "jentic-pg-init"

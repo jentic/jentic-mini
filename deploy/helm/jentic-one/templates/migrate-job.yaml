@@ -1,0 +1,89 @@
+{{- /*
+Migration hook Job: applies Alembic migrations for all databases before the
+service pods start serving. Runs as a Helm post-install/post-upgrade hook so
+it executes after the bundled Postgres (and its init schemas/roles) is ready.
+
+Uses the app image (which bundles the full jentic_one package, including the
+migrations) and the shared common.db-env so connection details have a single
+source of truth with the service deployments.
+*/ -}}
+{{- if .Values.global.postgresql.enabled }}
+{{- /*
+Resolve the image for the migration runner. Migrations are bundled in every
+service image (each carries the full jentic_one package), but only a subset of
+surfaces is enabled — and only their images are loaded into the cluster — for
+any given mode:
+  combined -> app           parts -> registry/admin/control   broker -> broker
+Gating the Job on .Values.app.enabled meant parts/broker modes never ran
+migrations, so the schema was missing and every DB-backed request failed. Pick
+the first enabled surface so the chosen image is one that is actually present.
+*/ -}}
+{{- $svc := "" -}}
+{{- range $name := (list "app" "admin" "registry" "control" "broker") -}}
+  {{- if and (eq $svc "") (index $.Values $name) (index $.Values $name "enabled") -}}
+    {{- $svc = $name -}}
+  {{- end -}}
+{{- end -}}
+{{- if eq $svc "" -}}
+  {{- fail "migrate job: postgresql is enabled but no service surface is enabled to source the image" -}}
+{{- end -}}
+{{- $svcValues := index .Values $svc -}}
+{{- $tag := $svcValues.image.tag | default (default "" .Values.global.image.tag) | default "latest" -}}
+{{- $repo := $svcValues.image.repository -}}
+{{- if and (not $repo) .Values.global.image.registry -}}
+  {{- $repo = printf "%s/%s" .Values.global.image.registry $svc -}}
+{{- end -}}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ .Release.Name }}-migrate
+  labels:
+    app.kubernetes.io/name: migrate
+    app.kubernetes.io/instance: {{ .Release.Name }}
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "0"
+    "helm.sh/hook-delete-policy": before-hook-creation
+spec:
+  backoffLimit: 3
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: migrate
+        app.kubernetes.io/instance: {{ .Release.Name }}
+    spec:
+      restartPolicy: Never
+      initContainers:
+        # Wait for Postgres to accept connections before migrating. The Job is
+        # a post-install hook, but the Postgres StatefulSet may still be
+        # starting; without this gate the first attempt races and fails (it
+        # then succeeds on backoff retry, but that is noisy and fragile).
+        - name: wait-for-db
+          image: {{ printf "%s:%s" $repo $tag | quote }}
+          command:
+            - python
+            - -c
+            - |
+              import os, socket, time, sys
+              host = os.environ["JENTIC__DATABASES__ADMIN__HOST"]
+              port = int(os.environ.get("JENTIC__DATABASES__ADMIN__PORT", "5432"))
+              deadline = time.time() + 120
+              while time.time() < deadline:
+                  try:
+                      with socket.create_connection((host, port), timeout=3):
+                          print(f"{host}:{port} is accepting connections")
+                          sys.exit(0)
+                  except OSError as exc:
+                      print(f"waiting for {host}:{port} ({exc})", flush=True)
+                      time.sleep(2)
+              print("timed out waiting for database", file=sys.stderr)
+              sys.exit(1)
+          env:
+{{ include "common.db-env" . | indent 12 }}
+      containers:
+        - name: migrate
+          image: {{ printf "%s:%s" $repo $tag | quote }}
+          command: ["python", "-m", "jentic_one.migrations.run"]
+          env:
+{{ include "common.db-env" . | indent 12 }}
+{{- end }}
