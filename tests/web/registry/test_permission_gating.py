@@ -11,10 +11,68 @@ Two complementary directions:
 
 from __future__ import annotations
 
+import json
+from collections.abc import AsyncGenerator, Iterator
+from unittest.mock import patch
+
+import httpx
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import delete
+
+from jentic_one.registry.core.schema.catalog_snapshots import CatalogSnapshot
+from jentic_one.shared.context import Context
 
 pytestmark = pytest.mark.integration
+
+
+@pytest.fixture(autouse=True)
+def _empty_catalog_manifest() -> Iterator[None]:
+    """Pin the upstream catalog fetch to an empty manifest (no network, no ``stripe.com``).
+
+    These gating tests assert that ``POST /catalog/{api_id}:import`` reaches the
+    catalog resolver and returns 404 for a non-existent entry (proving it passed
+    the 403 authorization guard). Without this, the lazy refresh-on-read hits the
+    live public manifest, which now contains ``stripe.com`` — the import then
+    succeeds (202) and the gate assertion breaks. Serving an empty manifest keeps
+    the test hermetic and guarantees the entry is always absent.
+    """
+    real_client_cls = httpx.AsyncClient
+
+    def _handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            content=json.dumps({"include": []}).encode(),
+            headers={"content-type": "application/json"},
+        )
+
+    def _factory(*_args: object, **kwargs: object) -> httpx.AsyncClient:
+        kwargs.pop("transport", None)
+        return real_client_cls(transport=httpx.MockTransport(_handler), **kwargs)  # type: ignore[arg-type]
+
+    with patch("jentic_one.registry.services.catalog.fetch.httpx.AsyncClient", _factory):
+        yield
+
+
+@pytest.fixture(autouse=True)
+async def _clean_catalog(web_context: Context) -> AsyncGenerator[None, None]:
+    """Empty the catalog snapshot around each test.
+
+    A snapshot left by another test (populated from the live manifest, which now
+    carries ``stripe.com``) is not stale, so the lazy refresh-on-read never fires
+    and the empty-manifest mock above is bypassed — leaving ``stripe.com``
+    resolvable and the import returning 202. Truncating forces the resolver to
+    (re)fetch through the mock, guaranteeing the entry is absent (404).
+    """
+
+    async def _truncate() -> None:
+        async with web_context.registry_db.session() as session:
+            await session.execute(delete(CatalogSnapshot))
+            await session.commit()
+
+    await _truncate()
+    yield
+    await _truncate()
 
 
 def test_list_apis_denied_without_scope(wrong_scope_client: TestClient) -> None:
