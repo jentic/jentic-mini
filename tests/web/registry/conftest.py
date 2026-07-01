@@ -106,6 +106,17 @@ def write_only_client(web_context: Context) -> Iterator[TestClient]:
     with TestClient(app, headers={"Authorization": "Bearer test-token"}) as tc:
         yield tc
 
+@pytest.fixture()
+def catalog_import_client(web_context: Context) -> Iterator[TestClient]:
+    """TestClient holding only catalog:import."""
+    identity = Identity(
+        sub="usr_test_registry_catalog_import",
+        email="registry-catalogimport@test.local",
+        permissions=["catalog:import"],
+    )
+    app = _build_app_as(web_context, identity)
+    with TestClient(app, headers={"Authorization": "Bearer test-token"}) as tc:
+        yield tc
 
 @pytest.fixture()
 def admin_client(web_context: Context) -> Iterator[TestClient]:

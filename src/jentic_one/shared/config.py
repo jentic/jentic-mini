@@ -654,7 +654,7 @@ class BrokerConfig(BaseModel):
     """Broker surface configuration."""
 
     upstream_timeout_s: float = 30.0
-    resolve_cache_ttl_seconds: float = 30.0
+    resolve_cache_ttl_seconds: float = 3.0
     # Short TTL (seconds) for the per-instance toolkit-derivation cache (§05 R3).
     # Wraps the cross-DB `derive_toolkits` lookup so the per-request Admin+Control
     # double hit is served from cache for header-less requests. Agent/credential
@@ -663,11 +663,11 @@ class BrokerConfig(BaseModel):
     # only after the TTL lapses on each node) while removing the hot-path lookup.
     # Authorization correctness never depends on the cache — it is a latency
     # optimization over the authoritative DB lookup. 0 disables it.
-    toolkit_cache_ttl_s: float = 30.0
+    toolkit_cache_ttl_s: float = 3.0
     # Short TTL (seconds) for the per-instance permission-rule cache (§05 R3).
     # Caches the ordered toolkit_permission_rules per toolkit_id. Same staleness
     # trade-off as toolkit_cache_ttl_s — a rule change propagates after the TTL.
-    rule_cache_ttl_s: float = 30.0
+    rule_cache_ttl_s: float = 3.0
     # Absolute public base URL of the admin jobs API, used to build the 202
     # `_links.self` pointer for async executions (e.g. "https://api.example.com").
     # None keeps the legacy broker-relative `/jobs/{id}` link.
