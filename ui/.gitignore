@@ -1,0 +1,26 @@
+# The root .gitignore ignores `dist/` globally. Re-include the ui/dist
+# directory but keep its built contents out of git — except a placeholder
+# so the directory always exists for the wheel `force-include` (pyproject.toml),
+# even on a clean checkout with no UI build.
+!dist/
+dist/*
+!dist/.gitkeep
+
+node_modules/
+coverage/
+*.local
+
+# TypeScript incremental build info (local artifact)
+tsconfig.tsbuildinfo
+
+# Playwright e2e artifacts
+playwright-report/
+test-results/
+.playwright/
+# Real-backend (docker) e2e auth scratch: storageState + the rotated bootstrap
+# password, written by the setup projects. Never commit — contains a live JWT.
+e2e/docker/playwright/.auth/
+
+# Vitest browser-mode artifacts (screenshots/attachments on failure)
+.vitest-attachments/
+**/__screenshots__/

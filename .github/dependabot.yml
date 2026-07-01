@@ -1,0 +1,77 @@
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "ci"
+      include: "scope"
+    open-pull-requests-limit: 5
+    groups:
+      actions:
+        patterns: ["*"]
+
+  # The repo is a uv project (CI uses astral-sh/setup-uv + `make sync`), so the
+  # updater must target the uv lockfile, not pip. The original "pip" ecosystem
+  # pointed at a manifest this project does not use.
+  - package-ecosystem: "uv"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "chore"
+      include: "scope"
+    open-pull-requests-limit: 5
+    # uv does not support the group-level `dependency-type` selector (only
+    # bundler/composer/mix/maven/npm/pip do), so dev/prod can't be split that
+    # way. Group all uv updates into one PR instead — it keeps the lockfile
+    # internally consistent and avoids a flood of single-package PRs.
+    groups:
+      python:
+        patterns: ["*"]
+
+  - package-ecosystem: "npm"
+    directory: "/ui"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "chore"
+      include: "scope"
+    open-pull-requests-limit: 5
+    # Coupled toolchains must upgrade together or `npm ci` fails with ERESOLVE
+    # (e.g. vite 8 needs @vitejs/plugin-react 6 — split across PRs neither
+    # installs). Grouping lands each toolchain as a single, installable PR.
+    groups:
+      vite:
+        patterns:
+          - "vite"
+          - "@vitejs/*"
+          - "tailwindcss"
+          - "@tailwindcss/*"
+          - "vitest"
+          - "@vitest/*"
+      eslint:
+        patterns:
+          - "eslint"
+          - "eslint-*"
+          - "@eslint/*"
+          - "typescript"
+          - "typescript-eslint"
+      react:
+        patterns:
+          - "react"
+          - "react-dom"
+          - "@types/react"
+          - "@types/react-dom"
+          - "react-router-dom"
+      testing:
+        patterns:
+          - "@testing-library/*"
+          - "@playwright/*"
+          - "playwright"
+          - "msw"
+          - "axe-core"
+      types:
+        patterns:
+          - "@types/*"

@@ -1,0 +1,31 @@
+{
+	"name": "Jentic One",
+	"short_name": "Jentic",
+	"description": "The control plane for your agents' tools and credentials.",
+	"id": "/app/",
+	"scope": "/app/",
+	"start_url": "/app/",
+	"display": "standalone",
+	"theme_color": "#0E1A1D",
+	"background_color": "#0E1A1D",
+	"icons": [
+		{
+			"src": "/app/web-app-manifest-192x192.png",
+			"sizes": "192x192",
+			"type": "image/png",
+			"purpose": "any"
+		},
+		{
+			"src": "/app/web-app-manifest-512x512.png",
+			"sizes": "512x512",
+			"type": "image/png",
+			"purpose": "any"
+		},
+		{
+			"src": "/app/icon-512-maskable.png",
+			"sizes": "512x512",
+			"type": "image/png",
+			"purpose": "maskable"
+		}
+	]
+}

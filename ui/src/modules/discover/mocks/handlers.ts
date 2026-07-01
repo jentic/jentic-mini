@@ -1,0 +1,265 @@
+/**
+ * Discover MSW handlers + fixtures.
+ *
+ * Mocks the catalog backend surface the Discover module consumes:
+ *   GET  /catalog                       — keyset-paginated browse/search/filter
+ *   GET  /catalog/{api_id}/operations   — operation preview
+ *   POST /catalog:refresh               — force a manifest rebuild (ack)
+ *   POST /catalog/{api_id}:import       — enqueue import (202)
+ *
+ * There is no blended `/apis` feed under D-005a — Discover reads only the
+ * public catalog, whose per-entry `registered` flag drives the Imported badge.
+ *
+ * Registered additively in src/mocks/handlers.ts (the sanctioned shared→module
+ * bridge). Shapes mirror the generated response models so the typed client
+ * deserializes them unchanged.
+ */
+import { http, HttpResponse } from 'msw';
+
+interface CatalogFixture {
+	api_id: string;
+	vendor: string;
+	registered: boolean;
+	github: string | null;
+}
+
+function entry(f: CatalogFixture) {
+	return {
+		api_id: f.api_id,
+		vendor: f.vendor,
+		path: `apis/${f.api_id}/openapi.json`,
+		spec_url: `https://raw.githubusercontent.com/jentic/catalog/main/${f.api_id}.json`,
+		registered: f.registered,
+		_links: {
+			self: `/catalog/${f.api_id}`,
+			operations: `/catalog/${f.api_id}/operations`,
+			import: `/catalog/${f.api_id}:import`,
+			github: f.github,
+		},
+	};
+}
+
+const CATALOG_ENTRIES = [
+	entry({
+		api_id: 'stripe.com',
+		vendor: 'stripe',
+		registered: true,
+		github: 'https://github.com/jentic/catalog/blob/main/stripe.com.json',
+	}),
+	entry({
+		api_id: 'github.com',
+		vendor: 'github',
+		registered: false,
+		github: 'https://github.com/jentic/catalog/blob/main/github.com.json',
+	}),
+	entry({ api_id: 'slack.com', vendor: 'slack', registered: false, github: null }),
+	// Umbrella vendor with multiple sub-APIs that share one vendor (`nytimes.com`).
+	// These exercise the distinct-title fix: searching "nyt" must surface rows
+	// tellable apart by title, not three identical "nytimes.com" cards.
+	entry({
+		api_id: 'nytimes.com/article_search',
+		vendor: 'nytimes.com',
+		registered: false,
+		github: 'https://github.com/jentic/catalog/blob/main/nytimes.com/article_search.json',
+	}),
+	entry({
+		api_id: 'nytimes.com/top_stories',
+		vendor: 'nytimes.com',
+		registered: false,
+		github: 'https://github.com/jentic/catalog/blob/main/nytimes.com/top_stories.json',
+	}),
+	entry({
+		api_id: 'nytimes.com/books',
+		vendor: 'nytimes.com',
+		registered: false,
+		github: 'https://github.com/jentic/catalog/blob/main/nytimes.com/books.json',
+	}),
+];
+
+const REGISTERED_TOTAL = CATALOG_ENTRIES.filter((e) => e.registered).length;
+
+const GITHUB_OPERATIONS = {
+	data: [
+		{
+			method: 'get',
+			path: '/repos/{owner}/{repo}',
+			summary: 'Get a repository',
+			description: 'Returns a single repository.',
+			operation_id: 'repos/get',
+			parameters: [
+				{ name: 'owner', in: 'path', required: true, description: 'Account owner.' },
+				{ name: 'repo', in: 'path', required: true, description: 'Repository name.' },
+			],
+			security: ['bearer'],
+			tags: ['repos'],
+		},
+		{
+			method: 'post',
+			path: '/repos/{owner}/{repo}/issues',
+			summary: 'Create an issue',
+			description: 'Creates a new issue in a repository.',
+			operation_id: 'issues/create',
+			parameters: [
+				{
+					name: 'title',
+					in: 'body',
+					required: true,
+					description: 'The title of the issue.',
+				},
+			],
+			security: ['bearer'],
+			tags: ['issues'],
+		},
+		{
+			method: 'get',
+			path: '/user',
+			summary: 'Get the authenticated user',
+			description: 'Returns the profile of the authenticated user.',
+			operation_id: 'users/get-authenticated',
+			parameters: [],
+			security: ['bearer'],
+			tags: ['users'],
+		},
+		{
+			method: 'patch',
+			path: '/user',
+			summary: 'Update the authenticated user',
+			description: 'Updates the authenticated user profile.',
+			operation_id: 'users/update-authenticated',
+			parameters: [],
+			security: ['bearer'],
+			tags: ['users'],
+		},
+		{
+			method: 'get',
+			path: '/repos/{owner}/{repo}/issues',
+			summary: 'List repository issues',
+			description: 'Lists issues in a repository.',
+			operation_id: 'issues/list',
+			parameters: [],
+			security: ['bearer'],
+			tags: ['issues'],
+		},
+		{
+			method: 'delete',
+			path: '/repos/{owner}/{repo}',
+			summary: 'Delete a repository',
+			description: 'Deletes a repository.',
+			operation_id: 'repos/delete',
+			parameters: [],
+			security: ['bearer'],
+			tags: ['repos'],
+		},
+	],
+	total: 6,
+	offset: 0,
+	truncated: false,
+	info: {
+		title: 'GitHub API',
+		version: '1.1.4',
+		// Long, markdown-formatted description so the sheet exercises the
+		// Markdown renderer + the 280-char "Show more / Show less" truncation.
+		description:
+			'The **GitHub REST API** lets you build integrations, retrieve data, and ' +
+			'automate your workflows. It supports `repos`, `issues`, and `users` ' +
+			'resources among many others. See the [developer docs](https://docs.github.com) ' +
+			'for the full reference. This text is intentionally long so the detail sheet ' +
+			'truncates it at a word boundary and offers a Show more toggle to expand the rest.',
+	},
+	security_schemes: {
+		bearer: { type: 'http', scheme: 'bearer', description: 'HTTP Bearer token auth.' },
+	},
+};
+
+export const discoverHandlers = [
+	http.get('/catalog', ({ request }) => {
+		const url = new URL(request.url);
+		const q = url.searchParams.get('q')?.toLowerCase() ?? '';
+		const registeredOnly = url.searchParams.get('registered_only') === 'true';
+		const unregisteredOnly = url.searchParams.get('unregistered_only') === 'true';
+
+		let rows = CATALOG_ENTRIES;
+		if (registeredOnly) rows = rows.filter((r) => r.registered);
+		if (unregisteredOnly) rows = rows.filter((r) => !r.registered);
+		if (q) rows = rows.filter((r) => r.api_id.toLowerCase().includes(q));
+
+		// Single-page fixture: no cursor paging needed for the test corpus.
+		return HttpResponse.json({
+			data: rows,
+			catalog_total: CATALOG_ENTRIES.length,
+			registered_count: REGISTERED_TOTAL,
+			manifest_age_seconds: 120,
+			has_more: false,
+			next_cursor: null,
+		});
+	}),
+
+	http.get('/catalog/:apiId/operations', ({ params, request }) => {
+		const apiId = String(params.apiId);
+		if (apiId !== 'github.com') {
+			return HttpResponse.json({
+				data: [],
+				total: 0,
+				offset: 0,
+				truncated: false,
+				info: { title: apiId, version: null, description: null },
+				security_schemes: {},
+			});
+		}
+
+		// Mirror the backend's server-side filtering + offset/limit windowing so
+		// the infinite query + server-side search/tag are exercised end to end.
+		const url = new URL(request.url);
+		const q = (url.searchParams.get('q') ?? '').trim().toLowerCase();
+		const tag = url.searchParams.get('tag');
+		const offset = Number(url.searchParams.get('offset') ?? 0);
+		const limit = Number(url.searchParams.get('limit') ?? 200);
+
+		let ops = GITHUB_OPERATIONS.data;
+		if (tag)
+			ops = ops.filter((op) => op.tags?.some((t) => t.toLowerCase() === tag.toLowerCase()));
+		if (q) {
+			ops = ops.filter((op) =>
+				[op.method, op.path, op.summary, op.operation_id]
+					.join(' ')
+					.toLowerCase()
+					.includes(q),
+			);
+		}
+
+		const total = ops.length;
+		const window = ops.slice(offset, offset + limit);
+		return HttpResponse.json({
+			...GITHUB_OPERATIONS,
+			data: window,
+			total,
+			offset,
+			truncated: offset + window.length < total,
+		});
+	}),
+
+	http.post('/catalog:refresh', () => {
+		// Force-rebuild ack. The real backend resets the manifest snapshot here;
+		// the fixture just echoes a fresh count so the success toast renders.
+		return HttpResponse.json({ count: CATALOG_ENTRIES.length, status: 'refreshed' });
+	}),
+
+	http.post('/catalog/*', ({ request }) => {
+		// The import action is addressed as `/catalog/{api_id}:import` where
+		// api_id may itself contain slashes (FastAPI `:path`). Match the whole
+		// `/catalog/*` tail and strip the `:import` action suffix to recover the
+		// api_id, rather than relying on segment params (which can't express the
+		// colon-action grammar).
+		const url = new URL(request.url);
+		const tail = decodeURIComponent(url.pathname.replace(/^\/catalog\//, ''));
+		if (!tail.endsWith(':import')) {
+			return new HttpResponse(null, { status: 404 });
+		}
+		const apiId = tail.slice(0, -':import'.length);
+		const jobId = `job_${apiId.replace(/\W/g, '_')}`;
+		return HttpResponse.json(
+			{ job_id: jobId, status: 'queued', _links: { self: `/jobs/${jobId}` } },
+			{ status: 202 },
+		);
+	}),
+];

@@ -1,0 +1,43 @@
+name: Dependabot auto-merge
+
+# Enables auto-merge for low-risk Dependabot updates once all required checks
+# pass. GitHub still waits for the branch protection / "CI status" gate before
+# merging — this only queues the merge, it does not bypass CI.
+#
+# Policy (deliberately conservative):
+#   - patch updates ...................... auto-merge (any dependency)
+#   - minor updates to dev dependencies .. auto-merge
+#   - minor updates to prod dependencies . human review
+#   - major updates ...................... human review (always)
+#
+# Majors are held back on purpose: they are where breaking changes and coupled
+# peer-dependency bumps live (e.g. vite 8 + @vitejs/plugin-react 6).
+
+on: pull_request_target
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  auto-merge:
+    runs-on: ubuntu-latest
+    # Gate on the immutable PR author, not github.actor — the latter is the
+    # actor of the latest event and is spoofable on pull_request_target.
+    if: github.event.pull_request.user.login == 'dependabot[bot]'
+    steps:
+      - name: Fetch Dependabot metadata
+        id: meta
+        uses: dependabot/fetch-metadata@v3
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Enable auto-merge for low-risk updates
+        if: >-
+          steps.meta.outputs.update-type == 'version-update:semver-patch' ||
+          (steps.meta.outputs.update-type == 'version-update:semver-minor' &&
+           steps.meta.outputs.dependency-type == 'direct:development')
+        run: gh pr merge --auto --squash "$PR_URL"
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

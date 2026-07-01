@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Jentic One</title>
+
+		<!--
+			Favicons, web-app manifest & social metadata (issue #614). Paths are
+			root-absolute under the /app base (matching Vite `base: '/app/'` and
+			SPA_MOUNT_PATH) so they resolve identically on a deep-link refresh like
+			/app/agents/123. Root probes (/favicon.ico, /apple-touch-icon.png) that
+			browsers/iOS hit at the site root are 307-redirected into /app by the
+			backend (src/jentic_one/shared/web/static.py).
+		-->
+		<link rel="icon" type="image/svg+xml" href="/app/favicon.svg" />
+		<link rel="icon" type="image/png" sizes="96x96" href="/app/favicon-96x96.png" />
+		<link rel="icon" type="image/x-icon" sizes="32x32" href="/app/favicon.ico" />
+		<link rel="apple-touch-icon" href="/app/apple-touch-icon.png" />
+		<link rel="manifest" href="/app/site.webmanifest" />
+		<meta name="theme-color" content="#0E1A1D" />
+
+		<meta property="og:type" content="website" />
+		<meta property="og:site_name" content="Jentic One" />
+		<meta property="og:title" content="Jentic One" />
+		<meta
+			property="og:description"
+			content="The control plane for your agents' tools and credentials."
+		/>
+		<meta property="og:image" content="/app/og-image.png" />
+		<meta property="og:image:width" content="1200" />
+		<meta property="og:image:height" content="630" />
+		<meta name="twitter:card" content="summary_large_image" />
+		<meta name="twitter:title" content="Jentic One" />
+		<meta
+			name="twitter:description"
+			content="The control plane for your agents' tools and credentials."
+		/>
+		<meta name="twitter:image" content="/app/og-image.png" />
+
+		<link rel="preconnect" href="https://fonts.googleapis.com" />
+		<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+		<link
+			href="https://fonts.googleapis.com/css2?family=Nunito+Sans:wght@400;600;700;800&family=Sora:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap"
+			rel="stylesheet"
+		/>
+	</head>
+	<body class="bg-background text-foreground min-h-screen font-sans antialiased">
+		<div id="root"></div>
+		<script type="module" src="/src/main.tsx"></script>
+	</body>
+</html>

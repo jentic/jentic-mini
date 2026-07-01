@@ -1,0 +1,40 @@
+pre-commit:
+  commands:
+    lint:
+      run: make lint
+    ui-eslint:
+      root: "ui/"
+      glob:
+        - "ui/*.{ts,tsx,js,jsx}"
+        - "ui/**/*.{ts,tsx,js,jsx}"
+      # Hard-fail (never skip) so problems surface here, not in CI. Auto-install
+      # pinned deps if missing; run the project-local eslint binary so the
+      # version always matches the lockfile, never a global/network version.
+      run: |
+        command -v node >/dev/null 2>&1 || { echo "✖ node not found. UI hooks require Node.js. Run 'make install' (or install Node) before committing UI changes."; exit 1; }
+        [ -x node_modules/.bin/eslint ] || npm ci || { echo "✖ npm ci failed — cannot run ui-eslint. Fix UI deps and retry."; exit 1; }
+        ./node_modules/.bin/eslint --fix {staged_files}
+      stage_fixed: true
+    ui-format:
+      root: "ui/"
+      glob:
+        - "ui/*.{ts,tsx,js,jsx,css,json,md,html}"
+        - "ui/**/*.{ts,tsx,js,jsx,css,json,md,html}"
+      run: |
+        command -v node >/dev/null 2>&1 || { echo "✖ node not found. UI hooks require Node.js. Run 'make install' (or install Node) before committing UI changes."; exit 1; }
+        [ -x node_modules/.bin/prettier ] || npm ci || { echo "✖ npm ci failed — cannot run ui-format. Fix UI deps and retry."; exit 1; }
+        ./node_modules/.bin/prettier --write {staged_files}
+      stage_fixed: true
+    detect-secrets:
+      run: uv run detect-secrets-hook --baseline .secrets.baseline {staged_files}
+      glob: "*.{py,yaml,yml,json,toml,cfg,ini,env}"
+
+commit-msg:
+  commands:
+    commitlint:
+      # Enforce conventional commits locally (type(scope): subject) so messages
+      # are correct at commit time — never deferred to CI. Pure Python via uv,
+      # so this fires for every contributor with no Node dependency.
+      # --allow-abort lets an empty/aborted message cancel the commit cleanly
+      # instead of erroring.
+      run: uv run cz check --allow-abort --commit-msg-file {1}

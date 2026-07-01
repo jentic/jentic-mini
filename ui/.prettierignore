@@ -1,0 +1,17 @@
+# Codegen output — keep byte-stable so `npm run codegen` diffs cleanly.
+src/shared/api/generated/
+# Codegen input — exported OpenAPI spec; keep byte-stable, don't reformat.
+openapi.json
+# Generated CLI reference — byte-stable (2-space indent from `make cli-reference`);
+# Prettier's tab indentation would break the Go drift test (clidocs_test.go).
+public/cli-reference.json
+# Generated Broker OpenAPI artifact — byte-stable (2-space indent from
+# `make broker-reference`); Prettier's tabs would fight the generator output.
+public/broker-openapi.json
+
+# Build + tooling artifacts
+dist/
+coverage/
+playwright-report/
+test-results/
+public/mockServiceWorker.js

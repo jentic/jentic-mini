@@ -1,0 +1,567 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  changes:
+    name: Detect changes
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      unit-tests: ${{ steps.filter.outputs.unit-tests }}
+      integration-tests: ${{ steps.filter.outputs.integration-tests }}
+      ui: ${{ steps.filter.outputs.ui }}
+      packaging: ${{ steps.filter.outputs.packaging }}
+      cli: ${{ steps.filter.outputs.cli }}
+      openapi-client: ${{ steps.filter.outputs.openapi-client }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: dorny/paths-filter@v4
+        id: filter
+        with:
+          filters: |
+            unit-tests:
+              - 'src/**'
+              - 'tests/unit/**'
+              - 'tests/arch/**'
+              - 'pyproject.toml'
+              - 'uv.lock'
+              - 'Makefile'
+            integration-tests:
+              - 'src/**'
+              - 'tests/integration/**'
+              - 'tests/web/**'
+              - 'pyproject.toml'
+              - 'uv.lock'
+              - 'Makefile'
+              - 'alembic.ini'
+              - 'docker/**'
+              - 'src/jentic_one/migrations/**'
+            cli:
+              - 'cli/**'
+            openapi-client:
+              # Inputs that can change the generated UI client. The committed
+              # spec (ui/openapi.json) is the codegen input — a spec change from
+              # any backend edit lands here. package(-lock) pins the generator
+              # version. The generated dir itself is included so hand-edits to
+              # vendored output are caught.
+              - 'ui/openapi.json'
+              - 'ui/package.json'
+              - 'ui/package-lock.json'
+              - 'ui/src/shared/api/generated/**'
+            ui:
+              - 'ui/**'
+            packaging:
+              - 'ui/**'
+              - 'pyproject.toml'
+              - 'src/jentic_one/shared/web/static.py'
+              - 'src/jentic_one/admin/web/app.py'
+              - 'src/jentic_one/shared/web/app_factory.py'
+              - 'scripts/spa_packaging_smoke.*'
+
+  lint:
+    name: Lint & type-check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Install dependencies
+        run: make sync
+
+      - name: Lint
+        run: make lint
+
+  # OpenAPI Scorecard gates.
+  #
+  # control.openapi.yaml is now GENERATED from the FastAPI app (`make openapi`)
+  # and carries the full metadata catalogue (info, tags, summaries, descriptions,
+  # error responses, examples), so `score-control` is expected to clear the 80+
+  # floor. Locally it is wired into `make score` (and therefore `make check`).
+  #
+  # The CI jobs below stay disabled only because JENTIC_API_KEY is invalid and the
+  # @jentic/api-scorecard-cli package requires private-registry auth not set up
+  # here. Re-enable `score-control` once a valid key + npm registry token are
+  # provisioned. broker.openapi.yaml is still hand-curated (out of scope).
+  # score-broker:
+  #   name: OpenAPI Scorecard (broker)
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - uses: actions/checkout@v7
+  #
+  #     - name: Set up Node.js
+  #       uses: actions/setup-node@v6
+  #       with:
+  #         node-version: "20"
+  #
+  #     - name: Log in to GHCR
+  #       run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+  #
+  #     - name: Score broker spec
+  #       run: npx --yes @jentic/api-scorecard-cli@1.0.0-alpha.29 score openapi/broker/broker.openapi.yaml --quiet
+  #       env:
+  #         JENTIC_API_KEY: ${{ secrets.JENTIC_API_KEY }}
+  #
+  # score-control:
+  #   name: OpenAPI Scorecard (control)
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - uses: actions/checkout@v7
+  #
+  #     - name: Set up Node.js
+  #       uses: actions/setup-node@v6
+  #       with:
+  #         node-version: "20"
+  #
+  #     - name: Log in to GHCR
+  #       run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+  #
+  #     - name: Score control spec
+  #       run: npx --yes @jentic/api-scorecard-cli@1.0.0-alpha.29 score openapi/control/control.openapi.yaml --quiet
+  #       env:
+  #         JENTIC_API_KEY: ${{ secrets.JENTIC_API_KEY }}
+
+  openapi-client-drift:
+    name: Generated UI client up to date
+    needs: [changes]
+    # Why this exists: the committed UI TS client (ui/src/shared/api/generated)
+    # is a BYPRODUCT of `npm run codegen` reading ui/openapi.json. The arch test
+    # `test_openapi_conformance.py` already guarantees ui/openapi.json equals the
+    # live FastAPI app — but NOTHING guarded the generated client, so a contract
+    # change could land with a stale client (exactly how #460's actor_id fields
+    # reached main without a client regen, surfacing as noise later). This job
+    # regenerates the client from the committed spec and fails on any diff, so
+    # `client == codegen(committed spec)`; composed with the arch test, that
+    # transitively pins `client == live app`. Node-only: no spec regen here (the
+    # arch test owns that), so it stays fast and needs no Python/DB.
+    if: needs.changes.outputs.openapi-client == 'true' || github.event_name == 'push'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ui
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+
+      - name: Install UI dependencies
+        run: npm ci
+
+      - name: Regenerate the client from the committed spec
+        run: npm run codegen
+
+      - name: Fail if the generated client drifted from a clean codegen
+        run: |
+          if ! git diff --quiet -- src/shared/api/generated; then
+            echo "::error::The generated UI client is out of date with ui/openapi.json."
+            echo "::error::Run 'cd ui && npm run codegen' and commit the result."
+            echo "::error::(If the spec itself is stale, run 'make openapi' first.)"
+            echo "----- drift (file stat) -----"
+            git diff --stat -- src/shared/api/generated
+            echo "----- drift (full diff) -----"
+            git --no-pager diff -- src/shared/api/generated
+            exit 1
+          fi
+          echo "Generated UI client is in sync with ui/openapi.json."
+
+  security:
+    name: Security scan
+    uses: jentic/context/.github/workflows/security-scan.yml@main
+    with:
+      python-version: "3.12"
+      bandit-targets: "src/"
+      trivy-severity: "CRITICAL,HIGH"
+
+  test-unit:
+    name: Unit tests
+    needs: [lint, security, changes]
+    if: needs.changes.outputs.unit-tests == 'true' || github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Install dependencies
+        run: make sync
+
+      - name: Run unit tests
+        run: make test-unit
+
+      - name: Run architecture tests
+        run: make test-arch
+
+  test-integration:
+    name: Integration tests (${{ matrix.backend }})
+    needs: [lint, security, changes]
+    if: needs.changes.outputs.integration-tests == 'true' || github.event_name == 'push'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        backend: [postgres, sqlite]
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Install dependencies
+        run: make sync
+
+      - name: Start database fixtures
+        if: matrix.backend == 'postgres'
+        run: make start-fixtures
+
+      - name: Run integration tests (postgres)
+        if: matrix.backend == 'postgres'
+        run: make test-integration
+
+      - name: Run integration tests (sqlite)
+        if: matrix.backend == 'sqlite'
+        run: make test-integration-sqlite
+
+      - name: Stop fixtures
+        if: always() && matrix.backend == 'postgres'
+        run: make destroy-fixtures
+
+  # Disabled: building locally/manually for now.
+  # build-images:
+  #   name: Build Docker images
+  #   if: startsWith(github.ref, 'refs/tags/v')
+  #   runs-on: ubuntu-latest
+  #   strategy:
+  #     matrix:
+  #       service: [app, registry, admin, control, broker]
+  #   steps:
+  #     - uses: actions/checkout@v7
+  #
+  #     - name: Set up Docker Buildx
+  #       uses: docker/setup-buildx-action@v3
+  #
+  #     - name: Build ${{ matrix.service }} image
+  #       run: make build-${{ matrix.service }}
+  #
+  #     # TODO: configure registry credentials and push
+  #     # - name: Push ${{ matrix.service }} image
+  #     #   run: make push-${{ matrix.service }}
+
+  ui:
+    name: UI build, lint & test
+    needs: [changes]
+    if: needs.changes.outputs.ui == 'true' || github.event_name == 'push'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ui
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browser (Chromium)
+        # Vitest runs in browser mode via the Playwright provider, so component
+        # tests need a real Chromium. --with-deps installs the OS libs on the
+        # ubuntu runner.
+        run: npx playwright install --with-deps chromium
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Lint-rule enforcement tests (#510/#511 guardrails)
+        run: npm run test:lint
+
+      - name: Build
+        run: npm run build
+
+      - name: Test
+        run: npm run test:run
+
+  ui-e2e:
+    name: UI e2e (mocked)
+    needs: [changes]
+    if: needs.changes.outputs.ui == 'true' || github.event_name == 'push'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ui
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browser (Chromium)
+        run: npx playwright install --with-deps chromium
+
+      - name: Run mocked e2e (boots dev server with MSW)
+        run: npm run e2e
+
+      - name: Upload Playwright report on failure
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-report
+          path: ui/playwright-report/
+          retention-days: 7
+
+  smoke-packaging:
+    name: Packaging smoke (SPA served from wheel)
+    needs: [changes]
+    # Why now: this PR coupled FE and BE — the admin wheel now packages and
+    # serves the UI bundle. The per-side filters above test each side in
+    # isolation against a *fake* static dir; nothing checks the real seam
+    # (force-include -> importlib.resources -> mount_spa) against a real wheel.
+    # This job builds the real UI + wheel, installs it clean, and asserts the
+    # SPA is served and API 404s preserved. DB-free, so it's cheap.
+    # Later: when real UI flows exist (login, lists), graduate to a true e2e
+    # job (Playwright + Postgres) and keep this as the fast packaging gate.
+    if: needs.changes.outputs.packaging == 'true' || github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Build UI + wheel, install in clean venv, verify SPA serving
+        run: make smoke-packaging
+
+  ui-e2e-realbackend:
+    name: UI e2e (real backend)
+    needs: [changes]
+    # Real Postgres + the combined app serving the SPA same-origin on :8000.
+    # Complements `ui-e2e` (mocked, MSW) and `smoke-packaging` (DB-free seam):
+    # this is the only job that drives the genuine auth flow (first-run gate
+    # rotation -> storageState -> authenticated shell) against a live backend.
+    #
+    # NOTE ON SCOPE: this serves the *staged source tree* (cp ui/dist ->
+    # src/jentic_one/static), NOT the installed wheel. It proves the live auth
+    # flow + same-origin SPA serving, but it does NOT cover packaging
+    # (force-include, lockfile pins, importlib resolution against a built
+    # wheel) — that is owned by `smoke-packaging`. Do not remove that job
+    # assuming this one covers the packaging seam.
+    #
+    # Triggers on UI, migration, or packaging-seam changes.
+    if: needs.changes.outputs.integration-tests == 'true' || needs.changes.outputs.ui == 'true' || needs.changes.outputs.packaging == 'true' || github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Install backend dependencies
+        run: make sync
+
+      - name: Install UI dependencies
+        working-directory: ui
+        run: npm ci
+
+      - name: Install Playwright browser (Chromium)
+        working-directory: ui
+        run: npx playwright install --with-deps chromium
+
+      - name: Build UI bundle
+        working-directory: ui
+        run: npm run build
+
+      - name: Stage SPA bundle for same-origin serving
+        # `make start-app` runs from source; mount_spa resolves the bundle via
+        # importlib.resources.files("jentic_one")/"static" (the wheel
+        # force-include target). Mirror ui/dist there so the source run serves
+        # the SPA same-origin, exactly as the packaged wheel does.
+        run: |
+          rm -rf src/jentic_one/static && cp -r ui/dist src/jentic_one/static
+          # Fail loudly here if the build produced no real bundle (e.g. only the
+          # ui/dist/.gitkeep placeholder). Without index.html, mount_spa returns
+          # False and the SPA specs would fail later with opaque 404/HTML errors.
+          test -f src/jentic_one/static/index.html \
+            || { echo "::error::SPA bundle missing: src/jentic_one/static/index.html not found after staging"; exit 1; }
+
+      - name: Start database fixtures (clean DB -> first-run gate present)
+        run: make start-fixtures
+
+      - name: Start the combined app
+        # Force reload off: config/local.yaml sets server.reload: true, which
+        # spawns a file-watching reloader parent + worker child. Backgrounding
+        # that with `&` only tracks the parent and the watcher can restart the
+        # worker mid-suite when files under src/ change. Reload has no value in
+        # CI and harms determinism, so we override it and capture a single PID.
+        env:
+          JENTIC__SERVER__RELOAD: "false"
+        run: |
+          # Own a process group so teardown can reap uvicorn even though it runs
+          # under `make -> uv -> python` (kill of the make PID alone wouldn't
+          # propagate to the python grandchild).
+          setsid make start-app > /tmp/jentic-app.log 2>&1 &
+          echo "APP_PGID=$!" >> "$GITHUB_ENV"
+          for i in $(seq 1 60); do
+            if curl -fsS http://localhost:8000/admin/health >/dev/null 2>&1; then
+              echo "app ready after ${i}s"; exit 0
+            fi
+            sleep 1
+          done
+          echo "app did not become ready"; cat /tmp/jentic-app.log; exit 1
+
+      - name: Run real-backend e2e
+        working-directory: ui
+        run: npm run e2e:docker
+        env:
+          CI: "true"
+
+      - name: Upload Playwright report on failure
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-report-realbackend
+          path: ui/playwright-report/
+          retention-days: 7
+
+      - name: Dump app log on failure
+        if: failure()
+        run: cat /tmp/jentic-app.log || true
+
+      - name: Stop the app
+        if: always()
+        run: |
+          # `setsid make ...` made the app its own session/group leader, and `$!`
+          # is that leader's PID == the PGID. Kill the whole group to reap
+          # make/uv/python together. Negative PID targets the process group.
+          if [ -n "${APP_PGID:-}" ]; then
+            kill -TERM "-${APP_PGID}" 2>/dev/null || true
+          fi
+
+      - name: Stop fixtures
+        if: always()
+        run: make destroy-fixtures
+
+  cli:
+    name: Go CLI lint & test
+    needs: [changes]
+    if: needs.changes.outputs.cli == 'true' || github.event_name == 'push'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: cli
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: cli/go.mod
+          cache-dependency-path: cli/go.sum
+
+      - name: Build
+        run: go build ./...
+
+      - name: Lint
+        uses: golangci/golangci-lint-action@v9
+        with:
+          version: v2.12.2
+          working-directory: cli
+
+      - name: Test (race)
+        run: go test -race ./...
+
+  ci-status:
+    name: CI status
+    if: always()
+    needs: [lint, openapi-client-drift, security, test-unit, test-integration, ui, ui-e2e, ui-e2e-realbackend, smoke-packaging, cli]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check job results
+        env:
+          RESULTS: >-
+            ${{ needs.lint.result }}
+            ${{ needs.openapi-client-drift.result }}
+            ${{ needs.security.result }}
+            ${{ needs.test-unit.result }}
+            ${{ needs.test-integration.result }}
+            ${{ needs.ui.result }}
+            ${{ needs.ui-e2e.result }}
+            ${{ needs.ui-e2e-realbackend.result }}
+            ${{ needs.smoke-packaging.result }}
+            ${{ needs.cli.result }}
+        run: |
+          for r in $RESULTS; do
+            if [[ "$r" == "failure" || "$r" == "cancelled" ]]; then
+              echo "One or more required jobs failed or were cancelled"
+              exit 1
+            fi
+          done
+          echo "All required jobs passed or were skipped"
