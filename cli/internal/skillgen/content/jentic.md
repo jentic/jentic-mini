@@ -135,13 +135,16 @@ jentic catalog search "spreadsheets"
 jentic catalog import googleapis.com/sheets
 ```
 
-   Importing **writes** to the shared registry, so it needs the `apis:write`
-   scope, which you don't hold by default. If `import` fails with `403 … requires
-   one of: apis:write`, request the scope, wait for a human to approve, then
-   refresh your token and retry — you don't need a human to import for you:
+   Importing an **already-cataloged** API is gated on `catalog:import`, which an
+   approved agent holds **by default** — no access request needed. Just run the
+   import. (This is narrower than importing arbitrary URL/inline specs via
+   `POST /apis`, which still needs `apis:write`.) If `import` unexpectedly fails
+   with `403 … requires one of: catalog:import` — e.g. you were approved before
+   `catalog:import` became a default scope and weren't re-granted — request it,
+   wait for a human to approve, refresh your token, then retry:
 
 ```
-jentic access request --scope apis:write --wait
+jentic access request --scope catalog:import --wait
 jentic access refresh
 jentic catalog import googleapis.com/sheets
 ```
@@ -163,10 +166,10 @@ direct.)
 
 If `search` returns no results, it prints a hint to run `jentic catalog search`
 / `jentic catalog import` first — that almost always means nothing relevant is
-imported yet. **Reading** the registry needs no extra access (an approved agent
-already has it); only **importing** does — request `apis:write` as shown above
-if `import` is denied. Don't file an access request for a made-up "catalog read"
-scope.
+imported yet. Both **reading** the registry and **importing a cataloged API**
+need no request — an approved agent already holds `apis:read` and
+`catalog:import` by default, so just import and search again. Don't file an
+access request for a made-up "catalog read" scope.
 
 ### 4. Inspect the operation's contract
 
@@ -220,7 +223,8 @@ jentic execute <operation_id> --broker-scheme http --broker-host 127.0.0.1:8100
   scopes but your current token can't use it until you refresh.
 - `jentic catalog search "<query>"` — find importable APIs in the public catalog.
 - `jentic catalog import <vendor/name>` — import an API into the local registry
-  (required before `search` can find its operations).
+  (required before `search` can find its operations). Gated on `catalog:import`,
+  a default agent scope — no access request needed.
 - `jentic search "<query>"` — discover imported operations (JSON when piped);
   pass a hit's `operation_id` to `inspect`/`execute`.
 - `jentic apis operations <vendor/name/version>` — list an imported API's
@@ -242,11 +246,11 @@ jentic execute <operation_id> --broker-scheme http --broker-host 127.0.0.1:8100
   operator to run `jentic bootstrap` / `jentic register` and approve you.
 - `search` returning `{"data": []}` usually means **nothing is imported yet**,
   not that you lack access. Run `jentic catalog search` → `jentic catalog
-  import`, then search again. Reading the registry needs no grant (an approved
-  agent already has it); **importing** needs `apis:write` — request it with
-  `jentic access request --scope apis:write --wait` (then `jentic access
-  refresh`) if `import` is denied. Don't invent other "catalog read" scopes;
-  they're rejected.
+  import`, then search again. Both reading the registry and importing a
+  cataloged API need no grant — an approved agent already holds `apis:read` and
+  `catalog:import` by default. (Importing arbitrary URL/inline specs via `POST
+  /apis` is the only import path that needs `apis:write`.) Don't invent other
+  "catalog read" scopes; they're rejected.
 - An `execute` failure is not always an access problem. A DNS/transport error
   (`lookup broker.jentic.ai: no such host`, connection refused — exit **1**)
   means the **broker target** is wrong; on a local install point at the local
