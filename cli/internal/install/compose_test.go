@@ -94,7 +94,7 @@ func TestRenderComposeSQLite(t *testing.T) {
 	if got := DataVolumeNames(true); len(got) != 1 || got[0] != composeProjectName+"_"+postgresDataVolume {
 		t.Errorf("DataVolumeNames(true) = %v, want [%s_%s]", got, composeProjectName, postgresDataVolume)
 	}
-	if strings.Contains(out, "pgvector") || strings.Contains(out, "depends_on") {
+	if strings.Contains(out, postgresImage) || strings.Contains(out, "depends_on") {
 		t.Errorf("sqlite compose should not include a db service:\n%s", out)
 	}
 }
@@ -114,7 +114,7 @@ func TestRenderComposePostgres(t *testing.T) {
 	out := string(data)
 
 	for _, want := range []string{
-		pgvectorImage,
+		postgresImage,
 		"depends_on",
 		"condition: service_healthy",
 		"\"55432:5432\"",
